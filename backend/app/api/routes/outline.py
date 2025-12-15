@@ -2,20 +2,34 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 from fastapi import APIRouter, Header, Request
 from sqlalchemy import select
 
 from app.api.deps import DbDep, UserIdDep, require_owned_project
 from app.core.errors import AppError, ok_payload
+from app.core.logging import log_event
 from app.db.session import SessionLocal
+from app.llm.client import call_llm_stream
 from app.models.character import Character
 from app.models.llm_preset import LLMPreset
 from app.models.project_settings import ProjectSettings
 from app.schemas.outline_generate import OutlineGenerateRequest
-from app.services.generation_service import call_llm_and_record, prepare_llm_call
-from app.services.prompting import extract_json_object, render_template
+from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.output_parsers import build_outline_fix_json_prompt, parse_outline_output
+from app.services.prompting import render_template
 from app.services.prompt_store import ensure_prompt_templates, format_characters
+from app.services.run_store import write_generation_run
+from app.utils.sse_response import (
+    create_sse_response,
+    sse_chunk,
+    sse_done,
+    sse_error,
+    sse_heartbeat,
+    sse_progress,
+    sse_result,
+)
 from app.models.outline import Outline
 from app.schemas.outline import OutlineOut, OutlineUpdate
 
@@ -131,7 +145,7 @@ def generate_outline(
     if llm_call is None:
         raise AppError(code="INTERNAL_ERROR", message="LLM 调用准备失败", status_code=500)
 
-    raw_output = call_llm_and_record(
+    llm_result = call_llm_and_record(
         logger=logger,
         request_id=request_id,
         actor_user_id=user_id,
@@ -144,32 +158,313 @@ def generate_outline(
         llm_call=llm_call,
     )
 
-    parsed, _ = extract_json_object(raw_output)
-    outline_md = raw_output
-    chapters: list[dict] = []
-    parse_error: dict | None = None
-    if isinstance(parsed, dict):
-        outline_md = str(parsed.get("outline_md") or raw_output)
-        parsed_chapters = parsed.get("chapters")
-        if isinstance(parsed_chapters, list):
-            for item in parsed_chapters:
-                if not isinstance(item, dict):
-                    continue
-                try:
-                    number = int(item.get("number"))
-                except Exception:
-                    continue
-                title = str(item.get("title") or "")
-                beats_raw = item.get("beats") or []
-                beats: list[str] = []
-                if isinstance(beats_raw, list):
-                    beats = [str(b) for b in beats_raw if b is not None]
-                chapters.append({"number": number, "title": title, "beats": beats})
+    raw_output = llm_result.text
+    finish_reason = llm_result.finish_reason
+    data, warnings, parse_error = parse_outline_output(raw_output)
 
-    if not chapters:
-        parse_error = {"code": "OUTLINE_PARSE_ERROR", "message": "无法从模型输出解析章节结构"}
+    if finish_reason == "length":
+        warnings.append("output_truncated")
+        if parse_error is not None:
+            parse_error.setdefault("hint", "输出疑似被截断（finish_reason=length），可尝试增大 max_tokens 或降低目标字数/章节数")
 
-    data: dict = {"outline_md": outline_md, "chapters": chapters, "raw_output": raw_output}
+    if parse_error is not None and llm_call.provider in ("openai", "openai_compatible"):
+        try:
+            fix_system, fix_user = build_outline_fix_json_prompt(raw_output)
+            fix_call = with_param_overrides(llm_call, {"temperature": 0, "max_tokens": 1024})
+            fixed = call_llm_and_record(
+                logger=logger,
+                request_id=request_id,
+                actor_user_id=user_id,
+                project_id=project_id,
+                chapter_id=None,
+                run_type="outline_fix_json",
+                api_key=str(x_llm_api_key),
+                prompt_system=fix_system,
+                prompt_user=fix_user,
+                llm_call=fix_call,
+            )
+            fixed_data, fixed_warnings, fixed_error = parse_outline_output(fixed.text)
+            if fixed_error is None and fixed_data.get("chapters"):
+                fixed_data["raw_output"] = raw_output
+                fixed_data["fixed_json"] = fixed_data.get("raw_json") or fixed.text
+                data = fixed_data
+                warnings.extend(["json_fixed_via_llm", *fixed_warnings])
+                parse_error = None
+        except AppError:
+            warnings.append("outline_fix_json_failed")
+
+    if warnings:
+        data["warnings"] = warnings
     if parse_error is not None:
         data["parse_error"] = parse_error
+    if finish_reason is not None:
+        data["finish_reason"] = finish_reason
     return ok_payload(request_id=request_id, data=data)
+
+
+@router.post("/projects/{project_id}/outline/generate-stream")
+def generate_outline_stream(
+    request: Request,
+    project_id: str,
+    body: OutlineGenerateRequest,
+    user_id: UserIdDep,
+    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider"),
+    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
+):
+    request_id = request.state.request_id
+
+    def event_generator():
+        if not x_llm_provider:
+            yield sse_error(error="缺少 X-LLM-Provider", code=400)
+            yield sse_done()
+            return
+        if not x_llm_api_key:
+            yield sse_error(error="请先填写 API Key", code=401)
+            yield sse_done()
+            return
+
+        yield sse_progress(message="准备生成...", progress=0)
+
+        prompt_system = ""
+        prompt_user = ""
+        llm_call = None
+
+        db = SessionLocal()
+        try:
+            project = require_owned_project(db, project_id=project_id, user_id=user_id)
+            preset = db.get(LLMPreset, project_id)
+            if preset is None:
+                raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
+            if preset.provider != x_llm_provider:
+                raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
+
+            templates = ensure_prompt_templates(db, project_id)
+            tpl = templates.get("outline_generate")
+            if tpl is None:
+                raise AppError(code="DB_ERROR", message="缺少 outline_generate 模板", status_code=500)
+
+            settings_row = db.get(ProjectSettings, project_id)
+            world_setting = (settings_row.world_setting if settings_row else "") or ""
+            style_guide = (settings_row.style_guide if settings_row else "") or ""
+            constraints = (settings_row.constraints if settings_row else "") or ""
+            if not body.context.include_world_setting:
+                world_setting = ""
+                style_guide = ""
+                constraints = ""
+
+            chars: list[Character] = []
+            if body.context.include_characters:
+                chars = db.execute(select(Character).where(Character.project_id == project_id)).scalars().all()
+            characters_text = format_characters(chars)
+
+            requirements_text = json.dumps(body.requirements or {}, ensure_ascii=False, indent=2)
+
+            values = {
+                "project_name": project.name or "",
+                "genre": project.genre or "",
+                "logline": project.logline or "",
+                "world_setting": world_setting,
+                "style_guide": style_guide,
+                "constraints": constraints,
+                "characters": characters_text,
+                "outline": "",
+                "chapter_number": "",
+                "chapter_title": "",
+                "chapter_plan": "",
+                "requirements": requirements_text,
+                "instruction": "",
+                "previous_chapter": "",
+            }
+
+            prompt_system, _ = render_template(tpl.system_template or "", values)
+            prompt_user, _ = render_template(tpl.user_template or "", values)
+
+            llm_call = prepare_llm_call(preset)
+        except GeneratorExit:
+            return
+        except AppError as exc:
+            yield sse_error(error=f"{exc.message} ({exc.code})", code=exc.status_code)
+            yield sse_done()
+            return
+        finally:
+            db.close()
+
+        if llm_call is None:
+            yield sse_error(error="LLM 调用准备失败", code=500)
+            yield sse_done()
+            return
+
+        yield sse_progress(message="调用模型...", progress=10)
+
+        raw_output = ""
+        finish_reason: str | None = None
+        dropped_params: list[str] = []
+        latency_ms: int | None = None
+        stream_run_written = False
+
+        try:
+            if llm_call.provider in ("openai", "openai_compatible"):
+                stream_iter, state = call_llm_stream(
+                    provider=llm_call.provider,
+                    base_url=llm_call.base_url,
+                    model=llm_call.model,
+                    api_key=str(x_llm_api_key),
+                    system=prompt_system,
+                    user=prompt_user,
+                    params=llm_call.params,
+                    timeout_seconds=llm_call.timeout_seconds,
+                    extra=llm_call.extra,
+                )
+
+                last_progress = 10
+                last_progress_ts = 0.0
+                chunk_count = 0
+                try:
+                    for delta in stream_iter:
+                        raw_output += delta
+                        yield sse_chunk(delta)
+                        chunk_count += 1
+                        if chunk_count % 12 == 0:
+                            yield sse_heartbeat()
+                        now = time.monotonic()
+                        if now - last_progress_ts >= 0.8:
+                            next_progress = 10 + int(min(1.0, len(raw_output) / 6000.0) * 80)
+                            next_progress = max(last_progress, min(90, next_progress))
+                            if next_progress != last_progress:
+                                last_progress = next_progress
+                                yield sse_progress(message="生成中...", progress=next_progress)
+                            last_progress_ts = now
+                finally:
+                    close = getattr(stream_iter, "close", None)
+                    if callable(close):
+                        close()
+
+                finish_reason = state.finish_reason
+                dropped_params = state.dropped_params
+                latency_ms = state.latency_ms
+
+                log_event(
+                    logger,
+                    "info",
+                    llm={
+                        "provider": llm_call.provider,
+                        "model": llm_call.model,
+                        "timeout_seconds": llm_call.timeout_seconds,
+                        "prompt_chars": len(prompt_system) + len(prompt_user),
+                        "output_chars": len(raw_output or ""),
+                        "dropped_params": dropped_params,
+                        "finish_reason": finish_reason,
+                        "stream": True,
+                    },
+                )
+                write_generation_run(
+                    request_id=request_id,
+                    actor_user_id=user_id,
+                    project_id=project_id,
+                    chapter_id=None,
+                    run_type="outline_stream",
+                    provider=llm_call.provider,
+                    model=llm_call.model,
+                    prompt_system=prompt_system,
+                    prompt_user=prompt_user,
+                    params_json=llm_call.params_json,
+                    output_text=raw_output,
+                    error_json=None,
+                )
+                stream_run_written = True
+            else:
+                fallback = call_llm_and_record(
+                    logger=logger,
+                    request_id=request_id,
+                    actor_user_id=user_id,
+                    project_id=project_id,
+                    chapter_id=None,
+                    run_type="outline_stream",
+                    api_key=str(x_llm_api_key),
+                    prompt_system=prompt_system,
+                    prompt_user=prompt_user,
+                    llm_call=llm_call,
+                )
+                raw_output = fallback.text
+                finish_reason = fallback.finish_reason
+                dropped_params = fallback.dropped_params
+                latency_ms = fallback.latency_ms
+
+            yield sse_progress(message="解析输出...", progress=90)
+            data, warnings, parse_error = parse_outline_output(raw_output)
+
+            if finish_reason == "length":
+                warnings.append("output_truncated")
+                if parse_error is not None:
+                    parse_error.setdefault("hint", "输出疑似被截断（finish_reason=length），可尝试增大 max_tokens 或降低目标字数/章节数")
+
+            if parse_error is not None and llm_call.provider in ("openai", "openai_compatible"):
+                yield sse_progress(message="尝试修复 JSON...", progress=92)
+                fix_system, fix_user = build_outline_fix_json_prompt(raw_output)
+                fix_call = with_param_overrides(llm_call, {"temperature": 0, "max_tokens": 1024})
+                try:
+                    fixed = call_llm_and_record(
+                        logger=logger,
+                        request_id=request_id,
+                        actor_user_id=user_id,
+                        project_id=project_id,
+                        chapter_id=None,
+                        run_type="outline_fix_json",
+                        api_key=str(x_llm_api_key),
+                        prompt_system=fix_system,
+                        prompt_user=fix_user,
+                        llm_call=fix_call,
+                    )
+                    fixed_data, fixed_warnings, fixed_error = parse_outline_output(fixed.text)
+                    if fixed_error is None and fixed_data.get("chapters"):
+                        fixed_data["raw_output"] = raw_output
+                        fixed_data["fixed_json"] = fixed_data.get("raw_json") or fixed.text
+                        data = fixed_data
+                        warnings.extend(["json_fixed_via_llm", *fixed_warnings])
+                        parse_error = None
+                except AppError:
+                    warnings.append("outline_fix_json_failed")
+
+            if warnings:
+                data["warnings"] = warnings
+            if parse_error is not None:
+                data["parse_error"] = parse_error
+            if finish_reason is not None:
+                data["finish_reason"] = finish_reason
+            if latency_ms is not None:
+                data["latency_ms"] = latency_ms
+            if dropped_params:
+                data["dropped_params"] = dropped_params
+
+            yield sse_progress(message="完成", progress=100, status="success")
+            yield sse_result(data)
+            yield sse_done()
+        except GeneratorExit:
+            return
+        except AppError as exc:
+            if (
+                llm_call is not None
+                and llm_call.provider in ("openai", "openai_compatible")
+                and not stream_run_written
+            ):
+                write_generation_run(
+                    request_id=request_id,
+                    actor_user_id=user_id,
+                    project_id=project_id,
+                    chapter_id=None,
+                    run_type="outline_stream",
+                    provider=llm_call.provider,
+                    model=llm_call.model,
+                    prompt_system=prompt_system,
+                    prompt_user=prompt_user,
+                    params_json=llm_call.params_json,
+                    output_text=raw_output or None,
+                    error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),
+                )
+            yield sse_error(error=f"{exc.message} ({exc.code})", code=exc.status_code)
+            yield sse_done()
+        except Exception:
+            yield sse_error(error="服务器内部错误", code=500)
+            yield sse_done()
+
+    return create_sse_response(event_generator())

@@ -23,6 +23,14 @@ class PreparedLlmCall:
     extra: dict[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class RecordedLlmResult:
+    text: str
+    finish_reason: str | None
+    latency_ms: int
+    dropped_params: list[str]
+
+
 def _parse_json_list(value: str | None) -> list[str]:
     if not value:
         return []
@@ -73,6 +81,26 @@ def prepare_llm_call(preset: LLMPreset) -> PreparedLlmCall:
     )
 
 
+def with_param_overrides(llm_call: PreparedLlmCall, overrides: dict[str, Any] | None) -> PreparedLlmCall:
+    if not overrides:
+        return llm_call
+    params = dict(llm_call.params)
+    for key, value in overrides.items():
+        if value is None:
+            continue
+        params[key] = value
+    params_json = json.dumps(params, ensure_ascii=False)
+    return PreparedLlmCall(
+        provider=llm_call.provider,
+        model=llm_call.model,
+        base_url=llm_call.base_url,
+        timeout_seconds=llm_call.timeout_seconds,
+        params=params,
+        params_json=params_json,
+        extra=dict(llm_call.extra),
+    )
+
+
 def call_llm_and_record(
     *,
     logger: logging.Logger,
@@ -85,7 +113,7 @@ def call_llm_and_record(
     prompt_system: str,
     prompt_user: str,
     llm_call: PreparedLlmCall,
-) -> str:
+) -> RecordedLlmResult:
     try:
         result = call_llm(
             provider=llm_call.provider,
@@ -110,6 +138,7 @@ def call_llm_and_record(
                 "prompt_chars": len(prompt_system) + len(prompt_user),
                 "output_chars": len(raw_output or ""),
                 "dropped_params": result.dropped_params,
+                "finish_reason": result.finish_reason,
             },
         )
 
@@ -128,7 +157,12 @@ def call_llm_and_record(
             error_json=None,
         )
 
-        return raw_output
+        return RecordedLlmResult(
+            text=raw_output,
+            finish_reason=result.finish_reason,
+            latency_ms=result.latency_ms,
+            dropped_params=result.dropped_params,
+        )
     except AppError as exc:
         log_event(
             logger,
@@ -157,4 +191,3 @@ def call_llm_and_record(
             error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),
         )
         raise
-

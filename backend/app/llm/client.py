@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import dataclass
-from typing import Any, Callable
+from dataclasses import dataclass, field
+from typing import Any, Callable, Iterator
 from urllib.parse import urlencode
 
 import httpx
@@ -20,6 +20,14 @@ class LLMCallResult:
     text: str
     latency_ms: int
     dropped_params: list[str]
+    finish_reason: str | None = None
+
+
+@dataclass(slots=True)
+class LLMStreamState:
+    finish_reason: str | None = None
+    latency_ms: int | None = None
+    dropped_params: list[str] = field(default_factory=list)
 
 
 def _filter_params(provider: str, params: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
@@ -68,6 +76,7 @@ def _map_upstream_error(
     if status_code == 408 or status_code == 504:
         return AppError(code="LLM_TIMEOUT", message="请求超时，请稍后重试", status_code=504, details=details)
     return AppError(code="LLM_UPSTREAM_ERROR", message="模型服务异常，请稍后重试", status_code=502, details=details)
+
 
 def _openai_messages(*, system: str, user: str, merge_system_into_user: bool) -> list[dict[str, Any]]:
     sys = system.strip()
@@ -134,6 +143,217 @@ def _extract_openai_like_text(data: Any) -> str | None:
     return None
 
 
+def _extract_openai_finish_reason(data: Any) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        first = choices[0]
+        if isinstance(first, dict) and isinstance(first.get("finish_reason"), str):
+            return first["finish_reason"] or None
+    if isinstance(data.get("finish_reason"), str):
+        return data["finish_reason"] or None
+    return None
+
+
+def _extract_openai_stream_delta_text(data: Any) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        first = choices[0]
+        if isinstance(first, dict):
+            delta = first.get("delta")
+            if isinstance(delta, dict):
+                content = delta.get("content")
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, list):
+                    parts: list[str] = []
+                    for part in content:
+                        if isinstance(part, str):
+                            parts.append(part)
+                        elif isinstance(part, dict) and isinstance(part.get("text"), str):
+                            parts.append(part["text"])
+                    if parts:
+                        return "".join(parts)
+            if isinstance(first.get("text"), str):
+                return first["text"]
+    return None
+
+
+def call_llm_stream(
+    *,
+    provider: str,
+    base_url: str,
+    model: str,
+    api_key: str,
+    system: str,
+    user: str,
+    params: dict[str, Any],
+    timeout_seconds: int,
+    extra: dict[str, Any] | None = None,
+) -> tuple[Iterator[str], LLMStreamState]:
+    if not api_key:
+        raise AppError(code="LLM_KEY_MISSING", message="缺少 API Key（请在 Prompts 页填写）", status_code=401)
+    if provider not in ("openai", "openai_compatible"):
+        raise AppError(code="LLM_STREAM_UNSUPPORTED", message="该 provider 暂不支持流式输出", status_code=400)
+
+    base_url = normalize_base_url(base_url)
+    filtered_params, dropped = _filter_params(provider, params)
+    extra = extra or {}
+    state = LLMStreamState(dropped_params=dropped)
+
+    start = time.perf_counter()
+    client = get_llm_http_client()
+    read_timeout = max(1.0, float(timeout_seconds))
+    connect_timeout = min(10.0, read_timeout)
+    write_timeout = min(10.0, read_timeout)
+    pool_timeout = min(10.0, read_timeout)
+    timeout = httpx.Timeout(connect=connect_timeout, read=read_timeout, write=write_timeout, pool=pool_timeout)
+
+    endpoint = f"{base_url}/chat/completions"
+    compat_dropped_params: list[str] = []
+    compat_adjustments: list[str] = []
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": _openai_messages(system=system, user=user, merge_system_into_user=False),
+        **filtered_params,
+        "stream": True,
+    }
+
+    def _open_stream(payload_obj: dict[str, Any]) -> httpx._client.StreamContextManager[httpx.Response]:
+        return client.stream(
+            "POST",
+            endpoint,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload_obj,
+            timeout=timeout,
+        )
+
+    def drop_param(name: str) -> bool:
+        if name not in payload:
+            return False
+        payload.pop(name, None)
+        compat_dropped_params.append(name)
+        compat_adjustments.append(f"drop_{name}")
+        return True
+
+    def clamp_max_tokens(limit: int) -> bool:
+        current = payload.get("max_tokens")
+        if not isinstance(current, int):
+            return False
+        if current <= limit:
+            return False
+        payload["max_tokens"] = limit
+        compat_adjustments.append(f"clamp_max_tokens_{limit}")
+        return True
+
+    def merge_system_into_user() -> bool:
+        if not system.strip():
+            return False
+        payload["messages"] = _openai_messages(system=system, user=user, merge_system_into_user=True)
+        compat_adjustments.append("merge_system_into_user")
+        return True
+
+    downgrade_steps: list[Callable[[], bool]] = [
+        lambda: drop_param("stop"),
+        lambda: drop_param("top_p"),
+        lambda: drop_param("temperature"),
+        lambda: clamp_max_tokens(16384),
+        lambda: clamp_max_tokens(8192),
+        lambda: clamp_max_tokens(4096),
+        lambda: clamp_max_tokens(1024),
+        lambda: drop_param("max_tokens"),
+        merge_system_into_user,
+    ]
+
+    def generator() -> Iterator[str]:
+        cm: httpx._client.StreamContextManager[httpx.Response] | None = None
+        resp: httpx.Response | None = None
+        upstream_text: str | None = None
+        try:
+            attempts = 0
+            while True:
+                attempts += 1
+                if cm is not None:
+                    cm.__exit__(None, None, None)
+                    cm = None
+                    resp = None
+
+                cm = _open_stream(payload)
+                resp = cm.__enter__()
+                if resp.status_code // 100 == 2:
+                    break
+
+                try:
+                    upstream_text = resp.read().decode("utf-8", errors="ignore")
+                except Exception:
+                    upstream_text = None
+                status_code = resp.status_code
+                cm.__exit__(None, None, None)
+                cm = None
+                resp = None
+
+                if provider in ("openai", "openai_compatible") and status_code in (400, 422) and attempts <= (len(downgrade_steps) + 1):
+                    changed = False
+                    for step in downgrade_steps:
+                        if step():
+                            changed = True
+                            break
+                    if changed:
+                        continue
+
+                extra_details = None
+                if compat_adjustments:
+                    extra_details = {
+                        "compat_adjustments": compat_adjustments,
+                        "compat_dropped_params": sorted(set(compat_dropped_params)),
+                    }
+                raise _map_upstream_error(status_code, _redact(upstream_text or ""), extra_details=extra_details)
+
+            if resp is None:
+                raise AppError(code="LLM_UPSTREAM_ERROR", message="模型服务异常，请稍后重试", status_code=502)
+
+            for line in resp.iter_lines():
+                if not line:
+                    continue
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8", errors="ignore")
+                line = str(line).strip()
+                if not line or line.startswith(":"):
+                    continue
+                if not line.startswith("data:"):
+                    continue
+                data_str = line[5:].strip()
+                if data_str == "[DONE]":
+                    break
+                try:
+                    data = json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
+
+                delta = _extract_openai_stream_delta_text(data)
+                if delta:
+                    yield delta
+
+                finish_reason = _extract_openai_finish_reason(data)
+                if finish_reason:
+                    state.finish_reason = finish_reason
+        except httpx.TimeoutException as exc:
+            raise AppError(code="LLM_TIMEOUT", message="连接超时，请检查网络或 base_url 是否正确", status_code=504) from exc
+        except httpx.HTTPError as exc:
+            raise AppError(code="LLM_UPSTREAM_ERROR", message="连接失败，请检查网络或 base_url 是否正确", status_code=502) from exc
+        finally:
+            state.latency_ms = int((time.perf_counter() - start) * 1000)
+            merged_dropped = dropped + [p for p in compat_dropped_params if p not in dropped]
+            state.dropped_params = merged_dropped
+            if cm is not None:
+                cm.__exit__(None, None, None)
+
+    return generator(), state
+
+
 def call_llm(
     *,
     provider: str,
@@ -181,9 +401,9 @@ def call_llm(
                 )
 
             resp = post_openai(payload)
-            if provider == "openai_compatible" and resp.status_code in (400, 422):
-                # Some gateways reject otherwise-valid OpenAI params or roles.
-                # Apply a short, deterministic downgrade sequence (no streaming).
+            if provider in ("openai", "openai_compatible") and resp.status_code in (400, 422):
+                # Some gateways/models reject otherwise-valid OpenAI params or roles.
+                # Apply a short, deterministic downgrade sequence.
                 def drop_param(name: str) -> bool:
                     if name not in payload:
                         return False
@@ -213,6 +433,9 @@ def call_llm(
                     lambda: drop_param("stop"),
                     lambda: drop_param("top_p"),
                     lambda: drop_param("temperature"),
+                    lambda: clamp_max_tokens(16384),
+                    lambda: clamp_max_tokens(8192),
+                    lambda: clamp_max_tokens(4096),
                     lambda: clamp_max_tokens(1024),
                     lambda: drop_param("max_tokens"),
                     merge_system_into_user,
@@ -237,13 +460,14 @@ def call_llm(
                 raise _map_upstream_error(resp.status_code, _redact(resp.text), extra_details=extra_details)
             data = resp.json()
             text = _extract_openai_like_text(data)
+            finish_reason = _extract_openai_finish_reason(data)
             if text is None:
                 details: dict[str, Any] = {}
                 if settings.app_env == "dev":
                     details["upstream_response"] = _redact(resp.text)[:500]
                 raise AppError(code="LLM_UPSTREAM_ERROR", message="上游响应格式不兼容，无法解析输出文本", status_code=502, details=details)
             merged_dropped = dropped + [p for p in compat_dropped_params if p not in dropped]
-            return LLMCallResult(text=text, latency_ms=latency_ms, dropped_params=merged_dropped)
+            return LLMCallResult(text=text, latency_ms=latency_ms, dropped_params=merged_dropped, finish_reason=finish_reason)
 
         if provider == "anthropic":
             endpoint = f"{base_url}/v1/messages"
@@ -274,10 +498,16 @@ def call_llm(
             if resp.status_code // 100 != 2:
                 raise _map_upstream_error(resp.status_code, _redact(resp.text))
             data = resp.json()
+            finish_reason = data.get("stop_reason") if isinstance(data, dict) else None
             parts = data.get("content") or []
             text_parts = [p.get("text", "") for p in parts if isinstance(p, dict)]
             text = "".join(text_parts).strip()
-            return LLMCallResult(text=text, latency_ms=latency_ms, dropped_params=dropped)
+            return LLMCallResult(
+                text=text,
+                latency_ms=latency_ms,
+                dropped_params=dropped,
+                finish_reason=str(finish_reason) if isinstance(finish_reason, str) else None,
+            )
 
         if provider == "gemini":
             endpoint = f"{base_url}/v1beta/models/{model}:generateContent"
@@ -310,13 +540,19 @@ def call_llm(
             data = resp.json()
             candidates = data.get("candidates") or []
             if not candidates:
-                return LLMCallResult(text="", latency_ms=latency_ms, dropped_params=dropped)
+                return LLMCallResult(text="", latency_ms=latency_ms, dropped_params=dropped, finish_reason=None)
+            finish_reason = candidates[0].get("finishReason") if isinstance(candidates[0], dict) else None
             content = candidates[0].get("content") or {}
             parts = content.get("parts") or []
             text = ""
             if parts and isinstance(parts[0], dict):
                 text = parts[0].get("text", "")
-            return LLMCallResult(text=text, latency_ms=latency_ms, dropped_params=dropped)
+            return LLMCallResult(
+                text=text,
+                latency_ms=latency_ms,
+                dropped_params=dropped,
+                finish_reason=str(finish_reason) if isinstance(finish_reason, str) else None,
+            )
 
         raise AppError(code="LLM_CONFIG_ERROR", message="不支持的 provider", status_code=400)
     except httpx.TimeoutException as exc:

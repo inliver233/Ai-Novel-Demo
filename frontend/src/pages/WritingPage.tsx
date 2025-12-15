@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
@@ -15,6 +15,7 @@ import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
 import { getLlmApiKey } from "../services/llmKeyStore";
+import { SSEError, SSEPostClient } from "../services/sseClient";
 import type { CreateChapterForm, GenerateForm, GenerationRun } from "../components/writing/types";
 import type { Chapter, ChapterStatus, Character, LLMPreset } from "../types";
 
@@ -86,8 +87,15 @@ export function WritingPage() {
 
   const [aiOpen, setAiOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [genStreamProgress, setGenStreamProgress] = useState<
+    { message: string; progress: number; status: string; wordCount?: number } | null
+  >(null);
+  const genStreamClientRef = useRef<SSEPostClient | null>(null);
+  const genStreamHasChunkRef = useRef(false);
   const [genForm, setGenForm] = useState<GenerateForm>({
     instruction: "写出本章冲突升级，结尾留钩子。",
+    target_word_count: 3000,
+    stream: false,
     context: {
       include_world_setting: true,
       include_style_guide: true,
@@ -323,7 +331,7 @@ export function WritingPage() {
           title: "章节有未保存修改，如何生成？",
           description: "生成结果会写入编辑器，但不会自动保存。",
           confirmText: "保存并生成",
-          secondaryText: "直接生成（基于上次保存）",
+          secondaryText: "直接生成（不保存当前修改）",
           cancelText: "取消",
         });
         if (choice === "cancel") return;
@@ -334,43 +342,211 @@ export function WritingPage() {
       }
 
       setGenerating(true);
+      setGenStreamProgress(null);
+      genStreamClientRef.current = null;
+      genStreamHasChunkRef.current = false;
       try {
-        const res = await apiJson<{ content_md: string; summary: string; raw_output: string }>(
-          `/api/chapters/${activeChapter.id}/generate`,
-          {
-            method: "POST",
-            headers: {
-              "X-LLM-Provider": preset.provider,
-              "X-LLM-API-Key": apiKey,
-            },
-            body: JSON.stringify({
-              mode,
-              instruction: genForm.instruction,
-              context: {
-                include_world_setting: genForm.context.include_world_setting,
-                include_style_guide: genForm.context.include_style_guide,
-                include_constraints: genForm.context.include_constraints,
-                include_outline: genForm.context.include_outline,
-                character_ids: genForm.context.character_ids,
-                previous_chapter: genForm.context.previous_chapter === "none" ? null : genForm.context.previous_chapter,
-              },
-            }),
+        const payload = {
+          mode,
+          instruction: genForm.instruction,
+          target_word_count: genForm.target_word_count > 0 ? genForm.target_word_count : null,
+          context: {
+            include_world_setting: genForm.context.include_world_setting,
+            include_style_guide: genForm.context.include_style_guide,
+            include_constraints: genForm.context.include_constraints,
+            include_outline: genForm.context.include_outline,
+            character_ids: genForm.context.character_ids,
+            previous_chapter: genForm.context.previous_chapter === "none" ? null : genForm.context.previous_chapter,
           },
-        );
+        };
 
-        setForm((prev) => {
-          if (!prev) return prev;
-          const nextContent =
-            mode === "append" ? appendMarkdown(prev.content_md, res.data.content_md ?? "") : (res.data.content_md ?? "");
-          return {
-            ...prev,
-            content_md: nextContent,
-            summary: res.data.summary ?? prev.summary,
-            status: "drafting",
+        const baseContent = form.content_md;
+        const baseSummary = form.summary;
+
+        if (genForm.stream) {
+          const markerContent = "<<<CONTENT>>>";
+          const markerSummary = "<<<SUMMARY>>>";
+
+          let phase: "before" | "content" | "summary" | "raw" = "before";
+          let pending = "";
+          let parsedContent = "";
+          let parsedSummary = "";
+          let sawContentMarker = false;
+          let rawSeen = 0;
+          let requestId: string | undefined;
+
+          const closeTo = (s: string, keep: number) => (s.length > keep ? s.slice(s.length - keep) : s);
+          const dropLeadingSpace = (s: string) => s.replace(/^[\s\r\n]+/, "");
+
+          const processChunk = (chunk: string) => {
+            rawSeen += chunk.length;
+            pending += chunk;
+
+            if (!sawContentMarker && rawSeen > 800) {
+              phase = "raw";
+            }
+
+            while (pending) {
+              if (phase === "before") {
+                const idx = pending.indexOf(markerContent);
+                if (idx === -1) {
+                  pending = closeTo(pending, markerContent.length - 1);
+                  return;
+                }
+                sawContentMarker = true;
+                pending = dropLeadingSpace(pending.slice(idx + markerContent.length));
+                phase = "content";
+                continue;
+              }
+
+              if (phase === "content") {
+                const idx = pending.indexOf(markerSummary);
+                if (idx === -1) {
+                  const keep = markerSummary.length - 1;
+                  if (pending.length > keep) {
+                    parsedContent += pending.slice(0, pending.length - keep);
+                    pending = pending.slice(pending.length - keep);
+                  }
+                  return;
+                }
+                parsedContent += pending.slice(0, idx);
+                pending = dropLeadingSpace(pending.slice(idx + markerSummary.length));
+                phase = "summary";
+                continue;
+              }
+
+              if (phase === "summary") {
+                parsedSummary += pending;
+                pending = "";
+                return;
+              }
+
+              if (phase === "raw") {
+                parsedContent += pending;
+                pending = "";
+                return;
+              }
+            }
           };
-        });
 
-        toast.toastSuccess("生成完成（别忘了保存）");
+          const client = new SSEPostClient(`/api/chapters/${activeChapter.id}/generate-stream`, payload, {
+            headers: { "X-LLM-Provider": preset.provider, "X-LLM-API-Key": apiKey },
+            onOpen: ({ requestId: rid }) => {
+              requestId = rid;
+            },
+            onProgress: ({ message, progress, status, wordCount }) => {
+              setGenStreamProgress({ message, progress, status, wordCount });
+            },
+            onChunk: (chunk) => {
+              genStreamHasChunkRef.current = true;
+              processChunk(chunk);
+              setForm((prev) => {
+                if (!prev) return prev;
+                const nextContent = mode === "append" ? appendMarkdown(baseContent, parsedContent) : parsedContent;
+                return { ...prev, content_md: nextContent, status: "drafting" };
+              });
+            },
+            onResult: (data) => {
+              const obj = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+              const content = typeof obj?.content_md === "string" ? obj.content_md : "";
+              const summary = typeof obj?.summary === "string" ? obj.summary : "";
+              const parseErrObj =
+                obj?.parse_error && typeof obj.parse_error === "object" ? (obj.parse_error as Record<string, unknown>) : null;
+              const parseErrCode = typeof parseErrObj?.code === "string" ? parseErrObj.code : undefined;
+              const parseErrMessage = typeof parseErrObj?.message === "string" ? parseErrObj.message : undefined;
+              if (parseErrCode === "OUTPUT_TRUNCATED") {
+                toast.toastError(parseErrMessage ?? "输出被截断", requestId);
+              }
+              setForm((prev) => {
+                if (!prev) return prev;
+                const nextContent = mode === "append" ? appendMarkdown(baseContent, content) : content;
+                const nextSummary = summary || parsedSummary.trim() || prev.summary || baseSummary;
+                return { ...prev, content_md: nextContent, summary: nextSummary, status: "drafting" };
+              });
+            },
+          });
+          genStreamClientRef.current = client;
+
+          try {
+            await client.connect();
+            toast.toastSuccess("生成完成（别忘了保存）");
+          } catch (e) {
+            const err = e as unknown;
+            if (err instanceof SSEError && err.code === "ABORTED") {
+              setForm((prev) => (prev ? { ...prev, content_md: baseContent, summary: baseSummary } : prev));
+              toast.toastSuccess("已取消生成");
+              return;
+            }
+            if (err instanceof SSEError && err.code !== "SSE_SERVER_ERROR") {
+              if (!genStreamHasChunkRef.current) {
+                toast.toastError("流式生成失败，已回退非流式");
+                const res = await apiJson<{ content_md: string; summary: string; raw_output: string }>(
+                  `/api/chapters/${activeChapter.id}/generate`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "X-LLM-Provider": preset.provider,
+                      "X-LLM-API-Key": apiKey,
+                    },
+                    body: JSON.stringify(payload),
+                  },
+                );
+
+                setForm((prev) => {
+                  if (!prev) return prev;
+                  const nextContent =
+                    mode === "append" ? appendMarkdown(prev.content_md, res.data.content_md ?? "") : (res.data.content_md ?? "");
+                  return {
+                    ...prev,
+                    content_md: nextContent,
+                    summary: res.data.summary ?? prev.summary,
+                    status: "drafting",
+                  };
+                });
+
+                toast.toastSuccess("生成完成（别忘了保存）");
+                return;
+              }
+              toast.toastError(`${err.message} (${err.code})`, err.requestId);
+              return;
+            }
+            if (err instanceof SSEError && err.code === "SSE_SERVER_ERROR") {
+              toast.toastError(`${err.message} (${err.code})`, err.requestId);
+              return;
+            }
+            if (err instanceof ApiError) {
+              toast.toastError(`${err.message} (${err.code})`, err.requestId);
+              return;
+            }
+            toast.toastError("生成失败");
+          }
+        } else {
+          const res = await apiJson<{ content_md: string; summary: string; raw_output: string }>(
+            `/api/chapters/${activeChapter.id}/generate`,
+            {
+              method: "POST",
+              headers: {
+                "X-LLM-Provider": preset.provider,
+                "X-LLM-API-Key": apiKey,
+              },
+              body: JSON.stringify(payload),
+            },
+          );
+
+          setForm((prev) => {
+            if (!prev) return prev;
+            const nextContent =
+              mode === "append" ? appendMarkdown(prev.content_md, res.data.content_md ?? "") : (res.data.content_md ?? "");
+            return {
+              ...prev,
+              content_md: nextContent,
+              summary: res.data.summary ?? prev.summary,
+              status: "drafting",
+            };
+          });
+
+          toast.toastSuccess("生成完成（别忘了保存）");
+        }
       } catch (e) {
         const err = e as ApiError;
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -482,7 +658,16 @@ export function WritingPage() {
                 </div>
               </div>
 
-              {generating ? <GhostwriterIndicator className="mt-4" label="墨迹渗入纸张中…生成需要一点时间" /> : null}
+              {generating ? (
+                <GhostwriterIndicator
+                  className="mt-4"
+                  label={
+                    genForm.stream && genStreamProgress
+                      ? `${genStreamProgress.message}（${genStreamProgress.progress}%）`
+                      : "墨迹渗入纸张中…生成需要一点时间"
+                  }
+                />
+              ) : null}
 
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <label className="grid gap-1 sm:col-span-2">
@@ -568,9 +753,11 @@ export function WritingPage() {
         genForm={genForm}
         setGenForm={setGenForm}
         characters={characters}
+        streamProgress={genStreamProgress}
         onClose={() => setAiOpen(false)}
         onGenerateAppend={() => void generate("append")}
         onGenerateReplace={() => void generate("replace")}
+        onCancelGenerate={() => genStreamClientRef.current?.abort()}
       />
 
       <GenerationHistoryDrawer

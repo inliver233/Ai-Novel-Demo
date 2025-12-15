@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { MarkdownEditor } from "../components/atelier/MarkdownEditor";
@@ -11,6 +11,7 @@ import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
 import { getLlmApiKey } from "../services/llmKeyStore";
+import { SSEError, SSEPostClient } from "../services/sseClient";
 import type { Chapter, LLMPreset, Outline } from "../types";
 
 type OutlineGenChapter = { number: number; title: string; beats: string[] };
@@ -48,6 +49,13 @@ export function OutlinePage() {
 
   const [genModalOpen, setGenModalOpen] = useState(false);
   const [genPreview, setGenPreview] = useState<OutlineGenResult | null>(null);
+  const [genStreamEnabled, setGenStreamEnabled] = useState(false);
+  const [genStreamProgress, setGenStreamProgress] = useState<{ message: string; progress: number; status: string } | null>(
+    null,
+  );
+  const [genStreamText, setGenStreamText] = useState("");
+  const genStreamClientRef = useRef<SSEPostClient | null>(null);
+  const genStreamHasChunkRef = useRef(false);
   const [genForm, setGenForm] = useState<OutlineGenForm>({
     chapter_count: 12,
     tone: "偏现实，克制但有爆点",
@@ -257,16 +265,62 @@ export function OutlinePage() {
                 />
                 注入角色卡
               </label>
+              <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
+                <input checked={genStreamEnabled} onChange={(e) => setGenStreamEnabled(e.target.checked)} type="checkbox" />
+                流式生成（beta）
+              </label>
             </div>
+
+            {genStreamEnabled ? (
+              <div className="mt-4 grid gap-3">
+                {genStreamProgress ? (
+                  <div className="grid gap-2 rounded-atelier border border-border bg-surface p-3">
+                    <div className="flex items-center justify-between gap-2 text-xs text-subtext">
+                      <span className="truncate">{genStreamProgress.message}</span>
+                      <span className="shrink-0">{genStreamProgress.progress}%</span>
+                    </div>
+                    <div className="h-2 w-full rounded bg-border">
+                      <div
+                        className="h-2 rounded bg-accent transition-all"
+                        style={{ width: `${Math.max(0, Math.min(100, genStreamProgress.progress))}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {genStreamText ? (
+                  <details className="rounded-atelier border border-border bg-surface p-3" open={generating}>
+                    <summary className="cursor-pointer text-xs text-subtext">流式输出预览（raw）</summary>
+                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs text-ink">
+                      {genStreamText}
+                    </pre>
+                  </details>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mt-5 flex justify-end gap-2">
               <button
                 className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-                onClick={() => setGenModalOpen(false)}
+                onClick={() => {
+                  genStreamClientRef.current?.abort();
+                  setGenModalOpen(false);
+                }}
                 type="button"
               >
                 取消
               </button>
+              {generating && genStreamEnabled ? (
+                <button
+                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
+                  onClick={() => {
+                    genStreamClientRef.current?.abort();
+                  }}
+                  type="button"
+                >
+                  取消生成
+                </button>
+              ) : null}
               <button
                 className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
                 disabled={generating}
@@ -278,27 +332,89 @@ export function OutlinePage() {
                     return;
                   }
                   setGenerating(true);
+                  genStreamClientRef.current = null;
+                  genStreamHasChunkRef.current = false;
+                  setGenStreamText("");
+                  setGenStreamProgress(null);
                   try {
-                    const res = await apiJson<OutlineGenResult>(`/api/projects/${projectId}/outline/generate`, {
-                      method: "POST",
-                      headers: {
-                        "X-LLM-Provider": preset.provider,
-                        "X-LLM-API-Key": apiKey,
+                    const payload = {
+                      requirements: {
+                        chapter_count: genForm.chapter_count,
+                        tone: genForm.tone,
+                        pacing: genForm.pacing,
                       },
-                      body: JSON.stringify({
-                        requirements: {
-                          chapter_count: genForm.chapter_count,
-                          tone: genForm.tone,
-                          pacing: genForm.pacing,
+                      context: {
+                        include_world_setting: genForm.include_world_setting,
+                        include_characters: genForm.include_characters,
+                      },
+                    };
+
+                    if (genStreamEnabled) {
+                      setGenStreamProgress({ message: "开始生成...", progress: 0, status: "processing" });
+                      const client = new SSEPostClient(`/api/projects/${projectId}/outline/generate-stream`, payload, {
+                        headers: { "X-LLM-Provider": preset.provider, "X-LLM-API-Key": apiKey },
+                        onProgress: ({ message, progress, status }) => {
+                          setGenStreamProgress({ message, progress, status });
                         },
-                        context: {
-                          include_world_setting: genForm.include_world_setting,
-                          include_characters: genForm.include_characters,
+                        onChunk: (content) => {
+                          genStreamHasChunkRef.current = true;
+                          setGenStreamText((prev) => prev + content);
                         },
-                      }),
-                    });
-                    setGenPreview(res.data);
-                    toast.toastSuccess("生成完成");
+                        onResult: (data) => {
+                          setGenPreview(data as OutlineGenResult);
+                        },
+                      });
+                      genStreamClientRef.current = client;
+
+                      try {
+                        await client.connect();
+                        toast.toastSuccess("生成完成");
+                      } catch (e) {
+                        const err = e as unknown;
+                        if (err instanceof SSEError && err.code !== "SSE_SERVER_ERROR" && err.code !== "ABORTED") {
+                          if (!genStreamHasChunkRef.current) {
+                            toast.toastError("流式生成失败，已回退非流式");
+                            const res = await apiJson<OutlineGenResult>(`/api/projects/${projectId}/outline/generate`, {
+                              method: "POST",
+                              headers: {
+                                "X-LLM-Provider": preset.provider,
+                                "X-LLM-API-Key": apiKey,
+                              },
+                              body: JSON.stringify(payload),
+                            });
+                            setGenPreview(res.data);
+                            toast.toastSuccess("生成完成");
+                          } else {
+                            toast.toastError(`${err.message} (${err.code})`, err.requestId);
+                          }
+                          return;
+                        }
+                        if (err instanceof SSEError && err.code === "SSE_SERVER_ERROR") {
+                          toast.toastError(`${err.message} (${err.code})`, err.requestId);
+                          return;
+                        }
+                        if (err instanceof SSEError && err.code === "ABORTED") {
+                          toast.toastSuccess("已取消生成");
+                          return;
+                        }
+                        if (err instanceof ApiError) {
+                          toast.toastError(`${err.message} (${err.code})`, err.requestId);
+                          return;
+                        }
+                        toast.toastError("流式生成失败");
+                      }
+                    } else {
+                      const res = await apiJson<OutlineGenResult>(`/api/projects/${projectId}/outline/generate`, {
+                        method: "POST",
+                        headers: {
+                          "X-LLM-Provider": preset.provider,
+                          "X-LLM-API-Key": apiKey,
+                        },
+                        body: JSON.stringify(payload),
+                      });
+                      setGenPreview(res.data);
+                      toast.toastSuccess("生成完成");
+                    }
                   } catch (e) {
                     const err = e as ApiError;
                     toast.toastError(`${err.message} (${err.code})`, err.requestId);

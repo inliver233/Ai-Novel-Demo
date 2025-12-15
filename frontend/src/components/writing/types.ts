@@ -6,6 +6,8 @@ export type CreateChapterForm = {
 
 export type GenerateForm = {
   instruction: string;
+  target_word_count: number;
+  stream: boolean;
   context: {
     include_world_setting: boolean;
     include_style_guide: boolean;

@@ -17,5 +17,5 @@ class ChapterGenerateContext(BaseModel):
 class ChapterGenerateRequest(BaseModel):
     mode: Literal["replace", "append"]
     instruction: str = Field(default="", max_length=4000)
+    target_word_count: int | None = Field(default=None, ge=100, le=50000)
     context: ChapterGenerateContext = Field(default_factory=ChapterGenerateContext)
-

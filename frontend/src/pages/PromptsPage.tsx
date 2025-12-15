@@ -97,7 +97,7 @@ export function PromptsPage() {
     model: "gpt-4o-mini",
     temperature: "0.7",
     top_p: "1",
-    max_tokens: "1500",
+    max_tokens: "32000",
     presence_penalty: "0",
     frequency_penalty: "0",
     top_k: "",

@@ -11,9 +11,11 @@ type Props = {
   genForm: GenerateForm;
   setGenForm: Dispatch<SetStateAction<GenerateForm>>;
   characters: Character[];
+  streamProgress?: { message: string; progress: number; status: string; wordCount?: number } | null;
   onClose: () => void;
   onGenerateAppend: () => void;
   onGenerateReplace: () => void;
+  onCancelGenerate?: () => void;
 };
 
 export function AiGenerateDrawer(props: Props) {
@@ -40,6 +42,56 @@ export function AiGenerateDrawer(props: Props) {
         </div>
 
         <div className="mt-5 grid gap-4">
+          <div className="grid gap-3 rounded-atelier border border-border bg-surface p-3">
+            <label className="flex items-center justify-between gap-3 text-sm text-ink">
+              <span>流式生成（beta）</span>
+              <input
+                checked={props.genForm.stream}
+                disabled={props.generating}
+                onChange={(e) => props.setGenForm((v) => ({ ...v, stream: e.target.checked }))}
+                type="checkbox"
+              />
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">目标字数（中文按字数=字符数）</span>
+              <input
+                className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none disabled:opacity-60"
+                disabled={props.generating}
+                min={100}
+                type="number"
+                value={props.genForm.target_word_count}
+                onChange={(e) => props.setGenForm((v) => ({ ...v, target_word_count: Number(e.target.value) }))}
+              />
+            </label>
+          </div>
+
+          {props.genForm.stream && props.generating && props.streamProgress ? (
+            <div className="grid gap-2 rounded-atelier border border-border bg-surface p-3">
+              <div className="flex items-center justify-between gap-2 text-xs text-subtext">
+                <span className="truncate">{props.streamProgress.message}</span>
+                <span className="shrink-0">{props.streamProgress.progress}%</span>
+              </div>
+              <div className="h-2 w-full rounded bg-border">
+                <div
+                  className="h-2 rounded bg-accent transition-all"
+                  style={{ width: `${Math.max(0, Math.min(100, props.streamProgress.progress))}%` }}
+                />
+              </div>
+              {props.onCancelGenerate ? (
+                <div className="flex justify-end">
+                  <button
+                    className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
+                    onClick={props.onCancelGenerate}
+                    type="button"
+                  >
+                    取消生成
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <label className="grid gap-1">
             <span className="text-xs text-subtext">用户指令</span>
             <textarea
@@ -170,4 +222,3 @@ export function AiGenerateDrawer(props: Props) {
     </div>
   );
 }
-
