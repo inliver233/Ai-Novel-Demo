@@ -1,0 +1,120 @@
+from __future__ import annotations
+
+import json
+
+from fastapi import APIRouter, Request
+
+from app.api.deps import DbDep, UserIdDep, require_owned_project
+from app.core.errors import AppError, ok_payload
+from app.llm.utils import normalize_base_url
+from app.models.llm_preset import LLMPreset
+from app.schemas.llm_preset import LLMPresetOut, LLMPresetPutRequest
+
+router = APIRouter()
+
+
+def _default_preset(project_id: str) -> LLMPreset:
+    return LLMPreset(
+        project_id=project_id,
+        provider="openai",
+        base_url="https://api.openai.com/v1",
+        model="gpt-4o-mini",
+        temperature=0.7,
+        top_p=1.0,
+        max_tokens=1500,
+        presence_penalty=0.0,
+        frequency_penalty=0.0,
+        top_k=None,
+        stop_json="[]",
+        timeout_seconds=90,
+        extra_json="{}",
+    )
+
+
+def _to_out(row: LLMPreset) -> dict:
+    stop: list[str] = []
+    if row.stop_json:
+        try:
+            stop = json.loads(row.stop_json)
+        except Exception:
+            stop = []
+    extra: dict = {}
+    if row.extra_json:
+        try:
+            extra = json.loads(row.extra_json)
+        except Exception:
+            extra = {}
+    return LLMPresetOut(
+        project_id=row.project_id,
+        provider=row.provider,  # type: ignore[arg-type]
+        base_url=row.base_url,
+        model=row.model,
+        temperature=row.temperature,
+        top_p=row.top_p,
+        max_tokens=row.max_tokens,
+        presence_penalty=row.presence_penalty,
+        frequency_penalty=row.frequency_penalty,
+        top_k=row.top_k,
+        stop=stop or [],
+        timeout_seconds=row.timeout_seconds,
+        extra=extra or {},
+    ).model_dump()
+
+
+@router.get("/projects/{project_id}/llm_preset")
+def get_llm_preset(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
+    request_id = request.state.request_id
+    require_owned_project(db, project_id=project_id, user_id=user_id)
+    row = db.get(LLMPreset, project_id)
+    if row is None:
+        row = _default_preset(project_id)
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return ok_payload(request_id=request_id, data={"llm_preset": _to_out(row)})
+
+
+@router.put("/projects/{project_id}/llm_preset")
+def put_llm_preset(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    body: LLMPresetPutRequest,
+) -> dict:
+    request_id = request.state.request_id
+    require_owned_project(db, project_id=project_id, user_id=user_id)
+
+    base_url = body.base_url
+    if body.provider == "openai":
+        base_url = normalize_base_url(base_url or "https://api.openai.com/v1")
+    elif body.provider == "openai_compatible":
+        if not base_url:
+            raise AppError(code="LLM_CONFIG_ERROR", message="openai_compatible 必须填写 base_url", status_code=400)
+        base_url = normalize_base_url(base_url)
+    elif body.provider == "anthropic":
+        base_url = normalize_base_url(base_url or "https://api.anthropic.com")
+    elif body.provider == "gemini":
+        base_url = normalize_base_url(base_url or "https://generativelanguage.googleapis.com")
+
+    row = db.get(LLMPreset, project_id)
+    if row is None:
+        row = _default_preset(project_id)
+        db.add(row)
+
+    row.provider = body.provider
+    row.base_url = base_url
+    row.model = body.model
+    row.temperature = body.temperature
+    row.top_p = body.top_p
+    row.max_tokens = body.max_tokens
+    row.presence_penalty = body.presence_penalty
+    row.frequency_penalty = body.frequency_penalty
+    row.top_k = body.top_k
+    row.stop_json = json.dumps(body.stop or [], ensure_ascii=False)
+    row.timeout_seconds = body.timeout_seconds
+    row.extra_json = json.dumps(body.extra or {}, ensure_ascii=False)
+
+    db.commit()
+    db.refresh(row)
+    return ok_payload(request_id=request_id, data={"llm_preset": _to_out(row)})

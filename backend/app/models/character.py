@@ -1,0 +1,23 @@
+from __future__ import annotations
+
+from sqlalchemy import ForeignKey, Index, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base import Base
+from app.db.utils import utc_now_iso
+
+
+class Character(Base):
+    __tablename__ = "characters"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    profile: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso, onupdate=utc_now_iso)
+
+
+Index("ix_characters_project_id", Character.project_id)
+

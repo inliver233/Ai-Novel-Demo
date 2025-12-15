@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+from pydantic import Field
+
+from app.schemas.base import ORMModel
+
+
+class ProjectCreate(ORMModel):
+    name: str = Field(min_length=1, max_length=255)
+    genre: str | None = Field(default=None, max_length=255)
+    logline: str | None = Field(default=None, max_length=1024)
+
+
+class ProjectUpdate(ORMModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    genre: str | None = Field(default=None, max_length=255)
+    logline: str | None = Field(default=None, max_length=1024)
+
+
+class ProjectOut(ORMModel):
+    id: str
+    owner_user_id: str
+    name: str
+    genre: str | None = None
+    logline: str | None = None
+    created_at: str
+    updated_at: str

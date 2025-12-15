@@ -1,0 +1,70 @@
+import { useCallback, useMemo, useState } from "react";
+
+import { useProjectData } from "./useProjectData";
+import { apiJson } from "../services/apiClient";
+import { computeWizardProgress, type WizardProgress } from "../services/wizard";
+import type { Chapter, Character, LLMPreset, Outline, Project, ProjectSettings } from "../types";
+
+type WizardLoaded = {
+  project: Project;
+  settings: ProjectSettings;
+  characters: Character[];
+  outline: Outline;
+  chapters: Chapter[];
+  llmPreset: LLMPreset;
+};
+
+const EMPTY_CHARACTERS: Character[] = [];
+const EMPTY_CHAPTERS: Chapter[] = [];
+
+export function useWizardProgress(projectId: string | undefined): {
+  loading: boolean;
+  progress: WizardProgress;
+  refresh: () => Promise<void>;
+  bumpLocal: () => void;
+} {
+  const [version, setVersion] = useState(0);
+
+  const wizardQuery = useProjectData<WizardLoaded>(projectId, async (id) => {
+    const [pRes, settingsRes, charsRes, outlineRes, chaptersRes, presetRes] = await Promise.all([
+      apiJson<{ project: Project }>(`/api/projects/${id}`),
+      apiJson<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`),
+      apiJson<{ characters: Character[] }>(`/api/projects/${id}/characters`),
+      apiJson<{ outline: Outline }>(`/api/projects/${id}/outline`),
+      apiJson<{ chapters: Chapter[] }>(`/api/projects/${id}/chapters`),
+      apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${id}/llm_preset`),
+    ]);
+    return {
+      project: pRes.data.project,
+      settings: settingsRes.data.settings,
+      characters: charsRes.data.characters,
+      outline: outlineRes.data.outline,
+      chapters: chaptersRes.data.chapters,
+      llmPreset: presetRes.data.llm_preset,
+    };
+  });
+
+  const bumpLocal = useCallback(() => {
+    setVersion((v) => v + 1);
+  }, []);
+
+  const progress = useMemo(() => {
+    void version;
+    return computeWizardProgress({
+      project: wizardQuery.data?.project ?? null,
+      settings: wizardQuery.data?.settings ?? null,
+      characters: wizardQuery.data?.characters ?? EMPTY_CHARACTERS,
+      outline: wizardQuery.data?.outline ?? null,
+      chapters: wizardQuery.data?.chapters ?? EMPTY_CHAPTERS,
+      llmPreset: wizardQuery.data?.llmPreset ?? null,
+    });
+  }, [version, wizardQuery.data]);
+
+  return {
+    loading: wizardQuery.loading,
+    progress,
+    refresh: wizardQuery.refresh,
+    bumpLocal,
+  };
+}
+

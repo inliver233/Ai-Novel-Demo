@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+from app.db.session import SessionLocal
+from app.db.utils import new_id
+from app.models.generation_run import GenerationRun
+
+
+def write_generation_run(
+    *,
+    request_id: str,
+    actor_user_id: str,
+    project_id: str,
+    chapter_id: str | None,
+    run_type: str,
+    provider: str | None,
+    model: str | None,
+    prompt_system: str,
+    prompt_user: str,
+    params_json: str,
+    output_text: str | None,
+    error_json: str | None,
+) -> None:
+    """
+    Persist a generation run using an independent session.
+
+    Rationale: generation requests often hold a long-lived transaction (prompt rendering, LLM call, etc.).
+    Writing runs in a separate short-lived session avoids coupling the audit trail to the request session lifecycle.
+    """
+    with SessionLocal() as db:
+        db.add(
+            GenerationRun(
+                id=new_id(),
+                project_id=project_id,
+                actor_user_id=actor_user_id,
+                chapter_id=chapter_id,
+                type=run_type,
+                provider=provider,
+                model=model,
+                request_id=request_id,
+                prompt_system=prompt_system,
+                prompt_user=prompt_user,
+                params_json=params_json,
+                output_text=output_text,
+                error_json=error_json,
+            )
+        )
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise

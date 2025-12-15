@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-canvas: var(--theme-canvas);
+    --color-surface: var(--theme-surface);
+    --color-ink: var(--theme-ink);
+    --color-accent: var(--theme-accent);
+    --color-border: var(--theme-border);
+    --color-subtext: var(--theme-subtext);
+    --color-success: var(--theme-success);
+
+    --font-ui: var(--theme-font-ui);
+    --font-content: var(--theme-font-content);
+    --font-mono: var(--theme-font-mono);
+
+    --radius-base: var(--theme-radius);
+  }
+
+  [data-theme="paper-ink"] {
+    --theme-canvas: #fbf9f6;
+    --theme-surface: #f2efe9;
+    --theme-ink: #2c2926;
+    --theme-subtext: #6e6a66;
+    --theme-border: #e6e2dc;
+    --theme-accent: #bc5d43;
+    --theme-success: #3f6359;
+    --theme-font-ui: "Inter", "Geist Sans", ui-sans-serif, system-ui,
+      sans-serif;
+    --theme-font-content: "Merriweather", "Source Serif 4", ui-serif, serif;
+    --theme-font-mono: "JetBrains Mono", "Fira Code", ui-monospace,
+      SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+      monospace;
+    --theme-radius: 12px;
+  }
+
+  [data-theme="paper-ink"].dark {
+    --theme-canvas: #1a1918;
+    --theme-surface: #242321;
+    --theme-ink: #e8e6e3;
+    --theme-subtext: #b9b6b2;
+    --theme-border: #2e2c29;
+    --theme-accent: #d97757;
+    --theme-success: #5e8a7c;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-ui);
+    background: var(--color-canvas);
+    color: var(--color-ink);
+  }
+
+  a {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+}
+
+.atelier-content {
+  font-family: var(--font-content);
+  font-size: 17px;
+  line-height: 1.75;
+  letter-spacing: -0.01em;
+}
+
+.atelier-mono {
+  font-family: var(--font-mono);
+}
