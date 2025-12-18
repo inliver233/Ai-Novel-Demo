@@ -36,6 +36,7 @@ export function PromptTemplatesPanel(props: Props) {
           <div className="text-sm text-ink">outline_generate</div>
           <textarea
             className="atelier-mono rounded-atelier border border-border bg-canvas px-3 py-3 text-sm text-ink outline-none"
+            name="outline_system_template"
             rows={4}
             value={props.promptForm.outline_generate.system_template}
             onChange={(e) =>
@@ -48,6 +49,7 @@ export function PromptTemplatesPanel(props: Props) {
           />
           <textarea
             className="atelier-mono rounded-atelier border border-border bg-canvas px-3 py-3 text-sm text-ink outline-none"
+            name="outline_user_template"
             rows={7}
             value={props.promptForm.outline_generate.user_template}
             onChange={(e) =>
@@ -70,6 +72,7 @@ export function PromptTemplatesPanel(props: Props) {
           <div className="text-sm text-ink">chapter_generate</div>
           <textarea
             className="atelier-mono rounded-atelier border border-border bg-canvas px-3 py-3 text-sm text-ink outline-none"
+            name="chapter_system_template"
             rows={4}
             value={props.promptForm.chapter_generate.system_template}
             onChange={(e) =>
@@ -79,6 +82,7 @@ export function PromptTemplatesPanel(props: Props) {
           />
           <textarea
             className="atelier-mono rounded-atelier border border-border bg-canvas px-3 py-3 text-sm text-ink outline-none"
+            name="chapter_user_template"
             rows={7}
             value={props.promptForm.chapter_generate.user_template}
             onChange={(e) =>
@@ -102,4 +106,3 @@ export function PromptTemplatesPanel(props: Props) {
     </section>
   );
 }
-

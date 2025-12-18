@@ -12,6 +12,7 @@ class Chapter(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    outline_id: Mapped[str] = mapped_column(ForeignKey("outlines.id", ondelete="CASCADE"), nullable=False)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     plan: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -20,8 +21,8 @@ class Chapter(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="planned")
     updated_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso, onupdate=utc_now_iso)
 
-    __table_args__ = (UniqueConstraint("project_id", "number", name="uq_chapters_project_id_number"),)
+    __table_args__ = (UniqueConstraint("outline_id", "number", name="uq_chapters_outline_id_number"),)
 
 
 Index("ix_chapters_project_id", Chapter.project_id)
-
+Index("ix_chapters_outline_id", Chapter.outline_id)

@@ -5,6 +5,8 @@ export type ChapterStatus = "planned" | "drafting" | "done";
 export interface Project {
   id: string;
   owner_user_id: string;
+  active_outline_id?: string | null;
+  llm_profile_id?: string | null;
   name: string;
   genre?: string | null;
   logline?: string | null;
@@ -30,14 +32,27 @@ export interface Character {
 }
 
 export interface Outline {
+  id: string;
   project_id: string;
+  title: string;
   content_md: string;
+  structure?: unknown | null;
+  created_at: string;
   updated_at: string;
+}
+
+export interface OutlineListItem {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  has_chapters: boolean;
 }
 
 export interface Chapter {
   id: string;
   project_id: string;
+  outline_id: string;
   number: number;
   title?: string | null;
   plan?: string | null;
@@ -70,3 +85,13 @@ export interface LLMPreset {
   extra: Record<string, unknown>;
 }
 
+export interface LLMProfile {
+  id: string;
+  owner_user_id: string;
+  name: string;
+  provider: LLMProvider;
+  base_url?: string | null;
+  model: string;
+  created_at: string;
+  updated_at: string;
+}

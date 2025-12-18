@@ -24,6 +24,7 @@ export function ProjectSwitcher() {
       <select
         className="w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink"
         disabled={loading || projects.length === 0}
+        name="project_switcher"
         value={selected}
         onChange={(e) => {
           const id = e.target.value;

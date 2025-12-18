@@ -84,6 +84,11 @@ export function hasWizardExported(projectId: string): boolean {
 export function computeWizardProgress(input: WizardComputeInput): WizardProgress {
   const projectId = input.project?.id ?? "";
   const base = projectId ? `/projects/${projectId}` : "";
+  const hasAnyLlmKey = Boolean(
+    projectId &&
+      input.llmPreset &&
+      (input.project?.llm_profile_id || getLlmApiKey(input.llmPreset.provider).trim()),
+  );
 
   const makeStep = (step: Omit<WizardStep, "state"> & { done: boolean }): WizardStep => {
     if (!projectId) return { ...step, state: "todo" };
@@ -120,7 +125,7 @@ export function computeWizardProgress(input: WizardComputeInput): WizardProgress
       done: Boolean(
         projectId &&
           input.llmPreset &&
-          getLlmApiKey(input.llmPreset.provider).trim() &&
+          hasAnyLlmKey &&
           hasWizardLlmTestOk(projectId, input.llmPreset.provider, input.llmPreset.model),
       ),
     }),

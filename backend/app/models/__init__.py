@@ -1,6 +1,7 @@
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.generation_run import GenerationRun
+from app.models.llm_profile import LLMProfile
 from app.models.llm_preset import LLMPreset
 from app.models.outline import Outline
 from app.models.project import Project
@@ -12,6 +13,7 @@ __all__ = [
     "Chapter",
     "Character",
     "GenerationRun",
+    "LLMProfile",
     "LLMPreset",
     "Outline",
     "Project",
@@ -19,4 +21,3 @@ __all__ = [
     "PromptTemplate",
     "User",
 ]
-

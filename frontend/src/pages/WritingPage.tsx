@@ -17,7 +17,7 @@ import { ApiError, apiJson } from "../services/apiClient";
 import { getLlmApiKey } from "../services/llmKeyStore";
 import { SSEError, SSEPostClient } from "../services/sseClient";
 import type { CreateChapterForm, GenerateForm, GenerationRun } from "../components/writing/types";
-import type { Chapter, ChapterStatus, Character, LLMPreset } from "../types";
+import type { Chapter, ChapterStatus, Character, LLMPreset, Outline, OutlineListItem, Project } from "../types";
 
 type ChapterForm = {
   title: string;
@@ -54,7 +54,7 @@ function chapterToForm(chapter: Chapter): ChapterForm {
   };
 }
 
-type WritingLoaded = { preset: LLMPreset; characters: Character[] };
+type WritingLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LLMPreset; characters: Character[] };
 
 export function WritingPage() {
   const { projectId } = useParams();
@@ -66,14 +66,24 @@ export function WritingPage() {
   const [loading, setLoading] = useState(true);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const writingQuery = useProjectData<WritingLoaded>(projectId, async (id) => {
-    const [presetRes, charactersRes] = await Promise.all([
+    const [outlineRes, presetRes, charactersRes] = await Promise.all([
+      apiJson<{ outline: Outline }>(`/api/projects/${id}/outline`),
       apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${id}/llm_preset`),
       apiJson<{ characters: Character[] }>(`/api/projects/${id}/characters`),
     ]);
-    return { preset: presetRes.data.llm_preset, characters: charactersRes.data.characters };
+    const outlinesRes = await apiJson<{ outlines: OutlineListItem[] }>(`/api/projects/${id}/outlines`);
+    return {
+      outlines: outlinesRes.data.outlines,
+      outline: outlineRes.data.outline,
+      preset: presetRes.data.llm_preset,
+      characters: charactersRes.data.characters,
+    };
   });
+  const outlines = writingQuery.data?.outlines ?? [];
+  const outline = writingQuery.data?.outline ?? null;
   const characters = writingQuery.data?.characters ?? [];
   const preset = writingQuery.data?.preset ?? null;
+  const refreshWriting = writingQuery.refresh;
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeChapter, setActiveChapter] = useState<Chapter | null>(null);
@@ -255,6 +265,45 @@ export function WritingPage() {
     [activeId, confirm, dirty, saveChapter],
   );
 
+  const activeOutlineId = outline?.id ?? "";
+
+  const switchOutline = useCallback(
+    async (nextOutlineId: string) => {
+      if (!projectId) return;
+      if (!nextOutlineId || nextOutlineId === activeOutlineId) return;
+
+      if (dirty) {
+        const choice = await confirm.choose({
+          title: "章节有未保存修改，是否切换大纲？",
+          description: "切换大纲后未保存内容会丢失。",
+          confirmText: "保存并切换",
+          secondaryText: "不保存切换",
+          cancelText: "取消",
+        });
+        if (choice === "cancel") return;
+        if (choice === "confirm") {
+          const ok = await saveChapter();
+          if (!ok) return;
+        }
+      }
+
+      try {
+        await apiJson<{ project: Project }>(`/api/projects/${projectId}`, {
+          method: "PUT",
+          body: JSON.stringify({ active_outline_id: nextOutlineId }),
+        });
+        await refreshWriting();
+        await refreshChapters();
+        await refreshWizard();
+        toast.toastSuccess("已切换大纲");
+      } catch (e) {
+        const err = e as ApiError;
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      }
+    },
+    [activeOutlineId, confirm, dirty, projectId, refreshChapters, refreshWriting, refreshWizard, saveChapter, toast],
+  );
+
   const openCreate = useCallback(() => {
     setCreateForm({ number: nextChapterNumber(chapters), title: "", plan: "" });
     setCreateOpen(true);
@@ -320,11 +369,12 @@ export function WritingPage() {
         toast.toastError("请先在 Prompts 页保存 LLM 配置");
         return;
       }
-      const apiKey = getLlmApiKey(preset.provider);
+      const apiKey = getLlmApiKey(preset.provider).trim();
       if (!apiKey) {
-        toast.toastError("请先在 Prompts 页填写 API Key");
+        toast.toastError("请先在 Prompt & 模型 页填写 API Key");
         return;
       }
+      const headers: Record<string, string> = { "X-LLM-Provider": preset.provider, "X-LLM-API-Key": apiKey };
 
       if (dirty) {
         const choice = await confirm.choose({
@@ -430,7 +480,7 @@ export function WritingPage() {
           };
 
           const client = new SSEPostClient(`/api/chapters/${activeChapter.id}/generate-stream`, payload, {
-            headers: { "X-LLM-Provider": preset.provider, "X-LLM-API-Key": apiKey },
+            headers,
             onOpen: ({ requestId: rid }) => {
               requestId = rid;
             },
@@ -484,10 +534,7 @@ export function WritingPage() {
                   `/api/chapters/${activeChapter.id}/generate`,
                   {
                     method: "POST",
-                    headers: {
-                      "X-LLM-Provider": preset.provider,
-                      "X-LLM-API-Key": apiKey,
-                    },
+                    headers,
                     body: JSON.stringify(payload),
                   },
                 );
@@ -525,10 +572,7 @@ export function WritingPage() {
             `/api/chapters/${activeChapter.id}/generate`,
             {
               method: "POST",
-              headers: {
-                "X-LLM-Provider": preset.provider,
-                "X-LLM-API-Key": apiKey,
-              },
+              headers,
               body: JSON.stringify(payload),
             },
           );
@@ -561,26 +605,45 @@ export function WritingPage() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-sm text-subtext">共 {chapters.length} 章</div>
-        <div className="flex items-center gap-2">
-          <button
-            className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-            onClick={() => {
-              setHistoryOpen(true);
-              void refreshRuns();
-            }}
-            type="button"
-          >
-            生成记录
-          </button>
-          <button
-            className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90"
-            onClick={openCreate}
-            type="button"
-          >
-            新增章节
-          </button>
+      <div className="rounded-atelier border border-border bg-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-subtext">当前大纲</span>
+            <select
+              className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink"
+              name="active_outline_id"
+              value={activeOutlineId}
+              onChange={(e) => void switchOutline(e.target.value)}
+            >
+              {outlines.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.title}
+                  {o.has_chapters ? "（已有章节）" : ""}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-subtext">共 {chapters.length} 章</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
+              onClick={() => {
+                setHistoryOpen(true);
+                void refreshRuns();
+              }}
+              type="button"
+            >
+              生成记录
+            </button>
+            <button
+              className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90"
+              onClick={openCreate}
+              type="button"
+            >
+              新增章节
+            </button>
+          </div>
         </div>
       </div>
 
@@ -675,6 +738,7 @@ export function WritingPage() {
                   <input
                     className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
                     disabled={generating}
+                    name="title"
                     value={form.title}
                     onChange={(e) => setForm((v) => (v ? { ...v, title: e.target.value } : v))}
                   />
@@ -684,6 +748,7 @@ export function WritingPage() {
                   <select
                     className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
                     disabled={generating}
+                    name="status"
                     value={form.status}
                     onChange={(e) =>
                       setForm((v) => (v ? { ...v, status: e.target.value as ChapterStatus } : v))
@@ -702,6 +767,7 @@ export function WritingPage() {
                   <textarea
                     className="atelier-content w-full rounded-atelier border border-border bg-canvas px-3 py-3 text-ink outline-none"
                     disabled={generating}
+                    name="plan"
                     rows={4}
                     value={form.plan}
                     onChange={(e) => setForm((v) => (v ? { ...v, plan: e.target.value } : v))}
@@ -715,6 +781,7 @@ export function WritingPage() {
                       onChange={(next) => setForm((v) => (v ? { ...v, content_md: next } : v))}
                       placeholder="开始写作..."
                       minRows={16}
+                      name="content_md"
                     />
                   </div>
                 </label>
@@ -723,6 +790,7 @@ export function WritingPage() {
                   <textarea
                     className="atelier-content w-full rounded-atelier border border-border bg-canvas px-3 py-3 text-ink outline-none"
                     disabled={generating}
+                    name="summary"
                     rows={3}
                     value={form.summary}
                     onChange={(e) => setForm((v) => (v ? { ...v, summary: e.target.value } : v))}
@@ -750,11 +818,13 @@ export function WritingPage() {
         generating={generating}
         preset={preset}
         activeChapter={Boolean(activeChapter)}
+        dirty={dirty}
         genForm={genForm}
         setGenForm={setGenForm}
         characters={characters}
         streamProgress={genStreamProgress}
         onClose={() => setAiOpen(false)}
+        onSave={() => void saveChapter()}
         onGenerateAppend={() => void generate("append")}
         onGenerateReplace={() => void generate("replace")}
         onCancelGenerate={() => genStreamClientRef.current?.abort()}

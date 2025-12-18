@@ -8,7 +8,7 @@ from fastapi import APIRouter, Header, Query, Request
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
-from app.api.deps import DbDep, UserIdDep, require_owned_chapter, require_owned_project
+from app.api.deps import DbDep, UserIdDep, require_owned_chapter, require_owned_outline, require_owned_project
 from app.core.errors import AppError, ok_payload
 from app.core.logging import log_event
 from app.db.session import SessionLocal
@@ -25,6 +25,7 @@ from app.schemas.chapter_generate import ChapterGenerateRequest
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.length_control import estimate_max_tokens
 from app.services.output_parsers import parse_chapter_output
+from app.services.outline_store import ensure_active_outline
 from app.services.prompt_store import ensure_prompt_templates, format_characters
 from app.services.prompting import render_template
 from app.services.run_store import write_generation_run
@@ -43,20 +44,57 @@ logger = logging.getLogger("ainovel")
 
 
 @router.get("/projects/{project_id}/chapters")
-def list_chapters(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
+def list_chapters(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    outline_id: str | None = Query(default=None),
+) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
-    rows = db.execute(select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.number.asc())).scalars().all()
+    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    if outline_id:
+        outline = require_owned_outline(db, outline_id=outline_id, user_id=user_id)
+        if outline.project_id != project_id:
+            raise AppError.validation("outline_id 不属于当前项目")
+        target_outline_id = outline.id
+    else:
+        target_outline_id = ensure_active_outline(db, project=project).id
+
+    rows = (
+        db.execute(
+            select(Chapter)
+            .where(Chapter.project_id == project_id, Chapter.outline_id == target_outline_id)
+            .order_by(Chapter.number.asc())
+        )
+        .scalars()
+        .all()
+    )
     return ok_payload(request_id=request_id, data={"chapters": [ChapterOut.model_validate(r).model_dump() for r in rows]})
 
 
 @router.post("/projects/{project_id}/chapters")
-def create_chapter(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: ChapterCreate) -> dict:
+def create_chapter(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    body: ChapterCreate,
+    outline_id: str | None = Query(default=None),
+) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    if outline_id:
+        outline = require_owned_outline(db, outline_id=outline_id, user_id=user_id)
+        if outline.project_id != project_id:
+            raise AppError.validation("outline_id 不属于当前项目")
+        target_outline_id = outline.id
+    else:
+        target_outline_id = ensure_active_outline(db, project=project).id
     row = Chapter(
         id=new_id(),
         project_id=project_id,
+        outline_id=target_outline_id,
         number=body.number,
         title=body.title,
         plan=body.plan,
@@ -80,26 +118,38 @@ def bulk_create(
     project_id: str,
     body: BulkCreateRequest,
     replace: bool = Query(default=False),
+    outline_id: str | None = Query(default=None),
 ) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    if outline_id:
+        outline = require_owned_outline(db, outline_id=outline_id, user_id=user_id)
+        if outline.project_id != project_id:
+            raise AppError.validation("outline_id 不属于当前项目")
+        target_outline_id = outline.id
+    else:
+        target_outline_id = ensure_active_outline(db, project=project).id
 
-    has_any = db.execute(select(Chapter.id).where(Chapter.project_id == project_id).limit(1)).first() is not None
+    has_any = (
+        db.execute(select(Chapter.id).where(Chapter.project_id == project_id, Chapter.outline_id == target_outline_id).limit(1)).first()
+        is not None
+    )
     if has_any and not replace:
-        raise AppError.conflict("项目已存在章节，无法创建（请选择覆盖创建）")
+        raise AppError.conflict("该大纲已存在章节，无法创建（请选择覆盖创建）")
 
     numbers = [c.number for c in body.chapters]
     if len(numbers) != len(set(numbers)):
         raise AppError.validation("chapters.number 不能重复")
 
     if replace:
-        db.execute(delete(Chapter).where(Chapter.project_id == project_id))
+        db.execute(delete(Chapter).where(Chapter.project_id == project_id, Chapter.outline_id == target_outline_id))
         db.commit()
 
     created: list[Chapter] = [
         Chapter(
             id=new_id(),
             project_id=project_id,
+            outline_id=target_outline_id,
             number=c.number,
             title=c.title,
             plan=c.plan,
@@ -168,10 +218,7 @@ def generate_chapter(
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
 ) -> dict:
     request_id = request.state.request_id
-    if not x_llm_provider:
-        raise AppError(code="LLM_CONFIG_ERROR", message="缺少 X-LLM-Provider", status_code=400)
-    if not x_llm_api_key:
-        raise AppError(code="LLM_KEY_MISSING", message="请先填写 API Key", status_code=401)
+    resolved_api_key: str | None = x_llm_api_key
 
     prompt_system = ""
     prompt_user = ""
@@ -189,8 +236,11 @@ def generate_chapter(
         preset = db.get(LLMPreset, project_id)
         if preset is None:
             raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-        if preset.provider != x_llm_provider:
+        if x_llm_provider and preset.provider != x_llm_provider:
             raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
+
+        if not resolved_api_key:
+            raise AppError(code="LLM_KEY_MISSING", message="请先填写 API Key", status_code=401)
 
         templates = ensure_prompt_templates(db, project_id)
         tpl = templates.get("chapter_generate")
@@ -198,7 +248,7 @@ def generate_chapter(
             raise AppError(code="DB_ERROR", message="缺少 chapter_generate 模板", status_code=500)
 
         settings_row = db.get(ProjectSettings, project_id)
-        outline_row = db.get(Outline, project_id)
+        outline_row = db.get(Outline, chapter.outline_id)
 
         world_setting = (settings_row.world_setting if settings_row else "") or ""
         style_guide = (settings_row.style_guide if settings_row else "") or ""
@@ -235,6 +285,7 @@ def generate_chapter(
                 db.execute(
                     select(Chapter).where(
                         Chapter.project_id == project_id,
+                        Chapter.outline_id == chapter.outline_id,
                         Chapter.number == (chapter.number - 1),
                     )
                 )
@@ -299,7 +350,7 @@ def generate_chapter(
         project_id=project_id,
         chapter_id=chapter_id,
         run_type="chapter",
-        api_key=str(x_llm_api_key),
+        api_key=str(resolved_api_key),
         prompt_system=prompt_system,
         prompt_user=prompt_user,
         llm_call=llm_call,
@@ -325,21 +376,13 @@ def generate_chapter_stream(
     request_id = request.state.request_id
 
     def event_generator():
-        if not x_llm_provider:
-            yield sse_error(error="缺少 X-LLM-Provider", code=400)
-            yield sse_done()
-            return
-        if not x_llm_api_key:
-            yield sse_error(error="请先填写 API Key", code=401)
-            yield sse_done()
-            return
-
         yield sse_progress(message="准备生成...", progress=0)
 
         prompt_system = ""
         prompt_user = ""
         llm_call = None
         project_id = ""
+        resolved_api_key: str | None = x_llm_api_key
 
         db = SessionLocal()
         try:
@@ -352,8 +395,11 @@ def generate_chapter_stream(
             preset = db.get(LLMPreset, project_id)
             if preset is None:
                 raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-            if preset.provider != x_llm_provider:
+            if x_llm_provider and preset.provider != x_llm_provider:
                 raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
+
+            if not resolved_api_key:
+                raise AppError(code="LLM_KEY_MISSING", message="请先填写 API Key", status_code=401)
 
             templates = ensure_prompt_templates(db, project_id)
             tpl = templates.get("chapter_generate")
@@ -361,7 +407,7 @@ def generate_chapter_stream(
                 raise AppError(code="DB_ERROR", message="缺少 chapter_generate 模板", status_code=500)
 
             settings_row = db.get(ProjectSettings, project_id)
-            outline_row = db.get(Outline, project_id)
+            outline_row = db.get(Outline, chapter.outline_id)
 
             world_setting = (settings_row.world_setting if settings_row else "") or ""
             style_guide = (settings_row.style_guide if settings_row else "") or ""
@@ -398,6 +444,7 @@ def generate_chapter_stream(
                     db.execute(
                         select(Chapter).where(
                             Chapter.project_id == project_id,
+                            Chapter.outline_id == chapter.outline_id,
                             Chapter.number == (chapter.number - 1),
                         )
                     )
@@ -476,7 +523,7 @@ def generate_chapter_stream(
                     provider=llm_call.provider,
                     base_url=llm_call.base_url,
                     model=llm_call.model,
-                    api_key=str(x_llm_api_key),
+                    api_key=str(resolved_api_key),
                     system=prompt_system,
                     user=prompt_user,
                     params=llm_call.params,
@@ -552,7 +599,7 @@ def generate_chapter_stream(
                     project_id=project_id,
                     chapter_id=chapter_id,
                     run_type="chapter_stream",
-                    api_key=str(x_llm_api_key),
+                    api_key=str(resolved_api_key),
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
                     llm_call=llm_call,

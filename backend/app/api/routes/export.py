@@ -7,12 +7,10 @@ from fastapi import APIRouter, Query, Request, Response
 from sqlalchemy import select
 
 from app.api.deps import DbDep, UserIdDep, require_owned_project
-from app.core.errors import AppError
 from app.models.chapter import Chapter
 from app.models.character import Character
-from app.models.outline import Outline
-from app.models.project import Project
 from app.models.project_settings import ProjectSettings
+from app.services.outline_store import ensure_active_outline
 
 router = APIRouter()
 
@@ -40,11 +38,8 @@ def export_markdown(
     include_outline: str | None = Query(default="1"),
     chapters: str = Query(default="all"),
 ) -> Response:
-    require_owned_project(db, project_id=project_id, user_id=user_id)
-
-    project = db.get(Project, project_id)
-    if project is None:
-        raise AppError.not_found()
+    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    active_outline = ensure_active_outline(db, project=project)
 
     parts: list[str] = [f"# {project.name}", ""]
     if project.genre or project.logline:
@@ -93,15 +88,18 @@ def export_markdown(
             parts.append("")
 
     if _as_bool(include_outline, True):
-        outline_row = db.get(Outline, project_id)
         parts.append("## 大纲")
         parts.append("")
-        parts.append((outline_row.content_md if outline_row else "") or "")
+        parts.append((active_outline.content_md if active_outline else "") or "")
         parts.append("")
 
     parts.append("## 正文")
     parts.append("")
-    q = select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.number.asc())
+    q = (
+        select(Chapter)
+        .where(Chapter.project_id == project_id, Chapter.outline_id == active_outline.id)
+        .order_by(Chapter.number.asc())
+    )
     if chapters == "done":
         q = q.where(Chapter.status == "done")
     chapter_rows = db.execute(q).scalars().all()

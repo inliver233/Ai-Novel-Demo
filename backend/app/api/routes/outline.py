@@ -17,6 +17,7 @@ from app.models.llm_preset import LLMPreset
 from app.models.project_settings import ProjectSettings
 from app.schemas.outline_generate import OutlineGenerateRequest
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.outline_store import ensure_active_outline
 from app.services.output_parsers import build_outline_fix_json_prompt, parse_outline_output
 from app.services.prompting import render_template
 from app.services.prompt_store import ensure_prompt_templates, format_characters
@@ -40,32 +41,56 @@ logger = logging.getLogger("ainovel")
 @router.get("/projects/{project_id}/outline")
 def get_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
-    row = db.get(Outline, project_id)
-    if row is None:
-        row = Outline(project_id=project_id, content_md="")
-        db.add(row)
-        db.commit()
-        db.refresh(row)
-    payload = OutlineOut(project_id=row.project_id, content_md=row.content_md or "", updated_at=row.updated_at).model_dump()
+    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    row = ensure_active_outline(db, project=project)
+    structure = None
+    if row.structure_json:
+        try:
+            structure = json.loads(row.structure_json)
+        except Exception:
+            structure = None
+    payload = OutlineOut(
+        id=row.id,
+        project_id=row.project_id,
+        title=row.title,
+        content_md=row.content_md or "",
+        structure=structure,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    ).model_dump()
     return ok_payload(request_id=request_id, data={"outline": payload})
 
 
 @router.put("/projects/{project_id}/outline")
 def put_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: OutlineUpdate) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
-    row = db.get(Outline, project_id)
-    if row is None:
-        row = Outline(project_id=project_id, content_md="")
-        db.add(row)
+    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    row = ensure_active_outline(db, project=project)
 
+    if body.title is not None:
+        row.title = body.title
     if body.content_md is not None:
         row.content_md = body.content_md
+    if body.structure is not None:
+        row.structure_json = json.dumps(body.structure, ensure_ascii=False)
 
     db.commit()
     db.refresh(row)
-    payload = OutlineOut(project_id=row.project_id, content_md=row.content_md or "", updated_at=row.updated_at).model_dump()
+    structure = None
+    if row.structure_json:
+        try:
+            structure = json.loads(row.structure_json)
+        except Exception:
+            structure = None
+    payload = OutlineOut(
+        id=row.id,
+        project_id=row.project_id,
+        title=row.title,
+        content_md=row.content_md or "",
+        structure=structure,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    ).model_dump()
     return ok_payload(request_id=request_id, data={"outline": payload})
 
 
@@ -79,10 +104,7 @@ def generate_outline(
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
 ) -> dict:
     request_id = request.state.request_id
-    if not x_llm_provider:
-        raise AppError(code="LLM_CONFIG_ERROR", message="缺少 X-LLM-Provider", status_code=400)
-    if not x_llm_api_key:
-        raise AppError(code="LLM_KEY_MISSING", message="请先填写 API Key", status_code=401)
+    resolved_api_key: str | None = x_llm_api_key
 
     prompt_system = ""
     prompt_user = ""
@@ -94,8 +116,11 @@ def generate_outline(
         preset = db.get(LLMPreset, project_id)
         if preset is None:
             raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-        if preset.provider != x_llm_provider:
+        if x_llm_provider and preset.provider != x_llm_provider:
             raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
+
+        if not resolved_api_key:
+            raise AppError(code="LLM_KEY_MISSING", message="请先填写 API Key", status_code=401)
 
         templates = ensure_prompt_templates(db, project_id)
         tpl = templates.get("outline_generate")
@@ -152,7 +177,7 @@ def generate_outline(
         project_id=project_id,
         chapter_id=None,
         run_type="outline",
-        api_key=str(x_llm_api_key),
+        api_key=str(resolved_api_key),
         prompt_system=prompt_system,
         prompt_user=prompt_user,
         llm_call=llm_call,
@@ -178,7 +203,7 @@ def generate_outline(
                 project_id=project_id,
                 chapter_id=None,
                 run_type="outline_fix_json",
-                api_key=str(x_llm_api_key),
+                api_key=str(resolved_api_key),
                 prompt_system=fix_system,
                 prompt_user=fix_user,
                 llm_call=fix_call,
@@ -214,20 +239,12 @@ def generate_outline_stream(
     request_id = request.state.request_id
 
     def event_generator():
-        if not x_llm_provider:
-            yield sse_error(error="缺少 X-LLM-Provider", code=400)
-            yield sse_done()
-            return
-        if not x_llm_api_key:
-            yield sse_error(error="请先填写 API Key", code=401)
-            yield sse_done()
-            return
-
         yield sse_progress(message="准备生成...", progress=0)
 
         prompt_system = ""
         prompt_user = ""
         llm_call = None
+        resolved_api_key: str | None = x_llm_api_key
 
         db = SessionLocal()
         try:
@@ -235,8 +252,11 @@ def generate_outline_stream(
             preset = db.get(LLMPreset, project_id)
             if preset is None:
                 raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-            if preset.provider != x_llm_provider:
+            if x_llm_provider and preset.provider != x_llm_provider:
                 raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
+
+            if not resolved_api_key:
+                raise AppError(code="LLM_KEY_MISSING", message="请先填写 API Key", status_code=401)
 
             templates = ensure_prompt_templates(db, project_id)
             tpl = templates.get("outline_generate")
@@ -308,7 +328,7 @@ def generate_outline_stream(
                     provider=llm_call.provider,
                     base_url=llm_call.base_url,
                     model=llm_call.model,
-                    api_key=str(x_llm_api_key),
+                    api_key=str(resolved_api_key),
                     system=prompt_system,
                     user=prompt_user,
                     params=llm_call.params,
@@ -380,7 +400,7 @@ def generate_outline_stream(
                     project_id=project_id,
                     chapter_id=None,
                     run_type="outline_stream",
-                    api_key=str(x_llm_api_key),
+                    api_key=str(resolved_api_key),
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
                     llm_call=llm_call,
@@ -410,7 +430,7 @@ def generate_outline_stream(
                         project_id=project_id,
                         chapter_id=None,
                         run_type="outline_fix_json",
-                        api_key=str(x_llm_api_key),
+                        api_key=str(resolved_api_key),
                         prompt_system=fix_system,
                         prompt_user=fix_user,
                         llm_call=fix_call,

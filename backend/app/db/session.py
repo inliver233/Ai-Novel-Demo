@@ -36,7 +36,7 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:  # type: 
         cursor.close()
 
 
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
 def get_db() -> Generator[Session, None, None]:

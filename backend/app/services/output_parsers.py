@@ -12,6 +12,9 @@ _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", flags=re.IGNORECASE
 CONTENT_MARKER = "<<<CONTENT>>>"
 SUMMARY_MARKER = "<<<SUMMARY>>>"
 
+_CHAPTER_CONTENT_MARKER_RE = re.compile(r"(?mi)^[ \t]*<<<\s*CONTENT\b\s*(?:>{1,3})?\s*")
+_CHAPTER_SUMMARY_MARKER_RE = re.compile(r"(?mi)^[ \t]*<<<\s*SUMMARY\b\s*(?:>{1,3})?\s*")
+
 
 class OutlineChapterSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -120,21 +123,21 @@ def parse_outline_output(text: str) -> tuple[dict[str, Any], list[str], dict[str
 
 
 def _split_chapter_markers(text: str) -> tuple[str | None, str | None]:
-    idx = text.find(CONTENT_MARKER)
-    if idx == -1:
+    if not text:
         return None, None
-    start = idx + len(CONTENT_MARKER)
-    while start < len(text) and text[start] in ("\n", "\r", " ", "\t"):
-        start += 1
-    sidx = text.find(SUMMARY_MARKER, start)
-    if sidx == -1:
-        content = text[start:].strip()
-        return content, ""
-    content = text[start:sidx].strip()
-    sstart = sidx + len(SUMMARY_MARKER)
-    while sstart < len(text) and text[sstart] in ("\n", "\r", " ", "\t"):
-        sstart += 1
-    summary = text[sstart:].strip()
+
+    # Be tolerant to minor marker drift (e.g. "<<<CONTENT" missing closing ">>>").
+    m = _CHAPTER_CONTENT_MARKER_RE.search(text)
+    if not m:
+        return None, None
+
+    start = m.end()
+    s = _CHAPTER_SUMMARY_MARKER_RE.search(text, pos=start)
+    if not s:
+        return text[start:].strip(), ""
+
+    content = text[start : s.start()].strip()
+    summary = text[s.end() :].strip()
     return content, summary
 
 
@@ -204,4 +207,3 @@ def build_outline_fix_json_prompt(raw_output: str) -> tuple[str, str]:
         f"原始输出如下：\n{raw_output}"
     )
     return system, user
-

@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.errors import AppError, error_payload
 from app.core.logging import configure_logging, log_event
 from app.core.request_id import new_request_id, set_request_id
+from app.db.migrations import ensure_db_schema
 from app.db.session import SessionLocal
 from app.llm.http_client import close_llm_http_client
 from app.models.user import User
@@ -51,6 +52,7 @@ def _ensure_local_user() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
+    ensure_db_schema()
     _ensure_local_user()
     yield
     close_llm_http_client()

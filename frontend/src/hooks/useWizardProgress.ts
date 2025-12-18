@@ -26,14 +26,14 @@ export function useWizardProgress(projectId: string | undefined): {
   const [version, setVersion] = useState(0);
 
   const wizardQuery = useProjectData<WizardLoaded>(projectId, async (id) => {
-    const [pRes, settingsRes, charsRes, outlineRes, chaptersRes, presetRes] = await Promise.all([
+    const [pRes, settingsRes, charsRes, outlineRes, presetRes] = await Promise.all([
       apiJson<{ project: Project }>(`/api/projects/${id}`),
       apiJson<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`),
       apiJson<{ characters: Character[] }>(`/api/projects/${id}/characters`),
       apiJson<{ outline: Outline }>(`/api/projects/${id}/outline`),
-      apiJson<{ chapters: Chapter[] }>(`/api/projects/${id}/chapters`),
       apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${id}/llm_preset`),
     ]);
+    const chaptersRes = await apiJson<{ chapters: Chapter[] }>(`/api/projects/${id}/chapters`);
     return {
       project: pRes.data.project,
       settings: settingsRes.data.settings,
@@ -67,4 +67,3 @@ export function useWizardProgress(projectId: string | undefined): {
     bumpLocal,
   };
 }
-

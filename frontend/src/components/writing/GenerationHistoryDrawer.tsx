@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import type { GenerationRun } from "./types";
 
 type Props = {
@@ -10,12 +12,33 @@ type Props = {
 };
 
 export function GenerationHistoryDrawer(props: Props) {
-  if (!props.open) return null;
+  const { onClose, open } = props;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, open]);
+
+  if (!open) return null;
 
   const selectedRun = props.selectedRun;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30">
+    <div
+      aria-label="生成记录"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex justify-end bg-black/30"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+    >
       <div className="h-full w-full max-w-2xl border-l border-border bg-canvas p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -24,7 +47,7 @@ export function GenerationHistoryDrawer(props: Props) {
           </div>
           <button
             className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-            onClick={props.onClose}
+            onClick={onClose}
             type="button"
           >
             关闭

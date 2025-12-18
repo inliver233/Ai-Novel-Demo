@@ -8,6 +8,7 @@ export function MarkdownEditor(props: {
   placeholder?: string;
   minRows?: number;
   mono?: boolean;
+  name?: string;
 }) {
   const [tab, setTab] = useState<"edit" | "preview">("edit");
 
@@ -35,6 +36,7 @@ export function MarkdownEditor(props: {
       {tab === "edit" ? (
         <textarea
           className={(props.mono ? "atelier-mono" : "atelier-content") + " w-full resize-y bg-transparent px-3 py-3 text-ink outline-none"}
+          name={props.name}
           placeholder={props.placeholder}
           rows={props.minRows ?? 12}
           value={props.value}

@@ -95,6 +95,7 @@ export function ExportPage() {
               <input
                 checked={form.include_settings}
                 disabled={exporting}
+                name="include_settings"
                 onChange={(e) => setForm((v) => ({ ...v, include_settings: e.target.checked }))}
                 type="checkbox"
               />
@@ -104,6 +105,7 @@ export function ExportPage() {
               <input
                 checked={form.include_characters}
                 disabled={exporting}
+                name="include_characters"
                 onChange={(e) => setForm((v) => ({ ...v, include_characters: e.target.checked }))}
                 type="checkbox"
               />
@@ -113,6 +115,7 @@ export function ExportPage() {
               <input
                 checked={form.include_outline}
                 disabled={exporting}
+                name="include_outline"
                 onChange={(e) => setForm((v) => ({ ...v, include_outline: e.target.checked }))}
                 type="checkbox"
               />
@@ -126,6 +129,7 @@ export function ExportPage() {
               <input
                 checked={form.chapters === "all"}
                 disabled={exporting}
+                name="chapters"
                 onChange={() => setForm((v) => ({ ...v, chapters: "all" }))}
                 type="radio"
               />
@@ -135,6 +139,7 @@ export function ExportPage() {
               <input
                 checked={form.chapters === "done"}
                 disabled={exporting}
+                name="chapters"
                 onChange={() => setForm((v) => ({ ...v, chapters: "done" }))}
                 type="radio"
               />

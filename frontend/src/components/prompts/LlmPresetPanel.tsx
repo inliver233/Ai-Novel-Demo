@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 
-import type { LLMProvider } from "../../types";
+import type { LLMProfile, LLMProvider } from "../../types";
 import type { LlmForm } from "./types";
 
 type Props = {
@@ -12,6 +12,18 @@ type Props = {
   onTestConnection: () => void;
   onSave: () => void;
 
+  profiles: LLMProfile[];
+  selectedProfileId: string | null;
+  onSelectProfile: (profileId: string | null) => void;
+  profileName: string;
+  onChangeProfileName: (value: string) => void;
+  profileBusy: boolean;
+  onCreateProfile: () => void;
+  onUpdateProfile: () => void;
+  onDeleteProfile: () => void;
+
+  lockConnectionFields: boolean;
+
   apiKeyVisible: boolean;
   onToggleApiKeyVisible: () => void;
   apiKey: string;
@@ -21,12 +33,16 @@ type Props = {
 };
 
 export function LlmPresetPanel(props: Props) {
+  const selectedProfile = props.selectedProfileId
+    ? props.profiles.find((p) => p.id === props.selectedProfileId) ?? null
+    : null;
+
   return (
     <section className="rounded-atelier border border-border bg-surface p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="font-content text-xl">模型配置</div>
-          <div className="mt-1 text-xs text-subtext">provider/base_url/model/参数（Key 仅保存在本机）</div>
+          <div className="mt-1 text-xs text-subtext">provider/base_url/model/参数（API Key 仅保存在本机 localStorage，不写入后端）</div>
         </div>
         <div className="flex gap-2">
           <button
@@ -53,7 +69,9 @@ export function LlmPresetPanel(props: Props) {
           <span className="text-xs text-subtext">Provider</span>
           <select
             className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink"
+            name="provider"
             value={props.llmForm.provider}
+            disabled={props.lockConnectionFields}
             onChange={(e) =>
               props.setLlmForm((v) => ({
                 ...v,
@@ -71,6 +89,8 @@ export function LlmPresetPanel(props: Props) {
           <span className="text-xs text-subtext">Model</span>
           <input
             className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+            disabled={props.lockConnectionFields}
+            name="model"
             value={props.llmForm.model}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, model: e.target.value }))}
           />
@@ -81,6 +101,8 @@ export function LlmPresetPanel(props: Props) {
           <input
             className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
             placeholder={props.llmForm.provider === "openai_compatible" ? "https://your-proxy.com/v1" : undefined}
+            disabled={props.lockConnectionFields}
+            name="base_url"
             value={props.llmForm.base_url}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, base_url: e.target.value }))}
           />
@@ -92,6 +114,7 @@ export function LlmPresetPanel(props: Props) {
           <span className="text-xs text-subtext">temperature</span>
           <input
             className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+            name="temperature"
             value={props.llmForm.temperature}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, temperature: e.target.value }))}
           />
@@ -100,6 +123,7 @@ export function LlmPresetPanel(props: Props) {
           <span className="text-xs text-subtext">top_p</span>
           <input
             className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+            name="top_p"
             value={props.llmForm.top_p}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, top_p: e.target.value }))}
           />
@@ -108,6 +132,7 @@ export function LlmPresetPanel(props: Props) {
           <span className="text-xs text-subtext">max_tokens</span>
           <input
             className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+            name="max_tokens"
             value={props.llmForm.max_tokens}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, max_tokens: e.target.value }))}
           />
@@ -118,6 +143,7 @@ export function LlmPresetPanel(props: Props) {
               <span className="text-xs text-subtext">presence_penalty</span>
               <input
                 className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+                name="presence_penalty"
                 value={props.llmForm.presence_penalty}
                 onChange={(e) => props.setLlmForm((v) => ({ ...v, presence_penalty: e.target.value }))}
               />
@@ -126,6 +152,7 @@ export function LlmPresetPanel(props: Props) {
               <span className="text-xs text-subtext">frequency_penalty</span>
               <input
                 className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+                name="frequency_penalty"
                 value={props.llmForm.frequency_penalty}
                 onChange={(e) => props.setLlmForm((v) => ({ ...v, frequency_penalty: e.target.value }))}
               />
@@ -136,6 +163,7 @@ export function LlmPresetPanel(props: Props) {
             <span className="text-xs text-subtext">top_k</span>
             <input
               className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+              name="top_k"
               value={props.llmForm.top_k}
               onChange={(e) => props.setLlmForm((v) => ({ ...v, top_k: e.target.value }))}
             />
@@ -146,6 +174,7 @@ export function LlmPresetPanel(props: Props) {
           <input
             className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
             placeholder="---"
+            name="stop"
             value={props.llmForm.stop}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, stop: e.target.value }))}
           />
@@ -154,6 +183,7 @@ export function LlmPresetPanel(props: Props) {
           <span className="text-xs text-subtext">timeout_seconds（默认 90；最大 1800/30分钟）</span>
           <input
             className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+            name="timeout_seconds"
             value={props.llmForm.timeout_seconds}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, timeout_seconds: e.target.value }))}
           />
@@ -162,6 +192,7 @@ export function LlmPresetPanel(props: Props) {
           <span className="text-xs text-subtext">extra（JSON）</span>
           <textarea
             className="atelier-mono rounded-atelier border border-border bg-canvas px-3 py-3 text-sm text-ink outline-none"
+            name="extra"
             rows={5}
             value={props.llmForm.extra}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, extra: e.target.value }))}
@@ -170,8 +201,77 @@ export function LlmPresetPanel(props: Props) {
       </div>
 
       <div className="mt-4 rounded-atelier border border-border bg-canvas p-4">
+        <div className="text-sm text-ink">API 配置库（后端持久化）</div>
+        <div className="mt-2 grid gap-3 sm:grid-cols-3">
+          <label className="grid gap-1 sm:col-span-2">
+            <span className="text-xs text-subtext">选择配置</span>
+            <select
+              className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink"
+              name="profile_select"
+              value={props.selectedProfileId ?? ""}
+              disabled={props.profileBusy}
+              onChange={(e) => props.onSelectProfile(e.target.value ? e.target.value : null)}
+            >
+              <option value="">（使用本地 Key）</option>
+              {props.profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} · {p.provider}/{p.model}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 sm:col-span-1">
+            <span className="text-xs text-subtext">新建配置名</span>
+            <input
+              className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
+              disabled={props.profileBusy}
+              name="profile_name"
+              value={props.profileName}
+              onChange={(e) => props.onChangeProfileName(e.target.value)}
+              placeholder="例如：AI-Wave 网关"
+            />
+          </label>
+        </div>
+
+        {selectedProfile ? (
+          <div className="mt-3 text-xs text-subtext">
+            当前：{selectedProfile.name}（{selectedProfile.provider}/{selectedProfile.model}；Key 仍使用本机 localStorage）
+          </div>
+        ) : (
+          <div className="mt-3 text-xs text-subtext">当前：本地 Key（浏览器 localStorage，刷新不丢但换机/换浏览器会丢）</div>
+        )}
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            className="rounded-atelier border border-border bg-surface px-3 py-2 text-xs text-ink hover:bg-canvas disabled:opacity-60"
+            disabled={props.profileBusy}
+            onClick={props.onCreateProfile}
+            type="button"
+          >
+            保存为新配置
+          </button>
+          <button
+            className="rounded-atelier border border-border bg-surface px-3 py-2 text-xs text-ink hover:bg-canvas disabled:opacity-60"
+            disabled={props.profileBusy || !props.selectedProfileId}
+            onClick={props.onUpdateProfile}
+            type="button"
+          >
+            更新当前配置
+          </button>
+          <button
+            className="rounded-atelier border border-border bg-surface px-3 py-2 text-xs text-ink hover:bg-canvas disabled:opacity-60"
+            disabled={props.profileBusy || !props.selectedProfileId}
+            onClick={props.onDeleteProfile}
+            type="button"
+          >
+            删除当前配置
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-atelier border border-border bg-canvas p-4">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-sm text-ink">API Key（仅保存在本机 localStorage）</div>
+          <div className="text-sm text-ink">API Key（本机 localStorage）</div>
           <div className="flex gap-2">
             <button
               className="rounded-atelier border border-border bg-surface px-3 py-2 text-xs text-ink hover:bg-canvas"
@@ -193,6 +293,7 @@ export function LlmPresetPanel(props: Props) {
           <input
             className="flex-1 rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
             placeholder="sk-..."
+            name="api_key"
             type={props.apiKeyVisible ? "text" : "password"}
             value={props.apiKey}
             onChange={(e) => props.onChangeApiKey(e.target.value)}

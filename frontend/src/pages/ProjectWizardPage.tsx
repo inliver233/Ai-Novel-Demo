@@ -45,13 +45,13 @@ export function ProjectWizardPage() {
   const [autoRunning, setAutoRunning] = useState(false);
 
   const wizardQuery = useProjectData<WizardLoaded>(projectId, async (id) => {
-    const [settingsRes, charsRes, outlineRes, chaptersRes, presetRes] = await Promise.all([
+    const [settingsRes, charsRes, outlineRes, presetRes] = await Promise.all([
       apiJson<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`),
       apiJson<{ characters: Character[] }>(`/api/projects/${id}/characters`),
       apiJson<{ outline: Outline }>(`/api/projects/${id}/outline`),
-      apiJson<{ chapters: Chapter[] }>(`/api/projects/${id}/chapters`),
       apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${id}/llm_preset`),
     ]);
+    const chaptersRes = await apiJson<{ chapters: Chapter[] }>(`/api/projects/${id}/chapters`);
     return {
       settings: settingsRes.data.settings,
       characters: charsRes.data.characters,
@@ -105,18 +105,13 @@ export function ProjectWizardPage() {
       return;
     }
     const apiKey = getLlmApiKey(llmPreset.provider).trim();
-    if (!apiKey) {
-      toast.toastError("请先在 Prompts 页填写 API Key，并测试连接");
-      navigate(`/projects/${projectId}/prompts`);
-      return;
-    }
+    const headers: Record<string, string> = { "X-LLM-Provider": llmPreset.provider };
+    if (apiKey) headers["X-LLM-API-Key"] = apiKey;
 
-    const hasAnyChapters = (chapters?.length ?? 0) > 0;
     const ok = await confirm.confirm({
       title: "自动生成大纲并创建章节骨架？",
-      description: hasAnyChapters ? "检测到已有章节，可能需要覆盖创建（不可恢复）。" : "将调用 LLM 生成大纲，并创建章节骨架。",
+      description: "将调用 LLM 生成大纲，保存为新大纲版本，并创建章节骨架。",
       confirmText: "开始",
-      danger: hasAnyChapters,
     });
     if (!ok) return;
 
@@ -124,10 +119,7 @@ export function ProjectWizardPage() {
     try {
       const outlineGen = await apiJson<OutlineGenResult>(`/api/projects/${projectId}/outline/generate`, {
         method: "POST",
-        headers: {
-          "X-LLM-Provider": llmPreset.provider,
-          "X-LLM-API-Key": apiKey,
-        },
+        headers,
         body: JSON.stringify({
           requirements: {
             chapter_count: 12,
@@ -142,17 +134,21 @@ export function ProjectWizardPage() {
       });
 
       const outlineMd = outlineGen.data.outline_md ?? "";
-      await apiJson<{ outline: Outline }>(`/api/projects/${projectId}/outline`, {
-        method: "PUT",
-        body: JSON.stringify({ content_md: outlineMd }),
-      });
-
       const genChapters = outlineGen.data.chapters ?? [];
       if (genChapters.length === 0) {
         toast.toastError("已生成大纲，但未解析出章节结构；请到大纲页手动调整并创建章节。");
         navigate(`/projects/${projectId}/outline`);
         return;
       }
+
+      await apiJson<{ outline: Outline }>(`/api/projects/${projectId}/outlines`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: `AI 大纲 ${new Date().toISOString().slice(0, 16).replace("T", " ")}`,
+          content_md: outlineMd,
+          structure: { chapters: genChapters },
+        }),
+      });
 
       const payload = {
         chapters: genChapters.map((c) => ({
@@ -172,7 +168,7 @@ export function ProjectWizardPage() {
         if (err.code === "CONFLICT" && err.status === 409) {
           const replaceOk = await confirm.confirm({
             title: "检测到已有章节，是否覆盖？",
-            description: "覆盖创建将删除该项目所有章节（含正文/摘要），不可恢复。",
+            description: "覆盖创建将删除该大纲下所有章节（含正文/摘要），不可恢复。",
             confirmText: "覆盖创建",
             danger: true,
           });
@@ -194,7 +190,7 @@ export function ProjectWizardPage() {
     } finally {
       setAutoRunning(false);
     }
-  }, [chapters?.length, confirm, llmPreset, navigate, projectId, toast]);
+  }, [confirm, llmPreset, navigate, projectId, toast]);
 
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
   if (wizardQuery.loading) return <div className="text-subtext">加载中...</div>;

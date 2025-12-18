@@ -177,6 +177,7 @@ export function DashboardPage() {
                 <span className="text-xs text-subtext">项目名</span>
                 <input
                   className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
+                  name="name"
                   value={form.name}
                   onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))}
                 />
@@ -185,6 +186,7 @@ export function DashboardPage() {
                 <span className="text-xs text-subtext">类型（可选）</span>
                 <input
                   className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
+                  name="genre"
                   value={form.genre}
                   onChange={(e) => setForm((v) => ({ ...v, genre: e.target.value }))}
                 />
@@ -193,6 +195,7 @@ export function DashboardPage() {
                 <span className="text-xs text-subtext">一句话梗概（可选）</span>
                 <textarea
                   className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
+                  name="logline"
                   rows={3}
                   value={form.logline}
                   onChange={(e) => setForm((v) => ({ ...v, logline: e.target.value }))}

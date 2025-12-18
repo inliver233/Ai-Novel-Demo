@@ -5,6 +5,7 @@ import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { LlmPresetPanel } from "../components/prompts/LlmPresetPanel";
 import { PromptTemplatesPanel } from "../components/prompts/PromptTemplatesPanel";
 import type { LlmForm, PromptForm } from "../components/prompts/types";
+import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
@@ -12,7 +13,7 @@ import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
 import { clearLlmApiKey, getLlmApiKey, setLlmApiKey } from "../services/llmKeyStore";
 import { markWizardLlmTestOk } from "../services/wizard";
-import type { Character, LLMPreset, Outline, Project, ProjectSettings, PromptTemplate } from "../types";
+import type { Character, LLMPreset, LLMProfile, Outline, Project, ProjectSettings, PromptTemplate } from "../types";
 
 function parseNumber(value: string): number | null {
   const v = value.trim();
@@ -71,6 +72,7 @@ export function PromptsPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const confirm = useConfirm();
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
   const bumpWizardLocal = wizard.bumpLocal;
@@ -84,6 +86,9 @@ export function PromptsPage() {
   const [settings, setSettings] = useState<ProjectSettings | null>(null);
   const [outline, setOutline] = useState<Outline | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [profiles, setProfiles] = useState<LLMProfile[]>([]);
+  const [profileName, setProfileName] = useState("");
+  const [profileBusy, setProfileBusy] = useState(false);
 
   const [baselinePreset, setBaselinePreset] = useState<LLMPreset | null>(null);
   const [baselinePrompts, setBaselinePrompts] = useState<PromptForm | null>(null);
@@ -111,71 +116,75 @@ export function PromptsPage() {
     chapter_generate: { system_template: "", user_template: "" },
   });
 
-  useEffect(() => {
+  const reloadAll = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
-    void (async () => {
-      try {
-        const [presetRes, promptsRes, pRes, sRes, oRes, cRes] = await Promise.all([
-          apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${projectId}/llm_preset`),
-          apiJson<{ templates: PromptTemplate[] }>(`/api/projects/${projectId}/prompts`),
-          apiJson<{ project: Project }>(`/api/projects/${projectId}`),
-          apiJson<{ settings: ProjectSettings }>(`/api/projects/${projectId}/settings`),
-          apiJson<{ outline: Outline }>(`/api/projects/${projectId}/outline`),
-          apiJson<{ characters: Character[] }>(`/api/projects/${projectId}/characters`),
-        ]);
+    try {
+      const [presetRes, promptsRes, pRes, sRes, oRes, cRes, profilesRes] = await Promise.all([
+        apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${projectId}/llm_preset`),
+        apiJson<{ templates: PromptTemplate[] }>(`/api/projects/${projectId}/prompts`),
+        apiJson<{ project: Project }>(`/api/projects/${projectId}`),
+        apiJson<{ settings: ProjectSettings }>(`/api/projects/${projectId}/settings`),
+        apiJson<{ outline: Outline }>(`/api/projects/${projectId}/outline`),
+        apiJson<{ characters: Character[] }>(`/api/projects/${projectId}/characters`),
+        apiJson<{ profiles: LLMProfile[] }>(`/api/llm_profiles`),
+      ]);
 
-        setProject(pRes.data.project);
-        setSettings(sRes.data.settings);
-        setOutline(oRes.data.outline);
-        setCharacters(cRes.data.characters);
+      setProject(pRes.data.project);
+      setSettings(sRes.data.settings);
+      setOutline(oRes.data.outline);
+      setCharacters(cRes.data.characters);
+      setProfiles(profilesRes.data.profiles ?? []);
+      setProfileName("");
 
-        setBaselinePreset(presetRes.data.llm_preset);
-        setLlmForm({
-          provider: presetRes.data.llm_preset.provider,
-          base_url: presetRes.data.llm_preset.base_url ?? "",
-          model: presetRes.data.llm_preset.model ?? "",
-          temperature: presetRes.data.llm_preset.temperature?.toString() ?? "",
-          top_p: presetRes.data.llm_preset.top_p?.toString() ?? "",
-          max_tokens: presetRes.data.llm_preset.max_tokens?.toString() ?? "",
-          presence_penalty: presetRes.data.llm_preset.presence_penalty?.toString() ?? "",
-          frequency_penalty: presetRes.data.llm_preset.frequency_penalty?.toString() ?? "",
-          top_k: presetRes.data.llm_preset.top_k?.toString() ?? "",
-          stop: (presetRes.data.llm_preset.stop ?? []).join(", "),
-          timeout_seconds: presetRes.data.llm_preset.timeout_seconds?.toString() ?? "",
-          extra: JSON.stringify(presetRes.data.llm_preset.extra ?? {}, null, 2),
-        });
+      setBaselinePreset(presetRes.data.llm_preset);
+      setLlmForm({
+        provider: presetRes.data.llm_preset.provider,
+        base_url: presetRes.data.llm_preset.base_url ?? "",
+        model: presetRes.data.llm_preset.model ?? "",
+        temperature: presetRes.data.llm_preset.temperature?.toString() ?? "",
+        top_p: presetRes.data.llm_preset.top_p?.toString() ?? "",
+        max_tokens: presetRes.data.llm_preset.max_tokens?.toString() ?? "",
+        presence_penalty: presetRes.data.llm_preset.presence_penalty?.toString() ?? "",
+        frequency_penalty: presetRes.data.llm_preset.frequency_penalty?.toString() ?? "",
+        top_k: presetRes.data.llm_preset.top_k?.toString() ?? "",
+        stop: (presetRes.data.llm_preset.stop ?? []).join(", "),
+        timeout_seconds: presetRes.data.llm_preset.timeout_seconds?.toString() ?? "",
+        extra: JSON.stringify(presetRes.data.llm_preset.extra ?? {}, null, 2),
+      });
 
-        const byType = new Map(promptsRes.data.templates.map((t) => [t.type, t]));
-        const pf: PromptForm = {
-          outline_generate: {
-            system_template: byType.get("outline_generate")?.system_template ?? "",
-            user_template: byType.get("outline_generate")?.user_template ?? "",
-          },
-          chapter_generate: {
-            system_template: byType.get("chapter_generate")?.system_template ?? "",
-            user_template: byType.get("chapter_generate")?.user_template ?? "",
-          },
-        };
-        setPromptForm(pf);
-        setBaselinePrompts(pf);
+      const byType = new Map(promptsRes.data.templates.map((t) => [t.type, t]));
+      const pf: PromptForm = {
+        outline_generate: {
+          system_template: byType.get("outline_generate")?.system_template ?? "",
+          user_template: byType.get("outline_generate")?.user_template ?? "",
+        },
+        chapter_generate: {
+          system_template: byType.get("chapter_generate")?.system_template ?? "",
+          user_template: byType.get("chapter_generate")?.user_template ?? "",
+        },
+      };
+      setPromptForm(pf);
+      setBaselinePrompts(pf);
 
-        const storedKey = getLlmApiKey(presetRes.data.llm_preset.provider);
-        setApiKey(storedKey);
-        setApiKeyVisible(false);
-      } catch (e) {
-        const err = e as ApiError;
-        toast.toastError(`${err.message} (${err.code})`, err.requestId);
-      } finally {
-        setLoading(false);
-      }
-    })();
+      setApiKey(getLlmApiKey(presetRes.data.llm_preset.provider));
+      setApiKeyVisible(false);
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setLoading(false);
+    }
   }, [projectId, toast]);
+
+  useEffect(() => {
+    void reloadAll();
+  }, [reloadAll]);
 
   useEffect(() => {
     setApiKey(getLlmApiKey(llmForm.provider));
     setApiKeyVisible(false);
-  }, [llmForm.provider]);
+  }, [llmForm.provider, project?.llm_profile_id]);
 
   const presetDirty = useMemo(() => {
     if (!baselinePreset) return false;
@@ -313,6 +322,143 @@ export function PromptsPage() {
 
   useSaveHotkey(() => void saveAll(), dirty);
 
+  const selectedProfileId = project?.llm_profile_id ?? null;
+  const lockConnectionFields = Boolean(selectedProfileId);
+
+  const selectProfile = useCallback(
+    async (profileId: string | null) => {
+      if (!projectId) return;
+      if (profileBusy) return;
+      if (profileId === selectedProfileId) return;
+
+      if (dirty) {
+        const choice = await confirm.choose({
+          title: "当前有未保存修改，是否切换配置？",
+          description: "切换后会刷新表单；建议先保存。",
+          confirmText: "保存并切换",
+          secondaryText: "不保存切换",
+          cancelText: "取消",
+        });
+        if (choice === "cancel") return;
+        if (choice === "confirm") {
+          const ok = await saveAll();
+          if (!ok) return;
+        }
+      }
+
+      setProfileBusy(true);
+      try {
+        await apiJson<{ project: Project }>(`/api/projects/${projectId}`, {
+          method: "PUT",
+          body: JSON.stringify({ llm_profile_id: profileId }),
+        });
+        await reloadAll();
+        await refreshWizard();
+        toast.toastSuccess("已切换配置");
+      } catch (e) {
+        const err = e as ApiError;
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setProfileBusy(false);
+      }
+    },
+    [confirm, dirty, profileBusy, projectId, reloadAll, refreshWizard, saveAll, selectedProfileId, toast],
+  );
+
+  const createProfile = useCallback(async () => {
+    if (!projectId) return;
+    if (profileBusy) return;
+    const name = profileName.trim();
+    if (!name) {
+      toast.toastError("请先填写“新建配置名”");
+      return;
+    }
+
+    setProfileBusy(true);
+    try {
+      const res = await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles`, {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          provider: llmForm.provider,
+          base_url: llmForm.base_url || null,
+          model: llmForm.model,
+        }),
+      });
+      await apiJson<{ project: Project }>(`/api/projects/${projectId}`, {
+        method: "PUT",
+        body: JSON.stringify({ llm_profile_id: res.data.profile.id }),
+      });
+      await reloadAll();
+      await refreshWizard();
+      toast.toastSuccess("已保存为新配置并应用到项目");
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setProfileBusy(false);
+    }
+  }, [llmForm.base_url, llmForm.model, llmForm.provider, profileBusy, profileName, projectId, reloadAll, refreshWizard, toast]);
+
+  const updateProfile = useCallback(async () => {
+    if (!projectId) return;
+    if (profileBusy) return;
+    if (!selectedProfileId) {
+      toast.toastError("请先选择一个后端配置");
+      return;
+    }
+    const name = profileName.trim();
+    setProfileBusy(true);
+    try {
+      await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles/${selectedProfileId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: name ? name : undefined,
+          provider: llmForm.provider,
+          base_url: llmForm.base_url || null,
+          model: llmForm.model,
+        }),
+      });
+      await reloadAll();
+      toast.toastSuccess("已更新配置");
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setProfileBusy(false);
+    }
+  }, [llmForm.base_url, llmForm.model, llmForm.provider, profileBusy, profileName, projectId, reloadAll, selectedProfileId, toast]);
+
+  const deleteProfile = useCallback(async () => {
+    if (!selectedProfileId) {
+      toast.toastError("请先选择一个后端配置");
+      return;
+    }
+    if (profileBusy) return;
+
+    const ok = await confirm.confirm({
+      title: "删除当前后端配置？",
+      description: "删除后不可恢复。项目将回退为“使用本地 Key”模式。",
+      confirmText: "删除",
+      danger: true,
+    });
+    if (!ok) return;
+
+    setProfileBusy(true);
+    try {
+      await apiJson<Record<string, never>>(`/api/llm_profiles/${selectedProfileId}`, { method: "DELETE" });
+      setApiKeyVisible(false);
+      await reloadAll();
+      await refreshWizard();
+      toast.toastSuccess("已删除配置");
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setProfileBusy(false);
+    }
+  }, [confirm, profileBusy, reloadAll, refreshWizard, selectedProfileId, toast]);
+
   const testConnection = useCallback(async (): Promise<boolean> => {
     const key = apiKey.trim();
     if (!key) {
@@ -351,6 +497,7 @@ export function PromptsPage() {
         }),
       });
       toast.toastSuccess(`连接成功（延迟 ${res.data.latency_ms}ms）`);
+      setLlmApiKey(llmForm.provider, key);
       if (projectId) {
         markWizardLlmTestOk(projectId, llmForm.provider, llmForm.model);
         bumpWizardLocal();
@@ -395,12 +542,12 @@ export function PromptsPage() {
 
   const testAndGoNext = useCallback(async (): Promise<boolean> => {
     if (!projectId) return false;
+
     const key = apiKey.trim();
     if (!key) {
       toast.toastError("请先填写 API Key");
       return false;
     }
-
     setLlmApiKey(llmForm.provider, key);
     bumpWizardLocal();
 
@@ -471,6 +618,16 @@ export function PromptsPage() {
         testing={testing}
         onTestConnection={() => void testConnection()}
         onSave={() => void saveAll()}
+        profiles={profiles}
+        selectedProfileId={selectedProfileId}
+        onSelectProfile={(id) => void selectProfile(id)}
+        profileName={profileName}
+        onChangeProfileName={setProfileName}
+        profileBusy={profileBusy || testing || savingPreset || savingPrompts}
+        onCreateProfile={() => void createProfile()}
+        onUpdateProfile={() => void updateProfile()}
+        onDeleteProfile={() => void deleteProfile()}
+        lockConnectionFields={lockConnectionFields}
         apiKeyVisible={apiKeyVisible}
         onToggleApiKeyVisible={toggleApiKeyVisible}
         apiKey={apiKey}

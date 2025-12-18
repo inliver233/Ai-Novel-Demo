@@ -100,11 +100,18 @@ export function CharactersPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {characters.map((c) => (
-          <button
+          <div
             key={c.id}
-            className="rounded-atelier border border-border bg-surface p-5 text-left hover:bg-canvas"
+            className="rounded-atelier cursor-pointer border border-border bg-surface p-5 text-left hover:bg-canvas"
             onClick={() => openEdit(c)}
-            type="button"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openEdit(c);
+              }
+            }}
+            role="button"
+            tabIndex={0}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -138,7 +145,7 @@ export function CharactersPage() {
               </button>
             </div>
             {c.profile ? <div className="mt-3 line-clamp-4 text-sm text-subtext">{c.profile}</div> : null}
-          </button>
+          </div>
         ))}
       </div>
 
@@ -210,6 +217,7 @@ export function CharactersPage() {
                 <span className="text-xs text-subtext">姓名</span>
                 <input
                   className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
+                  name="name"
                   value={form.name}
                   onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))}
                 />
@@ -218,6 +226,7 @@ export function CharactersPage() {
                 <span className="text-xs text-subtext">角色定位</span>
                 <input
                   className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
+                  name="role"
                   value={form.role}
                   onChange={(e) => setForm((v) => ({ ...v, role: e.target.value }))}
                 />
@@ -226,6 +235,7 @@ export function CharactersPage() {
                 <span className="text-xs text-subtext">人物档案</span>
                 <textarea
                   className="atelier-content rounded-atelier border border-border bg-surface px-3 py-3 text-ink outline-none"
+                  name="profile"
                   rows={8}
                   value={form.profile}
                   onChange={(e) => setForm((v) => ({ ...v, profile: e.target.value }))}
@@ -235,6 +245,7 @@ export function CharactersPage() {
                 <span className="text-xs text-subtext">备注</span>
                 <textarea
                   className="atelier-content rounded-atelier border border-border bg-surface px-3 py-3 text-ink outline-none"
+                  name="notes"
                   rows={6}
                   value={form.notes}
                   onChange={(e) => setForm((v) => ({ ...v, notes: e.target.value }))}

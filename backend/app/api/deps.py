@@ -10,6 +10,8 @@ from app.db.session import get_db
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.generation_run import GenerationRun
+from app.models.llm_profile import LLMProfile
+from app.models.outline import Outline
 from app.models.project import Project
 
 LOCAL_USER_ID = "local-user"
@@ -46,10 +48,24 @@ def require_owned_chapter(db: Session, *, chapter_id: str, user_id: str) -> Chap
     return chapter
 
 
+def require_owned_outline(db: Session, *, outline_id: str, user_id: str) -> Outline:
+    outline = db.get(Outline, outline_id)
+    if outline is None:
+        raise AppError.not_found()
+    require_owned_project(db, project_id=outline.project_id, user_id=user_id)
+    return outline
+
+
+def require_owned_llm_profile(db: Session, *, profile_id: str, user_id: str) -> LLMProfile:
+    profile = db.get(LLMProfile, profile_id)
+    if profile is None or profile.owner_user_id != user_id:
+        raise AppError.not_found()
+    return profile
+
+
 def require_owned_generation_run(db: Session, *, run_id: str, user_id: str) -> GenerationRun:
     run = db.get(GenerationRun, run_id)
     if run is None:
         raise AppError.not_found()
     require_owned_project(db, project_id=run.project_id, user_id=user_id)
     return run
-

@@ -140,6 +140,7 @@ export function SettingsPage() {
             <span className="text-xs text-subtext">项目名</span>
             <input
               className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+              name="project_name"
               value={projectForm.name}
               onChange={(e) => setProjectForm((v) => ({ ...v, name: e.target.value }))}
             />
@@ -148,6 +149,7 @@ export function SettingsPage() {
             <span className="text-xs text-subtext">类型</span>
             <input
               className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+              name="project_genre"
               value={projectForm.genre}
               onChange={(e) => setProjectForm((v) => ({ ...v, genre: e.target.value }))}
             />
@@ -156,6 +158,7 @@ export function SettingsPage() {
             <span className="text-xs text-subtext">Logline</span>
             <textarea
               className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+              name="project_logline"
               rows={2}
               value={projectForm.logline}
               onChange={(e) => setProjectForm((v) => ({ ...v, logline: e.target.value }))}
@@ -171,6 +174,7 @@ export function SettingsPage() {
             <span className="text-xs text-subtext">世界观</span>
             <textarea
               className="atelier-content w-full rounded-atelier border border-border bg-canvas px-3 py-3 text-ink outline-none"
+              name="world_setting"
               rows={6}
               value={settingsForm.world_setting}
               onChange={(e) => setSettingsForm((v) => ({ ...v, world_setting: e.target.value }))}
@@ -180,6 +184,7 @@ export function SettingsPage() {
             <span className="text-xs text-subtext">风格</span>
             <textarea
               className="atelier-content w-full rounded-atelier border border-border bg-canvas px-3 py-3 text-ink outline-none"
+              name="style_guide"
               rows={6}
               value={settingsForm.style_guide}
               onChange={(e) => setSettingsForm((v) => ({ ...v, style_guide: e.target.value }))}
@@ -189,6 +194,7 @@ export function SettingsPage() {
             <span className="text-xs text-subtext">约束</span>
             <textarea
               className="atelier-content w-full rounded-atelier border border-border bg-canvas px-3 py-3 text-ink outline-none"
+              name="constraints"
               rows={6}
               value={settingsForm.constraints}
               onChange={(e) => setSettingsForm((v) => ({ ...v, constraints: e.target.value }))}

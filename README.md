@@ -14,7 +14,8 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 
 copy .env.example .env  # Windows 可用；或手动创建
-alembic upgrade head
+# 可选：应用启动时会自动执行 `alembic upgrade head`；如需手动迁移可执行：
+# alembic upgrade head
 
 # SQLite 模式：必须单进程/单 worker
 uvicorn app.main:app --reload --workers 1 --port 8000
@@ -28,7 +29,7 @@ npm install
 npm run dev
 ```
 
-默认：
+默认访问：
 - 前端：`http://localhost:5173`
 - 后端：`http://localhost:8000`（API base：`/api`）
 

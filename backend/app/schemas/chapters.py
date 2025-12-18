@@ -38,6 +38,7 @@ class BulkCreateRequest(BaseModel):
 class ChapterOut(ORMModel):
     id: str
     project_id: str
+    outline_id: str
     number: int
     title: str | None = None
     plan: str | None = None

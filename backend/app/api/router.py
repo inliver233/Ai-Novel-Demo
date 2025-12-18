@@ -10,7 +10,9 @@ from app.api.routes import (
     health,
     llm,
     llm_preset,
+    llm_profiles,
     outline,
+    outlines,
     projects,
     prompts,
     settings,
@@ -27,5 +29,7 @@ api_router.include_router(chapters.router, tags=["chapters"])
 api_router.include_router(prompts.router, tags=["prompts"])
 api_router.include_router(llm_preset.router, tags=["llm_preset"])
 api_router.include_router(llm.router, tags=["llm"])
+api_router.include_router(llm_profiles.router, tags=["llm_profiles"])
+api_router.include_router(outlines.router, tags=["outlines"])
 api_router.include_router(export.router, tags=["export"])
 api_router.include_router(generation_runs.router, tags=["generation_runs"])
