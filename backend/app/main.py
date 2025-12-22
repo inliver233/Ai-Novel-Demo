@@ -24,6 +24,21 @@ from app.models.user import User
 
 logger = logging.getLogger("ainovel")
 
+
+def _warn_sqlite_single_worker() -> None:
+    if not settings.is_sqlite():
+        return
+    log_event(
+        logger,
+        "warning",
+        sqlite={
+            "database_url": settings.database_url,
+            "constraint": "run with --workers 1",
+        },
+        message="SQLite 模式仅支持单 worker；请使用 `uvicorn ... --workers 1`（避免 database is locked）",
+    )
+
+
 def _safe_error_details(details: object | None) -> dict | None:
     if not isinstance(details, dict):
         return None
@@ -53,6 +68,7 @@ def _ensure_local_user() -> None:
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     ensure_db_schema()
+    _warn_sqlite_single_worker()
     _ensure_local_user()
     yield
     close_llm_http_client()

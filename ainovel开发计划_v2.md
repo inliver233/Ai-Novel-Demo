@@ -1103,13 +1103,13 @@ class TokenBudgetManager:
 
 ### 6.1 API Key 管理
 
-#### 方案选择：前端存储 + 后端透传（推荐）
+#### 方案选择（历史参考）：前端存储 + 后端透传
 
 ```typescript
 // frontend/src/services/llm-config.ts
 /**
- * API Key 仅存储在浏览器 localStorage
- * 后端不持久化存储，仅在请求时透传
+ * 注意：demo 的 MVP 契约已在 `mvp开发计划.md` v2.4 变更为“API Key/Base URL 等贵重信息必须落库（llm_profiles）”。
+ * 本段代码仅作为历史方案参考，现行实现不再以 localStorage 作为唯一来源。
  */
 export class LLMConfigService {
   private static KEY_PREFIX = 'llm_key_';

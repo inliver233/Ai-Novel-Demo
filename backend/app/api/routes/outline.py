@@ -9,10 +9,12 @@ from sqlalchemy import select
 
 from app.api.deps import DbDep, UserIdDep, require_owned_project
 from app.core.errors import AppError, ok_payload
+from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.core.logging import log_event
 from app.db.session import SessionLocal
 from app.llm.client import call_llm_stream
 from app.models.character import Character
+from app.models.llm_profile import LLMProfile
 from app.models.llm_preset import LLMPreset
 from app.models.project_settings import ProjectSettings
 from app.schemas.outline_generate import OutlineGenerateRequest
@@ -120,7 +122,17 @@ def generate_outline(
             raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
 
         if not resolved_api_key:
-            raise AppError(code="LLM_KEY_MISSING", message="请先填写 API Key", status_code=401)
+            if not project.llm_profile_id:
+                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+            profile = db.get(LLMProfile, project.llm_profile_id)
+            if profile is None or profile.owner_user_id != user_id or not profile.api_key_ciphertext:
+                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+            try:
+                resolved_api_key = decrypt_secret(profile.api_key_ciphertext).strip()
+            except SecretCryptoError:
+                raise AppError(code="LLM_KEY_MISSING", message="已保存的 API Key 无法读取，请在 Prompts 页重新保存", status_code=401)
+            if not resolved_api_key:
+                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
 
         templates = ensure_prompt_templates(db, project_id)
         tpl = templates.get("outline_generate")
@@ -256,7 +268,17 @@ def generate_outline_stream(
                 raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
 
             if not resolved_api_key:
-                raise AppError(code="LLM_KEY_MISSING", message="请先填写 API Key", status_code=401)
+                if not project.llm_profile_id:
+                    raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+                profile = db.get(LLMProfile, project.llm_profile_id)
+                if profile is None or profile.owner_user_id != user_id or not profile.api_key_ciphertext:
+                    raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+                try:
+                    resolved_api_key = decrypt_secret(profile.api_key_ciphertext).strip()
+                except SecretCryptoError:
+                    raise AppError(code="LLM_KEY_MISSING", message="已保存的 API Key 无法读取，请在 Prompts 页重新保存", status_code=401)
+                if not resolved_api_key:
+                    raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
 
             templates = ensure_prompt_templates(db, project_id)
             tpl = templates.get("outline_generate")

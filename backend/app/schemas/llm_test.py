@@ -8,6 +8,8 @@ from app.schemas.llm import LLMProvider
 
 
 class LLMTestRequest(BaseModel):
+    project_id: str | None = Field(default=None, max_length=36)
+    profile_id: str | None = Field(default=None, max_length=36)
     provider: LLMProvider
     base_url: str | None = None
     model: str = Field(min_length=1, max_length=255)

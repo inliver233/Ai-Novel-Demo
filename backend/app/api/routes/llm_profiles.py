@@ -5,8 +5,10 @@ from sqlalchemy import select, update
 
 from app.api.deps import DbDep, UserIdDep, require_owned_llm_profile
 from app.core.errors import AppError, ok_payload
+from app.core.secrets import encrypt_secret, mask_api_key
 from app.db.utils import new_id
 from app.llm.utils import normalize_base_url
+from app.models.llm_preset import LLMPreset
 from app.models.llm_profile import LLMProfile
 from app.models.project import Project
 from app.schemas.llm_profiles import LLMProfileCreate, LLMProfileOut, LLMProfileUpdate
@@ -36,9 +38,43 @@ def _to_out(row: LLMProfile) -> dict:
         provider=row.provider,
         base_url=row.base_url,
         model=row.model,
+        has_api_key=bool(row.api_key_ciphertext),
+        masked_api_key=row.api_key_masked,
         created_at=row.created_at,
         updated_at=row.updated_at,
     ).model_dump()
+
+
+def _sync_bound_project_presets(db: DbDep, profile: LLMProfile) -> None:
+    project_ids = db.execute(select(Project.id).where(Project.llm_profile_id == profile.id)).scalars().all()
+    if not project_ids:
+        return
+
+    base_url = _normalize_profile(profile.provider, profile.base_url)
+    for project_id in project_ids:
+        preset = db.get(LLMPreset, project_id)
+        if preset is None:
+            preset = LLMPreset(
+                project_id=project_id,
+                provider=profile.provider,
+                base_url=base_url,
+                model=profile.model,
+                temperature=0.7,
+                top_p=1.0,
+                max_tokens=32000,
+                presence_penalty=0.0,
+                frequency_penalty=0.0,
+                top_k=None,
+                stop_json="[]",
+                timeout_seconds=90,
+                extra_json="{}",
+            )
+            db.add(preset)
+            continue
+
+        preset.provider = profile.provider
+        preset.base_url = base_url
+        preset.model = profile.model
 
 
 @router.get("/llm_profiles")
@@ -63,6 +99,11 @@ def create_profile(request: Request, db: DbDep, user_id: UserIdDep, body: LLMPro
         base_url=_normalize_profile(body.provider, body.base_url),
         model=body.model,
     )
+    if body.api_key is not None:
+        key = body.api_key.strip()
+        if key:
+            row.api_key_ciphertext = encrypt_secret(key)
+            row.api_key_masked = mask_api_key(key)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -87,9 +128,19 @@ def update_profile(request: Request, db: DbDep, user_id: UserIdDep, profile_id: 
     if body.model is not None:
         row.model = body.model
 
+    if "api_key" in body.model_fields_set:
+        key = (body.api_key or "").strip()
+        if key:
+            row.api_key_ciphertext = encrypt_secret(key)
+            row.api_key_masked = mask_api_key(key)
+        else:
+            row.api_key_ciphertext = None
+            row.api_key_masked = None
+
     row.base_url = _normalize_profile(provider, base_url)
     row.model = model
 
+    _sync_bound_project_presets(db, row)
     db.commit()
     db.refresh(row)
     return ok_payload(request_id=request_id, data={"profile": _to_out(row)})

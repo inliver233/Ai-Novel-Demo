@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useProjectData } from "./useProjectData";
 import { apiJson } from "../services/apiClient";
 import { computeWizardProgress, type WizardProgress } from "../services/wizard";
-import type { Chapter, Character, LLMPreset, Outline, Project, ProjectSettings } from "../types";
+import type { Chapter, Character, LLMPreset, LLMProfile, Outline, Project, ProjectSettings } from "../types";
 
 type WizardLoaded = {
   project: Project;
@@ -12,6 +12,7 @@ type WizardLoaded = {
   outline: Outline;
   chapters: Chapter[];
   llmPreset: LLMPreset;
+  profiles: LLMProfile[];
 };
 
 const EMPTY_CHARACTERS: Character[] = [];
@@ -26,12 +27,13 @@ export function useWizardProgress(projectId: string | undefined): {
   const [version, setVersion] = useState(0);
 
   const wizardQuery = useProjectData<WizardLoaded>(projectId, async (id) => {
-    const [pRes, settingsRes, charsRes, outlineRes, presetRes] = await Promise.all([
+    const [pRes, settingsRes, charsRes, outlineRes, presetRes, profilesRes] = await Promise.all([
       apiJson<{ project: Project }>(`/api/projects/${id}`),
       apiJson<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`),
       apiJson<{ characters: Character[] }>(`/api/projects/${id}/characters`),
       apiJson<{ outline: Outline }>(`/api/projects/${id}/outline`),
       apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${id}/llm_preset`),
+      apiJson<{ profiles: LLMProfile[] }>(`/api/llm_profiles`),
     ]);
     const chaptersRes = await apiJson<{ chapters: Chapter[] }>(`/api/projects/${id}/chapters`);
     return {
@@ -41,6 +43,7 @@ export function useWizardProgress(projectId: string | undefined): {
       outline: outlineRes.data.outline,
       chapters: chaptersRes.data.chapters,
       llmPreset: presetRes.data.llm_preset,
+      profiles: profilesRes.data.profiles,
     };
   });
 
@@ -50,13 +53,18 @@ export function useWizardProgress(projectId: string | undefined): {
 
   const progress = useMemo(() => {
     void version;
+    const project = wizardQuery.data?.project ?? null;
+    const selectedProfileId = project?.llm_profile_id ?? null;
+    const profiles = wizardQuery.data?.profiles ?? [];
+    const llmProfile = selectedProfileId ? profiles.find((p) => p.id === selectedProfileId) ?? null : null;
     return computeWizardProgress({
-      project: wizardQuery.data?.project ?? null,
+      project,
       settings: wizardQuery.data?.settings ?? null,
       characters: wizardQuery.data?.characters ?? EMPTY_CHARACTERS,
       outline: wizardQuery.data?.outline ?? null,
       chapters: wizardQuery.data?.chapters ?? EMPTY_CHAPTERS,
       llmPreset: wizardQuery.data?.llmPreset ?? null,
+      llmProfile,
     });
   }, [version, wizardQuery.data]);
 

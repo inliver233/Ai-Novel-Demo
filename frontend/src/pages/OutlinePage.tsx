@@ -10,8 +10,8 @@ import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
-import { getLlmApiKey } from "../services/llmKeyStore";
 import { SSEError, SSEPostClient } from "../services/sseClient";
+import { markWizardProjectChanged } from "../services/wizard";
 import type { Chapter, LLMPreset, Outline, OutlineListItem, Project } from "../types";
 
 type OutlineGenChapter = { number: number; title: string; beats: string[] };
@@ -55,6 +55,7 @@ export function OutlinePage() {
   const navigate = useNavigate();
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
+  const bumpWizardLocal = wizard.bumpLocal;
 
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -129,6 +130,8 @@ export function OutlinePage() {
         setBaseline(res.data.outline.content_md ?? "");
         setContent(res.data.outline.content_md ?? "");
         setActiveOutline(res.data.outline);
+        markWizardProjectChanged(projectId);
+        bumpWizardLocal();
         await refreshWizard();
         toast.toastSuccess("已保存");
         return true;
@@ -140,7 +143,7 @@ export function OutlinePage() {
         setSaving(false);
       }
     },
-    [baseline, content, projectId, refreshWizard, toast],
+    [baseline, bumpWizardLocal, content, projectId, refreshWizard, toast],
   );
 
   useSaveHotkey(() => void save(), dirty);
@@ -178,6 +181,8 @@ export function OutlinePage() {
         body: JSON.stringify(payload),
       });
       toast.toastSuccess(`已创建 ${chaptersForSkeleton.length} 个章节`);
+      markWizardProjectChanged(projectId);
+      bumpWizardLocal();
       navigate(`/projects/${projectId}/writing`);
     } catch (e) {
       const err = e as ApiError;
@@ -195,6 +200,8 @@ export function OutlinePage() {
             body: JSON.stringify(payload),
           });
           toast.toastSuccess(`已覆盖创建 ${chaptersForSkeleton.length} 个章节`);
+          markWizardProjectChanged(projectId);
+          bumpWizardLocal();
           navigate(`/projects/${projectId}/writing`);
         } catch (e2) {
           const err2 = e2 as ApiError;
@@ -204,7 +211,7 @@ export function OutlinePage() {
       }
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     }
-  }, [chaptersForSkeleton, confirm, navigate, projectId, toast]);
+  }, [bumpWizardLocal, chaptersForSkeleton, confirm, navigate, projectId, toast]);
 
   const activeOutlineId = activeOutline?.id ?? "";
 
@@ -235,6 +242,8 @@ export function OutlinePage() {
           method: "PUT",
           body: JSON.stringify({ active_outline_id: nextOutlineId }),
         });
+        markWizardProjectChanged(projectId);
+        bumpWizardLocal();
         await refreshOutline();
         await refreshWizard();
         toast.toastSuccess("已切换大纲");
@@ -243,7 +252,7 @@ export function OutlinePage() {
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       }
     },
-    [activeOutlineId, confirm, dirty, projectId, refreshOutline, refreshWizard, save, toast],
+    [activeOutlineId, bumpWizardLocal, confirm, dirty, projectId, refreshOutline, refreshWizard, save, toast],
   );
 
   const createOutline = useCallback(
@@ -254,6 +263,8 @@ export function OutlinePage() {
           method: "POST",
           body: JSON.stringify({ title, content_md: contentMd, structure }),
         });
+        markWizardProjectChanged(projectId);
+        bumpWizardLocal();
         await refreshOutline();
         await refreshWizard();
         toast.toastSuccess("已创建并切换大纲");
@@ -262,7 +273,7 @@ export function OutlinePage() {
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       }
     },
-    [projectId, refreshOutline, refreshWizard, toast],
+    [bumpWizardLocal, projectId, refreshOutline, refreshWizard, toast],
   );
 
   const renameOutline = useCallback(
@@ -273,6 +284,8 @@ export function OutlinePage() {
           method: "PUT",
           body: JSON.stringify({ title }),
         });
+        markWizardProjectChanged(projectId);
+        bumpWizardLocal();
         await refreshOutline();
         toast.toastSuccess("已重命名");
       } catch (e) {
@@ -280,7 +293,7 @@ export function OutlinePage() {
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       }
     },
-    [activeOutlineId, projectId, refreshOutline, toast],
+    [activeOutlineId, bumpWizardLocal, projectId, refreshOutline, toast],
   );
 
   const deleteOutline = useCallback(async () => {
@@ -296,6 +309,8 @@ export function OutlinePage() {
       await apiJson<Record<string, never>>(`/api/projects/${projectId}/outlines/${activeOutlineId}`, {
         method: "DELETE",
       });
+      markWizardProjectChanged(projectId);
+      bumpWizardLocal();
       setGenPreview(null);
       await refreshOutline();
       await refreshWizard();
@@ -304,7 +319,7 @@ export function OutlinePage() {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     }
-  }, [activeOutlineId, confirm, projectId, refreshOutline, refreshWizard, toast]);
+  }, [activeOutlineId, bumpWizardLocal, confirm, projectId, refreshOutline, refreshWizard, toast]);
 
   const saveGeneratedAsNewOutline = useCallback(async () => {
     if (!projectId || !genPreview) return;
@@ -643,18 +658,13 @@ export function OutlinePage() {
                 disabled={generating}
                   onClick={async () => {
                     if (!projectId || !preset) return;
-                    const apiKey = getLlmApiKey(preset.provider).trim();
-                    if (!apiKey) {
-                      toast.toastError("请先在 Prompt & 模型 页填写 API Key");
-                      return;
-                    }
                     setGenerating(true);
                     genStreamClientRef.current = null;
                     genStreamHasChunkRef.current = false;
                     setGenStreamText("");
                     setGenStreamProgress(null);
                     try {
-                      const headers: Record<string, string> = { "X-LLM-Provider": preset.provider, "X-LLM-API-Key": apiKey };
+                      const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
                       const payload = {
                         requirements: {
                           chapter_count: genForm.chapter_count,

@@ -1,6 +1,6 @@
 # ainovel MVP（Atelier）
 
-本仓库按 `mvp开发计划.md`（v2.3）实现 ainovel MVP：前端（React+TS+Vite+Tailwind）+ 后端（FastAPI）+ SQLite/Alembic + 多 Provider LLM 适配 + Markdown 导出。
+本仓库按 `mvp开发计划.md`（v2.4）实现 ainovel MVP：前端（React+TS+Vite+Tailwind）+ 后端（FastAPI）+ SQLite/Alembic + 多 Provider LLM 适配 + Markdown 导出。
 
 ## 本地启动（开发）
 
@@ -36,7 +36,7 @@ npm run dev
 ## 工程卫生（必须）
 
 - **不要提交运行/构建产物**：例如 `backend/.env`、`backend/*.db`、`frontend/dist`、`frontend/node_modules`、`demo/**/__pycache__` 等（已由根 `.gitignore` 统一忽略）。
-- **安全红线**：任何日志/错误/调试信息不得输出明文 API Key（header/query/异常堆栈都不允许）。
+- **安全红线**：任何日志/错误/调试信息不得输出明文 API Key（响应/导出/控制台也不允许；仅允许 `has_api_key/masked_api_key`）。
 
 ## 验证清单（DoD）
 

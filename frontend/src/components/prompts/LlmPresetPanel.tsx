@@ -24,8 +24,6 @@ type Props = {
 
   lockConnectionFields: boolean;
 
-  apiKeyVisible: boolean;
-  onToggleApiKeyVisible: () => void;
   apiKey: string;
   onChangeApiKey: (value: string) => void;
   onSaveApiKey: () => void;
@@ -42,7 +40,7 @@ export function LlmPresetPanel(props: Props) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="font-content text-xl">模型配置</div>
-          <div className="mt-1 text-xs text-subtext">provider/base_url/model/参数（API Key 仅保存在本机 localStorage，不写入后端）</div>
+          <div className="mt-1 text-xs text-subtext">provider/base_url/model/参数（API Key 安全存储在后端，不回显明文）</div>
         </div>
         <div className="flex gap-2">
           <button
@@ -212,7 +210,7 @@ export function LlmPresetPanel(props: Props) {
               disabled={props.profileBusy}
               onChange={(e) => props.onSelectProfile(e.target.value ? e.target.value : null)}
             >
-              <option value="">（使用本地 Key）</option>
+              <option value="">（未绑定后端配置）</option>
               {props.profiles.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} · {p.provider}/{p.model}
@@ -235,10 +233,10 @@ export function LlmPresetPanel(props: Props) {
 
         {selectedProfile ? (
           <div className="mt-3 text-xs text-subtext">
-            当前：{selectedProfile.name}（{selectedProfile.provider}/{selectedProfile.model}；Key 仍使用本机 localStorage）
+            当前：{selectedProfile.name}（{selectedProfile.provider}/{selectedProfile.model}）
           </div>
         ) : (
-          <div className="mt-3 text-xs text-subtext">当前：本地 Key（浏览器 localStorage，刷新不丢但换机/换浏览器会丢）</div>
+          <div className="mt-3 text-xs text-subtext">当前：未绑定配置（生成/测试连接会提示先在 Prompts 页选择/新建配置并保存 Key）</div>
         )}
 
         <div className="mt-3 flex flex-wrap gap-2">
@@ -270,40 +268,42 @@ export function LlmPresetPanel(props: Props) {
       </div>
 
       <div className="mt-4 rounded-atelier border border-border bg-canvas p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm text-ink">API Key（本机 localStorage）</div>
-          <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-ink">API Key（后端安全存储）</div>
+          <div className="flex flex-wrap gap-2">
             <button
-              className="rounded-atelier border border-border bg-surface px-3 py-2 text-xs text-ink hover:bg-canvas"
-              onClick={props.onToggleApiKeyVisible}
-              type="button"
-            >
-              {props.apiKeyVisible ? "隐藏" : "显示"}
-            </button>
-            <button
-              className="rounded-atelier border border-border bg-surface px-3 py-2 text-xs text-ink hover:bg-canvas"
+              className="rounded-atelier border border-border bg-surface px-3 py-2 text-xs text-ink hover:bg-canvas disabled:opacity-60"
+              disabled={!props.selectedProfileId || props.profileBusy || !selectedProfile?.has_api_key}
               onClick={props.onClearApiKey}
               type="button"
             >
-              清除
+              清除 Key
             </button>
           </div>
+        </div>
+        <div className="mt-2 text-xs text-subtext">
+          {selectedProfile
+            ? selectedProfile.has_api_key
+              ? `已保存：${selectedProfile.masked_api_key ?? "（已保存）"}`
+              : "未保存：请在下方输入并保存"
+            : "请先选择/新建一个后端配置（配置库）再保存 Key"}
         </div>
         <div className="mt-2 flex gap-2">
           <input
             className="flex-1 rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
-            placeholder="sk-..."
+            placeholder="输入新 Key（不会回显已保存的 Key）"
             name="api_key"
-            type={props.apiKeyVisible ? "text" : "password"}
+            type="password"
             value={props.apiKey}
             onChange={(e) => props.onChangeApiKey(e.target.value)}
           />
           <button
-            className="rounded-atelier bg-ink px-3 py-2 text-sm text-canvas hover:opacity-90"
+            className="rounded-atelier bg-ink px-3 py-2 text-sm text-canvas hover:opacity-90 disabled:opacity-60"
+            disabled={!props.selectedProfileId || props.profileBusy || !props.apiKey.trim()}
             onClick={props.onSaveApiKey}
             type="button"
           >
-            本地保存
+            保存 Key
           </button>
         </div>
       </div>

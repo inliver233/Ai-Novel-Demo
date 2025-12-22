@@ -11,7 +11,6 @@ import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
-import { clearLlmApiKey, getLlmApiKey, setLlmApiKey } from "../services/llmKeyStore";
 import { markWizardLlmTestOk } from "../services/wizard";
 import type { Character, LLMPreset, LLMProfile, Outline, Project, ProjectSettings, PromptTemplate } from "../types";
 
@@ -93,7 +92,6 @@ export function PromptsPage() {
   const [baselinePreset, setBaselinePreset] = useState<LLMPreset | null>(null);
   const [baselinePrompts, setBaselinePrompts] = useState<PromptForm | null>(null);
 
-  const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [apiKey, setApiKey] = useState("");
 
   const [llmForm, setLlmForm] = useState<LlmForm>({
@@ -167,8 +165,7 @@ export function PromptsPage() {
       setPromptForm(pf);
       setBaselinePrompts(pf);
 
-      setApiKey(getLlmApiKey(presetRes.data.llm_preset.provider));
-      setApiKeyVisible(false);
+      setApiKey("");
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -182,8 +179,7 @@ export function PromptsPage() {
   }, [reloadAll]);
 
   useEffect(() => {
-    setApiKey(getLlmApiKey(llmForm.provider));
-    setApiKeyVisible(false);
+    setApiKey("");
   }, [llmForm.provider, project?.llm_profile_id]);
 
   const presetDirty = useMemo(() => {
@@ -225,22 +221,9 @@ export function PromptsPage() {
   const dirty = presetDirty || promptsDirty;
   useUnsavedChangesGuard(dirty);
 
-  const toggleApiKeyVisible = useCallback(() => {
-    setApiKeyVisible((v) => !v);
-  }, []);
-
-  const clearApiKey = useCallback(() => {
-    clearLlmApiKey(llmForm.provider);
-    setApiKey("");
-    bumpWizardLocal();
-    toast.toastSuccess("已清除");
-  }, [bumpWizardLocal, llmForm.provider, toast]);
-
-  const saveApiKeyLocal = useCallback(() => {
-    setLlmApiKey(llmForm.provider, apiKey);
-    bumpWizardLocal();
-    toast.toastSuccess("已保存到本机");
-  }, [apiKey, bumpWizardLocal, llmForm.provider, toast]);
+  const selectedProfileId = project?.llm_profile_id ?? null;
+  const selectedProfile = selectedProfileId ? profiles.find((p) => p.id === selectedProfileId) ?? null : null;
+  const lockConnectionFields = Boolean(selectedProfileId);
 
   const saveAll = useCallback(async (): Promise<boolean> => {
     if (!projectId) return false;
@@ -322,9 +305,6 @@ export function PromptsPage() {
 
   useSaveHotkey(() => void saveAll(), dirty);
 
-  const selectedProfileId = project?.llm_profile_id ?? null;
-  const lockConnectionFields = Boolean(selectedProfileId);
-
   const selectProfile = useCallback(
     async (profileId: string | null) => {
       if (!projectId) return;
@@ -376,6 +356,7 @@ export function PromptsPage() {
 
     setProfileBusy(true);
     try {
+      const apiKeyInput = apiKey.trim();
       const res = await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles`, {
         method: "POST",
         body: JSON.stringify({
@@ -383,12 +364,14 @@ export function PromptsPage() {
           provider: llmForm.provider,
           base_url: llmForm.base_url || null,
           model: llmForm.model,
+          api_key: apiKeyInput ? apiKeyInput : undefined,
         }),
       });
       await apiJson<{ project: Project }>(`/api/projects/${projectId}`, {
         method: "PUT",
         body: JSON.stringify({ llm_profile_id: res.data.profile.id }),
       });
+      setApiKey("");
       await reloadAll();
       await refreshWizard();
       toast.toastSuccess("已保存为新配置并应用到项目");
@@ -398,7 +381,7 @@ export function PromptsPage() {
     } finally {
       setProfileBusy(false);
     }
-  }, [llmForm.base_url, llmForm.model, llmForm.provider, profileBusy, profileName, projectId, reloadAll, refreshWizard, toast]);
+  }, [apiKey, llmForm.base_url, llmForm.model, llmForm.provider, profileBusy, profileName, projectId, reloadAll, refreshWizard, toast]);
 
   const updateProfile = useCallback(async () => {
     if (!projectId) return;
@@ -438,7 +421,7 @@ export function PromptsPage() {
 
     const ok = await confirm.confirm({
       title: "删除当前后端配置？",
-      description: "删除后不可恢复。项目将回退为“使用本地 Key”模式。",
+      description: "删除后不可恢复。项目将解除绑定，需要重新选择/新建配置并保存 Key。",
       confirmText: "删除",
       danger: true,
     });
@@ -447,7 +430,7 @@ export function PromptsPage() {
     setProfileBusy(true);
     try {
       await apiJson<Record<string, never>>(`/api/llm_profiles/${selectedProfileId}`, { method: "DELETE" });
-      setApiKeyVisible(false);
+      setApiKey("");
       await reloadAll();
       await refreshWizard();
       toast.toastSuccess("已删除配置");
@@ -459,10 +442,77 @@ export function PromptsPage() {
     }
   }, [confirm, profileBusy, reloadAll, refreshWizard, selectedProfileId, toast]);
 
-  const testConnection = useCallback(async (): Promise<boolean> => {
+  const saveApiKeyToProfile = useCallback(async (): Promise<boolean> => {
+    if (!selectedProfileId) {
+      toast.toastError("请先选择或新建一个后端配置");
+      return false;
+    }
     const key = apiKey.trim();
     if (!key) {
       toast.toastError("请先填写 API Key");
+      return false;
+    }
+    if (profileBusy) return false;
+
+    setProfileBusy(true);
+    try {
+      await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles/${selectedProfileId}`, {
+        method: "PUT",
+        body: JSON.stringify({ api_key: key }),
+      });
+      setApiKey("");
+      await reloadAll();
+      await refreshWizard();
+      bumpWizardLocal();
+      toast.toastSuccess("已保存 Key");
+      return true;
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      return false;
+    } finally {
+      setProfileBusy(false);
+    }
+  }, [apiKey, bumpWizardLocal, profileBusy, refreshWizard, reloadAll, selectedProfileId, toast]);
+
+  const clearApiKeyInProfile = useCallback(async () => {
+    if (!selectedProfileId) {
+      toast.toastError("请先选择一个后端配置");
+      return;
+    }
+    if (profileBusy) return;
+
+    const ok = await confirm.confirm({
+      title: "清除 API Key？",
+      description: "清除后将无法生成/测试连接，直到重新保存 Key。",
+      confirmText: "清除",
+      danger: true,
+    });
+    if (!ok) return;
+
+    setProfileBusy(true);
+    try {
+      await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles/${selectedProfileId}`, {
+        method: "PUT",
+        body: JSON.stringify({ api_key: null }),
+      });
+      setApiKey("");
+      await reloadAll();
+      await refreshWizard();
+      bumpWizardLocal();
+      toast.toastSuccess("已清除 Key");
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setProfileBusy(false);
+    }
+  }, [bumpWizardLocal, confirm, profileBusy, refreshWizard, reloadAll, selectedProfileId, toast]);
+
+  const testConnection = useCallback(async (): Promise<boolean> => {
+    if (!projectId) return false;
+    if (!selectedProfileId) {
+      toast.toastError("请先选择或新建一个后端配置");
       return false;
     }
     const extraObj = (() => {
@@ -477,15 +527,20 @@ export function PromptsPage() {
       return false;
     }
 
+    if (!selectedProfile?.has_api_key) {
+      const okSave = await saveApiKeyToProfile();
+      if (!okSave) return false;
+    }
+
     setTesting(true);
     try {
       const res = await apiJson<{ latency_ms: number }>("/api/llm/test", {
         method: "POST",
         headers: {
           "X-LLM-Provider": llmForm.provider,
-          "X-LLM-API-Key": key,
         },
         body: JSON.stringify({
+          project_id: projectId,
           provider: llmForm.provider,
           base_url: llmForm.base_url || null,
           model: llmForm.model,
@@ -497,7 +552,6 @@ export function PromptsPage() {
         }),
       });
       toast.toastSuccess(`连接成功（延迟 ${res.data.latency_ms}ms）`);
-      setLlmApiKey(llmForm.provider, key);
       if (projectId) {
         markWizardLlmTestOk(projectId, llmForm.provider, llmForm.model);
         bumpWizardLocal();
@@ -511,7 +565,7 @@ export function PromptsPage() {
           : undefined;
       const msg =
         err.code === "LLM_KEY_MISSING"
-          ? "请先填写 API Key"
+          ? "请先保存 API Key"
           : err.code === "LLM_AUTH_ERROR"
             ? "API Key 无效或已过期，请检查后重试"
             : err.code === "LLM_TIMEOUT"
@@ -528,7 +582,15 @@ export function PromptsPage() {
     } finally {
       setTesting(false);
     }
-  }, [apiKey, bumpWizardLocal, llmForm, projectId, toast]);
+  }, [
+    bumpWizardLocal,
+    llmForm,
+    projectId,
+    saveApiKeyToProfile,
+    selectedProfile?.has_api_key,
+    selectedProfileId,
+    toast,
+  ]);
 
   const nextAfterLlm = useMemo(() => {
     const idx = wizard.progress.steps.findIndex((s) => s.key === "llm");
@@ -543,14 +605,6 @@ export function PromptsPage() {
   const testAndGoNext = useCallback(async (): Promise<boolean> => {
     if (!projectId) return false;
 
-    const key = apiKey.trim();
-    if (!key) {
-      toast.toastError("请先填写 API Key");
-      return false;
-    }
-    setLlmApiKey(llmForm.provider, key);
-    bumpWizardLocal();
-
     const saved = await saveAll();
     if (!saved) return false;
 
@@ -560,7 +614,7 @@ export function PromptsPage() {
     if (nextAfterLlm?.href) navigate(nextAfterLlm.href);
     else navigate(`/projects/${projectId}/outline`);
     return true;
-  }, [apiKey, bumpWizardLocal, llmForm.provider, navigate, nextAfterLlm?.href, projectId, saveAll, testConnection, toast]);
+  }, [navigate, nextAfterLlm?.href, projectId, saveAll, testConnection]);
 
   const previewValues = useMemo(() => {
     const charactersText = characters
@@ -628,12 +682,10 @@ export function PromptsPage() {
         onUpdateProfile={() => void updateProfile()}
         onDeleteProfile={() => void deleteProfile()}
         lockConnectionFields={lockConnectionFields}
-        apiKeyVisible={apiKeyVisible}
-        onToggleApiKeyVisible={toggleApiKeyVisible}
         apiKey={apiKey}
         onChangeApiKey={setApiKey}
-        onSaveApiKey={saveApiKeyLocal}
-        onClearApiKey={clearApiKey}
+        onSaveApiKey={() => void saveApiKeyToProfile()}
+        onClearApiKey={() => void clearApiKeyInProfile()}
       />
 
       <PromptTemplatesPanel

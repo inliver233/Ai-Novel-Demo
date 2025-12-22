@@ -30,7 +30,7 @@ export function ToastProvider(props: { children: React.ReactNode }) {
 
   const api = useMemo<ToastApi>(
     () => ({
-      toastSuccess: (message) => push({ variant: "success", message }),
+      toastSuccess: (message, requestId) => push({ variant: "success", message, requestId }),
       toastError: (message, requestId) => push({ variant: "error", message, requestId }),
     }),
     [push],

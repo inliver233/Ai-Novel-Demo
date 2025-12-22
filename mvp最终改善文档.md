@@ -1,7 +1,7 @@
 # ainovel MVP 最终改善文档（demo 代码体检 + 顶尖工程化整改清单）
 
 > 适用范围：本仓库的 **`demo/`**（当前 MVP 可运行实现）。`mumu/` 仅作“可参考/可照抄”的对照学习材料，不作为主力实现与依赖。  
-> 契约基线：**`demo/mvp开发计划.md` v2.3**（任何改变契约语义必须先 bump 文档版本并写变更说明）。  
+> 契约基线：**`demo/mvp开发计划.md` v2.4**（任何改变契约语义必须先 bump 文档版本并写变更说明）。  
 > 本文目标：**先不做功能扩展**，只把现有 demo 的结构、代码质量、可维护性、可读性、模块化清晰度、工程化可靠性提升到“可与顶尖项目对标”的水准，并给出“下一位开发者可直接照单全改”的清单。
 
 ---
@@ -272,7 +272,7 @@
 #### 5.1.15 模型层（`demo/backend/app/models/*.py`）
 
 - `P1`：`created_at/updated_at` 使用 `String` 存 ISO 时间：可行但不够“顶尖工程化”。建议改为 `DateTime(timezone=True)` + `func.now()`（并保持 SQLite/PostgreSQL 兼容）。  
-- `P1`（已完成）：已选择方案 A：移除 `LLMPreset.encrypted_api_key/key_updated_at`（模型 + Alembic init 迁移），保持“Key 不落库”（前端 localStorage）。  
+- `P0`（v2.4 契约级变更）：API Key/Base URL 等贵重信息需落库（推荐 `llm_profiles` 作为配置库），且**响应/日志不得回显明文 Key**（仅 `has_api_key/masked_api_key`）。  
 - `P1`：逐文件清单（建议至少逐个确认字段/索引/约束是否与 `demo/mvp开发计划.md` 第 6 节一致）：  
   - `demo/backend/app/models/user.py`：包含 `password_hash` 但 MVP 不启用登录；需明确 Phase 2 启用策略或移除避免误导。  
   - `demo/backend/app/models/project.py`：时间字段/索引策略见上；可补 `updated_at` 自动更新一致性测试。  
@@ -281,7 +281,7 @@
   - `demo/backend/app/models/outline.py`：同上。  
   - `demo/backend/app/models/chapter.py`：`status` 为字符串；建议与 schema 的 Literal 保持一致，并在 DB 层考虑 CHECK（SQLite 可选）。  
   - `demo/backend/app/models/prompt_template.py`：`type` 建议收敛为受控枚举（outline_generate/chapter_generate）。  
-  - `demo/backend/app/models/llm_preset.py`：字段较多但已移除 key 相关字段（保持“不落库”）。  
+  - `demo/backend/app/models/llm_preset.py`：字段较多但不存 Key（v2.4：Key 存 `llm_profiles`，preset 只存 provider/base_url/model/参数）。  
   - `demo/backend/app/models/generation_run.py`：`params_json/error_json` 为 Text；后续若切 PostgreSQL 可迁移 JSONB（P2）。  
   - `demo/backend/app/models/__init__.py`：当前仅导出集合 OK；建议保持 import side effects 可控（只用于 Alembic 元数据发现）。  
 

@@ -3,23 +3,13 @@ import { ArrowRight, CheckCircle2, Circle, CircleSlash2, ListChecks } from "luci
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import type { WizardProgress, WizardStep, WizardStepKey } from "../../services/wizard";
+import type { WizardProgress, WizardStepKey } from "../../services/wizard";
 
 type PrimaryAction = {
   label: string;
   disabled?: boolean;
   onClick: () => Promise<boolean> | boolean | Promise<void> | void;
 };
-
-function findNextAfter(progress: WizardProgress, currentKey: WizardStepKey): WizardStep | null {
-  const idx = progress.steps.findIndex((s) => s.key === currentKey);
-  if (idx < 0) return progress.nextStep;
-  for (let i = idx + 1; i < progress.steps.length; i++) {
-    const s = progress.steps[i];
-    if (s.state === "todo") return s;
-  }
-  return null;
-}
 
 export function WizardNextBar(props: {
   projectId: string | undefined;
@@ -51,7 +41,10 @@ export function WizardNextBar(props: {
   );
 
   const next = progress.nextStep;
-  const nextAfterCurrent = useMemo(() => findNextAfter(progress, currentStep), [currentStep, progress]);
+  const previewStep = useMemo(
+    () => progress.steps.find((s) => s.key === "preview") ?? null,
+    [progress.steps],
+  );
 
   const goto = useCallback(
     (href: string | null | undefined) => {
@@ -76,14 +69,16 @@ export function WizardNextBar(props: {
   );
 
   const wizardHref = projectId ? `/projects/${projectId}/wizard` : null;
-  const done = progress.percent >= 100 || !progress.nextStep;
+  const done = !progress.nextStep;
+  const showBackToOverview = Boolean(progress.exportedAt && progress.nextStep);
 
   const primary = useMemo((): PrimaryAction => {
     if (primaryAction) return primaryAction;
 
     if (dirty && onSave) {
-      const target = nextAfterCurrent ?? next;
-      const label = target ? `保存并下一步：${target.title}` : "保存并完成";
+      const target =
+        next && next.key !== currentStep ? next : currentStep === "writing" && next?.key === currentStep ? previewStep : null;
+      const label = target ? `保存并下一步：${target.title}` : "保存";
       return {
         label,
         disabled: Boolean(saving),
@@ -104,6 +99,12 @@ export function WizardNextBar(props: {
     }
 
     if (next.key === currentStep) {
+      if (currentStep === "writing" && previewStep?.href) {
+        return {
+          label: `下一步：${previewStep.title}`,
+          onClick: () => goto(previewStep.href),
+        };
+      }
       return {
         label: current ? `本页：${current.title}` : "本页待完成",
         disabled: true,
@@ -115,7 +116,7 @@ export function WizardNextBar(props: {
       label: `下一步：${next.title}`,
       onClick: () => goto(next.href),
     };
-  }, [current, dirty, goto, next, nextAfterCurrent, currentStep, onSave, primaryAction, saving]);
+  }, [current, currentStep, dirty, goto, next, onSave, previewStep, primaryAction, saving]);
 
   if (!projectId) return null;
 
@@ -173,6 +174,17 @@ export function WizardNextBar(props: {
             >
               查看向导
             </button>
+
+            {showBackToOverview ? (
+              <button
+                className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface disabled:opacity-60"
+                disabled={loading || busy}
+                onClick={() => goto("/")}
+                type="button"
+              >
+                已完成：回到项目概览
+              </button>
+            ) : null}
 
             <button
               className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"

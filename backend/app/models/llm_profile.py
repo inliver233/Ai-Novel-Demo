@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -16,6 +16,8 @@ class LLMProfile(Base):
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     model: Mapped[str] = mapped_column(String(255), nullable=False)
+    api_key_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_key_masked: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso)
     updated_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso, onupdate=utc_now_iso)
 

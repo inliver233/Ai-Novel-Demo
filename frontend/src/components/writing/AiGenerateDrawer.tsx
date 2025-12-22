@@ -16,6 +16,7 @@ type Props = {
   streamProgress?: { message: string; progress: number; status: string; wordCount?: number } | null;
   onClose: () => void;
   onSave: () => void | Promise<unknown>;
+  onSaveAndGenerateNext?: () => void | Promise<unknown>;
   onGenerateAppend: () => void;
   onGenerateReplace: () => void;
   onCancelGenerate?: () => void;
@@ -28,7 +29,6 @@ export function AiGenerateDrawer(props: Props) {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (generating) return;
       e.preventDefault();
       onClose();
     };
@@ -42,14 +42,13 @@ export function AiGenerateDrawer(props: Props) {
     <div
       aria-label="AI 生成"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex justify-end bg-black/30"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 sm:items-stretch sm:justify-end"
       onClick={(e) => {
-        if (generating) return;
         if (e.target === e.currentTarget) onClose();
       }}
       role="dialog"
     >
-      <div className="h-full w-full max-w-md border-l border-border bg-canvas p-6">
+      <div className="h-[85vh] w-full rounded-atelier border-t border-border bg-canvas p-6 sm:h-full sm:max-w-md sm:rounded-none sm:border-l sm:border-t-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="font-content text-2xl text-ink">AI 生成</div>
@@ -59,11 +58,10 @@ export function AiGenerateDrawer(props: Props) {
           </div>
           <button
             className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas disabled:opacity-60"
-            disabled={generating}
             onClick={onClose}
             type="button"
           >
-            关闭
+            隐藏
           </button>
         </div>
 
@@ -231,34 +229,44 @@ export function AiGenerateDrawer(props: Props) {
           </div>
 
           <div className="rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
-            生成结果不会自动保存到数据库，请生成后点击“保存章节”（或 Ctrl/Cmd+S）。
+            生成结果不会自动保存到数据库，请生成后点击“保存”（或 Ctrl/Cmd+S）。
           </div>
         </div>
 
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button
-            className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas disabled:opacity-60"
-            disabled={props.generating || props.saving || !props.activeChapter || !props.dirty}
-            onClick={() => void props.onSave()}
-            type="button"
-          >
-            保存章节
-          </button>
-          <button
-            className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas disabled:opacity-60"
-            disabled={props.generating || !props.activeChapter}
-            onClick={props.onGenerateAppend}
-            type="button"
-          >
-            {props.generating ? "生成中..." : "生成草稿（追加）"}
-          </button>
           <button
             className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
             disabled={props.generating || !props.activeChapter}
             onClick={props.onGenerateReplace}
             type="button"
           >
-            {props.generating ? "生成中..." : "生成草稿（替换）"}
+            {props.generating ? "生成中..." : "生成"}
+          </button>
+          {props.onSaveAndGenerateNext ? (
+            <button
+              className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
+              disabled={props.generating || props.saving || !props.activeChapter}
+              onClick={() => void props.onSaveAndGenerateNext?.()}
+              type="button"
+            >
+              保存并继续
+            </button>
+          ) : null}
+          <button
+            className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas disabled:opacity-60"
+            disabled={props.generating || !props.activeChapter}
+            onClick={props.onGenerateAppend}
+            type="button"
+          >
+            {props.generating ? "生成中..." : "追加生成"}
+          </button>
+          <button
+            className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas disabled:opacity-60"
+            disabled={props.generating || props.saving || !props.activeChapter || !props.dirty}
+            onClick={() => void props.onSave()}
+            type="button"
+          >
+            保存
           </button>
         </div>
       </div>

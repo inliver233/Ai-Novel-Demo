@@ -10,6 +10,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { ExportPage } from "./pages/ExportPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { OutlinePage } from "./pages/OutlinePage";
+import { PreviewPage } from "./pages/PreviewPage";
 import { ProjectWizardPage } from "./pages/ProjectWizardPage";
 import { PromptsPage } from "./pages/PromptsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -31,6 +32,7 @@ const router = createBrowserRouter([
           { path: "characters", element: <CharactersPage /> },
           { path: "outline", element: <OutlinePage /> },
           { path: "writing", element: <WritingPage /> },
+          { path: "preview", element: <PreviewPage /> },
           { path: "prompts", element: <PromptsPage /> },
           { path: "export", element: <ExportPage /> },
         ],

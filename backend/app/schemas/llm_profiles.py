@@ -8,6 +8,7 @@ class LLMProfileCreate(BaseModel):
     provider: str = Field(min_length=1, max_length=32)
     base_url: str | None = Field(default=None, max_length=2048)
     model: str = Field(min_length=1, max_length=255)
+    api_key: str | None = Field(default=None, max_length=4096)
 
 
 class LLMProfileUpdate(BaseModel):
@@ -15,6 +16,7 @@ class LLMProfileUpdate(BaseModel):
     provider: str | None = Field(default=None, min_length=1, max_length=32)
     base_url: str | None = Field(default=None, max_length=2048)
     model: str | None = Field(default=None, min_length=1, max_length=255)
+    api_key: str | None = Field(default=None, max_length=4096)
 
 
 class LLMProfileOut(BaseModel):
@@ -24,5 +26,7 @@ class LLMProfileOut(BaseModel):
     provider: str
     base_url: str | None = None
     model: str
+    has_api_key: bool
+    masked_api_key: str | None = None
     created_at: str
     updated_at: str

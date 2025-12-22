@@ -9,9 +9,8 @@ import { useToast } from "../components/ui/toast";
 import { useProjects } from "../contexts/projects";
 import { useProjectData } from "../hooks/useProjectData";
 import { ApiError, apiJson } from "../services/apiClient";
-import { getLlmApiKey } from "../services/llmKeyStore";
 import { computeWizardProgress, setWizardStepSkipped, type WizardStep, type WizardStepKey } from "../services/wizard";
-import type { Chapter, Character, LLMPreset, Outline, ProjectSettings } from "../types";
+import type { Chapter, Character, LLMPreset, LLMProfile, Outline, ProjectSettings } from "../types";
 
 type OutlineGenChapter = { number: number; title: string; beats: string[] };
 type OutlineGenResult = {
@@ -27,10 +26,12 @@ type WizardLoaded = {
   outline: Outline;
   chapters: Chapter[];
   llmPreset: LLMPreset;
+  profiles: LLMProfile[];
 };
 
 const EMPTY_CHARACTERS: Character[] = [];
 const EMPTY_CHAPTERS: Chapter[] = [];
+const EMPTY_PROFILES: LLMProfile[] = [];
 
 export function ProjectWizardPage() {
   const { projectId } = useParams();
@@ -45,11 +46,12 @@ export function ProjectWizardPage() {
   const [autoRunning, setAutoRunning] = useState(false);
 
   const wizardQuery = useProjectData<WizardLoaded>(projectId, async (id) => {
-    const [settingsRes, charsRes, outlineRes, presetRes] = await Promise.all([
+    const [settingsRes, charsRes, outlineRes, presetRes, profilesRes] = await Promise.all([
       apiJson<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`),
       apiJson<{ characters: Character[] }>(`/api/projects/${id}/characters`),
       apiJson<{ outline: Outline }>(`/api/projects/${id}/outline`),
       apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${id}/llm_preset`),
+      apiJson<{ profiles: LLMProfile[] }>(`/api/llm_profiles`),
     ]);
     const chaptersRes = await apiJson<{ chapters: Chapter[] }>(`/api/projects/${id}/chapters`);
     return {
@@ -58,6 +60,7 @@ export function ProjectWizardPage() {
       outline: outlineRes.data.outline,
       chapters: chaptersRes.data.chapters,
       llmPreset: presetRes.data.llm_preset,
+      profiles: profilesRes.data.profiles,
     };
   });
 
@@ -67,9 +70,12 @@ export function ProjectWizardPage() {
   const outline = wizardQuery.data?.outline ?? null;
   const chapters = wizardQuery.data?.chapters ?? EMPTY_CHAPTERS;
   const llmPreset = wizardQuery.data?.llmPreset ?? null;
+  const profiles = wizardQuery.data?.profiles ?? EMPTY_PROFILES;
 
   const progress = useMemo(() => {
     void version;
+    const selectedProfileId = project?.llm_profile_id ?? null;
+    const llmProfile = selectedProfileId ? profiles.find((p) => p.id === selectedProfileId) ?? null : null;
     return computeWizardProgress({
       project,
       settings,
@@ -77,8 +83,9 @@ export function ProjectWizardPage() {
       outline,
       chapters,
       llmPreset,
+      llmProfile,
     });
-  }, [project, settings, characters, outline, chapters, llmPreset, version]);
+  }, [project, settings, characters, outline, chapters, llmPreset, profiles, version]);
 
   const goStep = useCallback(
     (step: WizardStep) => {
@@ -104,9 +111,7 @@ export function ProjectWizardPage() {
       navigate(`/projects/${projectId}/prompts`);
       return;
     }
-    const apiKey = getLlmApiKey(llmPreset.provider).trim();
     const headers: Record<string, string> = { "X-LLM-Provider": llmPreset.provider };
-    if (apiKey) headers["X-LLM-API-Key"] = apiKey;
 
     const ok = await confirm.confirm({
       title: "自动生成大纲并创建章节骨架？",

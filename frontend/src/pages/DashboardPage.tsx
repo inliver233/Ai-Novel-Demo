@@ -6,7 +6,7 @@ import { useToast } from "../components/ui/toast";
 import { useProjects } from "../contexts/projects";
 import { ApiError, apiJson } from "../services/apiClient";
 import { computeWizardProgress } from "../services/wizard";
-import type { Chapter, Character, LLMPreset, Outline, Project, ProjectSettings } from "../types";
+import type { Chapter, Character, LLMProfile, LLMPreset, Outline, Project, ProjectSettings } from "../types";
 
 type CreateProjectForm = {
   name: string;
@@ -33,6 +33,13 @@ export function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      let profilesById: Record<string, LLMProfile> = {};
+      try {
+        const profilesRes = await apiJson<{ profiles: LLMProfile[] }>(`/api/llm_profiles`);
+        profilesById = Object.fromEntries(profilesRes.data.profiles.map((p) => [p.id, p]));
+      } catch {
+        // ignore
+      }
       for (const p of sorted) {
         if (cancelled) return;
         setWizardLoadingByProjectId((prev) => ({ ...prev, [p.id]: true }));
@@ -45,6 +52,7 @@ export function DashboardPage() {
             apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${p.id}/llm_preset`),
           ]);
 
+          const llmProfile = p.llm_profile_id ? profilesById[p.llm_profile_id] ?? null : null;
           const progress = computeWizardProgress({
             project: p,
             settings: settingsRes.data.settings,
@@ -52,6 +60,7 @@ export function DashboardPage() {
             outline: outlineRes.data.outline,
             chapters: chaptersRes.data.chapters,
             llmPreset: presetRes.data.llm_preset,
+            llmProfile,
           });
 
           if (cancelled) return;

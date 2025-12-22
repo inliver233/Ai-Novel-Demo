@@ -9,6 +9,7 @@ import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
+import { markWizardProjectChanged } from "../services/wizard";
 import type { Project, ProjectSettings } from "../types";
 
 type ProjectForm = { name: string; genre: string; logline: string };
@@ -21,6 +22,7 @@ export function SettingsPage() {
   const { refresh } = useProjects();
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
+  const bumpWizardLocal = wizard.bumpLocal;
 
   const [saving, setSaving] = useState(false);
   const [baselineProject, setBaselineProject] = useState<Project | null>(null);
@@ -98,6 +100,8 @@ export function SettingsPage() {
 
       setBaselineProject(pRes.data.project);
       setBaselineSettings(sRes.data.settings);
+      markWizardProjectChanged(projectId);
+      bumpWizardLocal();
       await refresh();
       await refreshWizard();
       toast.toastSuccess("已保存");
@@ -109,7 +113,7 @@ export function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  }, [dirty, projectForm, projectId, refresh, refreshWizard, settingsForm, toast]);
+  }, [bumpWizardLocal, dirty, projectForm, projectId, refresh, refreshWizard, settingsForm, toast]);
 
   useSaveHotkey(() => void save(), dirty);
 

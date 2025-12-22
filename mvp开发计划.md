@@ -1,14 +1,19 @@
-# ainovel MVP开发计划（最终审查版 v2.3：可直接开工）
+# ainovel MVP开发计划（最终审查版 v2.4：可直接开工）
 
 > 目标：把 `ainovel开发计划_v2.md`（愿景版）收敛为 **能在毕业设计周期内稳定交付** 的 MVP（最小可用产品）。  
 > 技术栈约束：**前端 React + TypeScript**、**后端 Python（FastAPI）**、**开发数据库默认 SQLite（但从一开始保持 PostgreSQL 兼容）**。  
 > 文档目标：让开发者只看本文件就能回答——**有多少页面、怎么跳转、每个按钮做什么、前后端交互哪些数据、LLM接入支持哪些厂商、错误/日志怎么处理、UI主题如何落地**。
 
-## 变更说明 / 最后审查结论（v2.3）
+## 变更说明 / 最后审查结论（v2.4）
 
 本次修订目标：补齐“开工即踩坑”的边界条件，保证路由/API/DB/LLM/错误/部署预案**一致且可落地**。
 
-v2.3 补充/修正（最小必要一致性修订）：
+v2.4 契约级变更（必须先读；影响前后端与文案）：
+- **LLM 配置贵重信息落库**：API Key / Base URL / Model 等必须持久化到后端数据库（建议以 `llm_profiles` 为配置库，项目通过 `llm_profile_id` 绑定）。前端刷新/重开项目无需重新配置。
+- **安全边界不变但更严格**：后端响应/日志/导出/前端 toast/控制台严禁回显明文 Key；API 只允许返回 `has_api_key` / `masked_api_key` 等安全表示；定位问题仅用 `request_id`。
+- **兼容策略**：仍允许请求头 `X-LLM-API-Key` 作为**单次请求 override**（用于调试/旧客户端），但前端默认不再依赖 localStorage/header 传 Key。
+
+v2.3 补充/修正（历史，保留用于对照）：
 - 明确 `bulk_create` 的覆盖策略（`replace=true`）与冲突返回
 - 明确 `chapters/{chapterId}/generate` 的 `replace/append` 输出语义与“生成不自动落库”
 - 明确 `/api/llm/test` 的 header/body provider 一致性校验
@@ -18,7 +23,7 @@ v2.3 补充/修正（最小必要一致性修订）：
 关键决定（必须遵守）：
 - **数据库路径**：MVP 默认 SQLite（单机单用户）；从 Day 1 起用 Alembic 管理迁移并按 PostgreSQL 兼容方式建模；SQLite 模式下后端仅允许 **单进程/单 worker**；满足任一条件即切 PostgreSQL：启用注册登录、需要 Docker 生产部署、需要开多 worker、或需要并发写入/多人同时用。
 - **数据隔离预留**：MVP 固定 `current_user_id=local-user`；所有业务表通过 `project_id -> projects.owner_user_id` 间接隔离；对不带 `projectId` 的资源路由（`/api/chapters/{chapterId}`、`/api/characters/{characterId}`）也必须做归属校验，不通过返回 404（避免 Phase 2 大返工）。
-- **LLM Key 安全**：仅通过 `X-LLM-Provider` + `X-LLM-API-Key` 传递；后端日志/异常/DebugDrawer **严禁记录明文 Key**（必须脱敏/不打印 headers）；localStorage key 命名从 Day 1 带 `user_id` 维度，并提供“清除 Key”按钮。
+- **LLM Secrets 安全（v2.4）**：API Key / Base URL 等贵重信息必须持久化到后端数据库（建议集中在 `llm_profiles`）；后端响应与日志严禁回显明文 Key（仅允许 `has_api_key` / `masked_api_key`）；前端仅在“更新/清除 Key”时提交明文 Key，常规生成/测试连接默认不再从 localStorage/header 传 Key；为兼容旧客户端仍允许 `X-LLM-API-Key` 作为单次请求 override。
 - **LLM 兼容策略**：UI 按 provider 显示字段；后端 adapter 对“不支持参数”默认忽略并记录 `dropped_params`，但对 `provider/model/api_key` 缺失、以及（`openai_compatible` 的）`base_url` 缺失直接报错并提示可操作的修复方式。
 - **可解释性**：`generation_runs` 定义为 MVP 必做项（答辩可解释性）；`RunHistoryDrawer` 为 MVP 必做简版；`DebugDrawer` 为 P1 可选（做了加分，不做不影响闭环）。
 - **统一响应**：除“导出下载”外，所有接口使用 `ok/data/error/request_id`；所有响应头必须带 `X-Request-Id` 并在 CORS 中 expose。
@@ -35,7 +40,7 @@ v2.3 补充/修正（最小必要一致性修订）：
 - 任何涉及 LLM 的接口都必须避免“长事务”：在发起上游请求前结束数据库事务，生成结果返回后再开启新事务落库（避免 SQLite `database is locked`）。
 
 ### 0.2 MVP必须跑通的闭环
-建项目 → 写设定 → 建角色 → 配置LLM → 生成大纲 → 一键生成第1章草稿 → 编辑保存 → 导出整本 Markdown。
+建项目 → 写设定 → 建角色 → 配置LLM → 生成大纲 → 一键生成第1章草稿 → 编辑保存 → 预览阅读 → 导出整本 Markdown。
 
 ### 0.3 面向“未来多用户 + 生产Docker”的预留原则（现在就要避免的坑）
 - **接口不变**：尽量保持当前 REST 路由不变，未来只是在后端加 `Authorization` 校验与数据过滤。
@@ -111,7 +116,7 @@ src/
   stores/              # Zustand stores（project、chapter、ui等）
   services/
     apiClient.ts       # 统一请求、错误解析、request_id提取
-    llmKeyStore.ts     # localStorage：按 provider 保存 API key
+    llmKeyStore.ts     # （可选）本地临时 override（兼容 v2.3）；v2.4 默认使用后端 llm_profiles 持久化 Key
   styles/
     globals.css        # Tailwind + CSS variables（纸张/墨水主题）
 ```
@@ -322,21 +327,23 @@ MVP 阶段只实现 paper-ink 一套风格 + light/dark 两种模式，但必须
 
 ---
 
-## 4. 页面与路由（MVP最终页面数：7）
+## 4. 页面与路由（MVP最终页面数：9）
 
 > 采用“App Shell + 路由页”的结构，保证跳转清晰、浏览器前进后退可用。
 
-### 4.1 路由表（7页）
+### 4.1 路由表（9页）
 
 | # | 路由 | 页面名 | 说明 |
 |---|------|--------|------|
 | 1 | `/` | Dashboard | 项目概览/新建/删除/进入 |
-| 2 | `/projects/:projectId/settings` | 设定 | 项目信息 + 世界观/风格/约束 |
-| 3 | `/projects/:projectId/characters` | 角色卡 | 角色列表 + 编辑抽屉 |
-| 4 | `/projects/:projectId/outline` | 大纲 | Markdown编辑 + AI生成 + 一键生成章节骨架 |
-| 5 | `/projects/:projectId/writing` | 写作 | 章节列表 + 编辑器 + AI生成面板 |
-| 6 | `/projects/:projectId/prompts` | Prompt & 模型 | 模板编辑 + 参数 + 多厂商配置 + 测试连接 |
-| 7 | `/projects/:projectId/export` | 导出 | 导出Markdown + 选项 |
+| 2 | `/projects/:projectId/wizard` | 开工向导 | 完成度/下一步/跳过/自动模式 |
+| 3 | `/projects/:projectId/settings` | 设定 | 项目信息 + 世界观/风格/约束 |
+| 4 | `/projects/:projectId/characters` | 角色卡 | 角色列表 + 编辑抽屉 |
+| 5 | `/projects/:projectId/prompts` | Prompt & 模型 | 模板编辑 + 参数 + 多厂商配置 + profiles/测试连接 |
+| 6 | `/projects/:projectId/outline` | 大纲 | Markdown编辑 + AI生成 + 一键生成章节骨架 |
+| 7 | `/projects/:projectId/writing` | 写作 | 章节列表 + 编辑器 + AI生成面板 |
+| 8 | `/projects/:projectId/preview` | 预览 | 阅读器（章节列表 + Markdown 渲染）+ 编辑跳转 |
+| 9 | `/projects/:projectId/export` | 导出 | 导出Markdown + 选项 |
 
 ### 4.2 全局 App Shell（所有页面共享）
 
@@ -344,12 +351,12 @@ Sidebar 区块（从上到下）：
 1. 顶部：应用名 `ainovel Atelier` + `ThemeToggle` +（可选）Debug 开关
 2. 项目切换：ProjectSwitcher（下拉/列表）
 3. 当前项目导航：
-   - 设定 / 角色卡 / 大纲 / 写作 / Prompt&模型 / 导出
+   - 向导 / 设定 / 角色卡 / Prompt&模型 / 大纲 / 写作 / 预览 / 导出
 4. 底部（可选）：版本号/帮助链接
 
 Main Content：
 - 顶部固定页标题（衬线体）+ 面包屑（可选）
-- 页面主体（max-w-4xl 居中）
+- 页面主体（`max-w-screen-xl` 居中；移动端自适应留白）
 
 ### 4.3 弹窗/抽屉清单（非路由，但属于“界面规模”）
 | 组件 | 触发入口 | 用途 |
@@ -549,7 +556,7 @@ Main Content：
 **主要组件**
 - `ProviderSelector`（OpenAI/OpenAI兼容/Claude/Gemini）
 - `LLMConfigForm`（base_url/model/参数）
-- `ApiKeyInput`（仅本地保存：localStorage；提供“显示/隐藏/清除Key”）
+- `ApiKeyInput`（保存到后端配置库；只展示掩码；支持“更新/清除 Key”，不可回显完整 Key）
 - `PromptTemplateEditor`（两个模板：大纲/章节；代码字体）
 - `PromptPreview`（渲染占位符后的最终prompt预览）
 
@@ -564,8 +571,9 @@ Main Content：
    - 动作：本地替换为默认 → 需点击保存才落库
 5. `测试连接`（Primary）
    - API：`POST /api/llm/test`
-   - Header：`X-LLM-Provider` + `X-LLM-API-Key`
-   - Body：使用**当前表单值**（provider/base_url/model/timeout/参数），无需先保存到 DB
+   - Header：`X-LLM-Provider`（建议）
+   - Key 来源：默认使用当前项目绑定的后端配置（`llm_profile_id`）中已保存的 Key；如需临时 override，可附带 `X-LLM-API-Key`（不落库，仅本次请求）
+   - Body：使用**当前表单值**（provider/base_url/model/timeout/参数）；推荐先保存配置/Key 再测试，保证刷新后一致
    - 成功：toast“连接成功（延迟 xxms）”
    - 失败：toast（带 request_id）
 
@@ -579,7 +587,7 @@ Main Content：
    | `LLM_BAD_REQUEST` | “请求参数有误，可能是模型名称拼写错误” |
    | `LLM_UPSTREAM_ERROR` | “服务暂时不可用，请稍后重试（{status_code}）” |
 6. `清除 API Key`（Ghost）
-   - 动作：清除当前 provider 的本地 Key（localStorage），并提示“已清除”
+   - 动作：清除当前项目绑定配置的后端 Key（不回显原值），并提示“已清除”
 
 **本页必须解决的问题**
 - 用户一眼知道：当前用哪个厂商、哪个模型、参数是多少、模板长什么样、下一次生成会带什么上下文。
@@ -601,6 +609,51 @@ Main Content：
    - 动作：把导出内容复制到 clipboard（前端生成或调用接口返回文本）
 
 ---
+
+### 5.8 预览（`/projects/:projectId/preview`）
+
+**主要组件**
+- `ChapterList`（PC 左侧可折叠；移动端抽屉）
+- `ChapterReader`（Markdown 渲染；使用 Paper & Ink 语义样式）
+- `EditButton`（跳转写作页并定位到该章）
+
+**按钮/交互清单**
+1. 页面进入
+   - API：复用章节列表接口（`GET /api/projects/{projectId}/chapters`）
+2. 切换章节
+   - 动作：只切换展示章节内容（不写库）
+3. 隐藏/显示章节列表
+   - PC：折叠侧栏；移动端：抽屉开关（不影响阅读区）
+4. `编辑`
+   - 跳转：`/projects/{projectId}/writing?chapterId=<id>`（进入写作页并定位章节）
+5. `下一步`
+   - 使用 `WizardNextBar`：当“全部章节写完”后，下一步应进入预览；预览后下一步进入导出
+
+**约束**
+- 预览页尽量只读：不在此处编辑正文（编辑仍在写作页）
+- 向导“写完”判定建议使用 `chapters.status=done`（本仓库现行口径）
+
+---
+
+### 5.9 开工向导（`/projects/:projectId/wizard`）
+
+**主要组件**
+- `ProgressSummary`（完成度百分比 + 下一步）
+- `StepList`（步骤清单：打开/跳过/撤销跳过）
+- `AutoMode`（一键：生成大纲 → 保存 → 创建章节骨架 → 跳转写作页）
+
+**按钮/交互清单**
+1. 页面进入
+   - 动作：批量加载当前项目关键数据（settings/characters/prompts/preset/outline/chapters + profiles），计算完成度与下一步
+2. `打开`
+   - 动作：跳转到该步骤对应页面
+3. `跳过` / `撤销跳过`
+   - 动作：仅本地标记（MVP 口径），不写入后端
+4. `一键开工`
+   - 动作：复用大纲页与 bulk_create 的接口完成“生成→保存→建章”，成功后跳转写作页
+
+**约束**
+- 向导进度的“完成度%”应以真实数据为准：大纲/章节权重更高；写作需“全部章节 done”才 100%
 
 ## 6. 数据模型（SQLite 默认，兼容 PostgreSQL）与前端数据结构（TypeScript）
 
@@ -790,14 +843,15 @@ export interface Chapter {
   - `GET`：若不存在，返回空值/内置默认值（可同时自动创建占位行），**不返回 404**
   - `PUT`：采用 upsert（不存在则创建，存在则更新）
 
-**LLM Key 传递（MVP约定）**
-- 请求头：
-  - `X-LLM-Provider: openai|openai_compatible|anthropic|gemini`
-  - `X-LLM-API-Key: <string>`
-- 原因：API Key 不落库，且避免未来与用户登录 `Authorization` 冲突。
- - 适用范围：仅对会调用 LLM 的接口强制要求（`/api/projects/{projectId}/outline/generate`、`/api/chapters/{chapterId}/generate`、`/api/llm/test`）；其他接口忽略这些 header。
- - 安全红线：后端日志/错误详情/DebugDrawer 任何情况下都不得输出明文 Key；如需展示仅允许“是否已填写”或掩码（例如 `sk-***abcd`）。
- - Provider 一致性：对 project 范围的生成接口，`X-LLM-Provider` 必须与该项目保存的 `llm_preset.provider` 一致，不一致返回 400 并提示“先保存/切换当前项目的 provider”。
+**LLM Secrets 管理（v2.4）**
+- LLM 连接信息（`provider/base_url/model/api_key`）必须持久化到后端数据库（建议：`llm_profiles` 作为可复用配置库；项目通过 `projects.llm_profile_id` 绑定当前配置）。
+- **API Key 提交边界**：前端仅在“创建/更新/清除 Key”时向后端提交明文 Key；常规“测试连接/生成大纲/生成章节”请求默认不再携带明文 Key。
+- **响应边界**：后端响应不得返回明文 Key，仅允许 `has_api_key` / `masked_api_key` 等安全表示。
+- **Key 解析优先级（兼容 v2.3）**：
+  1) 若请求头包含 `X-LLM-API-Key`，视为**单次请求 override**（仅本次请求生效；后端不落库）
+  2) 否则从当前项目绑定的 `llm_profile` 读取 Key
+  3) 若仍缺失，返回 401 `LLM_KEY_MISSING` 并提示去 Prompts 页保存 Key
+- **Provider 一致性**：对 project 范围的生成接口，若带 `X-LLM-Provider`，必须与该项目保存的 `llm_preset.provider` 一致；不一致返回 400 并提示“先保存/切换当前项目的 provider”。
 
 **鉴权预留（MVP关闭；未来多用户开启）**
 - 未来启用登录后，统一使用：`Authorization: Bearer <access_token>`
@@ -1036,23 +1090,22 @@ response
 - `GET /api/projects/{projectId}/generation_runs?limit=5`
 - `GET /api/generation_runs/{runId}`
 
-### 7.10 LLM Key 管理接口（Phase 2，MVP 预留字段）
+### 7.10 LLM Profiles（配置库 + Secrets）管理（v2.4，MVP 必做）
 
-MVP 策略：API Key 仅存 localStorage，换设备需重新输入。
+MVP v2.4 策略：将 LLM 连接配置作为“可复用配置库”持久化到后端数据库（推荐表：`llm_profiles`），项目通过 `projects.llm_profile_id` 绑定当前配置。
 
-Phase 2 升级接口（推荐）：
-- `GET /api/llm_keys` — 获取当前用户已保存的 provider 列表（不返回明文 Key，只返回 `{ provider, has_key: true, updated_at }`）
-- `PUT /api/llm_keys/{provider}` — 存储/更新 Key（服务端加密后落库）
-- `DELETE /api/llm_keys/{provider}` — 清除 Key
-- `POST /api/llm_keys/{provider}/test` — 用已存储的 Key 测试连接（无需前端传 Key）
+接口（推荐最小集）：
+- `GET /api/llm_profiles` — 获取当前用户的配置列表（**不返回明文 Key**，仅返回 `has_api_key/masked_api_key`）
+- `POST /api/llm_profiles` — 新建配置（允许携带 `api_key` 写入；响应不回显明文）
+- `PUT /api/llm_profiles/{profileId}` — 更新配置（允许更新/清除 `api_key`；响应不回显明文）
+- `DELETE /api/llm_profiles/{profileId}` — 删除配置（被项目引用时应自动解绑）
 
-加密要求：
-- 使用服务端密钥（环境变量 `LLM_KEY_ENCRYPTION_SECRET`）+ AES-256-GCM
-- 禁止明文存储，禁止日志输出
+项目绑定：
+- `PUT /api/projects/{projectId}` body：`{ "llm_profile_id": "<profileId|null>" }`
 
-MVP 表设计预留：
-- 在 `llm_presets` 表预留 `encrypted_api_key` / `key_updated_at` 字段（TEXT，可空）
-- MVP 阶段该字段不写入、不读取，仅占位
+安全要求（强制）：
+- 明文 Key 只允许出现在**请求入参**（保存/更新/清除），不得出现在响应/日志/错误详情/导出。
+- 如实现加密存储，应仅服务端可解密；前端不可“读取并显示完整 Key”（最多展示掩码）。
 
 ### 7.11 健康检查（生产部署必需）
 
@@ -1119,11 +1172,11 @@ UI 提示文案：
 - 前端表单：只展示当前 provider 支持/常用的字段；不支持的字段隐藏或置灰（不要让用户“填了也白填”）
 - 后端 adapter：对当前 provider 不支持的参数**默认丢弃**并在日志记录 `dropped_params`（不报错）；但以下情况必须直接报错：
   - 缺失/非法：`provider`、`model`、（`openai_compatible` 的）`base_url`
-  - 缺失：`X-LLM-API-Key`（返回 401，并提示去 Prompts 页填写）
+  - 缺失：可用 API Key（请求未提供 override 且当前项目绑定配置无已保存 Key；返回 401，并提示去 Prompts 页填写）
 
-API Key（MVP策略）：
-- 不落库，前端存 `localStorage`，Key 名建议：`ainovel::llm_api_key::<user_id>::<provider>`（MVP 的 `user_id` 固定为 `local-user`）
-- 所有“生成/测试连接”请求都在 Header 带 `X-LLM-Provider` + `X-LLM-API-Key`
+API Key（v2.4 策略）：
+- 必须落库到后端数据库（推荐：`llm_profiles` 作为配置库；项目绑定 `llm_profile_id`）。
+- 常规“生成/测试连接”请求默认不再携带明文 Key；为兼容调试/旧客户端，仍允许在 Header 带 `X-LLM-API-Key` 作为单次 override。
 
 ### 8.2 统一内部请求结构（后端内部）
 
@@ -1307,7 +1360,7 @@ Prompt/解析：
 
 LLM：
 - `LLM_CONFIG_ERROR`：LLM 配置缺失/非法（例如未保存 preset、provider 不一致、base_url 无效）（400）
-- `LLM_KEY_MISSING`：缺少 `X-LLM-API-Key`（401）
+- `LLM_KEY_MISSING`：缺少可用的 API Key（请求未提供 override 且当前项目绑定配置无已保存 Key）（401）
 - `LLM_AUTH_ERROR`（401）
 - `LLM_RATE_LIMIT`（429）
 - `LLM_BAD_REQUEST`（400）
@@ -1321,11 +1374,12 @@ LLM：
 1. Dashboard 点 `+` → 创建项目 → 自动跳转设定页
 2. 设定页填三段文本 → 点 `保存`
 3. 角色卡页点 `新增角色` ×3 → 每次点 `保存`
-4. Prompts 页选择 Provider（例如 OpenAI兼容）→ 填 base_url/model → 输入 API Key（本地保存）→ 点 `测试连接`
+4. Prompts 页选择 Provider（例如 OpenAI兼容）→ 填 base_url/model → 输入 API Key（保存到后端配置库）→ 点 `测试连接`
 5. 大纲页点 `AI生成大纲` → 填章节数/要求 → 点 `生成` → 点 `应用生成结果`
 6. 大纲页点 `从大纲创建章节骨架` → 成功后跳转写作页并选中第1章
-7. 写作页右侧点 `生成草稿（替换）` → 等待完成 → 点 `保存章节`
-8. 导出页点 `导出Markdown` → 下载文件打开检查
+7. 写作页右侧点 `生成草稿（替换）` → 等待完成 → 点 `保存章节` → 将本章 `status` 设为 `done`（向导以 `done` 判定“写完”）
+8. 预览页通读章节内容（章节列表可隐藏/移动端抽屉）→ 可点 `编辑` 跳回写作页定位章节
+9. 导出页点 `导出Markdown` → 下载文件打开检查
 
 ---
 
@@ -1417,22 +1471,20 @@ Token 策略（推荐）：
 
 ### 14.3 API Key 管理（MVP方案的生产风险与升级路径）
 
-MVP 方案（不落库，前端 localStorage 保存）：
-- 存储键固定：`ainovel::llm_api_key::<user_id>::<provider>`（MVP 的 `user_id=local-user`；Phase 2 登录后自动切换为真实 user_id）
-- Prompts 页提供：显示/隐藏、**清除 Key**（切换 provider 时不会误用旧 Key）
-- 发送方式固定：所有“生成/测试连接”请求在 Header 带 `X-LLM-Provider` + `X-LLM-API-Key`
-- 安全红线：后端/网关日志、错误详情、DebugDrawer 任何情况下都不得输出明文 Key（必须脱敏；详见第10节）
+v2.4（现行契约，必须）：
+- Key / Base URL 等贵重信息必须持久化到后端数据库（推荐集中在 `llm_profiles` 配置库）
+- 前端只在“更新 Key / 清除 Key”时提交明文 Key；接口响应只回 `has_api_key` / `masked_api_key`，严禁回显明文
+- 常规“生成/测试连接”默认不携带明文 Key：后端从当前项目绑定的 `llm_profile_id` 读取 Key
+- 兼容：仍允许请求头 `X-LLM-API-Key` 作为**单次请求 override**（仅本次请求；后端不持久化），用于调试/旧客户端
 
-生产风险（必须正视并在部署口径里写清楚）：
-- 同域脚本/扩展程序可读取 localStorage；共享电脑/多账号同站点可能串用与泄露
-- 反代/网关若记录请求头或完整 URL，可能泄露 Key（尤其是 Gemini 若使用 `?key=` 形式时）
+安全红线（必须遵守）：
+- 后端/网关日志、错误详情、前端 toast/console/Network 展示、导出内容：任何情况下都不得输出明文 Key（必须脱敏；详见第10节）
 
-升级路径（生产推荐二选一）：
-1) **不落库**：每次生成都让用户输入/粘贴 Key（或浏览器内存保存，刷新即失）
-2) **后端加密存储**：把 Key 按用户/项目加密后存 DB（需要服务端密钥或KMS；并提供“清除Key”按钮）
+实现建议（按环境）：
+- Windows 开发环境：可使用平台密钥（如 DPAPI）进行加密后落库，避免引入额外依赖
+- 生产环境：建议使用服务端密钥或 KMS（例如 `LLM_KEY_ENCRYPTION_SECRET` + AEAD/AES-GCM，或云 KMS），并确保日志与错误体全链路脱敏
 
-环境变量（Phase 2 启用）：
-- `LLM_KEY_ENCRYPTION_SECRET`（用于加密存储 API Key）
+v2.3 旧方案（历史，已废弃）：前端 localStorage 保存 Key + header 透传（存在同域脚本可读、共享电脑串用、反代日志泄露等风险）
 
 ### 14.4 Docker / 生产部署（推荐架构）
 

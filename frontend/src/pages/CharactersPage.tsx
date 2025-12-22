@@ -7,6 +7,7 @@ import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
+import { markWizardProjectChanged } from "../services/wizard";
 import type { Character } from "../types";
 
 type CharacterForm = {
@@ -22,6 +23,7 @@ export function CharactersPage() {
   const confirm = useConfirm();
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
+  const bumpWizardLocal = wizard.bumpLocal;
 
   const charactersQuery = useProjectData<Character[]>(projectId, async (id) => {
     const res = await apiJson<{ characters: Character[] }>(`/api/projects/${id}/characters`);
@@ -131,6 +133,8 @@ export function CharactersPage() {
                   if (!ok) return;
                   try {
                     await apiJson<Record<string, never>>(`/api/characters/${c.id}`, { method: "DELETE" });
+                    if (projectId) markWizardProjectChanged(projectId);
+                    bumpWizardLocal();
                     toast.toastSuccess("已删除");
                     await load();
                     await refreshWizard();
@@ -193,6 +197,8 @@ export function CharactersPage() {
                           }),
                         });
                       }
+                      markWizardProjectChanged(projectId);
+                      bumpWizardLocal();
                       toast.toastSuccess("已保存");
                       await load();
                       await refreshWizard();

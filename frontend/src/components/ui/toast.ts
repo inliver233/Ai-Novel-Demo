@@ -1,7 +1,7 @@
 import { createContext, useContext } from "react";
 
 export type ToastApi = {
-  toastSuccess: (message: string) => void;
+  toastSuccess: (message: string, requestId?: string) => void;
   toastError: (message: string, requestId?: string) => void;
 };
 
@@ -12,4 +12,3 @@ export function useToast(): ToastApi {
   if (!ctx) throw new Error("useToast must be used within ToastProvider");
   return ctx;
 }
-

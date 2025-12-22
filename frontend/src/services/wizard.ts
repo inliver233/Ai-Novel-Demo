@@ -1,9 +1,16 @@
 import { getCurrentUserId } from "./currentUser";
-import { getLlmApiKey } from "./llmKeyStore";
 import { storageKey } from "./storageKeys";
-import type { Chapter, Character, LLMPreset, Outline, Project, ProjectSettings } from "../types";
+import type { Chapter, Character, LLMPreset, LLMProfile, Outline, Project, ProjectSettings } from "../types";
 
-export type WizardStepKey = "llm" | "settings" | "characters" | "outline" | "chapters" | "writing" | "export";
+export type WizardStepKey =
+  | "llm"
+  | "settings"
+  | "characters"
+  | "outline"
+  | "chapters"
+  | "writing"
+  | "preview"
+  | "export";
 export type WizardStepState = "todo" | "done" | "skipped";
 
 export type WizardStep = {
@@ -18,6 +25,8 @@ export type WizardProgress = {
   percent: number;
   steps: WizardStep[];
   nextStep: WizardStep | null;
+  exportedAt: string | null;
+  writing: { doneChapters: number; totalChapters: number };
 };
 
 export type WizardComputeInput = {
@@ -27,6 +36,7 @@ export type WizardComputeInput = {
   outline: Outline | null;
   chapters: Chapter[];
   llmPreset: LLMPreset | null;
+  llmProfile: LLMProfile | null;
 };
 
 function isNonEmpty(text?: string | null): boolean {
@@ -43,6 +53,14 @@ function llmTestOkKey(projectId: string): string {
 
 function exportedKey(projectId: string): string {
   return storageKey("wizard", "exported", getCurrentUserId(), projectId);
+}
+
+function projectChangedAtKey(projectId: string): string {
+  return storageKey("wizard", "changed_at", getCurrentUserId(), projectId);
+}
+
+function previewSeenKey(projectId: string): string {
+  return storageKey("wizard", "preview_seen", getCurrentUserId(), projectId);
 }
 
 export function isWizardStepSkipped(projectId: string, step: WizardStepKey): boolean {
@@ -81,14 +99,37 @@ export function hasWizardExported(projectId: string): boolean {
   return Boolean(localStorage.getItem(exportedKey(projectId)));
 }
 
+export function getWizardExportedAt(projectId: string): string | null {
+  return localStorage.getItem(exportedKey(projectId));
+}
+
+export function markWizardProjectChanged(projectId: string): void {
+  localStorage.setItem(projectChangedAtKey(projectId), new Date().toISOString());
+}
+
+export function getWizardProjectChangedAt(projectId: string): string | null {
+  return localStorage.getItem(projectChangedAtKey(projectId));
+}
+
+export function markWizardPreviewSeen(projectId: string): void {
+  localStorage.setItem(previewSeenKey(projectId), new Date().toISOString());
+}
+
+export function hasWizardPreviewSeen(projectId: string): boolean {
+  return Boolean(localStorage.getItem(previewSeenKey(projectId)));
+}
+
 export function computeWizardProgress(input: WizardComputeInput): WizardProgress {
   const projectId = input.project?.id ?? "";
   const base = projectId ? `/projects/${projectId}` : "";
-  const hasAnyLlmKey = Boolean(
-    projectId &&
-      input.llmPreset &&
-      (input.project?.llm_profile_id || getLlmApiKey(input.llmPreset.provider).trim()),
-  );
+
+  const exportedAt = projectId ? getWizardExportedAt(projectId) : null;
+  const changedAt = projectId ? getWizardProjectChangedAt(projectId) : null;
+  const exportIsFresh = Boolean(exportedAt && (!changedAt || exportedAt >= changedAt));
+
+  const totalChapters = input.chapters?.length ?? 0;
+  const doneChapters = (input.chapters ?? []).filter((c) => c.status === "done").length;
+  const writingProgress = totalChapters > 0 ? doneChapters / totalChapters : 0;
 
   const makeStep = (step: Omit<WizardStep, "state"> & { done: boolean }): WizardStep => {
     if (!projectId) return { ...step, state: "todo" };
@@ -120,12 +161,13 @@ export function computeWizardProgress(input: WizardComputeInput): WizardProgress
     makeStep({
       key: "llm",
       title: "配置模型并测试连接",
-      description: "填写 API Key，选择 provider/model，点击“测试连接”。",
+      description: "保存后端配置（含 API Key），点击“测试连接”。",
       href: `${base}/prompts`,
       done: Boolean(
         projectId &&
           input.llmPreset &&
-          hasAnyLlmKey &&
+          input.project?.llm_profile_id &&
+          input.llmProfile?.has_api_key &&
           hasWizardLlmTestOk(projectId, input.llmPreset.provider, input.llmPreset.model),
       ),
     }),
@@ -145,23 +187,47 @@ export function computeWizardProgress(input: WizardComputeInput): WizardProgress
     }),
     makeStep({
       key: "writing",
-      title: "开始写作",
-      description: "进入写作页，生成第 1 章草稿并编辑保存。",
+      title: "完成全部章节",
+      description: "将所有章节标记为 done（写完一章就设为 done）。",
       href: `${base}/writing`,
-      done: (input.chapters ?? []).some((c) => isNonEmpty(c.content_md) || c.status !== "planned"),
+      done: totalChapters > 0 && doneChapters >= totalChapters,
+    }),
+    makeStep({
+      key: "preview",
+      title: "预览阅读",
+      description: "在预览页通读章节内容，并可跳转回写作页快速修改。",
+      href: `${base}/preview`,
+      done: projectId ? hasWizardPreviewSeen(projectId) : false,
     }),
     makeStep({
       key: "export",
       title: "导出整本 Markdown",
       description: "在导出页选择范围，下载 `.md` 文件。",
       href: `${base}/export`,
-      done: projectId ? hasWizardExported(projectId) : false,
+      done: Boolean(projectId && exportIsFresh),
     }),
   ];
 
-  const completedCount = steps.filter((s) => s.state === "done" || s.state === "skipped").length;
-  const percent = steps.length ? Math.round((completedCount / steps.length) * 100) : 0;
+  const weights: Record<WizardStepKey, number> = {
+    settings: 6,
+    characters: 6,
+    llm: 12,
+    outline: 18,
+    chapters: 10,
+    writing: 36,
+    preview: 6,
+    export: 6,
+  };
+
+  const stepProgress = (key: WizardStepKey, state: WizardStepState): number => {
+    if (state === "done" || state === "skipped") return 1;
+    if (key === "writing") return writingProgress;
+    return 0;
+  };
+
+  const percentRaw = steps.reduce((acc, s) => acc + weights[s.key] * stepProgress(s.key, s.state), 0);
+  const percent = Math.max(0, Math.min(100, Math.floor(percentRaw)));
   const nextStep = steps.find((s) => s.state === "todo") ?? null;
 
-  return { percent, steps, nextStep };
+  return { percent, steps, nextStep, exportedAt, writing: { doneChapters, totalChapters } };
 }

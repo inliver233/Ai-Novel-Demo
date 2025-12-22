@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { List } from "lucide-react";
+import { useParams, useSearchParams } from "react-router-dom";
 
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
 import { MarkdownEditor } from "../components/atelier/MarkdownEditor";
@@ -14,8 +15,8 @@ import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
-import { getLlmApiKey } from "../services/llmKeyStore";
 import { SSEError, SSEPostClient } from "../services/sseClient";
+import { markWizardProjectChanged } from "../services/wizard";
 import type { CreateChapterForm, GenerateForm, GenerationRun } from "../components/writing/types";
 import type { Chapter, ChapterStatus, Character, LLMPreset, Outline, OutlineListItem, Project } from "../types";
 
@@ -58,13 +59,17 @@ type WritingLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LL
 
 export function WritingPage() {
   const { projectId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedChapterId = searchParams.get("chapterId");
   const toast = useToast();
   const confirm = useConfirm();
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
+  const bumpWizardLocal = wizard.bumpLocal;
 
   const [loading, setLoading] = useState(true);
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [chapterListOpen, setChapterListOpen] = useState(false);
   const writingQuery = useProjectData<WritingLoaded>(projectId, async (id) => {
     const [outlineRes, presetRes, charactersRes] = await Promise.all([
       apiJson<{ outline: Outline }>(`/api/projects/${id}/outline`),
@@ -90,6 +95,7 @@ export function WritingPage() {
   const [baseline, setBaseline] = useState<ChapterForm | null>(null);
   const [form, setForm] = useState<ChapterForm | null>(null);
   const [loadingChapter, setLoadingChapter] = useState(false);
+  const requestedChapterHandledRef = useRef(false);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
@@ -97,11 +103,13 @@ export function WritingPage() {
 
   const [aiOpen, setAiOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [genRequestId, setGenRequestId] = useState<string | null>(null);
   const [genStreamProgress, setGenStreamProgress] = useState<
     { message: string; progress: number; status: string; wordCount?: number } | null
   >(null);
   const genStreamClientRef = useRef<SSEPostClient | null>(null);
   const genStreamHasChunkRef = useRef(false);
+  const autoGenerateNextRef = useRef<{ chapterId: string; mode: "replace" | "append" } | null>(null);
   const [genForm, setGenForm] = useState<GenerateForm>({
     instruction: "写出本章冲突升级，结尾留钩子。",
     target_word_count: 3000,
@@ -186,10 +194,22 @@ export function WritingPage() {
   }, [refreshChapters]);
 
   useEffect(() => {
+    if (requestedChapterHandledRef.current) return;
+    if (!requestedChapterId) return;
+    if (!chapters.some((c) => c.id === requestedChapterId)) return;
+    requestedChapterHandledRef.current = true;
+    setActiveId(requestedChapterId);
+    const next = new URLSearchParams(searchParams);
+    next.delete("chapterId");
+    setSearchParams(next, { replace: true });
+  }, [chapters, requestedChapterId, searchParams, setSearchParams]);
+
+  useEffect(() => {
     if (!activeId) {
       setActiveChapter(null);
       setBaseline(null);
       setForm(null);
+      autoGenerateNextRef.current = null;
       return;
     }
     setLoadingChapter(true);
@@ -206,6 +226,7 @@ export function WritingPage() {
         setActiveChapter(null);
         setBaseline(null);
         setForm(null);
+        autoGenerateNextRef.current = null;
       } finally {
         setLoadingChapter(false);
       }
@@ -231,21 +252,24 @@ export function WritingPage() {
       setBaseline(next);
       setForm(next);
       setChapters((prev) => prev.map((c) => (c.id === res.data.chapter.id ? res.data.chapter : c)));
-      void refreshWizard();
-      toast.toastSuccess("已保存");
+      markWizardProjectChanged(activeChapter.project_id);
+      bumpWizardLocal();
+      await refreshWizard();
+      toast.toastSuccess("已保存", res.request_id);
       return true;
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
       return false;
     }
-  }, [activeChapter, dirty, form, refreshWizard, toast]);
+  }, [activeChapter, bumpWizardLocal, dirty, form, refreshWizard, toast]);
 
   useSaveHotkey(() => void saveChapter(), dirty);
 
   const requestSelectChapter = useCallback(
     async (id: string) => {
       if (id === activeId) return;
+      autoGenerateNextRef.current = null;
       if (dirty) {
         const choice = await confirm.choose({
           title: "章节有未保存修改，是否切换？",
@@ -292,6 +316,8 @@ export function WritingPage() {
           method: "PUT",
           body: JSON.stringify({ active_outline_id: nextOutlineId }),
         });
+        markWizardProjectChanged(projectId);
+        bumpWizardLocal();
         await refreshWriting();
         await refreshChapters();
         await refreshWizard();
@@ -301,7 +327,7 @@ export function WritingPage() {
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       }
     },
-    [activeOutlineId, confirm, dirty, projectId, refreshChapters, refreshWriting, refreshWizard, saveChapter, toast],
+    [activeOutlineId, bumpWizardLocal, confirm, dirty, projectId, refreshChapters, refreshWriting, refreshWizard, saveChapter, toast],
   );
 
   const openCreate = useCallback(() => {
@@ -328,7 +354,10 @@ export function WritingPage() {
         }),
       });
       setChapters((prev) => [...prev, res.data.chapter].sort((a, b) => a.number - b.number));
-      toast.toastSuccess("已创建");
+      markWizardProjectChanged(projectId);
+      bumpWizardLocal();
+      void refreshWizard();
+      toast.toastSuccess("已创建", res.request_id);
       setCreateOpen(false);
       await requestSelectChapter(res.data.chapter.id);
     } catch (e) {
@@ -337,7 +366,7 @@ export function WritingPage() {
     } finally {
       setCreateSaving(false);
     }
-  }, [createForm, createSaving, projectId, requestSelectChapter, toast]);
+  }, [bumpWizardLocal, createForm, createSaving, projectId, refreshWizard, requestSelectChapter, toast]);
 
   const deleteChapter = useCallback(async () => {
     if (!activeChapter) return;
@@ -351,6 +380,9 @@ export function WritingPage() {
 
     try {
       await apiJson<Record<string, never>>(`/api/chapters/${activeChapter.id}`, { method: "DELETE" });
+      markWizardProjectChanged(activeChapter.project_id);
+      bumpWizardLocal();
+      void refreshWizard();
       toast.toastSuccess("已删除");
       const idx = chapters.findIndex((c) => c.id === activeChapter.id);
       const next = chapters[idx - 1]?.id ?? chapters[idx + 1]?.id ?? null;
@@ -360,7 +392,7 @@ export function WritingPage() {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     }
-  }, [activeChapter, chapters, confirm, refreshChapters, toast]);
+  }, [activeChapter, bumpWizardLocal, chapters, confirm, refreshChapters, refreshWizard, toast]);
 
   const generate = useCallback(
     async (mode: "replace" | "append") => {
@@ -369,12 +401,7 @@ export function WritingPage() {
         toast.toastError("请先在 Prompts 页保存 LLM 配置");
         return;
       }
-      const apiKey = getLlmApiKey(preset.provider).trim();
-      if (!apiKey) {
-        toast.toastError("请先在 Prompt & 模型 页填写 API Key");
-        return;
-      }
-      const headers: Record<string, string> = { "X-LLM-Provider": preset.provider, "X-LLM-API-Key": apiKey };
+      const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
 
       if (dirty) {
         const choice = await confirm.choose({
@@ -392,6 +419,7 @@ export function WritingPage() {
       }
 
       setGenerating(true);
+      setGenRequestId(null);
       setGenStreamProgress(null);
       genStreamClientRef.current = null;
       genStreamHasChunkRef.current = false;
@@ -483,6 +511,7 @@ export function WritingPage() {
             headers,
             onOpen: ({ requestId: rid }) => {
               requestId = rid;
+              setGenRequestId(rid ?? null);
             },
             onProgress: ({ message, progress, status, wordCount }) => {
               setGenStreamProgress({ message, progress, status, wordCount });
@@ -519,17 +548,17 @@ export function WritingPage() {
 
           try {
             await client.connect();
-            toast.toastSuccess("生成完成（别忘了保存）");
+            toast.toastSuccess("生成完成（别忘了保存）", requestId);
           } catch (e) {
             const err = e as unknown;
             if (err instanceof SSEError && err.code === "ABORTED") {
               setForm((prev) => (prev ? { ...prev, content_md: baseContent, summary: baseSummary } : prev));
-              toast.toastSuccess("已取消生成");
+              toast.toastSuccess("已取消生成", err.requestId ?? requestId);
               return;
             }
             if (err instanceof SSEError && err.code !== "SSE_SERVER_ERROR") {
               if (!genStreamHasChunkRef.current) {
-                toast.toastError("流式生成失败，已回退非流式");
+                toast.toastError("流式生成失败，已回退非流式", err.requestId ?? requestId);
                 const res = await apiJson<{ content_md: string; summary: string; raw_output: string }>(
                   `/api/chapters/${activeChapter.id}/generate`,
                   {
@@ -548,10 +577,10 @@ export function WritingPage() {
                     content_md: nextContent,
                     summary: res.data.summary ?? prev.summary,
                     status: "drafting",
-                  };
+                    };
                 });
 
-                toast.toastSuccess("生成完成（别忘了保存）");
+                toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
                 return;
               }
               toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -589,7 +618,7 @@ export function WritingPage() {
             };
           });
 
-          toast.toastSuccess("生成完成（别忘了保存）");
+          toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
         }
       } catch (e) {
         const err = e as ApiError;
@@ -600,6 +629,51 @@ export function WritingPage() {
     },
     [activeChapter, confirm, dirty, form, genForm, preset, saveChapter, toast],
   );
+
+  const saveAndGenerateNext = useCallback(async () => {
+    if (!activeChapter) return;
+
+    const ok = await saveChapter();
+    if (!ok) return;
+
+    const sorted = [...chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
+    const idx = sorted.findIndex((c) => c.id === activeChapter.id);
+    const next =
+      idx >= 0
+        ? sorted[idx + 1] ?? null
+        : sorted.find((c) => (c.number ?? 0) > (activeChapter.number ?? 0)) ?? null;
+
+    if (!next) {
+      toast.toastSuccess("已保存，已是最后一章");
+      return;
+    }
+
+    const nextHasContent = Boolean((next.content_md ?? "").trim() || (next.summary ?? "").trim());
+    if (nextHasContent) {
+      const replaceOk = await confirm.confirm({
+        title: `下一章（第 ${next.number} 章）已有内容，仍要开始生成？`,
+        description: "将以“替换”模式生成草稿（生成结果不会自动保存）。",
+        confirmText: "继续",
+        cancelText: "取消",
+        danger: true,
+      });
+      if (!replaceOk) return;
+    }
+
+    autoGenerateNextRef.current = { chapterId: next.id, mode: "replace" };
+    setActiveId(next.id);
+    setAiOpen(true);
+  }, [activeChapter, chapters, confirm, saveChapter, toast]);
+
+  useEffect(() => {
+    const pending = autoGenerateNextRef.current;
+    if (!pending) return;
+    if (!activeChapter || !form) return;
+    if (activeChapter.id !== pending.chapterId) return;
+    if (generating) return;
+    autoGenerateNextRef.current = null;
+    void generate(pending.mode);
+  }, [activeChapter, form, generate, generating]);
 
   if (loading) return <div className="text-subtext">加载中...</div>;
 
@@ -627,6 +701,14 @@ export function WritingPage() {
 
           <div className="flex items-center gap-2">
             <button
+              className="inline-flex items-center gap-2 rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface lg:hidden"
+              onClick={() => setChapterListOpen(true)}
+              type="button"
+            >
+              <List size={16} />
+              章节列表
+            </button>
+            <button
               className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
               onClick={() => {
                 setHistoryOpen(true);
@@ -648,7 +730,7 @@ export function WritingPage() {
       </div>
 
       <div className="flex gap-4">
-        <aside className="w-[240px] shrink-0">
+        <aside className="hidden w-[240px] shrink-0 lg:block">
           <div className="rounded-atelier border border-border bg-surface p-2">
             {chapters.length === 0 ? (
               <div className="p-3 text-sm text-subtext">还没有章节，先新建一个吧。</div>
@@ -696,7 +778,7 @@ export function WritingPage() {
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
                     className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface disabled:opacity-60"
-                    disabled={loadingChapter || generating}
+                    disabled={loadingChapter}
                     onClick={() => setAiOpen(true)}
                     type="button"
                   >
@@ -813,22 +895,120 @@ export function WritingPage() {
         onSubmit={() => void createChapter()}
       />
 
+      {chapterListOpen ? (
+        <div
+          className="fixed inset-0 z-40 flex bg-black/30 lg:hidden"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setChapterListOpen(false);
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="章节列表"
+        >
+          <div className="h-full w-[280px] overflow-hidden border-r border-border bg-surface shadow-sm">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <div className="text-sm text-ink">章节列表</div>
+              <button
+                className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
+                onClick={() => setChapterListOpen(false)}
+                type="button"
+              >
+                关闭
+              </button>
+            </div>
+
+            <div className="h-full overflow-auto p-2">
+              {chapters.length === 0 ? (
+                <div className="p-3 text-sm text-subtext">还没有章节，先新建一个吧。</div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {chapters.map((c) => (
+                    <button
+                      key={c.id}
+                      className={
+                        c.id === activeId
+                          ? "rounded-atelier bg-canvas px-3 py-2 text-left text-sm text-ink"
+                          : "rounded-atelier px-3 py-2 text-left text-sm text-subtext hover:bg-canvas hover:text-ink"
+                      }
+                      onClick={() => {
+                        setChapterListOpen(false);
+                        void requestSelectChapter(c.id);
+                      }}
+                      type="button"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 truncate">
+                          <span className="mr-2 text-xs text-subtext">#{c.number}</span>
+                          <span className="truncate">{c.title ?? "未命名章节"}</span>
+                        </div>
+                        <span className="shrink-0 text-[11px] text-subtext">{c.status}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <AiGenerateDrawer
         open={aiOpen}
         generating={generating}
         preset={preset}
         activeChapter={Boolean(activeChapter)}
         dirty={dirty}
+        saving={loadingChapter}
         genForm={genForm}
         setGenForm={setGenForm}
         characters={characters}
         streamProgress={genStreamProgress}
         onClose={() => setAiOpen(false)}
         onSave={() => void saveChapter()}
+        onSaveAndGenerateNext={() => void saveAndGenerateNext()}
         onGenerateAppend={() => void generate("append")}
         onGenerateReplace={() => void generate("replace")}
         onCancelGenerate={() => genStreamClientRef.current?.abort()}
       />
+
+      {generating && genForm.stream && !aiOpen ? (
+        <div className="fixed inset-x-4 bottom-24 z-40 flex justify-center sm:inset-auto sm:bottom-8 sm:right-8 sm:justify-end">
+          <div className="w-full max-w-sm rounded-atelier border border-border bg-surface/90 p-3 shadow-sm backdrop-blur">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm text-ink">AI 流式生成中</div>
+                <div className="mt-1 truncate text-xs text-subtext">{genStreamProgress?.message ?? "处理中..."}</div>
+                {genRequestId ? <div className="mt-1 truncate text-[11px] text-subtext">request_id: {genRequestId}</div> : null}
+              </div>
+              {genStreamProgress ? (
+                <div className="shrink-0 text-xs text-subtext">{Math.max(0, Math.min(100, genStreamProgress.progress))}%</div>
+              ) : null}
+            </div>
+            <div className="mt-2 h-2 w-full rounded bg-border">
+              <div
+                className="h-2 rounded bg-accent transition-all"
+                style={{ width: `${Math.max(0, Math.min(100, genStreamProgress?.progress ?? 0))}%` }}
+              />
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
+                onClick={() => setAiOpen(true)}
+                type="button"
+              >
+                展开
+              </button>
+              <button
+                className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
+                onClick={() => genStreamClientRef.current?.abort()}
+                type="button"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <GenerationHistoryDrawer
         open={historyOpen}

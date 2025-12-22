@@ -441,9 +441,9 @@ mumu 的关键优势（只提你现在最需要学的部分）：
 
 ### 4.3 API Key 管理升级路径（MVP → 生产）
 
-**MVP（demo 已做，且符合计划）**
-- Key 存 localStorage，不落库（风险也已在计划写明）：
-  - `demo/frontend/src/services/llmKeyStore.ts:5-19`
+**MVP（v2.4 契约）**
+- Key/URL 等贵重信息落库到后端数据库（推荐：`llm_profiles` 配置库），前端不再依赖 localStorage 作为唯一来源；响应只回 `has_api_key/masked_api_key`。
+- `demo/frontend/src/services/llmKeyStore.ts` 可保留为“临时 override”（兼容旧规则/调试），但不应作为默认路径。
 
 **生产/多人阶段（建议二选一）**
 1) 不落库：每次生成临时输入 Key（或只保存在内存，刷新即失）
