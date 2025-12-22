@@ -13,6 +13,7 @@ import { OutlinePage } from "./pages/OutlinePage";
 import { PreviewPage } from "./pages/PreviewPage";
 import { ProjectWizardPage } from "./pages/ProjectWizardPage";
 import { PromptsPage } from "./pages/PromptsPage";
+import { PromptStudioPage } from "./pages/PromptStudioPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { WritingPage } from "./pages/WritingPage";
 
@@ -34,6 +35,7 @@ const router = createBrowserRouter([
           { path: "writing", element: <WritingPage /> },
           { path: "preview", element: <PreviewPage /> },
           { path: "prompts", element: <PromptsPage /> },
+          { path: "prompt-studio", element: <PromptStudioPage /> },
           { path: "export", element: <ExportPage /> },
         ],
       },

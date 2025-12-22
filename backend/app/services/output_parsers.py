@@ -207,3 +207,64 @@ def build_outline_fix_json_prompt(raw_output: str) -> tuple[str, str]:
         f"原始输出如下：\n{raw_output}"
     )
     return system, user
+
+
+def extract_tag_block(text: str, *, tag: str) -> tuple[str | None, dict[str, Any] | None]:
+    """
+    Extract the last complete <tag>...</tag> block (case-insensitive).
+    Returns (inner_text, parse_error).
+    """
+    if not text:
+        return None, {"code": "TAG_PARSE_ERROR", "message": "输出为空"}
+    tag_name = tag.strip().strip("<>").lower()
+    if not tag_name:
+        return None, {"code": "TAG_PARSE_ERROR", "message": "tag 不能为空"}
+    pattern = re.compile(rf"(?is)<\s*{re.escape(tag_name)}\s*>([\s\S]*?)<\s*/\s*{re.escape(tag_name)}\s*>")
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return None, {"code": "TAG_PARSE_ERROR", "message": f"未找到 <{tag_name}>...</{tag_name}> 标签块"}
+    m = matches[-1]
+    inner = (m.group(1) or "").strip()
+    return inner, None
+
+
+def parse_tag_output(
+    text: str, *, tag: str, output_key: str | None = None
+) -> tuple[dict[str, Any], list[str], dict[str, Any] | None]:
+    """
+    Tag contract: expects at least one <tag>...</tag> block.
+    Returns: {<output_key>: inner_text, "raw_output": text}
+    """
+    warnings: list[str] = []
+    key = (output_key or tag or "").strip() or "value"
+
+    inner, err = extract_tag_block(text, tag=tag)
+    if err is not None or inner is None:
+        data = {key: "", "raw_output": text}
+        return data, warnings, err
+
+    tag_name = tag.strip().strip("<>").lower()
+    m_all = list(
+        re.finditer(
+            rf"(?is)<\s*{re.escape(tag_name)}\s*>[\s\S]*?<\s*/\s*{re.escape(tag_name)}\s*>",
+            text,
+        )
+    )
+    if m_all:
+        m = m_all[-1]
+        outside = (text[: m.start()] + text[m.end() :]).strip()
+        if outside:
+            warnings.append("tag_outside_text")
+        if len(m_all) > 1:
+            warnings.append("tag_multiple_blocks")
+
+    data = {key: inner, "raw_output": text}
+    return data, warnings, None
+
+
+def parse_plan_output(text: str) -> tuple[dict[str, Any], list[str], dict[str, Any] | None]:
+    """
+    Plan task contract (tags): expects one <plan>...</plan> block.
+    Returns: {"plan": inner_text, "raw_output": text}
+    """
+    return parse_tag_output(text, tag="plan", output_key="plan")

@@ -20,6 +20,7 @@ class GenerationRun(Base):
     request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     prompt_system: Mapped[str | None] = mapped_column(Text, nullable=True)
     prompt_user: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prompt_render_log_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     params_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     output_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_json: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -27,4 +28,3 @@ class GenerationRun(Base):
 
 
 Index("ix_generation_runs_project_id", GenerationRun.project_id)
-

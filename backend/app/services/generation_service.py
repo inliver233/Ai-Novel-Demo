@@ -7,7 +7,8 @@ from typing import Any
 
 from app.core.errors import AppError
 from app.core.logging import log_event
-from app.llm.client import call_llm
+from app.llm.client import call_llm, call_llm_messages
+from app.llm.messages import ChatMessage
 from app.models.llm_preset import LLMPreset
 from app.services.run_store import write_generation_run
 
@@ -112,22 +113,39 @@ def call_llm_and_record(
     api_key: str,
     prompt_system: str,
     prompt_user: str,
+    prompt_messages: list[ChatMessage] | None = None,
+    prompt_render_log_json: str | None = None,
     llm_call: PreparedLlmCall,
 ) -> RecordedLlmResult:
     try:
-        result = call_llm(
-            provider=llm_call.provider,
-            base_url=llm_call.base_url,
-            model=llm_call.model,
-            api_key=api_key,
-            system=prompt_system,
-            user=prompt_user,
-            params=llm_call.params,
-            timeout_seconds=llm_call.timeout_seconds,
-            extra=llm_call.extra,
-        )
+        if prompt_messages is None:
+            result = call_llm(
+                provider=llm_call.provider,
+                base_url=llm_call.base_url,
+                model=llm_call.model,
+                api_key=api_key,
+                system=prompt_system,
+                user=prompt_user,
+                params=llm_call.params,
+                timeout_seconds=llm_call.timeout_seconds,
+                extra=llm_call.extra,
+            )
+        else:
+            result = call_llm_messages(
+                provider=llm_call.provider,
+                base_url=llm_call.base_url,
+                model=llm_call.model,
+                api_key=api_key,
+                messages=prompt_messages,
+                params=llm_call.params,
+                timeout_seconds=llm_call.timeout_seconds,
+                extra=llm_call.extra,
+            )
         raw_output = result.text
 
+        prompt_chars = len(prompt_system) + len(prompt_user)
+        if prompt_messages is not None:
+            prompt_chars = sum(len(m.content or "") for m in prompt_messages)
         log_event(
             logger,
             "info",
@@ -135,7 +153,7 @@ def call_llm_and_record(
                 "provider": llm_call.provider,
                 "model": llm_call.model,
                 "timeout_seconds": llm_call.timeout_seconds,
-                "prompt_chars": len(prompt_system) + len(prompt_user),
+                "prompt_chars": prompt_chars,
                 "output_chars": len(raw_output or ""),
                 "dropped_params": result.dropped_params,
                 "finish_reason": result.finish_reason,
@@ -152,6 +170,7 @@ def call_llm_and_record(
             model=llm_call.model,
             prompt_system=prompt_system,
             prompt_user=prompt_user,
+            prompt_render_log_json=prompt_render_log_json,
             params_json=llm_call.params_json,
             output_text=raw_output,
             error_json=None,
@@ -164,6 +183,9 @@ def call_llm_and_record(
             dropped_params=result.dropped_params,
         )
     except AppError as exc:
+        prompt_chars = len(prompt_system) + len(prompt_user)
+        if prompt_messages is not None:
+            prompt_chars = sum(len(m.content or "") for m in prompt_messages)
         log_event(
             logger,
             "error",
@@ -171,7 +193,7 @@ def call_llm_and_record(
                 "provider": llm_call.provider,
                 "model": llm_call.model,
                 "timeout_seconds": llm_call.timeout_seconds,
-                "prompt_chars": len(prompt_system) + len(prompt_user),
+                "prompt_chars": prompt_chars,
                 "output_chars": 0,
                 "error_code": exc.code,
             },
@@ -186,6 +208,7 @@ def call_llm_and_record(
             model=llm_call.model,
             prompt_system=prompt_system,
             prompt_user=prompt_user,
+            prompt_render_log_json=prompt_render_log_json,
             params_json=llm_call.params_json,
             output_text=None,
             error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),

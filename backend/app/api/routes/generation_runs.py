@@ -41,6 +41,12 @@ def list_runs(
                 params = json.loads(r.params_json)
             except Exception:
                 params = {"_raw": r.params_json}
+        render_log = None
+        if r.prompt_render_log_json:
+            try:
+                render_log = json.loads(r.prompt_render_log_json)
+            except Exception:
+                render_log = {"_raw": r.prompt_render_log_json}
         err = None
         if r.error_json:
             try:
@@ -58,6 +64,7 @@ def list_runs(
             request_id=r.request_id,
             prompt_system=r.prompt_system,
             prompt_user=r.prompt_user,
+            prompt_render_log=render_log,
             params=params,
             output_text=r.output_text,
             error=err,
@@ -83,6 +90,12 @@ def get_run(request: Request, db: DbDep, user_id: UserIdDep, run_id: str) -> dic
             err = json.loads(row.error_json)
         except Exception:
             err = {"_raw": row.error_json}
+    render_log = None
+    if row.prompt_render_log_json:
+        try:
+            render_log = json.loads(row.prompt_render_log_json)
+        except Exception:
+            render_log = {"_raw": row.prompt_render_log_json}
     payload = GenerationRunOut(
         id=row.id,
         project_id=row.project_id,
@@ -94,10 +107,10 @@ def get_run(request: Request, db: DbDep, user_id: UserIdDep, run_id: str) -> dic
         request_id=row.request_id,
         prompt_system=row.prompt_system,
         prompt_user=row.prompt_user,
+        prompt_render_log=render_log,
         params=params,
         output_text=row.output_text,
         error=err,
         created_at=row.created_at,
     ).model_dump()
     return ok_payload(request_id=request_id, data={"run": payload})
-

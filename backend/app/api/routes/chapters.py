@@ -14,7 +14,7 @@ from app.core.logging import log_event
 from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.db.session import SessionLocal
 from app.db.utils import new_id
-from app.llm.client import call_llm_stream
+from app.llm.client import call_llm_stream, call_llm_stream_messages
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.llm_profile import LLMProfile
@@ -24,12 +24,13 @@ from app.models.project import Project
 from app.models.project_settings import ProjectSettings
 from app.schemas.chapters import BulkCreateRequest, ChapterCreate, ChapterOut, ChapterUpdate
 from app.schemas.chapter_generate import ChapterGenerateRequest
+from app.schemas.chapter_plan import ChapterPlanRequest
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.length_control import estimate_max_tokens
-from app.services.output_parsers import parse_chapter_output
+from app.services.output_contracts import contract_for_task
 from app.services.outline_store import ensure_active_outline
-from app.services.prompt_store import ensure_prompt_templates, format_characters
-from app.services.prompting import render_template
+from app.services.prompt_presets import ensure_default_plan_preset, ensure_default_post_edit_preset, render_preset_for_task
+from app.services.prompt_store import format_characters
 from app.services.run_store import write_generation_run
 from app.utils.sse_response import (
     create_sse_response,
@@ -210,11 +211,11 @@ def delete_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
     return ok_payload(request_id=request_id, data={})
 
 
-@router.post("/chapters/{chapter_id}/generate")
-def generate_chapter(
+@router.post("/chapters/{chapter_id}/plan")
+def plan_chapter(
     request: Request,
     chapter_id: str,
-    body: ChapterGenerateRequest,
+    body: ChapterPlanRequest,
     user_id: UserIdDep,
     x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider"),
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
@@ -224,6 +225,7 @@ def generate_chapter(
 
     prompt_system = ""
     prompt_user = ""
+    prompt_render_log_json: str | None = None
     llm_call = None
     project_id = ""
 
@@ -254,10 +256,7 @@ def generate_chapter(
             if not resolved_api_key:
                 raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
 
-        templates = ensure_prompt_templates(db, project_id)
-        tpl = templates.get("chapter_generate")
-        if tpl is None:
-            raise AppError(code="DB_ERROR", message="缺少 chapter_generate 模板", status_code=500)
+        ensure_default_plan_preset(db, project_id=project_id)
 
         settings_row = db.get(ProjectSettings, project_id)
         outline_row = db.get(Outline, chapter.outline_id)
@@ -310,7 +309,190 @@ def generate_chapter(
                 elif body.context.previous_chapter == "content":
                     prev_text = (prev.content_md or "").strip()
 
-        instruction = body.instruction.strip()
+        values: dict[str, object] = {
+            "project_name": project.name or "",
+            "genre": project.genre or "",
+            "logline": project.logline or "",
+            "world_setting": world_setting,
+            "style_guide": style_guide,
+            "constraints": constraints,
+            "characters": characters_text,
+            "outline": outline_text,
+            "chapter_number": str(chapter.number),
+            "chapter_title": (chapter.title or ""),
+            "chapter_plan": (chapter.plan or ""),
+            "instruction": body.instruction.strip(),
+            "previous_chapter": prev_text,
+        }
+        values["project"] = {
+            "name": project.name or "",
+            "genre": project.genre or "",
+            "logline": project.logline or "",
+            "world_setting": world_setting,
+            "style_guide": style_guide,
+            "constraints": constraints,
+            "characters": characters_text,
+        }
+        values["story"] = {
+            "outline": outline_text,
+            "chapter_number": int(chapter.number),
+            "chapter_title": (chapter.title or ""),
+            "chapter_plan": (chapter.plan or ""),
+            "previous_chapter": prev_text,
+        }
+        values["user"] = {"instruction": body.instruction.strip()}
+
+        prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
+            db,
+            project_id=project_id,
+            task="plan_chapter",
+            values=values,  # type: ignore[arg-type]
+            macro_seed=f"{request_id}:plan",
+        )
+        prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
+        llm_call = prepare_llm_call(preset)
+    finally:
+        db.close()
+
+    if llm_call is None:
+        raise AppError(code="INTERNAL_ERROR", message="LLM 调用准备失败", status_code=500)
+    if not prompt_system.strip() and not prompt_user.strip():
+        raise AppError(code="PROMPT_CONFIG_ERROR", message="缺少 plan_chapter 提示词预设/提示块", status_code=400)
+
+    llm_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 1024})
+    llm_result = call_llm_and_record(
+        logger=logger,
+        request_id=request_id,
+        actor_user_id=user_id,
+        project_id=project_id,
+        chapter_id=chapter_id,
+        run_type="plan_chapter",
+        api_key=str(resolved_api_key),
+        prompt_system=prompt_system,
+        prompt_user=prompt_user,
+        prompt_messages=prompt_messages,
+        prompt_render_log_json=prompt_render_log_json,
+        llm_call=llm_call,
+    )
+
+    plan_contract = contract_for_task("plan_chapter")
+    parsed = plan_contract.parse(llm_result.text, finish_reason=llm_result.finish_reason)
+    data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
+    if warnings:
+        data["warnings"] = warnings
+    if parse_error is not None:
+        data["parse_error"] = parse_error
+    if llm_result.finish_reason is not None:
+        data["finish_reason"] = llm_result.finish_reason
+    return ok_payload(request_id=request_id, data=data)
+
+
+@router.post("/chapters/{chapter_id}/generate")
+def generate_chapter(
+    request: Request,
+    chapter_id: str,
+    body: ChapterGenerateRequest,
+    user_id: UserIdDep,
+    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider"),
+    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
+) -> dict:
+    request_id = request.state.request_id
+    resolved_api_key: str | None = x_llm_api_key
+
+    prompt_system = ""
+    prompt_user = ""
+    prompt_render_log_json: str | None = None
+    render_values: dict[str, object] | None = None
+
+    plan_prompt_system = ""
+    plan_prompt_user = ""
+    plan_prompt_render_log_json: str | None = None
+    plan_out: dict[str, object] | None = None
+    plan_warnings: list[str] = []
+    plan_parse_error: dict[str, object] | None = None
+    llm_call = None
+    project_id = ""
+
+    db = SessionLocal()
+    try:
+        chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+        project_id = chapter.project_id
+        project = db.get(Project, project_id)
+        if project is None:
+            raise AppError.not_found()
+
+        preset = db.get(LLMPreset, project_id)
+        if preset is None:
+            raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
+        if x_llm_provider and preset.provider != x_llm_provider:
+            raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
+
+        if not resolved_api_key:
+            if not project.llm_profile_id:
+                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+            profile = db.get(LLMProfile, project.llm_profile_id)
+            if profile is None or profile.owner_user_id != user_id or not profile.api_key_ciphertext:
+                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+            try:
+                resolved_api_key = decrypt_secret(profile.api_key_ciphertext).strip()
+            except SecretCryptoError:
+                raise AppError(code="LLM_KEY_MISSING", message="已保存的 API Key 无法读取，请在 Prompts 页重新保存", status_code=401)
+            if not resolved_api_key:
+                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+
+        settings_row = db.get(ProjectSettings, project_id)
+        outline_row = db.get(Outline, chapter.outline_id)
+
+        world_setting = (settings_row.world_setting if settings_row else "") or ""
+        style_guide = (settings_row.style_guide if settings_row else "") or ""
+        constraints = (settings_row.constraints if settings_row else "") or ""
+
+        if not body.context.include_world_setting:
+            world_setting = ""
+        if not body.context.include_style_guide:
+            style_guide = ""
+        if not body.context.include_constraints:
+            constraints = ""
+
+        outline_text = (outline_row.content_md if outline_row else "") or ""
+        if not body.context.include_outline:
+            outline_text = ""
+
+        chars: list[Character] = []
+        if body.context.character_ids:
+            chars = (
+                db.execute(
+                    select(Character).where(
+                        Character.project_id == project_id,
+                        Character.id.in_(body.context.character_ids),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        characters_text = format_characters(chars)
+
+        prev_text = ""
+        if body.context.previous_chapter and chapter.number > 1:
+            prev = (
+                db.execute(
+                    select(Chapter).where(
+                        Chapter.project_id == project_id,
+                        Chapter.outline_id == chapter.outline_id,
+                        Chapter.number == (chapter.number - 1),
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if prev is not None:
+                if body.context.previous_chapter == "summary":
+                    prev_text = (prev.summary or "").strip()
+                elif body.context.previous_chapter == "content":
+                    prev_text = (prev.content_md or "").strip()
+
+        base_instruction = body.instruction.strip()
+        instruction = base_instruction
         if body.mode == "append":
             instruction = "【追加模式】只输出需要追加到正文末尾的新增片段，不要重复已写内容。\\n" + instruction
         else:
@@ -321,7 +503,7 @@ def generate_chapter(
             requirements_obj["target_word_count"] = body.target_word_count
         requirements_text = json.dumps(requirements_obj, ensure_ascii=False, indent=2) if requirements_obj else ""
 
-        values = {
+        values: dict[str, object] = {
             "project_name": project.name or "",
             "genre": project.genre or "",
             "logline": project.logline or "",
@@ -339,8 +521,47 @@ def generate_chapter(
             "previous_chapter": prev_text,
         }
 
-        prompt_system, _ = render_template(tpl.system_template or "", values)
-        prompt_user, _ = render_template(tpl.user_template or "", values)
+        values["project"] = {
+            "name": project.name or "",
+            "genre": project.genre or "",
+            "logline": project.logline or "",
+            "world_setting": world_setting,
+            "style_guide": style_guide,
+            "constraints": constraints,
+            "characters": characters_text,
+        }
+        values["story"] = {
+            "outline": outline_text,
+            "chapter_number": int(chapter.number),
+            "chapter_title": (chapter.title or ""),
+            "chapter_plan": (chapter.plan or ""),
+            "previous_chapter": prev_text,
+        }
+        values["user"] = {"instruction": instruction, "requirements": requirements_obj}
+        render_values = values
+
+        if body.plan_first:
+            ensure_default_plan_preset(db, project_id=project_id)
+            plan_values = dict(values)
+            plan_values["instruction"] = base_instruction
+            plan_values["user"] = {"instruction": base_instruction, "requirements": requirements_obj}
+            plan_prompt_system, plan_prompt_user, plan_prompt_messages, _, _, _, plan_render_log = render_preset_for_task(
+                db,
+                project_id=project_id,
+                task="plan_chapter",
+                values=plan_values,  # type: ignore[arg-type]
+                macro_seed=f"{request_id}:plan",
+            )
+            plan_prompt_render_log_json = json.dumps(plan_render_log, ensure_ascii=False)
+        else:
+            prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
+                db,
+                project_id=project_id,
+                task="chapter_generate",
+                values=values,  # type: ignore[arg-type]
+                macro_seed=request_id,
+            )
+            prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
         llm_call = prepare_llm_call(preset)
     finally:
@@ -348,6 +569,68 @@ def generate_chapter(
 
     if llm_call is None:
         raise AppError(code="INTERNAL_ERROR", message="LLM 调用准备失败", status_code=500)
+    if render_values is None:
+        raise AppError(code="INTERNAL_ERROR", message="提示词变量准备失败", status_code=500)
+
+    if body.plan_first:
+        if not plan_prompt_system.strip() and not plan_prompt_user.strip():
+            raise AppError(
+                code="PROMPT_CONFIG_ERROR",
+                message="缺少 plan_chapter 提示词预设/提示块，请在 Prompt Studio 配置",
+                status_code=400,
+            )
+
+        plan_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 1024})
+        plan_result = call_llm_and_record(
+            logger=logger,
+            request_id=request_id,
+            actor_user_id=user_id,
+            project_id=project_id,
+            chapter_id=chapter_id,
+            run_type="plan_chapter",
+            api_key=str(resolved_api_key),
+            prompt_system=plan_prompt_system,
+            prompt_user=plan_prompt_user,
+            prompt_messages=plan_prompt_messages,
+            prompt_render_log_json=plan_prompt_render_log_json,
+            llm_call=plan_call,
+        )
+        plan_contract = contract_for_task("plan_chapter")
+        plan_parsed = plan_contract.parse(plan_result.text, finish_reason=plan_result.finish_reason)
+        plan_out, plan_warnings, plan_parse_error = plan_parsed.data, plan_parsed.warnings, plan_parsed.parse_error
+        if plan_result.finish_reason is not None:
+            plan_out["finish_reason"] = plan_result.finish_reason
+
+        plan_text = str((plan_out or {}).get("plan") or "").strip()
+        if plan_text:
+            instruction_with_plan = f"{str(render_values.get('instruction') or '').rstrip()}\n\n<PLAN>\n{plan_text}\n</PLAN>"
+            render_values["instruction"] = instruction_with_plan
+            render_values["story_plan"] = plan_text
+
+            story = render_values.get("story")
+            if isinstance(story, dict):
+                story2 = dict(story)
+                story2["plan"] = plan_text
+                render_values["story"] = story2
+            else:
+                render_values["story"] = {"plan": plan_text}
+
+            user_ns = render_values.get("user")
+            if isinstance(user_ns, dict):
+                user2 = dict(user_ns)
+                user2["instruction"] = instruction_with_plan
+                render_values["user"] = user2
+
+        # Render chapter prompt after plan injection.
+        with SessionLocal() as db2:
+            prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
+                db2,
+                project_id=project_id,
+                task="chapter_generate",
+                values=render_values,  # type: ignore[arg-type]
+                macro_seed=request_id,
+            )
+        prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
     if body.target_word_count is not None:
         llm_call = with_param_overrides(
@@ -365,14 +648,89 @@ def generate_chapter(
         api_key=str(resolved_api_key),
         prompt_system=prompt_system,
         prompt_user=prompt_user,
+        prompt_messages=prompt_messages,
+        prompt_render_log_json=prompt_render_log_json,
         llm_call=llm_call,
     )
 
-    data, warnings, parse_error = parse_chapter_output(llm_result.text, finish_reason=llm_result.finish_reason)
+    chapter_contract = contract_for_task("chapter_generate")
+    parsed = chapter_contract.parse(llm_result.text, finish_reason=llm_result.finish_reason)
+    data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
+
+    if body.post_edit:
+        raw_content = str(data.get("content_md") or "").strip()
+        post_edit_applied = False
+        post_edit_warnings: list[str] = []
+        post_edit_parse_error: dict[str, object] | None = None
+
+        if raw_content:
+            with SessionLocal() as db3:
+                ensure_default_post_edit_preset(db3, project_id=project_id)
+                post_values = dict(render_values or {})
+                post_values["raw_content"] = raw_content
+
+                story_ns = post_values.get("story")
+                if isinstance(story_ns, dict):
+                    story2 = dict(story_ns)
+                    story2["raw_content"] = raw_content
+                    post_values["story"] = story2
+                else:
+                    post_values["story"] = {"raw_content": raw_content}
+
+                post_system, post_user, post_messages, _, _, _, post_render_log = render_preset_for_task(
+                    db3,
+                    project_id=project_id,
+                    task="post_edit",
+                    values=post_values,  # type: ignore[arg-type]
+                    macro_seed=f"{request_id}:post_edit",
+                )
+
+            post_render_log_json = json.dumps(post_render_log, ensure_ascii=False)
+            post_call = with_param_overrides(llm_call, {"temperature": 0.4})
+            post_result = call_llm_and_record(
+                logger=logger,
+                request_id=request_id,
+                actor_user_id=user_id,
+                project_id=project_id,
+                chapter_id=chapter_id,
+                run_type="post_edit",
+                api_key=str(resolved_api_key),
+                prompt_system=post_system,
+                prompt_user=post_user,
+                prompt_messages=post_messages,
+                prompt_render_log_json=post_render_log_json,
+                llm_call=post_call,
+            )
+
+            post_contract = contract_for_task("post_edit")
+            post_parsed = post_contract.parse(post_result.text, finish_reason=post_result.finish_reason)
+            post_edit_warnings = list(post_parsed.warnings)
+            post_edit_parse_error = post_parsed.parse_error
+            edited = str(post_parsed.data.get("content_md") or "").strip()
+            if post_edit_parse_error is None and edited:
+                data["content_md"] = edited
+                post_edit_applied = True
+            else:
+                post_edit_warnings.append("post_edit_failed")
+        else:
+            post_edit_warnings.append("post_edit_no_content")
+
+        data["post_edit_applied"] = post_edit_applied
+        if post_edit_warnings:
+            data["post_edit_warnings"] = post_edit_warnings
+        if post_edit_parse_error is not None:
+            data["post_edit_parse_error"] = post_edit_parse_error
+
     if warnings:
         data["warnings"] = warnings
     if parse_error is not None:
         data["parse_error"] = parse_error
+    if body.plan_first:
+        data["plan"] = str((plan_out or {}).get("plan") or "")
+        if plan_warnings:
+            data["plan_warnings"] = plan_warnings
+        if plan_parse_error is not None:
+            data["plan_parse_error"] = plan_parse_error
     return ok_payload(request_id=request_id, data=data)
 
 
@@ -392,6 +750,18 @@ def generate_chapter_stream(
 
         prompt_system = ""
         prompt_user = ""
+        prompt_messages = []
+        prompt_render_log_json: str | None = None
+        render_values: dict[str, object] | None = None
+
+        plan_prompt_system = ""
+        plan_prompt_user = ""
+        plan_prompt_messages = []
+        plan_prompt_render_log_json: str | None = None
+        plan_out: dict[str, object] | None = None
+        plan_warnings: list[str] = []
+        plan_parse_error: dict[str, object] | None = None
+
         llm_call = None
         project_id = ""
         resolved_api_key: str | None = x_llm_api_key
@@ -422,11 +792,6 @@ def generate_chapter_stream(
                     raise AppError(code="LLM_KEY_MISSING", message="已保存的 API Key 无法读取，请在 Prompts 页重新保存", status_code=401)
                 if not resolved_api_key:
                     raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
-
-            templates = ensure_prompt_templates(db, project_id)
-            tpl = templates.get("chapter_generate")
-            if tpl is None:
-                raise AppError(code="DB_ERROR", message="缺少 chapter_generate 模板", status_code=500)
 
             settings_row = db.get(ProjectSettings, project_id)
             outline_row = db.get(Outline, chapter.outline_id)
@@ -479,7 +844,8 @@ def generate_chapter_stream(
                     elif body.context.previous_chapter == "content":
                         prev_text = (prev.content_md or "").strip()
 
-            instruction = body.instruction.strip()
+            base_instruction = body.instruction.strip()
+            instruction = base_instruction
             if body.mode == "append":
                 instruction = "【追加模式】只输出需要追加到正文末尾的新增片段，不要重复已写内容。\\n" + instruction
             else:
@@ -490,7 +856,7 @@ def generate_chapter_stream(
                 requirements_obj["target_word_count"] = body.target_word_count
             requirements_text = json.dumps(requirements_obj, ensure_ascii=False, indent=2) if requirements_obj else ""
 
-            values = {
+            values: dict[str, object] = {
                 "project_name": project.name or "",
                 "genre": project.genre or "",
                 "logline": project.logline or "",
@@ -508,8 +874,47 @@ def generate_chapter_stream(
                 "previous_chapter": prev_text,
             }
 
-            prompt_system, _ = render_template(tpl.system_template or "", values)
-            prompt_user, _ = render_template(tpl.user_template or "", values)
+            values["project"] = {
+                "name": project.name or "",
+                "genre": project.genre or "",
+                "logline": project.logline or "",
+                "world_setting": world_setting,
+                "style_guide": style_guide,
+                "constraints": constraints,
+                "characters": characters_text,
+            }
+            values["story"] = {
+                "outline": outline_text,
+                "chapter_number": int(chapter.number),
+                "chapter_title": (chapter.title or ""),
+                "chapter_plan": (chapter.plan or ""),
+                "previous_chapter": prev_text,
+            }
+            values["user"] = {"instruction": instruction, "requirements": requirements_obj}
+            render_values = values
+
+            if body.plan_first:
+                ensure_default_plan_preset(db, project_id=project_id)
+                plan_values = dict(values)
+                plan_values["instruction"] = base_instruction
+                plan_values["user"] = {"instruction": base_instruction, "requirements": requirements_obj}
+                plan_prompt_system, plan_prompt_user, plan_prompt_messages, _, _, _, plan_render_log = render_preset_for_task(
+                    db,
+                    project_id=project_id,
+                    task="plan_chapter",
+                    values=plan_values,  # type: ignore[arg-type]
+                    macro_seed=f"{request_id}:plan",
+                )
+                plan_prompt_render_log_json = json.dumps(plan_render_log, ensure_ascii=False)
+            else:
+                prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
+                    db,
+                    project_id=project_id,
+                    task="chapter_generate",
+                    values=values,  # type: ignore[arg-type]
+                    macro_seed=request_id,
+                )
+                prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
             llm_call = prepare_llm_call(preset)
         except GeneratorExit:
@@ -526,6 +931,69 @@ def generate_chapter_stream(
             yield sse_done()
             return
 
+        if render_values is None:
+            yield sse_error(error="提示词变量准备失败", code=500)
+            yield sse_done()
+            return
+
+        if body.plan_first:
+            if not plan_prompt_system.strip() and not plan_prompt_user.strip():
+                yield sse_error(error="缺少 plan_chapter 提示词预设/提示块，请在 Prompt Studio 配置", code=400)
+                yield sse_done()
+                return
+
+            yield sse_progress(message="生成规划...", progress=5)
+            plan_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 1024})
+            plan_result = call_llm_and_record(
+                logger=logger,
+                request_id=request_id,
+                actor_user_id=user_id,
+                project_id=project_id,
+                chapter_id=chapter_id,
+                run_type="plan_chapter",
+                api_key=str(resolved_api_key),
+                prompt_system=plan_prompt_system,
+                prompt_user=plan_prompt_user,
+                prompt_messages=plan_prompt_messages,
+                prompt_render_log_json=plan_prompt_render_log_json,
+                llm_call=plan_call,
+            )
+
+            plan_contract = contract_for_task("plan_chapter")
+            plan_parsed = plan_contract.parse(plan_result.text, finish_reason=plan_result.finish_reason)
+            plan_out, plan_warnings, plan_parse_error = plan_parsed.data, plan_parsed.warnings, plan_parsed.parse_error
+
+            plan_text = str((plan_out or {}).get("plan") or "").strip()
+            if plan_text:
+                instruction_with_plan = f"{str(render_values.get('instruction') or '').rstrip()}\n\n<PLAN>\n{plan_text}\n</PLAN>"
+                render_values["instruction"] = instruction_with_plan
+                render_values["story_plan"] = plan_text
+
+                story_ns = render_values.get("story")
+                if isinstance(story_ns, dict):
+                    story2 = dict(story_ns)
+                    story2["plan"] = plan_text
+                    render_values["story"] = story2
+                else:
+                    render_values["story"] = {"plan": plan_text}
+
+                user_ns = render_values.get("user")
+                if isinstance(user_ns, dict):
+                    user2 = dict(user_ns)
+                    user2["instruction"] = instruction_with_plan
+                    render_values["user"] = user2
+
+            yield sse_progress(message="渲染章节提示词...", progress=8)
+            with SessionLocal() as db2:
+                prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
+                    db2,
+                    project_id=project_id,
+                    task="chapter_generate",
+                    values=render_values,  # type: ignore[arg-type]
+                    macro_seed=request_id,
+                )
+            prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
+
         if body.target_word_count is not None:
             llm_call = with_param_overrides(
                 llm_call,
@@ -541,13 +1009,12 @@ def generate_chapter_stream(
         stream_run_written = False
         try:
             if llm_call.provider in ("openai", "openai_compatible"):
-                stream_iter, state = call_llm_stream(
+                stream_iter, state = call_llm_stream_messages(
                     provider=llm_call.provider,
                     base_url=llm_call.base_url,
                     model=llm_call.model,
                     api_key=str(resolved_api_key),
-                    system=prompt_system,
-                    user=prompt_user,
+                    messages=prompt_messages,
                     params=llm_call.params,
                     timeout_seconds=llm_call.timeout_seconds,
                     extra=llm_call.extra,
@@ -608,6 +1075,7 @@ def generate_chapter_stream(
                     model=llm_call.model,
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
+                    prompt_render_log_json=prompt_render_log_json,
                     params_json=llm_call.params_json,
                     output_text=raw_output,
                     error_json=None,
@@ -624,6 +1092,8 @@ def generate_chapter_stream(
                     api_key=str(resolved_api_key),
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
+                    prompt_messages=prompt_messages,
+                    prompt_render_log_json=prompt_render_log_json,
                     llm_call=llm_call,
                 )
                 raw_output = fallback.text
@@ -632,11 +1102,85 @@ def generate_chapter_stream(
                 latency_ms = fallback.latency_ms
 
             yield sse_progress(message="解析输出...", progress=90)
-            data, warnings, parse_error = parse_chapter_output(raw_output, finish_reason=finish_reason)
+            chapter_contract = contract_for_task("chapter_generate")
+            parsed = chapter_contract.parse(raw_output, finish_reason=finish_reason)
+            data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
+
+            if body.post_edit:
+                raw_content = str(data.get("content_md") or "").strip()
+                post_edit_applied = False
+                post_edit_warnings: list[str] = []
+                post_edit_parse_error: dict[str, object] | None = None
+
+                if raw_content:
+                    yield sse_progress(message="润色中...", progress=95)
+                    with SessionLocal() as db3:
+                        ensure_default_post_edit_preset(db3, project_id=project_id)
+                        post_values = dict(render_values or {})
+                        post_values["raw_content"] = raw_content
+
+                        story_ns = post_values.get("story")
+                        if isinstance(story_ns, dict):
+                            story2 = dict(story_ns)
+                            story2["raw_content"] = raw_content
+                            post_values["story"] = story2
+                        else:
+                            post_values["story"] = {"raw_content": raw_content}
+
+                        post_system, post_user, post_messages, _, _, _, post_render_log = render_preset_for_task(
+                            db3,
+                            project_id=project_id,
+                            task="post_edit",
+                            values=post_values,  # type: ignore[arg-type]
+                            macro_seed=f"{request_id}:post_edit",
+                        )
+
+                    post_render_log_json = json.dumps(post_render_log, ensure_ascii=False)
+                    post_call = with_param_overrides(llm_call, {"temperature": 0.4})
+                    post_result = call_llm_and_record(
+                        logger=logger,
+                        request_id=request_id,
+                        actor_user_id=user_id,
+                        project_id=project_id,
+                        chapter_id=chapter_id,
+                        run_type="post_edit",
+                        api_key=str(resolved_api_key),
+                        prompt_system=post_system,
+                        prompt_user=post_user,
+                        prompt_messages=post_messages,
+                        prompt_render_log_json=post_render_log_json,
+                        llm_call=post_call,
+                    )
+
+                    post_contract = contract_for_task("post_edit")
+                    post_parsed = post_contract.parse(post_result.text, finish_reason=post_result.finish_reason)
+                    post_edit_warnings = list(post_parsed.warnings)
+                    post_edit_parse_error = post_parsed.parse_error
+                    edited = str(post_parsed.data.get("content_md") or "").strip()
+                    if post_edit_parse_error is None and edited:
+                        data["content_md"] = edited
+                        post_edit_applied = True
+                    else:
+                        post_edit_warnings.append("post_edit_failed")
+                else:
+                    post_edit_warnings.append("post_edit_no_content")
+
+                data["post_edit_applied"] = post_edit_applied
+                if post_edit_warnings:
+                    data["post_edit_warnings"] = post_edit_warnings
+                if post_edit_parse_error is not None:
+                    data["post_edit_parse_error"] = post_edit_parse_error
+
             if warnings:
                 data["warnings"] = warnings
             if parse_error is not None:
                 data["parse_error"] = parse_error
+            if body.plan_first:
+                data["plan"] = str((plan_out or {}).get("plan") or "")
+                if plan_warnings:
+                    data["plan_warnings"] = plan_warnings
+                if plan_parse_error is not None:
+                    data["plan_parse_error"] = plan_parse_error
             if finish_reason is not None:
                 data["finish_reason"] = finish_reason
             if latency_ms is not None:
@@ -665,6 +1209,7 @@ def generate_chapter_stream(
                     model=llm_call.model,
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
+                    prompt_render_log_json=prompt_render_log_json,
                     params_json=llm_call.params_json,
                     output_text=raw_output or None,
                     error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),

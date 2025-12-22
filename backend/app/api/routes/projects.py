@@ -10,6 +10,7 @@ from app.llm.utils import normalize_base_url
 from app.models.llm_preset import LLMPreset
 from app.models.project import Project
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
+from app.services.prompt_presets import ensure_default_chapter_preset, ensure_default_outline_preset
 
 router = APIRouter()
 
@@ -38,6 +39,11 @@ def create_project(request: Request, db: DbDep, user_id: UserIdDep, body: Projec
     db.add(project)
     db.commit()
     db.refresh(project)
+
+    # New projects should default to the recommended Prompt Engine presets.
+    ensure_default_outline_preset(db, project_id=project.id, activate=True)
+    ensure_default_chapter_preset(db, project_id=project.id, activate=True)
+
     return ok_payload(request_id=request_id, data={"project": ProjectOut.model_validate(project).model_dump()})
 
 

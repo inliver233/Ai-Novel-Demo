@@ -12,7 +12,7 @@ from app.core.errors import AppError, ok_payload
 from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.core.logging import log_event
 from app.db.session import SessionLocal
-from app.llm.client import call_llm_stream
+from app.llm.client import call_llm_stream, call_llm_stream_messages
 from app.models.character import Character
 from app.models.llm_profile import LLMProfile
 from app.models.llm_preset import LLMPreset
@@ -20,9 +20,9 @@ from app.models.project_settings import ProjectSettings
 from app.schemas.outline_generate import OutlineGenerateRequest
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.outline_store import ensure_active_outline
-from app.services.output_parsers import build_outline_fix_json_prompt, parse_outline_output
-from app.services.prompting import render_template
-from app.services.prompt_store import ensure_prompt_templates, format_characters
+from app.services.output_contracts import build_repair_prompt_for_task, contract_for_task
+from app.services.prompt_presets import render_preset_for_task
+from app.services.prompt_store import format_characters
 from app.services.run_store import write_generation_run
 from app.utils.sse_response import (
     create_sse_response,
@@ -110,6 +110,7 @@ def generate_outline(
 
     prompt_system = ""
     prompt_user = ""
+    prompt_render_log_json: str | None = None
     llm_call = None
 
     db = SessionLocal()
@@ -133,11 +134,6 @@ def generate_outline(
                 raise AppError(code="LLM_KEY_MISSING", message="已保存的 API Key 无法读取，请在 Prompts 页重新保存", status_code=401)
             if not resolved_api_key:
                 raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
-
-        templates = ensure_prompt_templates(db, project_id)
-        tpl = templates.get("outline_generate")
-        if tpl is None:
-            raise AppError(code="DB_ERROR", message="缺少 outline_generate 模板", status_code=500)
 
         settings_row = db.get(ProjectSettings, project_id)
         world_setting = (settings_row.world_setting if settings_row else "") or ""
@@ -172,8 +168,14 @@ def generate_outline(
             "previous_chapter": "",
         }
 
-        prompt_system, _ = render_template(tpl.system_template or "", values)
-        prompt_user, _ = render_template(tpl.user_template or "", values)
+        prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
+            db,
+            project_id=project_id,
+            task="outline_generate",
+            values=values,
+            macro_seed=request_id,
+        )
+        prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
         llm_call = prepare_llm_call(preset)
     finally:
@@ -192,21 +194,23 @@ def generate_outline(
         api_key=str(resolved_api_key),
         prompt_system=prompt_system,
         prompt_user=prompt_user,
+        prompt_messages=prompt_messages,
+        prompt_render_log_json=prompt_render_log_json,
         llm_call=llm_call,
     )
 
     raw_output = llm_result.text
     finish_reason = llm_result.finish_reason
-    data, warnings, parse_error = parse_outline_output(raw_output)
-
-    if finish_reason == "length":
-        warnings.append("output_truncated")
-        if parse_error is not None:
-            parse_error.setdefault("hint", "输出疑似被截断（finish_reason=length），可尝试增大 max_tokens 或降低目标字数/章节数")
+    contract = contract_for_task("outline_generate")
+    parsed = contract.parse(raw_output, finish_reason=finish_reason)
+    data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
 
     if parse_error is not None and llm_call.provider in ("openai", "openai_compatible"):
         try:
-            fix_system, fix_user = build_outline_fix_json_prompt(raw_output)
+            repair = build_repair_prompt_for_task("outline_generate", raw_output=raw_output)
+            if repair is None:
+                raise AppError(code="OUTLINE_FIX_UNSUPPORTED", message="该任务不支持输出修复", status_code=400)
+            fix_system, fix_user, fix_run_type = repair
             fix_call = with_param_overrides(llm_call, {"temperature": 0, "max_tokens": 1024})
             fixed = call_llm_and_record(
                 logger=logger,
@@ -214,13 +218,14 @@ def generate_outline(
                 actor_user_id=user_id,
                 project_id=project_id,
                 chapter_id=None,
-                run_type="outline_fix_json",
+                run_type=fix_run_type,
                 api_key=str(resolved_api_key),
                 prompt_system=fix_system,
                 prompt_user=fix_user,
                 llm_call=fix_call,
             )
-            fixed_data, fixed_warnings, fixed_error = parse_outline_output(fixed.text)
+            fixed_parsed = contract.parse(fixed.text)
+            fixed_data, fixed_warnings, fixed_error = fixed_parsed.data, fixed_parsed.warnings, fixed_parsed.parse_error
             if fixed_error is None and fixed_data.get("chapters"):
                 fixed_data["raw_output"] = raw_output
                 fixed_data["fixed_json"] = fixed_data.get("raw_json") or fixed.text
@@ -255,6 +260,7 @@ def generate_outline_stream(
 
         prompt_system = ""
         prompt_user = ""
+        prompt_render_log_json: str | None = None
         llm_call = None
         resolved_api_key: str | None = x_llm_api_key
 
@@ -279,11 +285,6 @@ def generate_outline_stream(
                     raise AppError(code="LLM_KEY_MISSING", message="已保存的 API Key 无法读取，请在 Prompts 页重新保存", status_code=401)
                 if not resolved_api_key:
                     raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
-
-            templates = ensure_prompt_templates(db, project_id)
-            tpl = templates.get("outline_generate")
-            if tpl is None:
-                raise AppError(code="DB_ERROR", message="缺少 outline_generate 模板", status_code=500)
 
             settings_row = db.get(ProjectSettings, project_id)
             world_setting = (settings_row.world_setting if settings_row else "") or ""
@@ -318,8 +319,14 @@ def generate_outline_stream(
                 "previous_chapter": "",
             }
 
-            prompt_system, _ = render_template(tpl.system_template or "", values)
-            prompt_user, _ = render_template(tpl.user_template or "", values)
+            prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
+                db,
+                project_id=project_id,
+                task="outline_generate",
+                values=values,
+                macro_seed=request_id,
+            )
+            prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
             llm_call = prepare_llm_call(preset)
         except GeneratorExit:
@@ -346,13 +353,12 @@ def generate_outline_stream(
 
         try:
             if llm_call.provider in ("openai", "openai_compatible"):
-                stream_iter, state = call_llm_stream(
+                stream_iter, state = call_llm_stream_messages(
                     provider=llm_call.provider,
                     base_url=llm_call.base_url,
                     model=llm_call.model,
                     api_key=str(resolved_api_key),
-                    system=prompt_system,
-                    user=prompt_user,
+                    messages=prompt_messages,
                     params=llm_call.params,
                     timeout_seconds=llm_call.timeout_seconds,
                     extra=llm_call.extra,
@@ -409,6 +415,7 @@ def generate_outline_stream(
                     model=llm_call.model,
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
+                    prompt_render_log_json=prompt_render_log_json,
                     params_json=llm_call.params_json,
                     output_text=raw_output,
                     error_json=None,
@@ -425,6 +432,8 @@ def generate_outline_stream(
                     api_key=str(resolved_api_key),
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
+                    prompt_messages=prompt_messages,
+                    prompt_render_log_json=prompt_render_log_json,
                     llm_call=llm_call,
                 )
                 raw_output = fallback.text
@@ -433,16 +442,19 @@ def generate_outline_stream(
                 latency_ms = fallback.latency_ms
 
             yield sse_progress(message="解析输出...", progress=90)
-            data, warnings, parse_error = parse_outline_output(raw_output)
-
-            if finish_reason == "length":
-                warnings.append("output_truncated")
-                if parse_error is not None:
-                    parse_error.setdefault("hint", "输出疑似被截断（finish_reason=length），可尝试增大 max_tokens 或降低目标字数/章节数")
+            contract = contract_for_task("outline_generate")
+            parsed = contract.parse(raw_output, finish_reason=finish_reason)
+            data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
 
             if parse_error is not None and llm_call.provider in ("openai", "openai_compatible"):
                 yield sse_progress(message="尝试修复 JSON...", progress=92)
-                fix_system, fix_user = build_outline_fix_json_prompt(raw_output)
+                repair = build_repair_prompt_for_task("outline_generate", raw_output=raw_output)
+                if repair is None:
+                    warnings.append("outline_fix_json_failed")
+                    repair = None
+                if repair is None:
+                    raise AppError(code="OUTLINE_FIX_UNSUPPORTED", message="该任务不支持输出修复", status_code=400)
+                fix_system, fix_user, fix_run_type = repair
                 fix_call = with_param_overrides(llm_call, {"temperature": 0, "max_tokens": 1024})
                 try:
                     fixed = call_llm_and_record(
@@ -451,13 +463,14 @@ def generate_outline_stream(
                         actor_user_id=user_id,
                         project_id=project_id,
                         chapter_id=None,
-                        run_type="outline_fix_json",
+                        run_type=fix_run_type,
                         api_key=str(resolved_api_key),
                         prompt_system=fix_system,
                         prompt_user=fix_user,
                         llm_call=fix_call,
                     )
-                    fixed_data, fixed_warnings, fixed_error = parse_outline_output(fixed.text)
+                    fixed_parsed = contract.parse(fixed.text)
+                    fixed_data, fixed_warnings, fixed_error = fixed_parsed.data, fixed_parsed.warnings, fixed_parsed.parse_error
                     if fixed_error is None and fixed_data.get("chapters"):
                         fixed_data["raw_output"] = raw_output
                         fixed_data["fixed_json"] = fixed_data.get("raw_json") or fixed.text
@@ -499,6 +512,7 @@ def generate_outline_stream(
                     model=llm_call.model,
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
+                    prompt_render_log_json=prompt_render_log_json,
                     params_json=llm_call.params_json,
                     output_text=raw_output or None,
                     error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),

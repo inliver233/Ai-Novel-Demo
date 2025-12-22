@@ -18,4 +18,6 @@ class ChapterGenerateRequest(BaseModel):
     mode: Literal["replace", "append"]
     instruction: str = Field(default="", max_length=4000)
     target_word_count: int | None = Field(default=None, ge=100, le=50000)
+    plan_first: bool = False
+    post_edit: bool = False
     context: ChapterGenerateContext = Field(default_factory=ChapterGenerateContext)

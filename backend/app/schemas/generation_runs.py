@@ -16,8 +16,8 @@ class GenerationRunOut(BaseModel):
     request_id: str | None = None
     prompt_system: str | None = None
     prompt_user: str | None = None
+    prompt_render_log: dict[str, Any] | None = None
     params: dict[str, Any] = Field(default_factory=dict)
     output_text: str | None = None
     error: dict[str, Any] | None = None
     created_at: str
-

@@ -688,6 +688,22 @@ export function PromptsPage() {
         onClearApiKey={() => void clearApiKeyInProfile()}
       />
 
+      <div className="rounded-atelier border border-border bg-canvas p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Prompt Studio（beta）</div>
+            <div className="text-xs text-subtext">预设 + 块编辑器（预览走后端渲染）。旧模板编辑仍保留。</div>
+          </div>
+          <button
+            className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm hover:bg-canvas"
+            onClick={() => navigate(`/projects/${projectId}/prompt-studio`)}
+            type="button"
+          >
+            打开
+          </button>
+        </div>
+      </div>
+
       <PromptTemplatesPanel
         promptForm={promptForm}
         setPromptForm={setPromptForm}
