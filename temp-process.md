@@ -147,3 +147,115 @@
 ### 本地验证（建议执行）
 - 后端静态校验：`backend/.venv/Scripts/python -m compileall -q backend/app backend/alembic`
 - 前端构建：`cd frontend && npm run build`
+
+## 2025-12-23：Prompt System - 全面 Review/Debug（基线阶段）
+
+### 建立事实基线（无代码改动）
+- `git status --porcelain=v1`：工作区干净
+- 当前 HEAD：`c2918ba`（重构提示词系统，新增推荐默认提示词）
+- 涉及核心改动文件（来自 `git log -1 --name-only`）
+  - 后端：`backend/app/services/prompt_presets.py`、`backend/app/services/prompting.py`、`backend/app/services/prompt_budget.py`、`backend/app/services/output_contracts.py`、`backend/app/services/output_parsers.py`、`backend/app/llm/client.py`、`backend/app/llm/messages.py`
+  - 路由：`backend/app/api/routes/prompts.py`、`backend/app/api/routes/outline.py`、`backend/app/api/routes/chapters.py`、`backend/app/api/routes/projects.py`、`backend/app/api/routes/generation_runs.py`
+  - 模型/迁移：`backend/app/models/prompt_preset.py`、`backend/app/models/prompt_block.py`、`backend/app/models/generation_run.py`、`backend/alembic/versions/*prompt_*`
+  - 前端：`frontend/src/pages/PromptStudioPage.tsx`、`frontend/src/pages/PromptsPage.tsx`、`frontend/src/types.ts`、`frontend/src/App.tsx`、`frontend/src/components/layout/AppShell.tsx`
+
+### 下一步
+- ✅ 已执行最小静态验证：
+  - 后端：`backend/.venv/Scripts/python -m compileall -q backend/app backend/alembic`
+  - 前端：`cd frontend && npm run lint`、`cd frontend && npm run build`（chunk > 500kb warning，非阻塞）
+- ✅ 已核对 DB 迁移/Schema：
+  - `cd backend && ./.venv/Scripts/python -m alembic -c alembic.ini current` → `f078e253d338 (head)`
+  - SQLite 表/列检查：`prompt_presets/prompt_blocks` 存在；`generation_runs.prompt_render_log_json` 存在
+- 下一步：开始逐文件 Review + 小步修复（优先生成链路与 prompt 渲染/预算）。
+
+### 小步修复 1：宏注释（{{// ...}}）未被移除
+- 问题：`backend/app/services/prompting.py` 的 `_MACRO_TOKEN_RE` 不匹配 `//`，导致注释宏不会被移除
+- 修复：放宽 token 匹配，支持 `//...` 分支
+- 改动文件：`backend/app/services/prompting.py`
+- 验证：`backend/.venv/Scripts/python -m compileall -q backend/app backend/alembic`
+
+### 小步修复 2：marker_key 值为 None 时渲染成 "None"
+- 问题：`backend/app/services/prompt_presets.py` 对 `marker_key` 直接 `str(values[key])`，当值为 `None` 会污染 prompt
+- 修复：`None` 视为 `""`；仅 key 缺失时计入 missing
+- 改动文件：`backend/app/services/prompt_presets.py`
+- 验证：`backend/.venv/Scripts/python -m compileall -q backend/app backend/alembic`
+
+### 小步修复 3：全局预算裁剪时的 trim 优先级顺序错误
+- 问题：`backend/app/services/prompt_presets.py` 在“仍超预算 → trim”阶段会优先裁剪 `important/must`，反而把 `optional` 留到最后
+- 修复：trim 排序改为按 `drop_first → optional → important → must`（低优先级先裁剪）
+- 改动文件：`backend/app/services/prompt_presets.py`
+- 验证：`backend/.venv/Scripts/python -m compileall -q backend/app backend/alembic`
+
+### 小步修复 4：渲染未带 provider，导致默认预算总是 24000
+- 问题：`render_preset_for_task(... provider=...)` 在真实生成/预览调用处未传入 provider，`prompt_budget_tokens` 默认永远按 24000 估算，Anthropic/Gemini 下裁剪不一致
+- 修复：在 prompt preview 与 outline/chapter/plan/post_edit 的渲染调用处传入项目 `LLMPreset.provider`（计划/润色二次渲染用 `llm_call.provider`）
+- 改动文件：
+  - `backend/app/api/routes/prompts.py`
+  - `backend/app/api/routes/outline.py`
+  - `backend/app/api/routes/chapters.py`
+- 验证：`backend/.venv/Scripts/python -m compileall -q backend/app backend/alembic`
+
+### 小步修复 5：Jinja2 渲染异常被吞掉且不可观测
+- 问题：`backend/app/services/prompting.py` 在 Jinja2 parse/render 异常时直接回退为原模板，外部无法知道哪个块出错
+- 修复：`render_template()` 额外返回 `render_error`；`render_preset_for_task()` 将错误写入 `render_log.blocks[].render_error` 并在 reason 中标记 `template_error`
+- 改动文件：
+  - `backend/app/services/prompting.py`
+  - `backend/app/services/prompt_presets.py`
+- 验证：`backend/.venv/Scripts/python -m compileall -q backend/app backend/alembic`
+
+### 小步修复 6：preset.updated_at 不随 block 变更更新 + 迁移预设允许创建块
+- 问题：
+  - block CRUD/reorder 不会更新 `prompt_presets.updated_at`，导致“最近更新优先”与列表排序不准确
+  - `POST /prompt_presets/{id}/blocks` 未禁止对迁移预设创建块（与 update/delete/reorder 的限制不一致）
+- 修复：
+  - block create/update/delete/reorder 时 `preset.updated_at = utc_now_iso()`
+  - create block 同样禁止对 `"[Migrated] prompt_templates"` 操作
+- 改动文件：`backend/app/api/routes/prompts.py`
+- 验证：`backend/.venv/Scripts/python -m compileall -q backend/app backend/alembic`
+
+### 小步修复 7：render_error 信息过长风险
+- 问题：Jinja2 异常消息可能很长/含换行，写入 `prompt_render_log_json` 可能导致记录膨胀
+- 修复：`backend/app/services/prompting.py` 将异常消息做单行化并截断到 200 字符
+- 改动文件：`backend/app/services/prompting.py`
+- 验证：`backend/.venv/Scripts/python -m compileall -q backend/app backend/alembic`
+
+### 小步修复 8：PromptBlockUpdate 无法清空可空字段
+- 问题：`PUT /prompt_blocks/{id}` 通过 `if body.xxx is not None` 判断更新，导致 `template/marker_key/injection_depth/triggers` 无法设置为 `null`（只能靠空字符串/空数组绕过）
+- 修复：对可空字段改用 `body.model_fields_set` 判断是否传入，从而允许显式清空
+- 改动文件：`backend/app/api/routes/prompts.py`
+- 验证：`backend/.venv/Scripts/python -m compileall -q backend/app backend/alembic`
+
+### 小步修复 9：Prompt Studio 拖拽排序在“从前拖到后”场景插入位置错误
+- 问题：`frontend/src/pages/PromptStudioPage.tsx` 拖拽 reorder 时先删除再按旧 `toIdx` 插入，导致 fromIdx < toIdx 时偏移 1
+- 修复：插入位置使用 `insertIdx = fromIdx < toIdx ? toIdx - 1 : toIdx`
+- 改动文件：`frontend/src/pages/PromptStudioPage.tsx`
+- 验证：`cd frontend && npm run lint`、`cd frontend && npm run build`
+
+### 小步修复 10：Prompt Preview 缺少 project/story/user 结构，导致预览与真实渲染不一致
+- 问题：`frontend/src/pages/PromptStudioPage.tsx` 的 `guessPreviewValues()` 只提供扁平 key，使用 `project.xxx/story.xxx/user.xxx` 的模板在预览中会误报缺失/渲染为空
+- 修复：预览 values 补齐 `project/story/user` 命名空间（同时保留现有扁平 key），并提供示例 `plan/raw_content/requirements`
+- 改动文件：`frontend/src/pages/PromptStudioPage.tsx`
+- 验证：`cd frontend && npm run lint`、`cd frontend && npm run build`
+
+### 小步修复 11：Prompt Studio 导出预设 revoke 时机过早
+- 问题：`frontend/src/pages/PromptStudioPage.tsx` 导出后立即 `URL.revokeObjectURL`，部分浏览器可能导致下载失败/空文件
+- 修复：对齐 `ExportPage`，使用 `setTimeout(..., 1000)` 延后 revoke
+- 改动文件：`frontend/src/pages/PromptStudioPage.tsx`
+- 验证：`cd frontend && npm run lint`、`cd frontend && npm run build`
+
+### 小步修复 12：Prompt Studio 预览 characters 文本换行符错误
+- 问题：`frontend/src/pages/PromptStudioPage.tsx` 的 `formatCharacters()` 用 `\"\\\\n\"` 拼接，预览里会出现字面量 `\\n` 而非换行
+- 修复：改为 `\"\\n\"`，与后端 `format_characters()` 行为一致
+- 改动文件：`frontend/src/pages/PromptStudioPage.tsx`
+- 验证：`cd frontend && npm run lint`、`cd frontend && npm run build`
+
+### 小步修复 13：Prompt Studio 预览缺少裁剪/错误细节（render_log 不可见）
+- 问题：后端 `POST /prompt_preview` 已返回 `render_log`（含 dropped/trimmed/template_error 等），但前端丢弃不展示，排错困难
+- 修复：Prompt Studio 预览保存并展示 `render_log`（折叠面板）+ 顶部提示 template 渲染错误列表
+- 改动文件：`frontend/src/pages/PromptStudioPage.tsx`
+- 验证：`cd frontend && npm run lint`、`cd frontend && npm run build`
+
+### 回归验证（本轮结束前）
+- 后端：`backend/.venv/Scripts/python -m compileall -q backend/app backend/alembic`
+- 前端：`cd frontend && npm run lint`、`cd frontend && npm run build`
+- DB：`cd backend && ./.venv/Scripts/python -m alembic -c alembic.ini current` → `f078e253d338 (head)`

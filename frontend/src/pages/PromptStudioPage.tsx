@@ -37,7 +37,7 @@ function parseTriggers(value: string): string[] {
 function formatCharacters(chars: Character[]): string {
   return chars
     .map((c) => `- ${c.name}${c.role ? `（${c.role}）` : ""}`)
-    .join("\\n");
+    .join("\n");
 }
 
 function guessPreviewValues(args: {
@@ -45,25 +45,67 @@ function guessPreviewValues(args: {
   settings: ProjectSettings | null;
   outline: Outline | null;
   characters: Character[];
-}): Record<string, string> {
-  return {
-    project_name: args.project?.name ?? "",
-    genre: args.project?.genre ?? "",
-    logline: args.project?.logline ?? "",
-    world_setting: args.settings?.world_setting ?? "",
-    style_guide: args.settings?.style_guide ?? "",
-    constraints: args.settings?.constraints ?? "",
-    characters: formatCharacters(args.characters),
-    outline: args.outline?.content_md ?? "",
-    chapter_number: "1",
-    chapter_title: "第一章",
-    chapter_plan: "（示例要点）",
-    requirements: "{\\n  \"chapter_count\": 12\\n}",
-    instruction: "（示例指令）",
-    previous_chapter: "（示例上一章摘要）",
-    target_word_count: "2500",
-    raw_content: "（示例已生成正文，用于 post_edit 预览）",
+}): Record<string, unknown> {
+  const projectName = args.project?.name ?? "";
+  const genre = args.project?.genre ?? "";
+  const logline = args.project?.logline ?? "";
+  const worldSetting = args.settings?.world_setting ?? "";
+  const styleGuide = args.settings?.style_guide ?? "";
+  const constraints = args.settings?.constraints ?? "";
+  const charactersText = formatCharacters(args.characters);
+  const outlineText = args.outline?.content_md ?? "";
+
+  const chapterNumber = 1;
+  const chapterTitle = "第一章";
+  const chapterPlan = "（示例要点）";
+  const instruction = "（示例指令）";
+  const previousChapter = "（示例上一章摘要）";
+  const targetWordCount = 2500;
+  const rawContent = "（示例已生成正文，用于 post_edit 预览）";
+  const planText = "（示例规划，可用于 plan_first 注入）";
+  const requirementsObj = { chapter_count: 12 };
+
+  const values: Record<string, unknown> = {
+    project_name: projectName,
+    genre,
+    logline,
+    world_setting: worldSetting,
+    style_guide: styleGuide,
+    constraints,
+    characters: charactersText,
+    outline: outlineText,
+    chapter_number: String(chapterNumber),
+    chapter_title: chapterTitle,
+    chapter_plan: chapterPlan,
+    requirements: JSON.stringify(requirementsObj, null, 2),
+    instruction,
+    previous_chapter: previousChapter,
+    target_word_count: String(targetWordCount),
+    raw_content: rawContent,
+    story_plan: planText,
   };
+
+  values.project = {
+    name: projectName,
+    genre,
+    logline,
+    world_setting: worldSetting,
+    style_guide: styleGuide,
+    constraints,
+    characters: charactersText,
+  };
+  values.story = {
+    outline: outlineText,
+    chapter_number: chapterNumber,
+    chapter_title: chapterTitle,
+    chapter_plan: chapterPlan,
+    previous_chapter: previousChapter,
+    plan: planText,
+    raw_content: rawContent,
+  };
+  values.user = { instruction, requirements: requirementsObj };
+
+  return values;
 }
 
 function isMigratedPreset(preset: PromptPreset | null): boolean {
@@ -98,6 +140,7 @@ export function PromptStudioPage() {
 
   const [previewTask, setPreviewTask] = useState<string>("chapter_generate");
   const [preview, setPreview] = useState<PromptPreview | null>(null);
+  const [renderLog, setRenderLog] = useState<unknown | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const previewValues = useMemo(
@@ -442,7 +485,7 @@ export function PromptStudioPage() {
       a.href = url;
       a.download = `${selectedPreset.name}.json`;
       a.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       toast.toastSuccess("已导出");
     } catch (e) {
       const err = e as ApiError;
@@ -483,11 +526,12 @@ export function PromptStudioPage() {
     if (!projectId || !selectedPresetId) return;
     setPreviewLoading(true);
     try {
-      const res = await apiJson<{ preview: PromptPreview }>(`/api/projects/${projectId}/prompt_preview`, {
+      const res = await apiJson<{ preview: PromptPreview; render_log?: unknown }>(`/api/projects/${projectId}/prompt_preview`, {
         method: "POST",
         body: JSON.stringify({ task: previewTask, preset_id: selectedPresetId, values: previewValues }),
       });
       setPreview(res.data.preview);
+      setRenderLog(res.data.render_log ?? null);
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -495,6 +539,16 @@ export function PromptStudioPage() {
       setPreviewLoading(false);
     }
   }, [previewTask, previewValues, projectId, selectedPresetId, toast]);
+
+  const templateErrors = useMemo(() => {
+    const blocks = (renderLog as { blocks?: unknown } | null)?.blocks;
+    if (!Array.isArray(blocks)) return [];
+    return blocks
+      .map((b) => b as { identifier?: unknown; render_error?: unknown })
+      .filter((b) => typeof b.render_error === "string" && b.render_error.trim())
+      .map((b) => ({ identifier: String(b.identifier ?? ""), error: String(b.render_error ?? "") }))
+      .filter((b) => b.identifier && b.error);
+  }, [renderLog]);
 
   const tasks = useMemo(
     () => [
@@ -738,12 +792,13 @@ export function PromptStudioPage() {
                       const fromId = dragIdRef.current;
                       dragIdRef.current = null;
                       if (!fromId || fromId === b.id) return;
-                      const ids = blocks.map((x) => x.id);
-                      const fromIdx = ids.indexOf(fromId);
-                      const toIdx = ids.indexOf(b.id);
-                      if (fromIdx < 0 || toIdx < 0) return;
-                      ids.splice(fromIdx, 1);
-                      ids.splice(toIdx, 0, fromId);
+                       const ids = blocks.map((x) => x.id);
+                       const fromIdx = ids.indexOf(fromId);
+                       const toIdx = ids.indexOf(b.id);
+                       if (fromIdx < 0 || toIdx < 0) return;
+                       ids.splice(fromIdx, 1);
+                      const insertIdx = fromIdx < toIdx ? toIdx - 1 : toIdx;
+                      ids.splice(insertIdx, 0, fromId);
                       void onReorder(ids);
                     }}
                     title={migrated ? undefined : "拖拽可调整排序"}
@@ -978,6 +1033,20 @@ export function PromptStudioPage() {
 
             {preview ? (
               <div className="grid gap-3">
+                {templateErrors.length ? (
+                  <div className="rounded-atelier border border-border bg-surface/50 p-3 text-xs">
+                    <div className="font-semibold">模板渲染错误</div>
+                    <div className="mt-2 grid gap-1 text-subtext">
+                      {templateErrors.map((item) => (
+                        <div key={`${item.identifier}:${item.error}`}>
+                          <span className="font-mono text-ink">{item.identifier}</span>
+                          <span className="text-subtext">：{item.error}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {preview.missing?.length ? (
                   <div className="rounded-atelier border border-border bg-surface/50 p-3 text-xs">
                     <div className="font-semibold">缺失变量</div>
@@ -992,6 +1061,15 @@ export function PromptStudioPage() {
                     {preview.prompt_budget_tokens ? ` / 预算：${preview.prompt_budget_tokens}` : ""}
                   </div>
                 </div>
+
+                {renderLog ? (
+                  <details className="rounded-atelier border border-border bg-surface/50 p-3">
+                    <summary className="cursor-pointer text-sm">查看 render_log（裁剪/原因/错误）</summary>
+                    <pre className="mt-2 max-h-[260px] overflow-auto whitespace-pre-wrap break-words rounded-atelier border border-border bg-surface p-3 text-xs">
+                      {JSON.stringify(renderLog, null, 2)}
+                    </pre>
+                  </details>
+                ) : null}
 
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                   <div className="grid gap-1">

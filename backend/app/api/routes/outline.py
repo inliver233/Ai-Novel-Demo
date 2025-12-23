@@ -174,6 +174,7 @@ def generate_outline(
             task="outline_generate",
             values=values,
             macro_seed=request_id,
+            provider=preset.provider,
         )
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
@@ -325,6 +326,7 @@ def generate_outline_stream(
                 task="outline_generate",
                 values=values,
                 macro_seed=request_id,
+                provider=preset.provider,
             )
             prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 

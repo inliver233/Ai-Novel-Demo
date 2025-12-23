@@ -7,10 +7,11 @@ from sqlalchemy import select
 
 from app.api.deps import DbDep, UserIdDep, require_owned_project
 from app.core.errors import AppError, ok_payload
-from app.db.utils import new_id
+from app.db.utils import new_id, utc_now_iso
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
 from app.models.prompt_template import PromptTemplate
+from app.models.llm_preset import LLMPreset
 from app.schemas.prompt_presets import (
     PromptBlockCreate,
     PromptBlockOut,
@@ -260,6 +261,8 @@ def create_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, preset_
     if preset is None:
         raise AppError.not_found()
     require_owned_project(db, project_id=preset.project_id, user_id=user_id)
+    if preset.name == MIGRATED_PRESET_NAME:
+        raise AppError(code="VALIDATION_ERROR", message="迁移预设不允许编辑块（M0 阶段）", status_code=400)
 
     row = PromptBlock(
         id=new_id(),
@@ -279,6 +282,7 @@ def create_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, preset_
         cache_json=json.dumps(body.cache or {}, ensure_ascii=False) if body.cache else None,
     )
     db.add(row)
+    preset.updated_at = utc_now_iso()
     db.commit()
     db.refresh(row)
     return ok_payload(request_id=request_id, data={"block": _block_to_out(row)})
@@ -306,18 +310,18 @@ def update_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, block_i
         block.role = body.role
     if body.enabled is not None:
         block.enabled = body.enabled
-    if body.template is not None:
+    if "template" in body.model_fields_set:
         block.template = body.template
-    if body.marker_key is not None:
+    if "marker_key" in body.model_fields_set:
         block.marker_key = body.marker_key
     if body.injection_position is not None:
         block.injection_position = body.injection_position
-    if body.injection_depth is not None:
+    if "injection_depth" in body.model_fields_set:
         block.injection_depth = body.injection_depth
     if body.injection_order is not None:
         block.injection_order = body.injection_order
-    if body.triggers is not None:
-        block.triggers_json = json.dumps(body.triggers or [], ensure_ascii=False)
+    if "triggers" in body.model_fields_set:
+        block.triggers_json = json.dumps(body.triggers or [], ensure_ascii=False) if body.triggers is not None else None
     if body.forbid_overrides is not None:
         block.forbid_overrides = body.forbid_overrides
     if body.budget is not None:
@@ -325,6 +329,7 @@ def update_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, block_i
     if body.cache is not None:
         block.cache_json = json.dumps(body.cache or {}, ensure_ascii=False) if body.cache else None
 
+    preset.updated_at = utc_now_iso()
     db.commit()
     db.refresh(block)
     return ok_payload(request_id=request_id, data={"block": _block_to_out(block)})
@@ -345,6 +350,7 @@ def delete_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, block_i
         raise AppError(code="VALIDATION_ERROR", message="迁移预设不允许编辑块（M0 阶段）", status_code=400)
 
     db.delete(block)
+    preset.updated_at = utc_now_iso()
     db.commit()
     return ok_payload(request_id=request_id, data={})
 
@@ -377,6 +383,7 @@ def reorder_prompt_blocks(
             raise AppError.validation(message="ordered_block_ids 包含不属于该 preset 的 block_id")
         block.injection_order = idx
 
+    preset.updated_at = utc_now_iso()
     db.commit()
     blocks = (
         db.execute(select(PromptBlock).where(PromptBlock.preset_id == preset_id).order_by(PromptBlock.injection_order.asc()))
@@ -475,6 +482,9 @@ def preview_prompt(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
     request_id = request.state.request_id
     require_owned_project(db, project_id=project_id, user_id=user_id)
 
+    llm_preset = db.get(LLMPreset, project_id)
+    provider = llm_preset.provider if llm_preset is not None else None
+
     system, user, _, missing, blocks, preset_id, render_log = render_preset_for_task(
         db,
         project_id=project_id,
@@ -482,6 +492,7 @@ def preview_prompt(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
         values=body.values,
         preset_id=body.preset_id,
         macro_seed=request_id,
+        provider=provider,
     )
 
     payload = PromptPreviewOut(

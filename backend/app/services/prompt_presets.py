@@ -976,6 +976,7 @@ def render_preset_for_task(
 
         text = ""
         missing: list[str] = []
+        render_error: str | None = None
         reason_parts: list[str] = []
 
         prev_idx = effective_index_by_identifier.get(b.identifier)
@@ -991,10 +992,13 @@ def render_preset_for_task(
                 render_values["base"] = original_text
 
             if b.template:
-                text, missing = render_template(b.template, render_values, macro_seed=macro_seed)
+                text, missing, render_error = render_template(b.template, render_values, macro_seed=macro_seed)
+                if render_error:
+                    reason_parts.append("template_error")
             elif b.marker_key:
                 if b.marker_key in values:
-                    text = str(values[b.marker_key])
+                    marker_value = values.get(b.marker_key)
+                    text = "" if marker_value is None else str(marker_value)
                 else:
                     missing = [b.marker_key]
                     text = ""
@@ -1025,6 +1029,7 @@ def render_preset_for_task(
                 "role": b.role,
                 "enabled": b.enabled,
                 "missing": missing,
+                "render_error": render_error,
                 "priority": priority,
                 "max_tokens": max_tokens,
                 "injection_position": str(b.injection_position or "relative"),
@@ -1077,12 +1082,7 @@ def render_preset_for_task(
 
         if total_tokens > budget_tokens:
             trim_candidates = [s for s in block_states if int(s["tokens_after"]) > 0 and str(s.get("text_after") or "").strip()]
-            trim_candidates.sort(
-                key=lambda s: (
-                    0 if s["priority"] == "important" else 1 if s["priority"] == "must" else 2,
-                    -int(s.get("order") or 0),
-                )
-            )
+            trim_candidates.sort(key=lambda s: (priority_rank.get(str(s["priority"]), 2), -int(s.get("order") or 0)))
             for s in trim_candidates:
                 if total_tokens <= budget_tokens:
                     break
@@ -1151,6 +1151,8 @@ def render_preset_for_task(
                 "role": s["role"],
                 "priority": s["priority"],
                 "max_tokens": s["max_tokens"],
+                "missing": s.get("missing") or [],
+                "render_error": s.get("render_error"),
                 "tokens_before": s["tokens_before"],
                 "tokens_after": s["tokens_after"],
                 "trimmed": s["trimmed"],

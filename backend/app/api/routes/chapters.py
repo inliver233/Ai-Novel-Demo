@@ -348,6 +348,7 @@ def plan_chapter(
             task="plan_chapter",
             values=values,  # type: ignore[arg-type]
             macro_seed=f"{request_id}:plan",
+            provider=preset.provider,
         )
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
         llm_call = prepare_llm_call(preset)
@@ -551,6 +552,7 @@ def generate_chapter(
                 task="plan_chapter",
                 values=plan_values,  # type: ignore[arg-type]
                 macro_seed=f"{request_id}:plan",
+                provider=preset.provider,
             )
             plan_prompt_render_log_json = json.dumps(plan_render_log, ensure_ascii=False)
         else:
@@ -560,6 +562,7 @@ def generate_chapter(
                 task="chapter_generate",
                 values=values,  # type: ignore[arg-type]
                 macro_seed=request_id,
+                provider=preset.provider,
             )
             prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
@@ -629,6 +632,7 @@ def generate_chapter(
                 task="chapter_generate",
                 values=render_values,  # type: ignore[arg-type]
                 macro_seed=request_id,
+                provider=llm_call.provider,
             )
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
@@ -683,6 +687,7 @@ def generate_chapter(
                     task="post_edit",
                     values=post_values,  # type: ignore[arg-type]
                     macro_seed=f"{request_id}:post_edit",
+                    provider=llm_call.provider,
                 )
 
             post_render_log_json = json.dumps(post_render_log, ensure_ascii=False)
@@ -904,6 +909,7 @@ def generate_chapter_stream(
                     task="plan_chapter",
                     values=plan_values,  # type: ignore[arg-type]
                     macro_seed=f"{request_id}:plan",
+                    provider=preset.provider,
                 )
                 plan_prompt_render_log_json = json.dumps(plan_render_log, ensure_ascii=False)
             else:
@@ -913,6 +919,7 @@ def generate_chapter_stream(
                     task="chapter_generate",
                     values=values,  # type: ignore[arg-type]
                     macro_seed=request_id,
+                    provider=preset.provider,
                 )
                 prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
@@ -991,6 +998,7 @@ def generate_chapter_stream(
                     task="chapter_generate",
                     values=render_values,  # type: ignore[arg-type]
                     macro_seed=request_id,
+                    provider=llm_call.provider,
                 )
             prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
@@ -1133,6 +1141,7 @@ def generate_chapter_stream(
                             task="post_edit",
                             values=post_values,  # type: ignore[arg-type]
                             macro_seed=f"{request_id}:post_edit",
+                            provider=llm_call.provider,
                         )
 
                     post_render_log_json = json.dumps(post_render_log, ensure_ascii=False)

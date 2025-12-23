@@ -8,7 +8,7 @@ from typing import Any
 
 from jinja2 import Environment, meta
 
-_MACRO_TOKEN_RE = re.compile(r"{{\s*([a-zA-Z0-9_]+)(?:::(.*?))?\s*}}", flags=re.DOTALL)
+_MACRO_TOKEN_RE = re.compile(r"{{\s*(//[^\n]*|[a-zA-Z0-9_]+)(?:::(.*?))?\s*}}", flags=re.DOTALL)
 
 _ESCAPE_MACRO_RE = re.compile(
     r"{{\s*(//[^\n]*|random::.*?|pick::.*?|date|time|isodate)\s*}}",
@@ -87,27 +87,37 @@ def _evaluate_macros(text: str, *, seed: str | None = None) -> str:
     return _MACRO_TOKEN_RE.sub(_replace, text)
 
 
-def render_template(template: str, values: dict[str, Any], *, macro_seed: str | None = None) -> tuple[str, list[str]]:
+def render_template(template: str, values: dict[str, Any], *, macro_seed: str | None = None) -> tuple[str, list[str], str | None]:
     if not template:
-        return "", []
+        return "", [], None
 
     escaped, mapping = _escape_macros(template)
+    errors: list[str] = []
     try:
         ast = _JINJA.parse(escaped)
         declared = meta.find_undeclared_variables(ast)
-    except Exception:
+    except Exception as exc:
         declared = set()
+        msg = str(exc).replace("\n", " ").strip()
+        if len(msg) > 200:
+            msg = msg[:200] + "…"
+        errors.append(f"jinja_parse_error:{type(exc).__name__}:{msg}")
 
     try:
         rendered = _JINJA.from_string(escaped).render(**values)
-    except Exception:
+    except Exception as exc:
         # Keep M0 compatibility: rendering errors should not crash generation.
         rendered = escaped
+        msg = str(exc).replace("\n", " ").strip()
+        if len(msg) > 200:
+            msg = msg[:200] + "…"
+        errors.append(f"jinja_render_error:{type(exc).__name__}:{msg}")
 
     missing = sorted([v for v in declared if v and v not in values])
     restored = _restore_macros(rendered, mapping)
     final = _evaluate_macros(restored, seed=macro_seed)
-    return final, missing
+    error = ";".join(errors) if errors else None
+    return final, missing, error
 
 
 def extract_json_object(text: str) -> tuple[dict[str, Any] | None, str | None]:
