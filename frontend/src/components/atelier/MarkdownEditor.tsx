@@ -13,6 +13,7 @@ export function MarkdownEditor(props: {
   minRows?: number;
   mono?: boolean;
   name?: string;
+  readOnly?: boolean;
 }) {
   const [tab, setTab] = useState<"edit" | "preview">("edit");
 
@@ -67,9 +68,13 @@ export function MarkdownEditor(props: {
           )}
           name={props.name}
           placeholder={props.placeholder}
+          readOnly={Boolean(props.readOnly)}
           rows={props.minRows ?? 12}
           value={props.value}
-          onChange={(e) => props.onChange(e.target.value)}
+          onChange={(e) => {
+            if (props.readOnly) return;
+            props.onChange(e.target.value);
+          }}
         />
       ) : (
         <div className="atelier-content max-w-none px-3 py-4 text-ink">

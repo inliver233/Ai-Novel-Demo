@@ -866,15 +866,14 @@ export function WritingPage() {
                 </label>
                 <label className="grid gap-1">
                   <span className="text-xs text-subtext">正文（Markdown）</span>
-                  <div className={generating ? "pointer-events-none opacity-60" : ""}>
-                    <MarkdownEditor
-                      value={form.content_md}
-                      onChange={(next) => setForm((v) => (v ? { ...v, content_md: next } : v))}
-                      placeholder="开始写作..."
-                      minRows={16}
-                      name="content_md"
-                    />
-                  </div>
+                  <MarkdownEditor
+                    value={form.content_md}
+                    onChange={(next) => setForm((v) => (v ? { ...v, content_md: next } : v))}
+                    placeholder="开始写作..."
+                    minRows={16}
+                    name="content_md"
+                    readOnly={generating}
+                  />
                 </label>
                 <label className="grid gap-1">
                   <span className="text-xs text-subtext">摘要（可选）</span>
