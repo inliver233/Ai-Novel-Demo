@@ -4,13 +4,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        canvas: "var(--color-canvas)",
-        surface: "var(--color-surface)",
-        ink: "var(--color-ink)",
-        subtext: "var(--color-subtext)",
-        accent: "var(--color-accent)",
-        success: "var(--color-success)",
-        border: "var(--color-border)",
+        canvas: "rgb(var(--color-canvas) / <alpha-value>)",
+        surface: "rgb(var(--color-surface) / <alpha-value>)",
+        ink: "rgb(var(--color-ink) / <alpha-value>)",
+        subtext: "rgb(var(--color-subtext) / <alpha-value>)",
+        accent: "rgb(var(--color-accent) / <alpha-value>)",
+        success: "rgb(var(--color-success) / <alpha-value>)",
+        border: "rgb(var(--color-border) / <alpha-value>)",
       },
       fontFamily: {
         ui: ["var(--font-ui)"],
@@ -20,7 +20,15 @@ export default {
       borderRadius: {
         atelier: "var(--radius-base)",
       },
+      transitionTimingFunction: {
+        atelier: "var(--motion-ease-standard)",
+      },
+      transitionDuration: {
+        "atelier-fast": "var(--motion-duration-fast)",
+        atelier: "var(--motion-duration-base)",
+        "atelier-slow": "var(--motion-duration-slow)",
+      },
     },
   },
   plugins: [],
-}
+};

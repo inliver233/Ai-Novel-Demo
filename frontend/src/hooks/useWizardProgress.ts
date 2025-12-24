@@ -56,7 +56,7 @@ export function useWizardProgress(projectId: string | undefined): {
     const project = wizardQuery.data?.project ?? null;
     const selectedProfileId = project?.llm_profile_id ?? null;
     const profiles = wizardQuery.data?.profiles ?? [];
-    const llmProfile = selectedProfileId ? profiles.find((p) => p.id === selectedProfileId) ?? null : null;
+    const llmProfile = selectedProfileId ? (profiles.find((p) => p.id === selectedProfileId) ?? null) : null;
     return computeWizardProgress({
       project,
       settings: wizardQuery.data?.settings ?? null,

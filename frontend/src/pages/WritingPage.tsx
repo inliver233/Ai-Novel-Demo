@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
 import { MarkdownEditor } from "../components/atelier/MarkdownEditor";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
+import { Drawer } from "../components/ui/Drawer";
 import { AiGenerateDrawer } from "../components/writing/AiGenerateDrawer";
 import { CreateChapterDialog } from "../components/writing/CreateChapterDialog";
 import { GenerationHistoryDrawer } from "../components/writing/GenerationHistoryDrawer";
@@ -104,9 +105,12 @@ export function WritingPage() {
   const [aiOpen, setAiOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genRequestId, setGenRequestId] = useState<string | null>(null);
-  const [genStreamProgress, setGenStreamProgress] = useState<
-    { message: string; progress: number; status: string; wordCount?: number } | null
-  >(null);
+  const [genStreamProgress, setGenStreamProgress] = useState<{
+    message: string;
+    progress: number;
+    status: string;
+    wordCount?: number;
+  } | null>(null);
   const genStreamClientRef = useRef<SSEPostClient | null>(null);
   const genStreamHasChunkRef = useRef(false);
   const autoGenerateNextRef = useRef<{ chapterId: string; mode: "replace" | "append" } | null>(null);
@@ -327,7 +331,18 @@ export function WritingPage() {
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       }
     },
-    [activeOutlineId, bumpWizardLocal, confirm, dirty, projectId, refreshChapters, refreshWriting, refreshWizard, saveChapter, toast],
+    [
+      activeOutlineId,
+      bumpWizardLocal,
+      confirm,
+      dirty,
+      projectId,
+      refreshChapters,
+      refreshWriting,
+      refreshWizard,
+      saveChapter,
+      toast,
+    ],
   );
 
   const openCreate = useCallback(() => {
@@ -530,7 +545,9 @@ export function WritingPage() {
               const content = typeof obj?.content_md === "string" ? obj.content_md : "";
               const summary = typeof obj?.summary === "string" ? obj.summary : "";
               const parseErrObj =
-                obj?.parse_error && typeof obj.parse_error === "object" ? (obj.parse_error as Record<string, unknown>) : null;
+                obj?.parse_error && typeof obj.parse_error === "object"
+                  ? (obj.parse_error as Record<string, unknown>)
+                  : null;
               const parseErrCode = typeof parseErrObj?.code === "string" ? parseErrObj.code : undefined;
               const parseErrMessage = typeof parseErrObj?.message === "string" ? parseErrObj.message : undefined;
               if (parseErrCode === "OUTPUT_TRUNCATED") {
@@ -571,13 +588,15 @@ export function WritingPage() {
                 setForm((prev) => {
                   if (!prev) return prev;
                   const nextContent =
-                    mode === "append" ? appendMarkdown(prev.content_md, res.data.content_md ?? "") : (res.data.content_md ?? "");
+                    mode === "append"
+                      ? appendMarkdown(prev.content_md, res.data.content_md ?? "")
+                      : (res.data.content_md ?? "");
                   return {
                     ...prev,
                     content_md: nextContent,
                     summary: res.data.summary ?? prev.summary,
                     status: "drafting",
-                    };
+                  };
                 });
 
                 toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
@@ -609,7 +628,9 @@ export function WritingPage() {
           setForm((prev) => {
             if (!prev) return prev;
             const nextContent =
-              mode === "append" ? appendMarkdown(prev.content_md, res.data.content_md ?? "") : (res.data.content_md ?? "");
+              mode === "append"
+                ? appendMarkdown(prev.content_md, res.data.content_md ?? "")
+                : (res.data.content_md ?? "");
             return {
               ...prev,
               content_md: nextContent,
@@ -640,8 +661,8 @@ export function WritingPage() {
     const idx = sorted.findIndex((c) => c.id === activeChapter.id);
     const next =
       idx >= 0
-        ? sorted[idx + 1] ?? null
-        : sorted.find((c) => (c.number ?? 0) > (activeChapter.number ?? 0)) ?? null;
+        ? (sorted[idx + 1] ?? null)
+        : (sorted.find((c) => (c.number ?? 0) > (activeChapter.number ?? 0)) ?? null);
 
     if (!next) {
       toast.toastSuccess("已保存，已是最后一章");
@@ -679,12 +700,12 @@ export function WritingPage() {
 
   return (
     <div className="grid gap-4">
-      <div className="rounded-atelier border border-border bg-surface p-4">
+      <div className="panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-subtext">当前大纲</span>
             <select
-              className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink"
+              className="select w-auto"
               name="active_outline_id"
               value={activeOutlineId}
               onChange={(e) => void switchOutline(e.target.value)}
@@ -700,16 +721,12 @@ export function WritingPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              className="inline-flex items-center gap-2 rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface lg:hidden"
-              onClick={() => setChapterListOpen(true)}
-              type="button"
-            >
+            <button className="btn btn-secondary lg:hidden" onClick={() => setChapterListOpen(true)} type="button">
               <List size={16} />
               章节列表
             </button>
             <button
-              className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
+              className="btn btn-secondary"
               onClick={() => {
                 setHistoryOpen(true);
                 void refreshRuns();
@@ -718,11 +735,7 @@ export function WritingPage() {
             >
               生成记录
             </button>
-            <button
-              className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90"
-              onClick={openCreate}
-              type="button"
-            >
+            <button className="btn btn-primary" onClick={openCreate} type="button">
               新增章节
             </button>
           </div>
@@ -731,7 +744,7 @@ export function WritingPage() {
 
       <div className="flex gap-4">
         <aside className="hidden w-[240px] shrink-0 lg:block">
-          <div className="rounded-atelier border border-border bg-surface p-2">
+          <div className="panel p-2">
             {chapters.length === 0 ? (
               <div className="p-3 text-sm text-subtext">还没有章节，先新建一个吧。</div>
             ) : (
@@ -741,8 +754,8 @@ export function WritingPage() {
                     key={c.id}
                     className={
                       c.id === activeId
-                        ? "rounded-atelier bg-canvas px-3 py-2 text-left text-sm text-ink"
-                        : "rounded-atelier px-3 py-2 text-left text-sm text-subtext hover:bg-canvas hover:text-ink"
+                        ? "ui-focus-ring ui-transition-fast rounded-atelier bg-canvas px-3 py-2 text-left text-sm text-ink"
+                        : "ui-focus-ring ui-transition-fast rounded-atelier px-3 py-2 text-left text-sm text-subtext hover:bg-canvas hover:text-ink"
                     }
                     onClick={() => void requestSelectChapter(c.id)}
                     type="button"
@@ -763,11 +776,9 @@ export function WritingPage() {
 
         <section className="min-w-0 flex-1">
           {!activeChapter || !form ? (
-            <div className="rounded-atelier border border-border bg-surface p-8 text-sm text-subtext">
-              请选择或新建章节开始写作。
-            </div>
+            <div className="panel p-8 text-sm text-subtext">请选择或新建章节开始写作。</div>
           ) : (
-            <div className="rounded-atelier border border-border bg-surface p-5">
+            <div className="panel p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-content text-2xl text-ink">
@@ -777,7 +788,7 @@ export function WritingPage() {
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
-                    className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface disabled:opacity-60"
+                    className="btn btn-secondary"
                     disabled={loadingChapter}
                     onClick={() => setAiOpen(true)}
                     type="button"
@@ -785,7 +796,7 @@ export function WritingPage() {
                     AI 生成
                   </button>
                   <button
-                    className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface disabled:opacity-60"
+                    className="btn btn-ghost text-accent hover:bg-accent/10"
                     disabled={loadingChapter || generating}
                     onClick={() => void deleteChapter()}
                     type="button"
@@ -793,7 +804,7 @@ export function WritingPage() {
                     删除
                   </button>
                   <button
-                    className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
+                    className="btn btn-primary"
                     disabled={!dirty || loadingChapter || generating}
                     onClick={() => void saveChapter()}
                     type="button"
@@ -818,7 +829,7 @@ export function WritingPage() {
                 <label className="grid gap-1 sm:col-span-2">
                   <span className="text-xs text-subtext">标题</span>
                   <input
-                    className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+                    className="input"
                     disabled={generating}
                     name="title"
                     value={form.title}
@@ -828,13 +839,11 @@ export function WritingPage() {
                 <label className="grid gap-1 sm:col-span-1">
                   <span className="text-xs text-subtext">状态</span>
                   <select
-                    className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+                    className="select"
                     disabled={generating}
                     name="status"
                     value={form.status}
-                    onChange={(e) =>
-                      setForm((v) => (v ? { ...v, status: e.target.value as ChapterStatus } : v))
-                    }
+                    onChange={(e) => setForm((v) => (v ? { ...v, status: e.target.value as ChapterStatus } : v))}
                   >
                     <option value="planned">planned</option>
                     <option value="drafting">drafting</option>
@@ -847,7 +856,7 @@ export function WritingPage() {
                 <label className="grid gap-1">
                   <span className="text-xs text-subtext">本章要点</span>
                   <textarea
-                    className="atelier-content w-full rounded-atelier border border-border bg-canvas px-3 py-3 text-ink outline-none"
+                    className="textarea atelier-content"
                     disabled={generating}
                     name="plan"
                     rows={4}
@@ -870,7 +879,7 @@ export function WritingPage() {
                 <label className="grid gap-1">
                   <span className="text-xs text-subtext">摘要（可选）</span>
                   <textarea
-                    className="atelier-content w-full rounded-atelier border border-border bg-canvas px-3 py-3 text-ink outline-none"
+                    className="textarea atelier-content"
                     disabled={generating}
                     name="summary"
                     rows={3}
@@ -895,62 +904,53 @@ export function WritingPage() {
         onSubmit={() => void createChapter()}
       />
 
-      {chapterListOpen ? (
-        <div
-          className="fixed inset-0 z-40 flex bg-black/30 lg:hidden"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setChapterListOpen(false);
-          }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="章节列表"
-        >
-          <div className="h-full w-[280px] overflow-hidden border-r border-border bg-surface shadow-sm">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <div className="text-sm text-ink">章节列表</div>
-              <button
-                className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
-                onClick={() => setChapterListOpen(false)}
-                type="button"
-              >
-                关闭
-              </button>
-            </div>
-
-            <div className="h-full overflow-auto p-2">
-              {chapters.length === 0 ? (
-                <div className="p-3 text-sm text-subtext">还没有章节，先新建一个吧。</div>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  {chapters.map((c) => (
-                    <button
-                      key={c.id}
-                      className={
-                        c.id === activeId
-                          ? "rounded-atelier bg-canvas px-3 py-2 text-left text-sm text-ink"
-                          : "rounded-atelier px-3 py-2 text-left text-sm text-subtext hover:bg-canvas hover:text-ink"
-                      }
-                      onClick={() => {
-                        setChapterListOpen(false);
-                        void requestSelectChapter(c.id);
-                      }}
-                      type="button"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0 truncate">
-                          <span className="mr-2 text-xs text-subtext">#{c.number}</span>
-                          <span className="truncate">{c.title ?? "未命名章节"}</span>
-                        </div>
-                        <span className="shrink-0 text-[11px] text-subtext">{c.status}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+      <Drawer
+        open={chapterListOpen}
+        onClose={() => setChapterListOpen(false)}
+        side="left"
+        overlayClassName="lg:hidden"
+        ariaLabel="章节列表"
+        panelClassName="h-full w-[280px] overflow-hidden border-r border-border bg-surface shadow-sm"
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div className="text-sm text-ink">章节列表</div>
+          <button className="btn btn-secondary" onClick={() => setChapterListOpen(false)} type="button">
+            关闭
+          </button>
         </div>
-      ) : null}
+
+        <div className="h-full overflow-auto p-2">
+          {chapters.length === 0 ? (
+            <div className="p-3 text-sm text-subtext">还没有章节，先新建一个吧。</div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {chapters.map((c) => (
+                <button
+                  key={c.id}
+                  className={
+                    c.id === activeId
+                      ? "ui-focus-ring ui-transition-fast rounded-atelier bg-canvas px-3 py-2 text-left text-sm text-ink"
+                      : "ui-focus-ring ui-transition-fast rounded-atelier px-3 py-2 text-left text-sm text-subtext hover:bg-canvas hover:text-ink"
+                  }
+                  onClick={() => {
+                    setChapterListOpen(false);
+                    void requestSelectChapter(c.id);
+                  }}
+                  type="button"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 truncate">
+                      <span className="mr-2 text-xs text-subtext">#{c.number}</span>
+                      <span className="truncate">{c.title ?? "未命名章节"}</span>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-subtext">{c.status}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </Drawer>
 
       <AiGenerateDrawer
         open={aiOpen}
@@ -978,31 +978,27 @@ export function WritingPage() {
               <div className="min-w-0">
                 <div className="text-sm text-ink">AI 流式生成中</div>
                 <div className="mt-1 truncate text-xs text-subtext">{genStreamProgress?.message ?? "处理中..."}</div>
-                {genRequestId ? <div className="mt-1 truncate text-[11px] text-subtext">request_id: {genRequestId}</div> : null}
+                {genRequestId ? (
+                  <div className="mt-1 truncate text-[11px] text-subtext">request_id: {genRequestId}</div>
+                ) : null}
               </div>
               {genStreamProgress ? (
-                <div className="shrink-0 text-xs text-subtext">{Math.max(0, Math.min(100, genStreamProgress.progress))}%</div>
+                <div className="shrink-0 text-xs text-subtext">
+                  {Math.max(0, Math.min(100, genStreamProgress.progress))}%
+                </div>
               ) : null}
             </div>
             <div className="mt-2 h-2 w-full rounded bg-border">
               <div
-                className="h-2 rounded bg-accent transition-all"
+                className="h-2 rounded bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
                 style={{ width: `${Math.max(0, Math.min(100, genStreamProgress?.progress ?? 0))}%` }}
               />
             </div>
             <div className="mt-3 flex justify-end gap-2">
-              <button
-                className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
-                onClick={() => setAiOpen(true)}
-                type="button"
-              >
+              <button className="btn btn-secondary" onClick={() => setAiOpen(true)} type="button">
                 展开
               </button>
-              <button
-                className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
-                onClick={() => genStreamClientRef.current?.abort()}
-                type="button"
-              >
+              <button className="btn btn-secondary" onClick={() => genStreamClientRef.current?.abort()} type="button">
                 取消
               </button>
             </div>

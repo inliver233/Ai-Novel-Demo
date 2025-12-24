@@ -38,6 +38,11 @@ npm run dev
 - **不要提交运行/构建产物**：例如 `backend/.env`、`backend/*.db`、`frontend/dist`、`frontend/node_modules`、`demo/**/__pycache__` 等（已由根 `.gitignore` 统一忽略）。
 - **安全红线**：任何日志/错误/调试信息不得输出明文 API Key（响应/导出/控制台也不允许；仅允许 `has_api_key/masked_api_key`）。
 
+## UI/UX 规范（必须）
+
+- 统一设计语言见 `ui设计规范.md`（含颜色/排版/组件/动效 Token）。
+- 新增页面/组件时，要求所有可交互元素具备 `Hover/Focus/Active/Disabled` 状态，并遵循统一的 `Cubic Bezier + 150/250/350ms` 动效窗口。
+
 ## 验证清单（DoD）
 
 前端：

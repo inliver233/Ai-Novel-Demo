@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, Circle, CircleSlash2, Wand2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -8,6 +9,7 @@ import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjects } from "../contexts/projects";
 import { useProjectData } from "../hooks/useProjectData";
+import { duration, transition } from "../lib/motion";
 import { ApiError, apiJson } from "../services/apiClient";
 import { computeWizardProgress, setWizardStepSkipped, type WizardStep, type WizardStepKey } from "../services/wizard";
 import type { Chapter, Character, LLMPreset, LLMProfile, Outline, ProjectSettings } from "../types";
@@ -38,6 +40,7 @@ export function ProjectWizardPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
+  const reduceMotion = useReducedMotion();
   const { projects } = useProjects();
 
   const project = useMemo(() => projects.find((p) => p.id === projectId) ?? null, [projectId, projects]);
@@ -75,7 +78,7 @@ export function ProjectWizardPage() {
   const progress = useMemo(() => {
     void version;
     const selectedProfileId = project?.llm_profile_id ?? null;
-    const llmProfile = selectedProfileId ? profiles.find((p) => p.id === selectedProfileId) ?? null : null;
+    const llmProfile = selectedProfileId ? (profiles.find((p) => p.id === selectedProfileId) ?? null) : null;
     return computeWizardProgress({
       project,
       settings,
@@ -202,7 +205,7 @@ export function ProjectWizardPage() {
 
   return (
     <div className="grid gap-6">
-      <section className="rounded-atelier border border-border bg-surface p-6">
+      <section className="panel p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="grid gap-2">
             <div className="font-content text-xl">开工向导</div>
@@ -217,15 +220,11 @@ export function ProjectWizardPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <button
-              className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
-              onClick={() => void reload()}
-              type="button"
-            >
+            <button className="btn btn-secondary" onClick={() => void reload()} type="button">
               刷新完成度
             </button>
             <button
-              className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
+              className="btn btn-primary"
               disabled={!progress.nextStep}
               onClick={() => {
                 if (progress.nextStep) goStep(progress.nextStep);
@@ -239,20 +238,23 @@ export function ProjectWizardPage() {
 
         <div className="mt-4">
           <div className="h-2 w-full rounded-full bg-border/60">
-            <div className="h-2 rounded-full bg-accent transition-[width] duration-300" style={{ width: `${progress.percent}%` }} />
+            <div
+              className="h-2 rounded-full bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
+              style={{ width: `${progress.percent}%` }}
+            />
           </div>
           <div className="mt-2 text-xs text-subtext">完成度：{progress.percent}%</div>
         </div>
       </section>
 
-      <section className="rounded-atelier border border-border bg-surface p-6">
+      <section className="panel p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="grid gap-2">
             <div className="font-content text-xl">自动模式（MVP）</div>
             <div className="text-xs text-subtext">一键：生成大纲 → 保存 → 创建章节骨架 → 跳转写作页。</div>
           </div>
           <button
-            className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
+            className="btn btn-primary"
             disabled={autoRunning}
             onClick={() => void autoOutlineAndChapters()}
             type="button"
@@ -266,9 +268,17 @@ export function ProjectWizardPage() {
         {autoRunning ? <GhostwriterIndicator className="mt-4" label="正在调用模型生成大纲与章节结构…" /> : null}
       </section>
 
-      <section className="rounded-atelier border border-border bg-surface p-6">
+      <section className="panel p-6">
         <div className="font-content text-xl">步骤清单</div>
-        <div className="mt-4 grid gap-3">
+        <motion.div
+          className="mt-4 grid gap-3"
+          initial="hidden"
+          animate="show"
+          variants={{
+            hidden: {},
+            show: { transition: { staggerChildren: reduceMotion ? 0 : duration.stagger } },
+          }}
+        >
           {progress.steps.map((s) => {
             const Icon = s.state === "done" ? CheckCircle2 : s.state === "skipped" ? CircleSlash2 : Circle;
             const badge =
@@ -280,7 +290,15 @@ export function ProjectWizardPage() {
                     ? "下一步"
                     : "待完成";
             return (
-              <div key={s.key} className="flex flex-wrap items-start justify-between gap-3 rounded-atelier border border-border bg-canvas p-4">
+              <motion.div
+                key={s.key}
+                className="surface p-4"
+                variants={{
+                  hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
+                  show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
+                }}
+                transition={reduceMotion ? { duration: 0.01 } : transition.base}
+              >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <Icon
@@ -309,16 +327,12 @@ export function ProjectWizardPage() {
                   <div className="mt-1 text-xs text-subtext">{s.description}</div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
-                  <button
-                    className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-                    onClick={() => goStep(s)}
-                    type="button"
-                  >
+                  <button className="btn btn-secondary" onClick={() => goStep(s)} type="button">
                     打开
                   </button>
                   {s.state === "todo" ? (
                     <button
-                      className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-subtext hover:bg-canvas"
+                      className="btn btn-secondary text-subtext"
                       onClick={() => setSkipped(s.key, true)}
                       type="button"
                     >
@@ -326,7 +340,7 @@ export function ProjectWizardPage() {
                     </button>
                   ) : s.state === "skipped" ? (
                     <button
-                      className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-subtext hover:bg-canvas"
+                      className="btn btn-secondary text-subtext"
                       onClick={() => setSkipped(s.key, false)}
                       type="button"
                     >
@@ -334,10 +348,10 @@ export function ProjectWizardPage() {
                     </button>
                   ) : null}
                 </div>
-              </div>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       </section>
     </div>
   );

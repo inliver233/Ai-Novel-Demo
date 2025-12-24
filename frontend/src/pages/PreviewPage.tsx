@@ -6,6 +6,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
+import { Drawer } from "../components/ui/Drawer";
 import { useProjectData } from "../hooks/useProjectData";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { apiJson } from "../services/apiClient";
@@ -71,8 +72,10 @@ export function PreviewPage() {
               <button
                 key={c.id}
                 className={clsx(
-                  "flex w-full items-center justify-between gap-2 rounded-atelier border px-3 py-2 text-left text-sm",
-                  isActive ? "border-accent/40 bg-accent/10 text-ink" : "border-border bg-canvas text-subtext hover:bg-surface",
+                  "ui-focus-ring ui-transition-fast flex w-full items-center justify-between gap-2 rounded-atelier border px-3 py-2 text-left text-sm motion-safe:active:scale-[0.99]",
+                  isActive
+                    ? "border-accent/40 bg-accent/10 text-ink"
+                    : "border-border bg-canvas text-subtext hover:bg-surface",
                 )}
                 onClick={() => {
                   setActiveId(c.id);
@@ -97,16 +100,12 @@ export function PreviewPage() {
   return (
     <div className="grid gap-4">
       <div className="flex items-center justify-between gap-2">
-        <button
-          className="inline-flex items-center gap-2 rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas lg:hidden"
-          onClick={() => setMobileListOpen(true)}
-          type="button"
-        >
+        <button className="btn btn-secondary lg:hidden" onClick={() => setMobileListOpen(true)} type="button">
           <List size={16} />
           章节列表
         </button>
         <button
-          className="hidden items-center gap-2 rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas lg:inline-flex"
+          className="btn btn-secondary hidden lg:inline-flex"
           onClick={() => setCollapsed((v) => !v)}
           type="button"
         >
@@ -119,11 +118,7 @@ export function PreviewPage() {
         </div>
 
         {activeChapter ? (
-          <button
-            className="inline-flex items-center gap-2 rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-            onClick={() => openEditor(activeChapter.id)}
-            type="button"
-          >
+          <button className="btn btn-secondary" onClick={() => openEditor(activeChapter.id)} type="button">
             <Edit3 size={16} />
             编辑
           </button>
@@ -133,14 +128,12 @@ export function PreviewPage() {
       <div className="flex gap-4">
         {!collapsed ? (
           <aside className="hidden w-[280px] shrink-0 lg:block">
-            <div className="h-[calc(100vh-260px)] min-h-[520px] overflow-hidden rounded-atelier border border-border bg-surface">
-              {list}
-            </div>
+            <div className="panel h-[calc(100vh-260px)] min-h-[520px] overflow-hidden">{list}</div>
           </aside>
         ) : null}
 
         <section className="min-w-0 flex-1">
-          <div className="rounded-atelier border border-border bg-surface p-6">
+          <div className="panel p-6">
             {activeChapter ? (
               <>
                 <div className="mb-4">
@@ -148,7 +141,9 @@ export function PreviewPage() {
                     第 {activeChapter.number} 章{activeChapter.title?.trim() ? ` · ${activeChapter.title}` : ""}
                   </div>
                   {activeChapter.status !== "done" ? (
-                    <div className="mt-1 text-xs text-subtext">提示：本章状态为 {activeChapter.status}，向导会以 done 作为“写完”判定。</div>
+                    <div className="mt-1 text-xs text-subtext">
+                      提示：本章状态为 {activeChapter.status}，向导会以 done 作为“写完”判定。
+                    </div>
                   ) : null}
                 </div>
                 <div className="atelier-content max-w-none text-ink">
@@ -162,32 +157,23 @@ export function PreviewPage() {
         </section>
       </div>
 
-      {mobileListOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-end bg-black/30 lg:hidden"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setMobileListOpen(false);
-          }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="章节列表"
-        >
-          <div className="h-[85vh] w-full overflow-hidden rounded-atelier border border-border bg-surface">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <div className="text-sm text-ink">章节列表</div>
-              <button
-                className="inline-flex items-center gap-2 rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
-                onClick={() => setMobileListOpen(false)}
-                type="button"
-              >
-                <ChevronLeft size={16} />
-                关闭
-              </button>
-            </div>
-            {list}
-          </div>
+      <Drawer
+        open={mobileListOpen}
+        onClose={() => setMobileListOpen(false)}
+        side="bottom"
+        overlayClassName="lg:hidden"
+        ariaLabel="章节列表"
+        panelClassName="h-[85vh] w-full overflow-hidden rounded-atelier border border-border bg-surface shadow-sm"
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div className="text-sm text-ink">章节列表</div>
+          <button className="btn btn-secondary" onClick={() => setMobileListOpen(false)} type="button">
+            <ChevronLeft size={16} />
+            关闭
+          </button>
         </div>
-      ) : null}
+        {list}
+      </Drawer>
 
       <WizardNextBar projectId={projectId} currentStep="preview" progress={wizardProgress} loading={wizardLoading} />
     </div>

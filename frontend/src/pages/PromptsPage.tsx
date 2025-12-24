@@ -222,7 +222,7 @@ export function PromptsPage() {
   useUnsavedChangesGuard(dirty);
 
   const selectedProfileId = project?.llm_profile_id ?? null;
-  const selectedProfile = selectedProfileId ? profiles.find((p) => p.id === selectedProfileId) ?? null : null;
+  const selectedProfile = selectedProfileId ? (profiles.find((p) => p.id === selectedProfileId) ?? null) : null;
   const lockConnectionFields = Boolean(selectedProfileId);
 
   const saveAll = useCallback(async (): Promise<boolean> => {
@@ -278,11 +278,13 @@ export function PromptsPage() {
         const byType = new Map(res.data.templates.map((t) => [t.type, t]));
         const pf: PromptForm = {
           outline_generate: {
-            system_template: byType.get("outline_generate")?.system_template ?? promptForm.outline_generate.system_template,
+            system_template:
+              byType.get("outline_generate")?.system_template ?? promptForm.outline_generate.system_template,
             user_template: byType.get("outline_generate")?.user_template ?? promptForm.outline_generate.user_template,
           },
           chapter_generate: {
-            system_template: byType.get("chapter_generate")?.system_template ?? promptForm.chapter_generate.system_template,
+            system_template:
+              byType.get("chapter_generate")?.system_template ?? promptForm.chapter_generate.system_template,
             user_template: byType.get("chapter_generate")?.user_template ?? promptForm.chapter_generate.user_template,
           },
         };
@@ -381,7 +383,18 @@ export function PromptsPage() {
     } finally {
       setProfileBusy(false);
     }
-  }, [apiKey, llmForm.base_url, llmForm.model, llmForm.provider, profileBusy, profileName, projectId, reloadAll, refreshWizard, toast]);
+  }, [
+    apiKey,
+    llmForm.base_url,
+    llmForm.model,
+    llmForm.provider,
+    profileBusy,
+    profileName,
+    projectId,
+    reloadAll,
+    refreshWizard,
+    toast,
+  ]);
 
   const updateProfile = useCallback(async () => {
     if (!projectId) return;
@@ -410,7 +423,17 @@ export function PromptsPage() {
     } finally {
       setProfileBusy(false);
     }
-  }, [llmForm.base_url, llmForm.model, llmForm.provider, profileBusy, profileName, projectId, reloadAll, selectedProfileId, toast]);
+  }, [
+    llmForm.base_url,
+    llmForm.model,
+    llmForm.provider,
+    profileBusy,
+    profileName,
+    projectId,
+    reloadAll,
+    selectedProfileId,
+    toast,
+  ]);
 
   const deleteProfile = useCallback(async () => {
     if (!selectedProfileId) {
@@ -617,9 +640,7 @@ export function PromptsPage() {
   }, [navigate, nextAfterLlm?.href, projectId, saveAll, testConnection]);
 
   const previewValues = useMemo(() => {
-    const charactersText = characters
-      .map((c) => `- ${c.name}${c.role ? `（${c.role}）` : ""}`)
-      .join("\\n");
+    const charactersText = characters.map((c) => `- ${c.name}${c.role ? `（${c.role}）` : ""}`).join("\\n");
     return {
       project_name: project?.name ?? "",
       genre: project?.genre ?? "",
@@ -632,11 +653,20 @@ export function PromptsPage() {
       chapter_number: "1",
       chapter_title: "第一章",
       chapter_plan: "（示例要点）",
-      requirements: "{\\n  \"chapter_count\": 12\\n}",
+      requirements: '{\\n  "chapter_count": 12\\n}',
       instruction: "（示例指令）",
       previous_chapter: "（示例上一章摘要）",
     } satisfies Record<string, string>;
-  }, [characters, outline?.content_md, project?.genre, project?.logline, project?.name, settings?.constraints, settings?.style_guide, settings?.world_setting]);
+  }, [
+    characters,
+    outline?.content_md,
+    project?.genre,
+    project?.logline,
+    project?.name,
+    settings?.constraints,
+    settings?.style_guide,
+    settings?.world_setting,
+  ]);
 
   const outlinePreview = useMemo(() => {
     const system = renderTemplate(promptForm.outline_generate.system_template, previewValues);
@@ -688,14 +718,14 @@ export function PromptsPage() {
         onClearApiKey={() => void clearApiKeyInProfile()}
       />
 
-      <div className="rounded-atelier border border-border bg-canvas p-4 shadow-sm">
+      <div className="surface p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-sm font-semibold">Prompt Studio（beta）</div>
             <div className="text-xs text-subtext">预设 + 块编辑器（预览走后端渲染）。旧模板编辑仍保留。</div>
           </div>
           <button
-            className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm hover:bg-canvas"
+            className="btn btn-secondary"
             onClick={() => navigate(`/projects/${projectId}/prompt-studio`)}
             type="button"
           >

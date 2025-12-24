@@ -126,7 +126,7 @@ export async function apiDownloadMarkdown(path: string): Promise<{ filename: str
 
 function unquoteHeaderValue(value: string): string {
   const trimmed = value.trim();
-  if (trimmed.startsWith("\"") && trimmed.endsWith("\"") && trimmed.length >= 2) return trimmed.slice(1, -1);
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) return trimmed.slice(1, -1);
   return trimmed;
 }
 

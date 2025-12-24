@@ -13,4 +13,3 @@ export function useSaveHotkey(onSave: () => void, enabled: boolean) {
     return () => window.removeEventListener("keydown", handler);
   }, [enabled, onSave]);
 }
-

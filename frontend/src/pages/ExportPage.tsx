@@ -70,14 +70,14 @@ export function ExportPage() {
 
   return (
     <div className="grid gap-6">
-      <section className="rounded-atelier border border-border bg-surface p-6">
+      <section className="panel p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="grid gap-2">
             <div className="font-content text-xl">导出 Markdown</div>
             <div className="text-xs text-subtext">按选项生成并下载 `.md` 文件</div>
           </div>
           <button
-            className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
+            className="btn btn-primary"
             disabled={!projectId || exporting}
             onClick={() => void doExport()}
             type="button"
@@ -93,6 +93,7 @@ export function ExportPage() {
             <div className="text-xs text-subtext">包含内容</div>
             <label className="flex items-center gap-2 text-sm text-ink">
               <input
+                className="checkbox"
                 checked={form.include_settings}
                 disabled={exporting}
                 name="include_settings"
@@ -103,6 +104,7 @@ export function ExportPage() {
             </label>
             <label className="flex items-center gap-2 text-sm text-ink">
               <input
+                className="checkbox"
                 checked={form.include_characters}
                 disabled={exporting}
                 name="include_characters"
@@ -113,6 +115,7 @@ export function ExportPage() {
             </label>
             <label className="flex items-center gap-2 text-sm text-ink">
               <input
+                className="checkbox"
                 checked={form.include_outline}
                 disabled={exporting}
                 name="include_outline"
@@ -127,6 +130,7 @@ export function ExportPage() {
             <div className="text-xs text-subtext">章节范围</div>
             <label className="flex items-center gap-2 text-sm text-ink">
               <input
+                className="checkbox"
                 checked={form.chapters === "all"}
                 disabled={exporting}
                 name="chapters"
@@ -137,6 +141,7 @@ export function ExportPage() {
             </label>
             <label className="flex items-center gap-2 text-sm text-ink">
               <input
+                className="checkbox"
                 checked={form.chapters === "done"}
                 disabled={exporting}
                 name="chapters"
@@ -147,7 +152,7 @@ export function ExportPage() {
             </label>
           </div>
 
-          <div className="rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
+          <div className="surface p-3 text-xs text-subtext">
             请求：<span className="break-all">{url || "（请选择项目）"}</span>
           </div>
         </div>

@@ -52,4 +52,3 @@ export function useProjectData<T>(
 
   return { data, setData, loading, refresh };
 }
-

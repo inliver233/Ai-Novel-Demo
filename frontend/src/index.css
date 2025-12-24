@@ -17,33 +17,40 @@
     --font-mono: var(--theme-font-mono);
 
     --radius-base: var(--theme-radius);
+
+    --motion-ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1);
+    --motion-duration-fast: 150ms;
+    --motion-duration-base: 250ms;
+    --motion-duration-slow: 350ms;
+    --motion-duration-stagger: 30ms;
+    --motion-distance-fade-up: 10px;
+    --motion-scale-press: 0.98;
   }
 
   [data-theme="paper-ink"] {
-    --theme-canvas: #fbf9f6;
-    --theme-surface: #f2efe9;
-    --theme-ink: #2c2926;
-    --theme-subtext: #6e6a66;
-    --theme-border: #e6e2dc;
-    --theme-accent: #bc5d43;
-    --theme-success: #3f6359;
-    --theme-font-ui: "Inter", "Geist Sans", ui-sans-serif, system-ui,
-      sans-serif;
+    --theme-canvas: 251 249 246;
+    --theme-surface: 242 239 233;
+    --theme-ink: 44 41 38;
+    --theme-subtext: 110 106 102;
+    --theme-border: 230 226 220;
+    --theme-accent: 188 93 67;
+    --theme-success: 63 99 89;
+    --theme-font-ui: "Inter", "Geist Sans", ui-sans-serif, system-ui, sans-serif;
     --theme-font-content: "Merriweather", "Source Serif 4", ui-serif, serif;
-    --theme-font-mono: "JetBrains Mono", "Fira Code", ui-monospace,
-      SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-      monospace;
+    --theme-font-mono:
+      "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+      "Courier New", monospace;
     --theme-radius: 12px;
   }
 
   [data-theme="paper-ink"].dark {
-    --theme-canvas: #1a1918;
-    --theme-surface: #242321;
-    --theme-ink: #e8e6e3;
-    --theme-subtext: #b9b6b2;
-    --theme-border: #2e2c29;
-    --theme-accent: #d97757;
-    --theme-success: #5e8a7c;
+    --theme-canvas: 26 25 24;
+    --theme-surface: 36 35 33;
+    --theme-ink: 232 230 227;
+    --theme-subtext: 185 182 178;
+    --theme-border: 46 44 41;
+    --theme-accent: 217 119 87;
+    --theme-success: 94 138 124;
   }
 
   html,
@@ -54,17 +61,117 @@
   body {
     margin: 0;
     font-family: var(--font-ui);
-    background: var(--color-canvas);
-    color: var(--color-ink);
+    background: rgb(var(--color-canvas));
+    color: rgb(var(--color-ink));
   }
 
   a {
-    color: var(--color-accent);
+    color: rgb(var(--color-accent));
     text-decoration: none;
   }
 
   a:hover {
     text-decoration: underline;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --motion-duration-fast: 1ms;
+      --motion-duration-base: 1ms;
+      --motion-duration-slow: 1ms;
+      --motion-duration-stagger: 1ms;
+      --motion-distance-fade-up: 0px;
+    }
+  }
+}
+
+@layer components {
+  .ui-focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
+  }
+
+  .ui-transition {
+    @apply motion-safe:transition motion-safe:duration-atelier motion-safe:ease-atelier;
+  }
+
+  .ui-transition-fast {
+    @apply motion-safe:transition motion-safe:duration-atelier-fast motion-safe:ease-atelier;
+  }
+
+  .ui-pressable {
+    @apply ui-transition-fast motion-safe:active:scale-[var(--motion-scale-press)];
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-atelier px-3 py-2 text-sm font-medium;
+    @apply ui-focus-ring ui-pressable;
+  }
+
+  .btn-secondary {
+    @apply border border-border bg-canvas text-ink hover:bg-surface disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply bg-accent text-white hover:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply text-subtext hover:bg-canvas hover:text-ink disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply bg-accent text-white hover:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .btn-icon {
+    @apply btn px-2 py-2;
+  }
+
+  .input {
+    @apply w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none;
+    @apply ui-focus-ring ui-transition-fast;
+    @apply focus:border-accent;
+    @apply disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .textarea {
+    @apply w-full rounded-atelier border border-border bg-canvas px-3 py-3 text-sm text-ink outline-none;
+    @apply ui-focus-ring ui-transition-fast;
+    @apply focus:border-accent;
+    @apply disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .select {
+    @apply w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none;
+    @apply ui-focus-ring ui-transition-fast;
+    @apply focus:border-accent;
+    @apply disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .checkbox {
+    @apply ui-transition-fast accent-accent;
+  }
+
+  .panel {
+    @apply rounded-atelier border border-border bg-surface shadow-sm;
+  }
+
+  .panel-interactive {
+    @apply panel ui-transition cursor-pointer hover:bg-canvas;
+    @apply motion-safe:active:scale-[0.99];
+  }
+
+  .surface {
+    @apply rounded-atelier border border-border bg-canvas shadow-sm;
+  }
+
+  .surface-interactive {
+    @apply surface ui-transition cursor-pointer hover:bg-surface;
+    @apply motion-safe:active:scale-[0.99];
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded-atelier bg-border/60;
   }
 }
 

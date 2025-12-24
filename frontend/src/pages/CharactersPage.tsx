@@ -1,11 +1,14 @@
+import { motion, useReducedMotion } from "framer-motion";
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
+import { Drawer } from "../components/ui/Drawer";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
 import { useWizardProgress } from "../hooks/useWizardProgress";
+import { duration, transition } from "../lib/motion";
 import { ApiError, apiJson } from "../services/apiClient";
 import { markWizardProjectChanged } from "../services/wizard";
 import type { Character } from "../types";
@@ -21,6 +24,7 @@ export function CharactersPage() {
   const { projectId } = useParams();
   const toast = useToast();
   const confirm = useConfirm();
+  const reduceMotion = useReducedMotion();
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
   const bumpWizardLocal = wizard.bumpLocal;
@@ -89,22 +93,31 @@ export function CharactersPage() {
     <div className="grid gap-4">
       <div className="flex items-center justify-between">
         <div className="text-sm text-subtext">共 {characters.length} 位角色</div>
-        <button
-          className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90"
-          onClick={openNew}
-          type="button"
-        >
+        <button className="btn btn-primary" onClick={openNew} type="button">
           新增角色
         </button>
       </div>
 
       {loading ? <div className="text-subtext">加载中...</div> : null}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <motion.div
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+        initial="hidden"
+        animate="show"
+        variants={{
+          hidden: {},
+          show: { transition: { staggerChildren: reduceMotion ? 0 : duration.stagger } },
+        }}
+      >
         {characters.map((c) => (
-          <div
+          <motion.div
             key={c.id}
-            className="rounded-atelier cursor-pointer border border-border bg-surface p-5 text-left hover:bg-canvas"
+            className="panel-interactive ui-focus-ring p-5 text-left"
+            variants={{
+              hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
+              show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
+            }}
+            transition={reduceMotion ? { duration: 0.01 } : transition.base}
             onClick={() => openEdit(c)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
@@ -121,7 +134,7 @@ export function CharactersPage() {
                 <div className="mt-1 text-xs text-subtext">{c.role ?? "未填写角色定位"}</div>
               </div>
               <button
-                className="rounded-atelier border border-border bg-canvas px-3 py-2 text-xs text-ink hover:bg-surface"
+                className="btn btn-ghost px-3 py-2 text-xs text-accent hover:bg-accent/10"
                 onClick={async (e) => {
                   e.stopPropagation();
                   const ok = await confirm.confirm({
@@ -149,118 +162,115 @@ export function CharactersPage() {
               </button>
             </div>
             {c.profile ? <div className="mt-3 line-clamp-4 text-sm text-subtext">{c.profile}</div> : null}
-          </div>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
 
-      {drawerOpen ? (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/30">
-          <div className="h-full w-full max-w-xl border-l border-border bg-canvas p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-content text-2xl">{editing ? "编辑角色" : "新增角色"}</div>
-                <div className="mt-1 text-xs text-subtext">{dirty ? "未保存" : "已同步"}</div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-                  onClick={() => void closeDrawer()}
-                  type="button"
-                >
-                  关闭
-                </button>
-                <button
-                  className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
-                  disabled={saving || !form.name.trim()}
-                  onClick={async () => {
-                    if (!projectId) return;
-                    setSaving(true);
-                    try {
-                      if (!editing) {
-                        await apiJson<{ character: Character }>(`/api/projects/${projectId}/characters`, {
-                          method: "POST",
-                          body: JSON.stringify({
-                            name: form.name.trim(),
-                            role: form.role.trim() || null,
-                            profile: form.profile || null,
-                            notes: form.notes || null,
-                          }),
-                        });
-                      } else {
-                        await apiJson<{ character: Character }>(`/api/characters/${editing.id}`, {
-                          method: "PUT",
-                          body: JSON.stringify({
-                            name: form.name.trim(),
-                            role: form.role.trim() || null,
-                            profile: form.profile || null,
-                            notes: form.notes || null,
-                          }),
-                        });
-                      }
-                      markWizardProjectChanged(projectId);
-                      bumpWizardLocal();
-                      toast.toastSuccess("已保存");
-                      await load();
-                      await refreshWizard();
-                      setBaseline(form);
-                      setDrawerOpen(false);
-                    } catch (err) {
-                      const apiErr = err as ApiError;
-                      toast.toastError(`${apiErr.message} (${apiErr.code})`, apiErr.requestId);
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                  type="button"
-                >
-                  保存
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-4">
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">姓名</span>
-                <input
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
-                  name="name"
-                  value={form.name}
-                  onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))}
-                />
-              </label>
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">角色定位</span>
-                <input
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
-                  name="role"
-                  value={form.role}
-                  onChange={(e) => setForm((v) => ({ ...v, role: e.target.value }))}
-                />
-              </label>
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">人物档案</span>
-                <textarea
-                  className="atelier-content rounded-atelier border border-border bg-surface px-3 py-3 text-ink outline-none"
-                  name="profile"
-                  rows={8}
-                  value={form.profile}
-                  onChange={(e) => setForm((v) => ({ ...v, profile: e.target.value }))}
-                />
-              </label>
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">备注</span>
-                <textarea
-                  className="atelier-content rounded-atelier border border-border bg-surface px-3 py-3 text-ink outline-none"
-                  name="notes"
-                  rows={6}
-                  value={form.notes}
-                  onChange={(e) => setForm((v) => ({ ...v, notes: e.target.value }))}
-                />
-              </label>
-            </div>
+      <Drawer
+        open={drawerOpen}
+        onClose={() => void closeDrawer()}
+        panelClassName="h-full w-full max-w-xl border-l border-border bg-canvas p-6 shadow-sm"
+        ariaLabel={editing ? "编辑角色" : "新增角色"}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="font-content text-2xl">{editing ? "编辑角色" : "新增角色"}</div>
+            <div className="mt-1 text-xs text-subtext">{dirty ? "未保存" : "已同步"}</div>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-secondary" onClick={() => void closeDrawer()} type="button">
+              关闭
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={saving || !form.name.trim()}
+              onClick={async () => {
+                if (!projectId) return;
+                setSaving(true);
+                try {
+                  if (!editing) {
+                    await apiJson<{ character: Character }>(`/api/projects/${projectId}/characters`, {
+                      method: "POST",
+                      body: JSON.stringify({
+                        name: form.name.trim(),
+                        role: form.role.trim() || null,
+                        profile: form.profile || null,
+                        notes: form.notes || null,
+                      }),
+                    });
+                  } else {
+                    await apiJson<{ character: Character }>(`/api/characters/${editing.id}`, {
+                      method: "PUT",
+                      body: JSON.stringify({
+                        name: form.name.trim(),
+                        role: form.role.trim() || null,
+                        profile: form.profile || null,
+                        notes: form.notes || null,
+                      }),
+                    });
+                  }
+                  markWizardProjectChanged(projectId);
+                  bumpWizardLocal();
+                  toast.toastSuccess("已保存");
+                  await load();
+                  await refreshWizard();
+                  setBaseline(form);
+                  setDrawerOpen(false);
+                } catch (err) {
+                  const apiErr = err as ApiError;
+                  toast.toastError(`${apiErr.message} (${apiErr.code})`, apiErr.requestId);
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              type="button"
+            >
+              保存
+            </button>
           </div>
         </div>
-      ) : null}
+
+        <div className="mt-5 grid gap-4">
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">姓名</span>
+            <input
+              className="input"
+              name="name"
+              value={form.name}
+              onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">角色定位</span>
+            <input
+              className="input"
+              name="role"
+              value={form.role}
+              onChange={(e) => setForm((v) => ({ ...v, role: e.target.value }))}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">人物档案</span>
+            <textarea
+              className="textarea atelier-content"
+              name="profile"
+              rows={8}
+              value={form.profile}
+              onChange={(e) => setForm((v) => ({ ...v, profile: e.target.value }))}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">备注</span>
+            <textarea
+              className="textarea atelier-content"
+              name="notes"
+              rows={6}
+              value={form.notes}
+              onChange={(e) => setForm((v) => ({ ...v, notes: e.target.value }))}
+            />
+          </label>
+        </div>
+      </Drawer>
 
       <WizardNextBar
         projectId={projectId}
@@ -268,9 +278,7 @@ export function CharactersPage() {
         progress={wizard.progress}
         loading={wizard.loading}
         primaryAction={
-          wizard.progress.nextStep?.key === "characters"
-            ? { label: "本页：新增角色", onClick: openNew }
-            : undefined
+          wizard.progress.nextStep?.key === "characters" ? { label: "本页：新增角色", onClick: openNew } : undefined
         }
       />
     </div>

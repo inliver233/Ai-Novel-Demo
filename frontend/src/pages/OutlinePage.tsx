@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { MarkdownEditor } from "../components/atelier/MarkdownEditor";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
+import { Modal } from "../components/ui/Modal";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
@@ -69,9 +70,11 @@ export function OutlinePage() {
   const [genModalOpen, setGenModalOpen] = useState(false);
   const [genPreview, setGenPreview] = useState<OutlineGenResult | null>(null);
   const [genStreamEnabled, setGenStreamEnabled] = useState(false);
-  const [genStreamProgress, setGenStreamProgress] = useState<{ message: string; progress: number; status: string } | null>(
-    null,
-  );
+  const [genStreamProgress, setGenStreamProgress] = useState<{
+    message: string;
+    progress: number;
+    status: string;
+  } | null>(null);
   const [genStreamText, setGenStreamText] = useState("");
   const genStreamClientRef = useRef<SSEPostClient | null>(null);
   const genStreamHasChunkRef = useRef(false);
@@ -349,12 +352,12 @@ export function OutlinePage() {
 
   return (
     <div className="grid gap-4">
-      <div className="rounded-atelier border border-border bg-surface p-4">
+      <div className="panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-subtext">当前大纲</span>
             <select
-              className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink"
+              className="select w-auto"
               name="active_outline_id"
               value={activeOutlineId}
               onChange={(e) => void switchOutline(e.target.value)}
@@ -368,7 +371,7 @@ export function OutlinePage() {
             </select>
 
             <button
-              className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
+              className="btn btn-secondary"
               onClick={() =>
                 setTitleModal({
                   open: true,
@@ -382,7 +385,7 @@ export function OutlinePage() {
             </button>
 
             <button
-              className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface disabled:opacity-60"
+              className="btn btn-secondary"
               disabled={!activeOutlineId}
               onClick={() =>
                 setTitleModal({
@@ -397,7 +400,7 @@ export function OutlinePage() {
             </button>
 
             <button
-              className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface disabled:opacity-60"
+              className="btn btn-ghost text-accent hover:bg-accent/10"
               disabled={!activeOutlineId}
               onClick={() => void deleteOutline()}
               type="button"
@@ -414,7 +417,7 @@ export function OutlinePage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button
-            className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
+            className="btn btn-primary"
             disabled={!canCreateChapters}
             onClick={() => void createChaptersFromOutline()}
             title={canCreateChapters ? undefined : "请先生成包含章节结构的大纲"}
@@ -422,20 +425,11 @@ export function OutlinePage() {
           >
             从大纲创建章节骨架
           </button>
-          <button
-            className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-            onClick={() => setGenModalOpen(true)}
-            type="button"
-          >
+          <button className="btn btn-secondary" onClick={() => setGenModalOpen(true)} type="button">
             AI 生成大纲
           </button>
         </div>
-        <button
-          className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
-          disabled={!dirty || saving}
-          onClick={() => void save()}
-          type="button"
-        >
+        <button className="btn btn-primary" disabled={!dirty || saving} onClick={() => void save()} type="button">
           保存大纲
         </button>
       </div>
@@ -450,360 +444,361 @@ export function OutlinePage() {
 
       <div className="text-xs text-subtext">快捷键：Ctrl/Cmd + S 保存</div>
 
-      {titleModal.open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-md rounded-atelier border border-border bg-canvas p-6 shadow-sm">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="font-content text-2xl">{titleModal.mode === "create" ? "新建大纲" : "重命名大纲"}</div>
-                <div className="mt-1 text-xs text-subtext">用于在多个大纲之间切换工作流。</div>
-              </div>
-              <button
-                className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-                onClick={() => setTitleModal((v) => ({ ...v, open: false }))}
-                type="button"
-              >
-                关闭
-              </button>
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">标题</span>
-                <input
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
-                  name="outline_title"
-                  value={titleModal.title}
-                  onChange={(e) => setTitleModal((v) => ({ ...v, title: e.target.value }))}
-                />
-              </label>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-                onClick={() => setTitleModal((v) => ({ ...v, open: false }))}
-                type="button"
-              >
-                取消
-              </button>
-              <button
-                className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90"
-                onClick={async () => {
-                  const title = titleModal.title.trim();
-                  if (!title) {
-                    toast.toastError("标题不能为空");
-                    return;
-                  }
-                  if (titleModal.mode === "create") {
-                    if (dirty) {
-                      const choice = await confirm.choose({
-                        title: "当前大纲有未保存修改，是否继续？",
-                        description: "保存后再切换可保留修改；不保存继续将丢失未保存内容。",
-                        confirmText: "保存并继续",
-                        secondaryText: "不保存继续",
-                        cancelText: "取消",
-                      });
-                      if (choice === "cancel") return;
-                      if (choice === "confirm") {
-                        const ok = await save();
-                        if (!ok) return;
-                      }
-                    }
-                    setTitleModal((v) => ({ ...v, open: false }));
-                    await createOutline(title, "", null);
-                    return;
-                  }
-
-                  setTitleModal((v) => ({ ...v, open: false }));
-                  await renameOutline(title);
-                }}
-                type="button"
-              >
-                确认
-              </button>
-            </div>
+      <Modal
+        open={titleModal.open}
+        onClose={() => setTitleModal((v) => ({ ...v, open: false }))}
+        panelClassName="surface max-w-md p-6"
+        ariaLabel={titleModal.mode === "create" ? "新建大纲" : "重命名大纲"}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="font-content text-2xl">{titleModal.mode === "create" ? "新建大纲" : "重命名大纲"}</div>
+            <div className="mt-1 text-xs text-subtext">用于在多个大纲之间切换工作流。</div>
           </div>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setTitleModal((v) => ({ ...v, open: false }))}
+            type="button"
+          >
+            关闭
+          </button>
         </div>
-      ) : null}
 
-      {genModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-2xl rounded-atelier border border-border bg-canvas p-6 shadow-sm">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="font-content text-2xl">AI 生成大纲</div>
-                <div className="mt-1 text-xs text-subtext">生成结果会先预览，需手动应用。</div>
-              </div>
-              <button
-                className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-                onClick={() => setGenModalOpen(false)}
-                type="button"
-              >
-                关闭
-              </button>
-            </div>
+        <div className="mt-4 grid gap-3">
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">标题</span>
+            <input
+              className="input"
+              name="outline_title"
+              value={titleModal.title}
+              onChange={(e) => setTitleModal((v) => ({ ...v, title: e.target.value }))}
+            />
+          </label>
+        </div>
 
-            <div className="mt-4 grid gap-4 sm:grid-cols-3">
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">章节数</span>
-                <input
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
-                  type="number"
-                  min={1}
-                  name="chapter_count"
-                  value={genForm.chapter_count}
-                  onChange={(e) => setGenForm((v) => ({ ...v, chapter_count: Number(e.target.value) }))}
-                />
-              </label>
-              <label className="grid gap-1 sm:col-span-2">
-                <span className="text-xs text-subtext">基调</span>
-                <input
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
-                  name="tone"
-                  value={genForm.tone}
-                  onChange={(e) => setGenForm((v) => ({ ...v, tone: e.target.value }))}
-                />
-              </label>
-              <label className="grid gap-1 sm:col-span-3">
-                <span className="text-xs text-subtext">节奏</span>
-                <input
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
-                  name="pacing"
-                  value={genForm.pacing}
-                  onChange={(e) => setGenForm((v) => ({ ...v, pacing: e.target.value }))}
-                />
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input
-                  checked={genForm.include_world_setting}
-                  name="include_world_setting"
-                  onChange={(e) => setGenForm((v) => ({ ...v, include_world_setting: e.target.checked }))}
-                  type="checkbox"
-                />
-                注入世界观
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input
-                  checked={genForm.include_characters}
-                  name="include_characters"
-                  onChange={(e) => setGenForm((v) => ({ ...v, include_characters: e.target.checked }))}
-                  type="checkbox"
-                />
-                注入角色卡
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
-                <input
-                  checked={genStreamEnabled}
-                  name="stream"
-                  onChange={(e) => setGenStreamEnabled(e.target.checked)}
-                  type="checkbox"
-                />
-                流式生成（beta）
-              </label>
-            </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            className="btn btn-secondary"
+            onClick={() => setTitleModal((v) => ({ ...v, open: false }))}
+            type="button"
+          >
+            取消
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={async () => {
+              const title = titleModal.title.trim();
+              if (!title) {
+                toast.toastError("标题不能为空");
+                return;
+              }
+              if (titleModal.mode === "create") {
+                if (dirty) {
+                  const choice = await confirm.choose({
+                    title: "当前大纲有未保存修改，是否继续？",
+                    description: "保存后再切换可保留修改；不保存继续将丢失未保存内容。",
+                    confirmText: "保存并继续",
+                    secondaryText: "不保存继续",
+                    cancelText: "取消",
+                  });
+                  if (choice === "cancel") return;
+                  if (choice === "confirm") {
+                    const ok = await save();
+                    if (!ok) return;
+                  }
+                }
+                setTitleModal((v) => ({ ...v, open: false }));
+                await createOutline(title, "", null);
+                return;
+              }
 
-            {genStreamEnabled ? (
-              <div className="mt-4 grid gap-3">
-                {genStreamProgress ? (
-                  <div className="grid gap-2 rounded-atelier border border-border bg-surface p-3">
-                    <div className="flex items-center justify-between gap-2 text-xs text-subtext">
-                      <span className="truncate">{genStreamProgress.message}</span>
-                      <span className="shrink-0">{genStreamProgress.progress}%</span>
-                    </div>
-                    <div className="h-2 w-full rounded bg-border">
-                      <div
-                        className="h-2 rounded bg-accent transition-all"
-                        style={{ width: `${Math.max(0, Math.min(100, genStreamProgress.progress))}%` }}
-                      />
-                    </div>
-                  </div>
-                ) : null}
+              setTitleModal((v) => ({ ...v, open: false }));
+              await renameOutline(title);
+            }}
+            type="button"
+          >
+            确认
+          </button>
+        </div>
+      </Modal>
 
-                {genStreamText ? (
-                  <details className="rounded-atelier border border-border bg-surface p-3" open={generating}>
-                    <summary className="cursor-pointer text-xs text-subtext">流式输出预览（raw）</summary>
-                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs text-ink">
-                      {genStreamText}
-                    </pre>
-                  </details>
-                ) : null}
+      <Modal
+        open={genModalOpen}
+        onClose={() => setGenModalOpen(false)}
+        panelClassName="surface max-w-2xl p-6"
+        ariaLabel="AI 生成大纲"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="font-content text-2xl">AI 生成大纲</div>
+            <div className="mt-1 text-xs text-subtext">生成结果会先预览，需手动应用。</div>
+          </div>
+          <button className="btn btn-secondary" onClick={() => setGenModalOpen(false)} type="button">
+            关闭
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">章节数</span>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              name="chapter_count"
+              value={genForm.chapter_count}
+              onChange={(e) => setGenForm((v) => ({ ...v, chapter_count: Number(e.target.value) }))}
+            />
+          </label>
+          <label className="grid gap-1 sm:col-span-2">
+            <span className="text-xs text-subtext">基调</span>
+            <input
+              className="input"
+              name="tone"
+              value={genForm.tone}
+              onChange={(e) => setGenForm((v) => ({ ...v, tone: e.target.value }))}
+            />
+          </label>
+          <label className="grid gap-1 sm:col-span-3">
+            <span className="text-xs text-subtext">节奏</span>
+            <input
+              className="input"
+              name="pacing"
+              value={genForm.pacing}
+              onChange={(e) => setGenForm((v) => ({ ...v, pacing: e.target.value }))}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={genForm.include_world_setting}
+              name="include_world_setting"
+              onChange={(e) => setGenForm((v) => ({ ...v, include_world_setting: e.target.checked }))}
+              type="checkbox"
+            />
+            注入世界观
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={genForm.include_characters}
+              name="include_characters"
+              onChange={(e) => setGenForm((v) => ({ ...v, include_characters: e.target.checked }))}
+              type="checkbox"
+            />
+            注入角色卡
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
+            <input
+              className="checkbox"
+              checked={genStreamEnabled}
+              name="stream"
+              onChange={(e) => setGenStreamEnabled(e.target.checked)}
+              type="checkbox"
+            />
+            流式生成（beta）
+          </label>
+        </div>
+
+        {genStreamEnabled ? (
+          <div className="mt-4 grid gap-3">
+            {genStreamProgress ? (
+              <div className="panel p-3">
+                <div className="flex items-center justify-between gap-2 text-xs text-subtext">
+                  <span className="truncate">{genStreamProgress.message}</span>
+                  <span className="shrink-0">{genStreamProgress.progress}%</span>
+                </div>
+                <div className="h-2 w-full rounded bg-border">
+                  <div
+                    className="h-2 rounded bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
+                    style={{ width: `${Math.max(0, Math.min(100, genStreamProgress.progress))}%` }}
+                  />
+                </div>
               </div>
             ) : null}
 
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-                onClick={() => {
-                  genStreamClientRef.current?.abort();
-                  setGenModalOpen(false);
-                }}
-                type="button"
-              >
-                取消
-              </button>
-              {generating && genStreamEnabled ? (
+            {genStreamText ? (
+              <details className="panel p-3" open={generating}>
+                <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                  流式输出预览（raw）
+                </summary>
+                <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs text-ink">
+                  {genStreamText}
+                </pre>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              genStreamClientRef.current?.abort();
+              setGenModalOpen(false);
+            }}
+            type="button"
+          >
+            取消
+          </button>
+          {generating && genStreamEnabled ? (
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                genStreamClientRef.current?.abort();
+              }}
+              type="button"
+            >
+              取消生成
+            </button>
+          ) : null}
+          <button
+            className="btn btn-primary"
+            disabled={generating}
+            onClick={async () => {
+              if (!projectId || !preset) return;
+              setGenerating(true);
+              genStreamClientRef.current = null;
+              genStreamHasChunkRef.current = false;
+              setGenStreamText("");
+              setGenStreamProgress(null);
+              try {
+                const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
+                const payload = {
+                  requirements: {
+                    chapter_count: genForm.chapter_count,
+                    tone: genForm.tone,
+                    pacing: genForm.pacing,
+                  },
+                  context: {
+                    include_world_setting: genForm.include_world_setting,
+                    include_characters: genForm.include_characters,
+                  },
+                };
+
+                if (genStreamEnabled) {
+                  setGenStreamProgress({ message: "开始生成...", progress: 0, status: "processing" });
+                  const client = new SSEPostClient(`/api/projects/${projectId}/outline/generate-stream`, payload, {
+                    headers,
+                    onProgress: ({ message, progress, status }) => {
+                      setGenStreamProgress({ message, progress, status });
+                    },
+                    onChunk: (content) => {
+                      genStreamHasChunkRef.current = true;
+                      setGenStreamText((prev) => prev + content);
+                    },
+                    onResult: (data) => {
+                      setGenPreview(data as OutlineGenResult);
+                    },
+                  });
+                  genStreamClientRef.current = client;
+
+                  try {
+                    await client.connect();
+                    toast.toastSuccess("生成完成");
+                  } catch (e) {
+                    const err = e as unknown;
+                    if (err instanceof SSEError && err.code !== "SSE_SERVER_ERROR" && err.code !== "ABORTED") {
+                      if (!genStreamHasChunkRef.current) {
+                        toast.toastError("流式生成失败，已回退非流式");
+                        const res = await apiJson<OutlineGenResult>(`/api/projects/${projectId}/outline/generate`, {
+                          method: "POST",
+                          headers,
+                          body: JSON.stringify(payload),
+                        });
+                        setGenPreview(res.data);
+                        toast.toastSuccess("生成完成");
+                      } else {
+                        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+                      }
+                      return;
+                    }
+                    if (err instanceof SSEError && err.code === "SSE_SERVER_ERROR") {
+                      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+                      return;
+                    }
+                    if (err instanceof SSEError && err.code === "ABORTED") {
+                      toast.toastSuccess("已取消生成");
+                      return;
+                    }
+                    if (err instanceof ApiError) {
+                      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+                      return;
+                    }
+                    toast.toastError("流式生成失败");
+                  }
+                } else {
+                  const res = await apiJson<OutlineGenResult>(`/api/projects/${projectId}/outline/generate`, {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify(payload),
+                  });
+                  setGenPreview(res.data);
+                  toast.toastSuccess("生成完成");
+                }
+              } catch (e) {
+                const err = e as ApiError;
+                toast.toastError(`${err.message} (${err.code})`, err.requestId);
+              } finally {
+                setGenerating(false);
+              }
+            }}
+            type="button"
+          >
+            {generating ? "生成中..." : "生成"}
+          </button>
+        </div>
+
+        {genPreview ? (
+          <div className="panel mt-6 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm text-ink">生成结果预览</div>
+                <div className="mt-1 text-xs text-subtext">
+                  解析章节：{genPreview.chapters.length}{" "}
+                  {genPreview.parse_error ? `（${genPreview.parse_error.message}）` : ""}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button className="btn btn-secondary" onClick={() => setGenPreview(null)} type="button">
+                  取消
+                </button>
                 <button
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-                  onClick={() => {
-                    genStreamClientRef.current?.abort();
+                  className="btn btn-secondary"
+                  onClick={async () => {
+                    const ok = !dirty
+                      ? true
+                      : await confirm.confirm({
+                          title: "覆盖当前未保存的大纲？",
+                          description: "覆盖后将以生成结果替换当前大纲，并立即保存。",
+                          confirmText: "覆盖并保存",
+                          danger: true,
+                        });
+                    if (!ok) return;
+                    setGenModalOpen(false);
+                    await save(genPreview.outline_md, { chapters: genPreview.chapters });
+                    setGenPreview(null);
                   }}
                   type="button"
                 >
-                  取消生成
+                  覆盖当前大纲并保存
                 </button>
-              ) : null}
-              <button
-                className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
-                disabled={generating}
-                  onClick={async () => {
-                    if (!projectId || !preset) return;
-                    setGenerating(true);
-                    genStreamClientRef.current = null;
-                    genStreamHasChunkRef.current = false;
-                    setGenStreamText("");
-                    setGenStreamProgress(null);
-                    try {
-                      const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
-                      const payload = {
-                        requirements: {
-                          chapter_count: genForm.chapter_count,
-                          tone: genForm.tone,
-                        pacing: genForm.pacing,
-                      },
-                      context: {
-                        include_world_setting: genForm.include_world_setting,
-                        include_characters: genForm.include_characters,
-                      },
-                    };
-
-                    if (genStreamEnabled) {
-                      setGenStreamProgress({ message: "开始生成...", progress: 0, status: "processing" });
-                      const client = new SSEPostClient(`/api/projects/${projectId}/outline/generate-stream`, payload, {
-                        headers,
-                        onProgress: ({ message, progress, status }) => {
-                          setGenStreamProgress({ message, progress, status });
-                        },
-                        onChunk: (content) => {
-                          genStreamHasChunkRef.current = true;
-                          setGenStreamText((prev) => prev + content);
-                        },
-                        onResult: (data) => {
-                          setGenPreview(data as OutlineGenResult);
-                        },
-                      });
-                      genStreamClientRef.current = client;
-
-                      try {
-                        await client.connect();
-                        toast.toastSuccess("生成完成");
-                      } catch (e) {
-                        const err = e as unknown;
-                        if (err instanceof SSEError && err.code !== "SSE_SERVER_ERROR" && err.code !== "ABORTED") {
-                          if (!genStreamHasChunkRef.current) {
-                            toast.toastError("流式生成失败，已回退非流式");
-                            const res = await apiJson<OutlineGenResult>(`/api/projects/${projectId}/outline/generate`, {
-                              method: "POST",
-                              headers,
-                              body: JSON.stringify(payload),
-                            });
-                            setGenPreview(res.data);
-                            toast.toastSuccess("生成完成");
-                          } else {
-                            toast.toastError(`${err.message} (${err.code})`, err.requestId);
-                          }
-                          return;
-                        }
-                        if (err instanceof SSEError && err.code === "SSE_SERVER_ERROR") {
-                          toast.toastError(`${err.message} (${err.code})`, err.requestId);
-                          return;
-                        }
-                        if (err instanceof SSEError && err.code === "ABORTED") {
-                          toast.toastSuccess("已取消生成");
-                          return;
-                        }
-                        if (err instanceof ApiError) {
-                          toast.toastError(`${err.message} (${err.code})`, err.requestId);
-                          return;
-                        }
-                        toast.toastError("流式生成失败");
-                      }
-                    } else {
-                      const res = await apiJson<OutlineGenResult>(`/api/projects/${projectId}/outline/generate`, {
-                        method: "POST",
-                        headers,
-                        body: JSON.stringify(payload),
-                      });
-                      setGenPreview(res.data);
-                      toast.toastSuccess("生成完成");
-                    }
-                  } catch (e) {
-                    const err = e as ApiError;
-                    toast.toastError(`${err.message} (${err.code})`, err.requestId);
-                  } finally {
-                    setGenerating(false);
-                  }
-                }}
-                type="button"
-              >
-                {generating ? "生成中..." : "生成"}
-              </button>
-            </div>
-
-            {genPreview ? (
-              <div className="mt-6 rounded-atelier border border-border bg-surface p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm text-ink">生成结果预览</div>
-                    <div className="mt-1 text-xs text-subtext">
-                      解析章节：{genPreview.chapters.length} {genPreview.parse_error ? `（${genPreview.parse_error.message}）` : ""}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
-                      onClick={() => setGenPreview(null)}
-                      type="button"
-                    >
-                      取消
-                    </button>
-                    <button
-                      className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface"
-                      onClick={async () => {
-                        const ok = !dirty
-                          ? true
-                          : await confirm.confirm({
-                              title: "覆盖当前未保存的大纲？",
-                              description: "覆盖后将以生成结果替换当前大纲，并立即保存。",
-                              confirmText: "覆盖并保存",
-                              danger: true,
-                            });
-                        if (!ok) return;
-                        setGenModalOpen(false);
-                        await save(genPreview.outline_md, { chapters: genPreview.chapters });
-                        setGenPreview(null);
-                      }}
-                      type="button"
-                    >
-                      覆盖当前大纲并保存
-                    </button>
-                    <button
-                      className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90"
-                      onClick={() => void saveGeneratedAsNewOutline()}
-                      type="button"
-                    >
-                      保存为新大纲并切换
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <MarkdownEditor value={genPreview.outline_md} onChange={() => {}} minRows={10} name="generated_outline_preview" />
-                </div>
+                <button className="btn btn-primary" onClick={() => void saveGeneratedAsNewOutline()} type="button">
+                  保存为新大纲并切换
+                </button>
               </div>
-            ) : null}
+            </div>
+            <div className="mt-3">
+              <MarkdownEditor
+                value={genPreview.outline_md}
+                onChange={() => {}}
+                minRows={10}
+                name="generated_outline_preview"
+              />
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </Modal>
 
       <WizardNextBar
         projectId={projectId}
@@ -817,7 +812,11 @@ export function OutlinePage() {
           wizard.progress.nextStep?.key === "chapters"
             ? canCreateChapters
               ? { label: "下一步：创建章节骨架", disabled: generating || saving, onClick: createChaptersFromOutline }
-              : { label: "下一步：先 AI 生成大纲", disabled: generating || saving, onClick: () => setGenModalOpen(true) }
+              : {
+                  label: "下一步：先 AI 生成大纲",
+                  disabled: generating || saving,
+                  onClick: () => setGenModalOpen(true),
+                }
             : undefined
         }
       />

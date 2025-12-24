@@ -15,4 +15,3 @@ export function useProjects(): ProjectsState {
   if (!ctx) throw new Error("useProjects must be used within ProjectsProvider");
   return ctx;
 }
-

@@ -25,4 +25,3 @@ export type TemplatePreview = {
   user: string;
   missing: string[];
 };
-

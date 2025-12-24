@@ -12,7 +12,7 @@ export function ProjectProviderGuard() {
   const exists = projects.some((p) => p.id === projectId);
   if (!exists) {
     return (
-      <div className="rounded-atelier border border-border bg-surface p-6">
+      <div className="panel p-6">
         <div className="font-content text-xl">项目不存在或无权限</div>
         <div className="mt-2 text-sm text-subtext">请返回 Dashboard 重新选择项目。</div>
       </div>

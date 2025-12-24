@@ -21,4 +21,3 @@ export function GhostwriterIndicator({ label = "墨迹生成中…", className }
     </div>
   );
 }
-

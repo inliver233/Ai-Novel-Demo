@@ -22,7 +22,7 @@ export function ProjectSwitcher() {
         </Link>
       </div>
       <select
-        className="w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink"
+        className="select"
         disabled={loading || projects.length === 0}
         name="project_switcher"
         value={selected}

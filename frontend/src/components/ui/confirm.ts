@@ -27,4 +27,3 @@ export function useConfirm(): ConfirmApi {
   if (!ctx) throw new Error("useConfirm must be used within ConfirmProvider");
   return ctx;
 }
-

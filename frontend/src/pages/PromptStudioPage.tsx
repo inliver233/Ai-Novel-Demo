@@ -1,8 +1,11 @@
+import clsx from "clsx";
+import { LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
+import { transition } from "../lib/motion";
 import { ApiError, apiJson } from "../services/apiClient";
 import type { Character, Outline, Project, ProjectSettings, PromptBlock, PromptPreset, PromptPreview } from "../types";
 
@@ -35,9 +38,7 @@ function parseTriggers(value: string): string[] {
 }
 
 function formatCharacters(chars: Character[]): string {
-  return chars
-    .map((c) => `- ${c.name}${c.role ? `（${c.role}）` : ""}`)
-    .join("\n");
+  return chars.map((c) => `- ${c.name}${c.role ? `（${c.role}）` : ""}`).join("\n");
 }
 
 function guessPreviewValues(args: {
@@ -116,6 +117,7 @@ export function PromptStudioPage() {
   const { projectId } = useParams();
   const toast = useToast();
   const confirm = useConfirm();
+  const reduceMotion = useReducedMotion();
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -526,10 +528,13 @@ export function PromptStudioPage() {
     if (!projectId || !selectedPresetId) return;
     setPreviewLoading(true);
     try {
-      const res = await apiJson<{ preview: PromptPreview; render_log?: unknown }>(`/api/projects/${projectId}/prompt_preview`, {
-        method: "POST",
-        body: JSON.stringify({ task: previewTask, preset_id: selectedPresetId, values: previewValues }),
-      });
+      const res = await apiJson<{ preview: PromptPreview; render_log?: unknown }>(
+        `/api/projects/${projectId}/prompt_preview`,
+        {
+          method: "POST",
+          body: JSON.stringify({ task: previewTask, preset_id: selectedPresetId, values: previewValues }),
+        },
+      );
       setPreview(res.data.preview);
       setRenderLog(res.data.render_log ?? null);
     } catch (e) {
@@ -567,7 +572,7 @@ export function PromptStudioPage() {
 
   return (
     <div className="grid gap-6">
-      <div className="rounded-atelier border border-border bg-canvas p-4 shadow-sm">
+      <div className="panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-lg font-semibold">Prompt Studio（beta）</div>
@@ -587,17 +592,19 @@ export function PromptStudioPage() {
             <span className="font-medium text-ink">active_for</span> 决定哪些任务使用它（大纲/章节/规划/润色）。
           </div>
           <div>
-            <span className="font-medium text-ink">提示块（Block）</span>：可排序/启停，支持 role、triggers（按任务触发）、token 预算与后端统一渲染。
+            <span className="font-medium text-ink">提示块（Block）</span>：可排序/启停，支持
+            role、triggers（按任务触发）、token 预算与后端统一渲染。
           </div>
           <div>
             若同一任务被多个预设勾选，系统会优先使用“最近更新”的非迁移预设；{" "}
-            <span className="font-medium text-ink">[Migrated] prompt_templates</span> 是旧 Prompts 页兼容用（不建议作为新项目主力）。
+            <span className="font-medium text-ink">[Migrated] prompt_templates</span> 是旧 Prompts
+            页兼容用（不建议作为新项目主力）。
           </div>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
           <button
-            className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm hover:bg-surface/60 disabled:opacity-50"
+            className="btn btn-secondary"
             onClick={() => void enableRecommendedDefaults()}
             disabled={busy || importBusy}
             type="button"
@@ -608,22 +615,18 @@ export function PromptStudioPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px,1fr]">
-        <div className="rounded-atelier border border-border bg-canvas p-4 shadow-sm">
+        <div className="panel p-4">
           <div className="mb-3 text-sm font-semibold">预设</div>
           <div className="grid gap-2">
             <div className="flex gap-2">
               <input
-                className="w-full rounded-atelier border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-ink/50"
+                className="input"
                 placeholder="新预设名称"
                 value={newPresetName}
                 onChange={(e) => setNewPresetName(e.target.value)}
                 disabled={busy}
               />
-              <button
-                className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm hover:bg-surface/60 disabled:opacity-50"
-                onClick={() => void createPreset()}
-                disabled={busy}
-              >
+              <button className="btn btn-secondary" onClick={() => void createPreset()} disabled={busy}>
                 新建
               </button>
             </div>
@@ -641,14 +644,14 @@ export function PromptStudioPage() {
                 }}
               />
               <button
-                className="w-full rounded-atelier border border-border bg-surface px-3 py-2 text-sm hover:bg-surface/60 disabled:opacity-50"
+                className="btn btn-secondary w-full"
                 onClick={() => importInputRef.current?.click()}
                 disabled={importBusy || busy}
               >
                 导入
               </button>
               <button
-                className="w-full rounded-atelier border border-border bg-surface px-3 py-2 text-sm hover:bg-surface/60 disabled:opacity-50"
+                className="btn btn-secondary w-full"
                 onClick={() => void exportPreset()}
                 disabled={busy || !selectedPresetId}
               >
@@ -656,26 +659,38 @@ export function PromptStudioPage() {
               </button>
             </div>
 
-            <div className="mt-2 grid gap-1">
-              {presets.map((p) => {
-                const active = p.id === selectedPresetId;
-                return (
-                  <button
-                    key={p.id}
-                    className={`w-full rounded-atelier border px-3 py-2 text-left text-sm ${
-                      active
-                        ? "border-ink/40 bg-surface text-ink"
-                        : "border-border bg-surface/50 text-subtext hover:bg-surface"
-                    }`}
-                    onClick={() => setSelectedPresetId(p.id)}
-                    type="button"
-                  >
-                    <div className="truncate">{p.name}</div>
-                    <div className="mt-1 text-xs opacity-80">{(p.active_for ?? []).join(", ") || "—"}</div>
-                  </button>
-                );
-              })}
-            </div>
+            <LayoutGroup id="promptstudio-presets">
+              <div className="mt-2 grid gap-1">
+                {presets.map((p) => {
+                  const active = p.id === selectedPresetId;
+                  return (
+                    <button
+                      key={p.id}
+                      className={clsx(
+                        "ui-focus-ring ui-transition-fast group relative w-full overflow-hidden rounded-atelier border px-3 py-2 text-left text-sm motion-safe:active:scale-[0.99]",
+                        active
+                          ? "border-accent/40 text-ink"
+                          : "border-border text-subtext hover:bg-canvas hover:text-ink",
+                      )}
+                      onClick={() => setSelectedPresetId(p.id)}
+                      type="button"
+                    >
+                      {active ? (
+                        <motion.span
+                          layoutId="promptstudio-preset-active"
+                          className="absolute inset-0 rounded-atelier bg-canvas"
+                          transition={reduceMotion ? { duration: 0.01 } : transition.fast}
+                        />
+                      ) : null}
+                      <div className="relative z-10 truncate">{p.name}</div>
+                      <div className="relative z-10 mt-1 text-xs opacity-80">
+                        {(p.active_for ?? []).join(", ") || "—"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </LayoutGroup>
 
             <div className="mt-2 text-xs text-subtext">
               {migrated ? "当前选中迁移预设：只读（保证旧 Prompts 无感兼容）。" : "拖拽块可调整排序；预览走后端渲染。"}
@@ -684,12 +699,12 @@ export function PromptStudioPage() {
         </div>
 
         <div className="grid gap-6">
-          <div className="rounded-atelier border border-border bg-canvas p-4 shadow-sm">
+          <div className="panel p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="text-sm font-semibold">预设设置</div>
               <div className="flex gap-2">
                 <button
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm hover:bg-surface/60 disabled:opacity-50"
+                  className="btn btn-primary"
                   onClick={() => void savePreset()}
                   disabled={busy || !selectedPresetId || migrated}
                   type="button"
@@ -697,7 +712,7 @@ export function PromptStudioPage() {
                   保存预设
                 </button>
                 <button
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm hover:bg-surface/60 disabled:opacity-50"
+                  className="btn btn-ghost text-accent hover:bg-accent/10"
                   onClick={() => void deletePreset()}
                   disabled={busy || !selectedPresetId || migrated}
                   title={migrated ? "迁移预设在 M0/M1 阶段不允许删除" : undefined}
@@ -712,7 +727,7 @@ export function PromptStudioPage() {
               <div className="grid gap-2">
                 <div className="text-xs text-subtext">名称</div>
                 <input
-                  className="w-full rounded-atelier border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-ink/50 disabled:opacity-60"
+                  className="input"
                   value={presetDraftName}
                   onChange={(e) => setPresetDraftName(e.target.value)}
                   disabled={busy || migrated}
@@ -727,9 +742,16 @@ export function PromptStudioPage() {
                     return (
                       <label
                         key={t.key}
-                        className="flex items-center gap-2 rounded-atelier border border-border bg-surface px-3 py-2 text-sm"
+                        className={clsx(
+                          "ui-transition-fast flex items-center gap-2 rounded-atelier border px-3 py-2 text-sm",
+                          checked
+                            ? "border-accent/40 bg-accent/10 text-ink"
+                            : "border-border bg-canvas text-subtext hover:bg-surface hover:text-ink",
+                          busy || migrated ? "opacity-60" : "cursor-pointer",
+                        )}
                       >
                         <input
+                          className="checkbox"
                           type="checkbox"
                           checked={checked}
                           disabled={busy || migrated}
@@ -749,11 +771,11 @@ export function PromptStudioPage() {
             </div>
           </div>
 
-          <div className="rounded-atelier border border-border bg-canvas p-4 shadow-sm">
+          <div className="panel p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="text-sm font-semibold">提示块</div>
               <button
-                className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm hover:bg-surface/60 disabled:opacity-50"
+                className="btn btn-secondary"
                 onClick={() => void addBlock()}
                 disabled={busy || !selectedPresetId || migrated}
                 title={migrated ? "迁移预设只读" : undefined}
@@ -772,13 +794,13 @@ export function PromptStudioPage() {
                 const identifier = d?.identifier ?? b.identifier;
                 const name = d?.name ?? b.name;
                 const triggers = d?.triggers ?? formatTriggers(b.triggers ?? []);
-                const markerKey = d?.marker_key ?? (b.marker_key ?? "");
-                const template = d?.template ?? (b.template ?? "");
+                const markerKey = d?.marker_key ?? b.marker_key ?? "";
+                const template = d?.template ?? b.template ?? "";
 
                 return (
                   <div
                     key={b.id}
-                    className="rounded-atelier border border-border bg-surface p-3"
+                    className="surface p-3"
                     draggable={!migrated}
                     onDragStart={() => {
                       dragIdRef.current = b.id;
@@ -792,11 +814,11 @@ export function PromptStudioPage() {
                       const fromId = dragIdRef.current;
                       dragIdRef.current = null;
                       if (!fromId || fromId === b.id) return;
-                       const ids = blocks.map((x) => x.id);
-                       const fromIdx = ids.indexOf(fromId);
-                       const toIdx = ids.indexOf(b.id);
-                       if (fromIdx < 0 || toIdx < 0) return;
-                       ids.splice(fromIdx, 1);
+                      const ids = blocks.map((x) => x.id);
+                      const fromIdx = ids.indexOf(fromId);
+                      const toIdx = ids.indexOf(b.id);
+                      if (fromIdx < 0 || toIdx < 0) return;
+                      ids.splice(fromIdx, 1);
                       const insertIdx = fromIdx < toIdx ? toIdx - 1 : toIdx;
                       ids.splice(insertIdx, 0, fromId);
                       void onReorder(ids);
@@ -809,6 +831,7 @@ export function PromptStudioPage() {
                         <span className="text-xs text-subtext">#{idx + 1}</span>
                         <label className="flex items-center gap-2 text-sm">
                           <input
+                            className="checkbox"
                             type="checkbox"
                             checked={enabled}
                             disabled={busy || migrated}
@@ -832,7 +855,7 @@ export function PromptStudioPage() {
                       </div>
                       <div className="flex gap-2">
                         <button
-                          className="rounded-atelier border border-border bg-canvas px-3 py-1 text-sm hover:bg-canvas/60 disabled:opacity-50"
+                          className="btn btn-secondary px-3 py-1 text-sm"
                           onClick={() => void saveBlock(b.id)}
                           disabled={busy || migrated}
                           type="button"
@@ -840,7 +863,7 @@ export function PromptStudioPage() {
                           保存
                         </button>
                         <button
-                          className="rounded-atelier border border-border bg-canvas px-3 py-1 text-sm hover:bg-canvas/60 disabled:opacity-50"
+                          className="btn btn-ghost px-3 py-1 text-sm text-accent hover:bg-accent/10"
                           onClick={() => void deleteBlock(b.id)}
                           disabled={busy || migrated}
                           type="button"
@@ -855,7 +878,7 @@ export function PromptStudioPage() {
                         <div className="grid gap-1">
                           <div className="text-xs text-subtext">identifier</div>
                           <input
-                            className="w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm outline-none focus:border-ink/50 disabled:opacity-60"
+                            className="input"
                             value={identifier}
                             disabled={busy || migrated}
                             onChange={(e) =>
@@ -877,7 +900,7 @@ export function PromptStudioPage() {
                         <div className="grid gap-1">
                           <div className="text-xs text-subtext">role</div>
                           <select
-                            className="w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm outline-none focus:border-ink/50 disabled:opacity-60"
+                            className="select"
                             value={role}
                             disabled={busy || migrated}
                             onChange={(e) =>
@@ -906,7 +929,7 @@ export function PromptStudioPage() {
                       <div className="grid gap-1">
                         <div className="text-xs text-subtext">name</div>
                         <input
-                          className="w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm outline-none focus:border-ink/50 disabled:opacity-60"
+                          className="input"
                           value={name}
                           disabled={busy || migrated}
                           onChange={(e) =>
@@ -930,7 +953,7 @@ export function PromptStudioPage() {
                         <div className="grid gap-1">
                           <div className="text-xs text-subtext">triggers（逗号分隔，可空）</div>
                           <input
-                            className="w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm outline-none focus:border-ink/50 disabled:opacity-60"
+                            className="input"
                             value={triggers}
                             disabled={busy || migrated}
                             onChange={(e) =>
@@ -953,7 +976,7 @@ export function PromptStudioPage() {
                         <div className="grid gap-1">
                           <div className="text-xs text-subtext">marker_key（可空）</div>
                           <input
-                            className="w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm outline-none focus:border-ink/50 disabled:opacity-60"
+                            className="input"
                             value={markerKey}
                             disabled={busy || migrated}
                             onChange={(e) =>
@@ -978,7 +1001,7 @@ export function PromptStudioPage() {
                       <div className="grid gap-1">
                         <div className="text-xs text-subtext">template</div>
                         <textarea
-                          className="min-h-[140px] w-full resize-y rounded-atelier border border-border bg-canvas px-3 py-2 font-mono text-xs outline-none focus:border-ink/50 disabled:opacity-60"
+                          className="textarea atelier-mono min-h-[140px] resize-y py-2 text-xs"
                           value={template}
                           disabled={busy || migrated}
                           onChange={(e) =>
@@ -1004,12 +1027,12 @@ export function PromptStudioPage() {
             </div>
           </div>
 
-          <div className="rounded-atelier border border-border bg-canvas p-4 shadow-sm">
+          <div className="panel p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm font-semibold">预览（后端渲染）</div>
               <div className="flex gap-2">
                 <select
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-ink/50"
+                  className="select w-auto"
                   value={previewTask}
                   onChange={(e) => setPreviewTask(e.target.value)}
                   disabled={busy}
@@ -1021,7 +1044,7 @@ export function PromptStudioPage() {
                   ))}
                 </select>
                 <button
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm hover:bg-surface/60 disabled:opacity-50"
+                  className="btn btn-secondary"
                   onClick={() => void runPreview()}
                   disabled={previewLoading || busy || !selectedPresetId}
                   type="button"
@@ -1064,7 +1087,9 @@ export function PromptStudioPage() {
 
                 {renderLog ? (
                   <details className="rounded-atelier border border-border bg-surface/50 p-3">
-                    <summary className="cursor-pointer text-sm">查看 render_log（裁剪/原因/错误）</summary>
+                    <summary className="ui-transition-fast cursor-pointer text-sm hover:text-ink">
+                      查看 render_log（裁剪/原因/错误）
+                    </summary>
                     <pre className="mt-2 max-h-[260px] overflow-auto whitespace-pre-wrap break-words rounded-atelier border border-border bg-surface p-3 text-xs">
                       {JSON.stringify(renderLog, null, 2)}
                     </pre>
@@ -1076,7 +1101,7 @@ export function PromptStudioPage() {
                     <div className="text-xs text-subtext">system</div>
                     <textarea
                       readOnly
-                      className="min-h-[180px] w-full resize-y rounded-atelier border border-border bg-surface px-3 py-2 font-mono text-xs"
+                      className="textarea atelier-mono min-h-[180px] resize-y bg-surface py-2 text-xs"
                       value={preview.system}
                     />
                   </div>
@@ -1084,17 +1109,19 @@ export function PromptStudioPage() {
                     <div className="text-xs text-subtext">user</div>
                     <textarea
                       readOnly
-                      className="min-h-[180px] w-full resize-y rounded-atelier border border-border bg-surface px-3 py-2 font-mono text-xs"
+                      className="textarea atelier-mono min-h-[180px] resize-y bg-surface py-2 text-xs"
                       value={preview.user}
                     />
                   </div>
                 </div>
 
                 <details className="rounded-atelier border border-border bg-surface/50 p-3">
-                  <summary className="cursor-pointer text-sm">查看分块渲染结果</summary>
+                  <summary className="ui-transition-fast cursor-pointer text-sm hover:text-ink">
+                    查看分块渲染结果
+                  </summary>
                   <div className="mt-3 grid gap-2">
                     {(preview.blocks ?? []).map((pb) => (
-                      <div key={pb.id} className="rounded-atelier border border-border bg-canvas p-3">
+                      <div key={pb.id} className="surface p-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="text-sm font-semibold">
                             {pb.identifier} <span className="text-xs text-subtext">({pb.role})</span>

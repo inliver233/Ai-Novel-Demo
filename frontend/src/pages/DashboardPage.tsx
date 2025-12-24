@@ -1,9 +1,12 @@
+import { motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { Modal } from "../components/ui/Modal";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjects } from "../contexts/projects";
+import { duration, transition } from "../lib/motion";
 import { ApiError, apiJson } from "../services/apiClient";
 import { computeWizardProgress } from "../services/wizard";
 import type { Chapter, Character, LLMProfile, LLMPreset, Outline, Project, ProjectSettings } from "../types";
@@ -19,6 +22,7 @@ export function DashboardPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const navigate = useNavigate();
+  const reduceMotion = useReducedMotion();
 
   const [creating, setCreating] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -52,7 +56,7 @@ export function DashboardPage() {
             apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${p.id}/llm_preset`),
           ]);
 
-          const llmProfile = p.llm_profile_id ? profilesById[p.llm_profile_id] ?? null : null;
+          const llmProfile = p.llm_profile_id ? (profilesById[p.llm_profile_id] ?? null) : null;
           const progress = computeWizardProgress({
             project: p,
             settings: settingsRes.data.settings,
@@ -99,9 +103,19 @@ export function DashboardPage() {
 
   return (
     <div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <motion.div
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+        initial="hidden"
+        animate="show"
+        variants={{
+          hidden: {},
+          show: {
+            transition: { staggerChildren: reduceMotion ? 0 : duration.stagger },
+          },
+        }}
+      >
         <button
-          className="group rounded-atelier border border-border border-dashed bg-surface p-6 text-left hover:bg-canvas"
+          className="ui-focus-ring ui-transition group rounded-atelier border border-border border-dashed bg-surface p-6 text-left hover:bg-canvas motion-safe:active:scale-[0.99]"
           onClick={() => setCreateOpen(true)}
           type="button"
         >
@@ -110,31 +124,57 @@ export function DashboardPage() {
         </button>
 
         {loading ? (
-          <div className="rounded-atelier border border-border bg-surface p-6 text-subtext">加载中...</div>
+          <div className="panel p-6">
+            <div className="skeleton h-5 w-40" />
+            <div className="mt-3 grid gap-2">
+              <div className="skeleton h-3 w-28" />
+              <div className="skeleton h-3 w-52" />
+            </div>
+            <div className="mt-4 h-2 w-full rounded-full bg-border/60">
+              <div className="skeleton h-2 w-1/3 rounded-full" />
+            </div>
+          </div>
         ) : null}
 
         {sorted.map((p) => (
-          <div key={p.id} className="rounded-atelier border border-border bg-surface p-6">
+          <motion.div
+            key={p.id}
+            className="panel-interactive p-6 text-left"
+            variants={{
+              hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
+              show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
+            }}
+            transition={reduceMotion ? { duration: 0.01 } : transition.base}
+            onClick={() => enterProject(p)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                enterProject(p);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+          >
             <div className="flex items-start justify-between gap-3">
-              <button
-                className="min-w-0 text-left"
-                onClick={() => enterProject(p)}
-                type="button"
-              >
+              <div className="min-w-0">
                 <div className="truncate font-content text-xl text-ink">{p.name}</div>
-                <div className="mt-1 text-xs text-subtext">{p.genre ?? "未填写类型"}</div>
-              </button>
+                <div className="mt-1 text-xs text-subtext">{p.genre ? `类型：${p.genre}` : "未填写类型"}</div>
+              </div>
               <div className="flex shrink-0 gap-2">
                 <button
-                  className="rounded-atelier border border-border bg-canvas px-3 py-2 text-xs text-ink hover:bg-surface"
-                  onClick={() => navigate(`/projects/${p.id}/wizard`)}
+                  className="btn btn-secondary px-3 py-2 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/projects/${p.id}/wizard`);
+                  }}
                   type="button"
                 >
                   向导
                 </button>
                 <button
-                  className="rounded-atelier border border-border bg-canvas px-3 py-2 text-xs text-ink hover:bg-surface"
-                  onClick={async () => {
+                  className="btn btn-ghost px-3 py-2 text-xs text-accent hover:bg-accent/10"
+                  onClick={async (e) => {
+                    e.stopPropagation();
                     const ok = await confirm.confirm({
                       title: "删除项目？",
                       description: "该操作会删除项目及其设定/角色/章节/生成记录，且不可恢复。",
@@ -166,93 +206,95 @@ export function DashboardPage() {
               <div className="mt-4">
                 <div className="flex items-center justify-between gap-3 text-xs text-subtext">
                   <div>完成度：{wizardByProjectId[p.id].percent}%</div>
-                  <div className="truncate">{wizardByProjectId[p.id].nextTitle ? `下一步：${wizardByProjectId[p.id].nextTitle}` : "已完成"}</div>
+                  <div className="truncate">
+                    {wizardByProjectId[p.id].nextTitle ? `下一步：${wizardByProjectId[p.id].nextTitle}` : "已完成"}
+                  </div>
                 </div>
                 <div className="mt-2 h-2 w-full rounded-full bg-border/60">
-                  <div className="h-2 rounded-full bg-accent" style={{ width: `${wizardByProjectId[p.id].percent}%` }} />
+                  <div
+                    className="h-2 rounded-full bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
+                    style={{ width: `${wizardByProjectId[p.id].percent}%` }}
+                  />
                 </div>
               </div>
             ) : null}
-          </div>
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
 
-      {createOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-lg rounded-atelier border border-border bg-canvas p-6 shadow-sm">
-            <div className="font-content text-2xl text-ink">创建项目</div>
-            <div className="mt-4 grid gap-3">
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">项目名</span>
-                <input
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
-                  name="name"
-                  value={form.name}
-                  onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))}
-                />
-              </label>
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">类型（可选）</span>
-                <input
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
-                  name="genre"
-                  value={form.genre}
-                  onChange={(e) => setForm((v) => ({ ...v, genre: e.target.value }))}
-                />
-              </label>
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">一句话梗概（可选）</span>
-                <textarea
-                  className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink outline-none"
-                  name="logline"
-                  rows={3}
-                  value={form.logline}
-                  onChange={(e) => setForm((v) => ({ ...v, logline: e.target.value }))}
-                />
-              </label>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                className="rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink hover:bg-canvas"
-                onClick={() => setCreateOpen(false)}
-                type="button"
-              >
-                取消
-              </button>
-              <button
-                className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
-                disabled={creating || !form.name.trim()}
-                onClick={async () => {
-                  setCreating(true);
-                  try {
-                    const res = await apiJson<{ project: Project }>("/api/projects", {
-                      method: "POST",
-                      body: JSON.stringify({
-                        name: form.name.trim(),
-                        genre: form.genre.trim() || undefined,
-                        logline: form.logline.trim() || undefined,
-                      }),
-                    });
-                    await refresh();
-                    toast.toastSuccess("创建成功");
-                    setCreateOpen(false);
-                    setForm({ name: "", genre: "", logline: "" });
-                    navigate(`/projects/${res.data.project.id}/settings`);
-                  } catch (e) {
-                    const err = e as ApiError;
-                    toast.toastError(`${err.message} (${err.code})`, err.requestId);
-                  } finally {
-                    setCreating(false);
-                  }
-                }}
-                type="button"
-              >
-                创建
-              </button>
-            </div>
-          </div>
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        panelClassName="surface max-w-lg p-6"
+        ariaLabel="创建项目"
+      >
+        <div className="font-content text-2xl text-ink">创建项目</div>
+        <div className="mt-4 grid gap-3">
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">项目名</span>
+            <input
+              className="input"
+              name="name"
+              value={form.name}
+              onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">类型（可选）</span>
+            <input
+              className="input"
+              name="genre"
+              value={form.genre}
+              onChange={(e) => setForm((v) => ({ ...v, genre: e.target.value }))}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">一句话梗概（可选）</span>
+            <textarea
+              className="textarea"
+              name="logline"
+              rows={3}
+              value={form.logline}
+              onChange={(e) => setForm((v) => ({ ...v, logline: e.target.value }))}
+            />
+          </label>
         </div>
-      ) : null}
+        <div className="mt-5 flex justify-end gap-2">
+          <button className="btn btn-secondary" onClick={() => setCreateOpen(false)} type="button">
+            取消
+          </button>
+          <button
+            className="btn btn-primary"
+            disabled={creating || !form.name.trim()}
+            onClick={async () => {
+              setCreating(true);
+              try {
+                const res = await apiJson<{ project: Project }>("/api/projects", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    name: form.name.trim(),
+                    genre: form.genre.trim() || undefined,
+                    logline: form.logline.trim() || undefined,
+                  }),
+                });
+                await refresh();
+                toast.toastSuccess("创建成功");
+                setCreateOpen(false);
+                setForm({ name: "", genre: "", logline: "" });
+                navigate(`/projects/${res.data.project.id}/settings`);
+              } catch (e) {
+                const err = e as ApiError;
+                toast.toastError(`${err.message} (${err.code})`, err.requestId);
+              } finally {
+                setCreating(false);
+              }
+            }}
+            type="button"
+          >
+            创建
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

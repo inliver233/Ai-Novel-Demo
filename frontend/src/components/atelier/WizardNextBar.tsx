@@ -41,10 +41,7 @@ export function WizardNextBar(props: {
   );
 
   const next = progress.nextStep;
-  const previewStep = useMemo(
-    () => progress.steps.find((s) => s.key === "preview") ?? null,
-    [progress.steps],
-  );
+  const previewStep = useMemo(() => progress.steps.find((s) => s.key === "preview") ?? null, [progress.steps]);
 
   const goto = useCallback(
     (href: string | null | undefined) => {
@@ -77,7 +74,11 @@ export function WizardNextBar(props: {
 
     if (dirty && onSave) {
       const target =
-        next && next.key !== currentStep ? next : currentStep === "writing" && next?.key === currentStep ? previewStep : null;
+        next && next.key !== currentStep
+          ? next
+          : currentStep === "writing" && next?.key === currentStep
+            ? previewStep
+            : null;
       const label = target ? `保存并下一步：${target.title}` : "保存";
       return {
         label,
@@ -129,12 +130,19 @@ export function WizardNextBar(props: {
               <span className="inline-flex items-center gap-1">
                 <ListChecks size={14} /> 向导 {progress.percent}%
               </span>
-              {dirty ? <span className="rounded-atelier bg-accent/10 px-2 py-0.5 text-[11px] text-accent">未保存</span> : null}
-              {done ? <span className="rounded-atelier bg-success/15 px-2 py-0.5 text-[11px] text-success">已完成</span> : null}
+              {dirty ? (
+                <span className="rounded-atelier bg-accent/10 px-2 py-0.5 text-[11px] text-accent">未保存</span>
+              ) : null}
+              {done ? (
+                <span className="rounded-atelier bg-success/15 px-2 py-0.5 text-[11px] text-success">已完成</span>
+              ) : null}
             </div>
 
             <div className="mt-2 h-2 w-full rounded-full bg-border/60">
-              <div className="h-2 rounded-full bg-accent transition-[width] duration-300" style={{ width: `${progress.percent}%` }} />
+              <div
+                className="h-2 rounded-full bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
+                style={{ width: `${progress.percent}%` }}
+              />
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
@@ -148,7 +156,7 @@ export function WizardNextBar(props: {
                     className={clsx(
                       "inline-flex items-center gap-1 rounded-atelier border px-2 py-1 text-[11px]",
                       isCurrent ? "border-accent/40 bg-accent/10 text-ink" : "border-border bg-canvas text-subtext",
-                      isNext ? "ring-1 ring-accent/30" : null,
+                      isNext ? "ring-1 ring-accent" : null,
                     )}
                     title={s.description}
                   >
@@ -158,7 +166,9 @@ export function WizardNextBar(props: {
                       )}
                       size={14}
                     />
-                    <span className={clsx("max-w-[140px] truncate", isCurrent ? "text-ink" : "text-subtext")}>{s.title}</span>
+                    <span className={clsx("max-w-[140px] truncate", isCurrent ? "text-ink" : "text-subtext")}>
+                      {s.title}
+                    </span>
                   </div>
                 );
               })}
@@ -167,7 +177,7 @@ export function WizardNextBar(props: {
 
           <div className="flex shrink-0 flex-wrap gap-2">
             <button
-              className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface disabled:opacity-60"
+              className="btn btn-secondary"
               disabled={!wizardHref || loading || busy}
               onClick={() => goto(wizardHref)}
               type="button"
@@ -176,18 +186,13 @@ export function WizardNextBar(props: {
             </button>
 
             {showBackToOverview ? (
-              <button
-                className="rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink hover:bg-surface disabled:opacity-60"
-                disabled={loading || busy}
-                onClick={() => goto("/")}
-                type="button"
-              >
+              <button className="btn btn-secondary" disabled={loading || busy} onClick={() => goto("/")} type="button">
                 已完成：回到项目概览
               </button>
             ) : null}
 
             <button
-              className="rounded-atelier bg-accent px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
+              className="btn btn-primary"
               disabled={Boolean(primary.disabled) || loading || busy}
               onClick={() => void run(primary.onClick)}
               type="button"
