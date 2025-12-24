@@ -14,14 +14,3 @@ export type LlmForm = {
   timeout_seconds: string;
   extra: string;
 };
-
-export type PromptForm = {
-  outline_generate: { system_template: string; user_template: string };
-  chapter_generate: { system_template: string; user_template: string };
-};
-
-export type TemplatePreview = {
-  system: string;
-  user: string;
-  missing: string[];
-};

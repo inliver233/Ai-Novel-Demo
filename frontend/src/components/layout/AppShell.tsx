@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import {
+  Bot,
   BookOpen,
   BookOpenText,
   FileDown,
@@ -28,7 +29,7 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
   ["/outline", "大纲"],
   ["/wizard", "开工向导"],
   ["/writing", "写作"],
-  ["/prompts", "Prompt & 模型"],
+  ["/prompts", "模型配置"],
   ["/prompt-studio", "Prompt Studio"],
   ["/preview", "预览"],
   ["/export", "导出"],
@@ -197,9 +198,16 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={false}
-                          icon={<Sparkles size={18} />}
-                          label="Prompt & 模型"
+                          icon={<Bot size={18} />}
+                          label="模型配置"
                           to={`/projects/${projectId}/prompts`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<Sparkles size={18} />}
+                          label="Prompt Studio"
+                          to={`/projects/${projectId}/prompt-studio`}
                           onClick={closeMobileNav}
                         />
                         <SidebarLink
@@ -293,9 +301,15 @@ export function AppShell() {
                   />
                   <SidebarLink
                     collapsed={collapsed}
-                    icon={<Sparkles size={18} />}
-                    label="Prompt & 模型"
+                    icon={<Bot size={18} />}
+                    label="模型配置"
                     to={`/projects/${projectId}/prompts`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Sparkles size={18} />}
+                    label="Prompt Studio"
+                    to={`/projects/${projectId}/prompt-studio`}
                   />
                   <SidebarLink
                     collapsed={collapsed}

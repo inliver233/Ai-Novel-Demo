@@ -8,7 +8,6 @@ from app.models.project import Project
 from app.models.project_settings import ProjectSettings
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
-from app.models.prompt_template import PromptTemplate
 from app.models.user import User
 
 __all__ = [
@@ -22,6 +21,5 @@ __all__ = [
     "ProjectSettings",
     "PromptBlock",
     "PromptPreset",
-    "PromptTemplate",
     "User",
 ]

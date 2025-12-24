@@ -3,8 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { LlmPresetPanel } from "../components/prompts/LlmPresetPanel";
-import { PromptTemplatesPanel } from "../components/prompts/PromptTemplatesPanel";
-import type { LlmForm, PromptForm } from "../components/prompts/types";
+import type { LlmForm } from "../components/prompts/types";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
@@ -12,7 +11,7 @@ import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
 import { markWizardLlmTestOk } from "../services/wizard";
-import type { Character, LLMPreset, LLMProfile, Outline, Project, ProjectSettings, PromptTemplate } from "../types";
+import type { LLMPreset, LLMProfile, Project } from "../types";
 
 function parseNumber(value: string): number | null {
   const v = value.trim();
@@ -28,26 +27,6 @@ function parseStopList(text: string): string[] {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-}
-
-function findPlaceholders(text: string): string[] {
-  const re = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
-  const found = new Set<string>();
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) found.add(m[1]);
-  return [...found];
-}
-
-function renderTemplate(template: string, values: Record<string, string>): { text: string; missing: string[] } {
-  const missing = new Set<string>();
-  const text = template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key: string) => {
-    if (!(key in values)) {
-      missing.add(key);
-      return "";
-    }
-    return values[key] ?? "";
-  });
-  return { text, missing: [...missing].sort() };
 }
 
 function parseTimeoutSecondsForTest(value: string): number {
@@ -78,19 +57,14 @@ export function PromptsPage() {
 
   const [loading, setLoading] = useState(true);
   const [savingPreset, setSavingPreset] = useState(false);
-  const [savingPrompts, setSavingPrompts] = useState(false);
   const [testing, setTesting] = useState(false);
 
   const [project, setProject] = useState<Project | null>(null);
-  const [settings, setSettings] = useState<ProjectSettings | null>(null);
-  const [outline, setOutline] = useState<Outline | null>(null);
-  const [characters, setCharacters] = useState<Character[]>([]);
   const [profiles, setProfiles] = useState<LLMProfile[]>([]);
   const [profileName, setProfileName] = useState("");
   const [profileBusy, setProfileBusy] = useState(false);
 
   const [baselinePreset, setBaselinePreset] = useState<LLMPreset | null>(null);
-  const [baselinePrompts, setBaselinePrompts] = useState<PromptForm | null>(null);
 
   const [apiKey, setApiKey] = useState("");
 
@@ -109,29 +83,17 @@ export function PromptsPage() {
     extra: "{}",
   });
 
-  const [promptForm, setPromptForm] = useState<PromptForm>({
-    outline_generate: { system_template: "", user_template: "" },
-    chapter_generate: { system_template: "", user_template: "" },
-  });
-
   const reloadAll = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
     try {
-      const [presetRes, promptsRes, pRes, sRes, oRes, cRes, profilesRes] = await Promise.all([
+      const [presetRes, pRes, profilesRes] = await Promise.all([
         apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${projectId}/llm_preset`),
-        apiJson<{ templates: PromptTemplate[] }>(`/api/projects/${projectId}/prompts`),
         apiJson<{ project: Project }>(`/api/projects/${projectId}`),
-        apiJson<{ settings: ProjectSettings }>(`/api/projects/${projectId}/settings`),
-        apiJson<{ outline: Outline }>(`/api/projects/${projectId}/outline`),
-        apiJson<{ characters: Character[] }>(`/api/projects/${projectId}/characters`),
         apiJson<{ profiles: LLMProfile[] }>(`/api/llm_profiles`),
       ]);
 
       setProject(pRes.data.project);
-      setSettings(sRes.data.settings);
-      setOutline(oRes.data.outline);
-      setCharacters(cRes.data.characters);
       setProfiles(profilesRes.data.profiles ?? []);
       setProfileName("");
 
@@ -150,20 +112,6 @@ export function PromptsPage() {
         timeout_seconds: presetRes.data.llm_preset.timeout_seconds?.toString() ?? "",
         extra: JSON.stringify(presetRes.data.llm_preset.extra ?? {}, null, 2),
       });
-
-      const byType = new Map(promptsRes.data.templates.map((t) => [t.type, t]));
-      const pf: PromptForm = {
-        outline_generate: {
-          system_template: byType.get("outline_generate")?.system_template ?? "",
-          user_template: byType.get("outline_generate")?.user_template ?? "",
-        },
-        chapter_generate: {
-          system_template: byType.get("chapter_generate")?.system_template ?? "",
-          user_template: byType.get("chapter_generate")?.user_template ?? "",
-        },
-      };
-      setPromptForm(pf);
-      setBaselinePrompts(pf);
 
       setApiKey("");
     } catch (e) {
@@ -208,17 +156,7 @@ export function PromptsPage() {
     );
   }, [baselinePreset, llmForm]);
 
-  const promptsDirty = useMemo(() => {
-    if (!baselinePrompts) return false;
-    return (
-      promptForm.outline_generate.system_template !== baselinePrompts.outline_generate.system_template ||
-      promptForm.outline_generate.user_template !== baselinePrompts.outline_generate.user_template ||
-      promptForm.chapter_generate.system_template !== baselinePrompts.chapter_generate.system_template ||
-      promptForm.chapter_generate.user_template !== baselinePrompts.chapter_generate.user_template
-    );
-  }, [baselinePrompts, promptForm]);
-
-  const dirty = presetDirty || promptsDirty;
+  const dirty = presetDirty;
   useUnsavedChangesGuard(dirty);
 
   const selectedProfileId = project?.llm_profile_id ?? null;
@@ -242,7 +180,6 @@ export function PromptsPage() {
     }
 
     setSavingPreset(presetDirty);
-    setSavingPrompts(promptsDirty);
     try {
       if (presetDirty) {
         const res = await apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${projectId}/llm_preset`, {
@@ -265,33 +202,6 @@ export function PromptsPage() {
         setBaselinePreset(res.data.llm_preset);
       }
 
-      if (promptsDirty) {
-        const res = await apiJson<{ templates: PromptTemplate[] }>(`/api/projects/${projectId}/prompts`, {
-          method: "PUT",
-          body: JSON.stringify({
-            templates: [
-              { type: "outline_generate", ...promptForm.outline_generate },
-              { type: "chapter_generate", ...promptForm.chapter_generate },
-            ],
-          }),
-        });
-        const byType = new Map(res.data.templates.map((t) => [t.type, t]));
-        const pf: PromptForm = {
-          outline_generate: {
-            system_template:
-              byType.get("outline_generate")?.system_template ?? promptForm.outline_generate.system_template,
-            user_template: byType.get("outline_generate")?.user_template ?? promptForm.outline_generate.user_template,
-          },
-          chapter_generate: {
-            system_template:
-              byType.get("chapter_generate")?.system_template ?? promptForm.chapter_generate.system_template,
-            user_template: byType.get("chapter_generate")?.user_template ?? promptForm.chapter_generate.user_template,
-          },
-        };
-        setPromptForm(pf);
-        setBaselinePrompts(pf);
-      }
-
       toast.toastSuccess("已保存");
       await refreshWizard();
       return true;
@@ -301,9 +211,8 @@ export function PromptsPage() {
       return false;
     } finally {
       setSavingPreset(false);
-      setSavingPrompts(false);
     }
-  }, [dirty, llmForm, presetDirty, projectId, promptForm, promptsDirty, refreshWizard, toast]);
+  }, [dirty, llmForm, presetDirty, projectId, refreshWizard, toast]);
 
   useSaveHotkey(() => void saveAll(), dirty);
 
@@ -639,57 +548,6 @@ export function PromptsPage() {
     return true;
   }, [navigate, nextAfterLlm?.href, projectId, saveAll, testConnection]);
 
-  const previewValues = useMemo(() => {
-    const charactersText = characters.map((c) => `- ${c.name}${c.role ? `（${c.role}）` : ""}`).join("\\n");
-    return {
-      project_name: project?.name ?? "",
-      genre: project?.genre ?? "",
-      logline: project?.logline ?? "",
-      world_setting: settings?.world_setting ?? "",
-      style_guide: settings?.style_guide ?? "",
-      constraints: settings?.constraints ?? "",
-      characters: charactersText,
-      outline: outline?.content_md ?? "",
-      chapter_number: "1",
-      chapter_title: "第一章",
-      chapter_plan: "（示例要点）",
-      requirements: '{\\n  "chapter_count": 12\\n}',
-      instruction: "（示例指令）",
-      previous_chapter: "（示例上一章摘要）",
-    } satisfies Record<string, string>;
-  }, [
-    characters,
-    outline?.content_md,
-    project?.genre,
-    project?.logline,
-    project?.name,
-    settings?.constraints,
-    settings?.style_guide,
-    settings?.world_setting,
-  ]);
-
-  const outlinePreview = useMemo(() => {
-    const system = renderTemplate(promptForm.outline_generate.system_template, previewValues);
-    const user = renderTemplate(promptForm.outline_generate.user_template, previewValues);
-    const missing = [...new Set([...system.missing, ...user.missing])];
-    return { system: system.text, user: user.text, missing };
-  }, [previewValues, promptForm.outline_generate.system_template, promptForm.outline_generate.user_template]);
-
-  const chapterPreview = useMemo(() => {
-    const system = renderTemplate(promptForm.chapter_generate.system_template, previewValues);
-    const user = renderTemplate(promptForm.chapter_generate.user_template, previewValues);
-    const missing = [...new Set([...system.missing, ...user.missing])];
-    return { system: system.text, user: user.text, missing };
-  }, [previewValues, promptForm.chapter_generate.system_template, promptForm.chapter_generate.user_template]);
-
-  const availablePlaceholdersText = useMemo(() => {
-    const placeholders = new Set([
-      ...findPlaceholders(promptForm.outline_generate.user_template),
-      ...findPlaceholders(promptForm.chapter_generate.user_template),
-    ]);
-    return [...placeholders].join(", ") || "—";
-  }, [promptForm.chapter_generate.user_template, promptForm.outline_generate.user_template]);
-
   if (loading) return <div className="text-subtext">加载中...</div>;
 
   return (
@@ -707,7 +565,7 @@ export function PromptsPage() {
         onSelectProfile={(id) => void selectProfile(id)}
         profileName={profileName}
         onChangeProfileName={setProfileName}
-        profileBusy={profileBusy || testing || savingPreset || savingPrompts}
+        profileBusy={profileBusy || testing || savingPreset}
         onCreateProfile={() => void createProfile()}
         onUpdateProfile={() => void updateProfile()}
         onDeleteProfile={() => void deleteProfile()}
@@ -722,7 +580,7 @@ export function PromptsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-sm font-semibold">Prompt Studio（beta）</div>
-            <div className="text-xs text-subtext">预设 + 块编辑器（预览走后端渲染）。旧模板编辑仍保留。</div>
+            <div className="text-xs text-subtext">提示词只在 Prompt Studio 中编辑/预览（与真实发送一致）。</div>
           </div>
           <button
             className="btn btn-secondary"
@@ -734,18 +592,7 @@ export function PromptsPage() {
         </div>
       </div>
 
-      <PromptTemplatesPanel
-        promptForm={promptForm}
-        setPromptForm={setPromptForm}
-        promptsDirty={promptsDirty}
-        saving={savingPrompts}
-        outlinePreview={outlinePreview}
-        chapterPreview={chapterPreview}
-        availablePlaceholdersText={availablePlaceholdersText}
-        onSave={() => void saveAll()}
-      />
-
-      <div className="text-xs text-subtext">快捷键：Ctrl/Cmd + S 保存（保存配置 + 模板）</div>
+      <div className="text-xs text-subtext">快捷键：Ctrl/Cmd + S 保存（仅保存模型配置）</div>
 
       <WizardNextBar
         projectId={projectId}
@@ -753,13 +600,13 @@ export function PromptsPage() {
         progress={wizard.progress}
         loading={wizard.loading}
         dirty={dirty}
-        saving={savingPreset || savingPrompts || testing}
+        saving={savingPreset || testing}
         onSave={saveAll}
         primaryAction={
           wizard.progress.nextStep?.key === "llm"
             ? {
                 label: `测试连接并下一步：${nextAfterLlm ? nextAfterLlm.title : "继续"}`,
-                disabled: Boolean(savingPreset || savingPrompts || testing),
+                disabled: Boolean(savingPreset || testing),
                 onClick: testAndGoNext,
               }
             : undefined

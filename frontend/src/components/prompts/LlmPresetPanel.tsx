@@ -234,7 +234,7 @@ export function LlmPresetPanel(props: Props) {
           </div>
         ) : (
           <div className="mt-3 text-xs text-subtext">
-            当前：未绑定配置（生成/测试连接会提示先在 Prompts 页选择/新建配置并保存 Key）
+            当前：未绑定配置（生成/测试连接会提示先在“模型配置”页选择/新建配置并保存 Key）
           </div>
         )}
 

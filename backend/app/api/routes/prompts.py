@@ -10,7 +10,6 @@ from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id, utc_now_iso
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
-from app.models.prompt_template import PromptTemplate
 from app.models.llm_preset import LLMPreset
 from app.schemas.prompt_presets import (
     PromptBlockCreate,
@@ -27,96 +26,17 @@ from app.schemas.prompt_presets import (
     PromptPreviewOut,
     PromptPreviewRequest,
 )
-from app.schemas.prompts import PromptTemplateItem, PromptsPutRequest
-from app.services.defaults import default_prompt_templates
 from app.services.prompt_presets import (
-    MIGRATED_PRESET_NAME,
     ensure_default_plan_preset,
     ensure_default_post_edit_preset,
     ensure_default_outline_preset,
     ensure_default_chapter_preset,
-    ensure_migrated_prompt_preset,
     parse_json_dict,
     parse_json_list,
     render_preset_for_task,
 )
 
 router = APIRouter()
-
-
-def _default_templates() -> list[PromptTemplateItem]:
-    return default_prompt_templates()
-
-
-@router.get("/projects/{project_id}/prompts")
-def get_prompts(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
-    request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
-
-    rows = db.execute(select(PromptTemplate).where(PromptTemplate.project_id == project_id)).scalars().all()
-    if not rows:
-        defaults = _default_templates()
-        db.add_all(
-            [
-                PromptTemplate(
-                    id=new_id(),
-                    project_id=project_id,
-                    type=t.type,
-                    system_template=t.system_template,
-                    user_template=t.user_template,
-                )
-                for t in defaults
-            ]
-        )
-        db.commit()
-        rows = db.execute(select(PromptTemplate).where(PromptTemplate.project_id == project_id)).scalars().all()
-
-    templates = [
-        PromptTemplateItem(
-            type=r.type,
-            system_template=r.system_template,
-            user_template=r.user_template,
-            updated_at=r.updated_at,
-        ).model_dump()
-        for r in rows
-    ]
-    return ok_payload(request_id=request_id, data={"templates": templates})
-
-
-@router.put("/projects/{project_id}/prompts")
-def put_prompts(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: PromptsPutRequest) -> dict:
-    request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
-
-    existing = {
-        r.type: r
-        for r in db.execute(select(PromptTemplate).where(PromptTemplate.project_id == project_id)).scalars().all()
-    }
-    for t in body.templates:
-        row = existing.get(t.type)
-        if row is None:
-            row = PromptTemplate(id=new_id(), project_id=project_id, type=t.type, system_template="", user_template="")
-            db.add(row)
-        if t.system_template is not None:
-            row.system_template = t.system_template
-        if t.user_template is not None:
-            row.user_template = t.user_template
-    db.commit()
-
-    rows = db.execute(select(PromptTemplate).where(PromptTemplate.project_id == project_id)).scalars().all()
-    templates = [
-        PromptTemplateItem(
-            type=r.type,
-            system_template=r.system_template,
-            user_template=r.user_template,
-            updated_at=r.updated_at,
-        ).model_dump()
-        for r in rows
-    ]
-
-    # Keep migrated preset in sync so old PromptsPage edits remain effective after M0.
-    ensure_migrated_prompt_preset(db, project_id=project_id)
-    return ok_payload(request_id=request_id, data={"templates": templates})
 
 
 def _preset_to_out(row: PromptPreset) -> dict:
@@ -160,7 +80,6 @@ def list_prompt_presets(request: Request, db: DbDep, user_id: UserIdDep, project
     require_owned_project(db, project_id=project_id, user_id=user_id)
 
     # Ensure baseline presets exist (idempotent).
-    ensure_migrated_prompt_preset(db, project_id=project_id)
     ensure_default_plan_preset(db, project_id=project_id)
     ensure_default_post_edit_preset(db, project_id=project_id)
     # Recommended presets for learning (not auto-active for existing projects).
@@ -222,9 +141,6 @@ def update_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, preset
         raise AppError.not_found()
     require_owned_project(db, project_id=preset.project_id, user_id=user_id)
 
-    if preset.name == MIGRATED_PRESET_NAME and body.name is not None:
-        raise AppError(code="VALIDATION_ERROR", message="迁移预设不允许重命名（M0 阶段）", status_code=400)
-
     if body.name is not None:
         preset.name = body.name
     if body.scope is not None:
@@ -246,9 +162,6 @@ def delete_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, preset
     if preset is None:
         raise AppError.not_found()
     require_owned_project(db, project_id=preset.project_id, user_id=user_id)
-    if preset.name == MIGRATED_PRESET_NAME:
-        raise AppError(code="VALIDATION_ERROR", message="迁移预设不允许删除（M0 阶段）", status_code=400)
-
     db.delete(preset)
     db.commit()
     return ok_payload(request_id=request_id, data={})
@@ -261,9 +174,6 @@ def create_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, preset_
     if preset is None:
         raise AppError.not_found()
     require_owned_project(db, project_id=preset.project_id, user_id=user_id)
-    if preset.name == MIGRATED_PRESET_NAME:
-        raise AppError(code="VALIDATION_ERROR", message="迁移预设不允许编辑块（M0 阶段）", status_code=400)
-
     row = PromptBlock(
         id=new_id(),
         preset_id=preset_id,
@@ -298,9 +208,6 @@ def update_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, block_i
     if preset is None:
         raise AppError.not_found()
     require_owned_project(db, project_id=preset.project_id, user_id=user_id)
-
-    if preset.name == MIGRATED_PRESET_NAME:
-        raise AppError(code="VALIDATION_ERROR", message="迁移预设不允许编辑块（M0 阶段）", status_code=400)
 
     if body.identifier is not None:
         block.identifier = body.identifier
@@ -346,9 +253,6 @@ def delete_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, block_i
         raise AppError.not_found()
     require_owned_project(db, project_id=preset.project_id, user_id=user_id)
 
-    if preset.name == MIGRATED_PRESET_NAME:
-        raise AppError(code="VALIDATION_ERROR", message="迁移预设不允许编辑块（M0 阶段）", status_code=400)
-
     db.delete(block)
     preset.updated_at = utc_now_iso()
     db.commit()
@@ -368,8 +272,6 @@ def reorder_prompt_blocks(
     if preset is None:
         raise AppError.not_found()
     require_owned_project(db, project_id=preset.project_id, user_id=user_id)
-    if preset.name == MIGRATED_PRESET_NAME:
-        raise AppError(code="VALIDATION_ERROR", message="迁移预设不允许编辑块（M0 阶段）", status_code=400)
 
     blocks = (
         db.execute(select(PromptBlock).where(PromptBlock.preset_id == preset_id).order_by(PromptBlock.injection_order.asc()))

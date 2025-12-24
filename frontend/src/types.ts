@@ -62,13 +62,6 @@ export interface Chapter {
   updated_at: string;
 }
 
-export interface PromptTemplate {
-  type: "outline_generate" | "chapter_generate";
-  system_template: string;
-  user_template: string;
-  updated_at?: string | null;
-}
-
 export interface PromptPreset {
   id: string;
   project_id: string;

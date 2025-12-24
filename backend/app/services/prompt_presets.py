@@ -12,12 +12,10 @@ from app.llm.messages import ChatMessage, flatten_messages, normalize_role
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
 from app.services.prompt_budget import estimate_tokens, trim_text_to_tokens
-from app.services.prompt_store import ensure_prompt_templates
 from app.services.prompting import render_template
 
 
-MIGRATED_PRESET_NAME = "[Migrated] prompt_templates"
-MIGRATED_TASKS = ["outline_generate", "chapter_generate"]
+LEGACY_IMPORTED_SCOPE = "legacy_imported"
 DEFAULT_PLAN_PRESET_NAME = "Default plan_chapter v1"
 DEFAULT_POST_EDIT_PRESET_NAME = "Default post_edit v1"
 DEFAULT_OUTLINE_PRESET_NAME = "默认·大纲生成 v3（推荐）"
@@ -50,146 +48,6 @@ def parse_json_dict(raw: str | None) -> dict:
     if isinstance(value, dict):
         return value
     return {}
-
-
-def ensure_migrated_prompt_preset(db: Session, *, project_id: str) -> PromptPreset:
-    templates = ensure_prompt_templates(db, project_id)
-
-    preset = (
-        db.execute(
-            select(PromptPreset).where(
-                PromptPreset.project_id == project_id,
-                PromptPreset.name == MIGRATED_PRESET_NAME,
-            )
-        )
-        .scalars()
-        .first()
-    )
-
-    changed = False
-    if preset is None:
-        preset = PromptPreset(
-            id=new_id(),
-            project_id=project_id,
-            name=MIGRATED_PRESET_NAME,
-            scope="project",
-            version=1,
-            active_for_json=json.dumps(MIGRATED_TASKS, ensure_ascii=False),
-        )
-        db.add(preset)
-        db.flush()
-        changed = True
-    else:
-        active_for = parse_json_list(preset.active_for_json)
-        merged = list(dict.fromkeys([*active_for, *MIGRATED_TASKS]))
-        if merged != active_for:
-            preset.active_for_json = json.dumps(merged, ensure_ascii=False)
-            changed = True
-
-    blocks = (
-        db.execute(select(PromptBlock).where(PromptBlock.preset_id == preset.id).order_by(PromptBlock.injection_order.asc()))
-        .scalars()
-        .all()
-    )
-    by_identifier: dict[str, PromptBlock] = {b.identifier: b for b in blocks}
-
-    def upsert_block(
-        *,
-        task: str,
-        role: str,
-        identifier: str,
-        name: str,
-        injection_order: int,
-        template: str,
-    ) -> None:
-        nonlocal changed
-        row = by_identifier.get(identifier)
-        triggers_json = json.dumps([task], ensure_ascii=False)
-        budget_json = json.dumps({"priority": "must"}, ensure_ascii=False)
-        if row is None:
-            row = PromptBlock(
-                id=new_id(),
-                preset_id=preset.id,
-                identifier=identifier,
-                name=name,
-                role=role,
-                enabled=True,
-                template=template,
-                marker_key=None,
-                injection_position="relative",
-                injection_depth=None,
-                injection_order=injection_order,
-                triggers_json=triggers_json,
-                forbid_overrides=False,
-                budget_json=budget_json,
-                cache_json=None,
-            )
-            db.add(row)
-            by_identifier[identifier] = row
-            changed = True
-            return
-        if row.role != role:
-            row.role = role
-            changed = True
-        if row.name != name:
-            row.name = name
-            changed = True
-        if row.enabled is not True:
-            row.enabled = True
-            changed = True
-        if (row.template or "") != template:
-            row.template = template
-            changed = True
-        if row.marker_key is not None:
-            row.marker_key = None
-            changed = True
-        if row.injection_position != "relative":
-            row.injection_position = "relative"
-            changed = True
-        if row.injection_depth is not None:
-            row.injection_depth = None
-            changed = True
-        if row.injection_order != injection_order:
-            row.injection_order = injection_order
-            changed = True
-        if (row.triggers_json or "") != triggers_json:
-            row.triggers_json = triggers_json
-            changed = True
-        if row.forbid_overrides is not False:
-            row.forbid_overrides = False
-            changed = True
-        if (row.budget_json or "") != budget_json:
-            row.budget_json = budget_json
-            changed = True
-        if row.cache_json is not None:
-            row.cache_json = None
-            changed = True
-
-    for task in MIGRATED_TASKS:
-        tpl = templates.get(task)
-        if tpl is None:
-            continue
-        upsert_block(
-            task=task,
-            role="system",
-            identifier=f"sys.legacy_system.{task}",
-            name=f"Legacy system ({task})",
-            injection_order=10,
-            template=(tpl.system_template or ""),
-        )
-        upsert_block(
-            task=task,
-            role="user",
-            identifier=f"user.legacy_user.{task}",
-            name=f"Legacy user ({task})",
-            injection_order=20,
-            template=(tpl.user_template or ""),
-        )
-
-    if changed:
-        db.commit()
-        db.refresh(preset)
-    return preset
 
 
 def ensure_default_plan_preset(db: Session, *, project_id: str) -> PromptPreset:
@@ -900,17 +758,43 @@ def get_active_preset_for_task(db: Session, *, project_id: str, task: str) -> Pr
         .scalars()
         .all()
     )
+
     for preset in presets:
-        if preset.name == MIGRATED_PRESET_NAME:
+        if (preset.scope or "") == LEGACY_IMPORTED_SCOPE:
             continue
         if task in parse_json_list(preset.active_for_json):
             return preset
+
     for preset in presets:
-        if preset.name != MIGRATED_PRESET_NAME:
+        if (preset.scope or "") != LEGACY_IMPORTED_SCOPE:
             continue
         if task in parse_json_list(preset.active_for_json):
             return preset
-    return ensure_migrated_prompt_preset(db, project_id=project_id)
+
+    if task == "plan_chapter":
+        return ensure_default_plan_preset(db, project_id=project_id)
+    if task == "post_edit":
+        return ensure_default_post_edit_preset(db, project_id=project_id)
+    if task == "outline_generate":
+        return ensure_default_outline_preset(db, project_id=project_id, activate=True)
+    if task == "chapter_generate":
+        return ensure_default_chapter_preset(db, project_id=project_id, activate=True)
+
+    if presets:
+        return presets[0]
+    # Last resort: create a minimal preset so preview won't crash.
+    preset = PromptPreset(
+        id=new_id(),
+        project_id=project_id,
+        name=f"Auto-created ({task})",
+        scope="project",
+        version=1,
+        active_for_json=json.dumps([task], ensure_ascii=False),
+    )
+    db.add(preset)
+    db.commit()
+    db.refresh(preset)
+    return preset
 
 
 @dataclass(slots=True)
@@ -967,6 +851,27 @@ def render_preset_for_task(
     block_states: list[dict] = []
     effective_index_by_identifier: dict[str, int] = {}
 
+    def _try_get_marker_value(values_obj: dict[str, Any], marker_key: str) -> tuple[bool, Any]:
+        if marker_key in values_obj:
+            return True, values_obj.get(marker_key)
+        if "." not in marker_key:
+            return False, None
+        cur: Any = values_obj
+        for part in marker_key.split("."):
+            if isinstance(cur, dict):
+                if part not in cur:
+                    return False, None
+                cur = cur.get(part)
+                continue
+            if isinstance(cur, list) and part.isdigit():
+                idx = int(part)
+                if idx < 0 or idx >= len(cur):
+                    return False, None
+                cur = cur[idx]
+                continue
+            return False, None
+        return True, cur
+
     for b in blocks:
         if not b.enabled:
             continue
@@ -996,8 +901,8 @@ def render_preset_for_task(
                 if render_error:
                     reason_parts.append("template_error")
             elif b.marker_key:
-                if b.marker_key in values:
-                    marker_value = values.get(b.marker_key)
+                found, marker_value = _try_get_marker_value(values, b.marker_key)
+                if found:
                     text = "" if marker_value is None else str(marker_value)
                 else:
                     missing = [b.marker_key]

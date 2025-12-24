@@ -109,10 +109,6 @@ function guessPreviewValues(args: {
   return values;
 }
 
-function isMigratedPreset(preset: PromptPreset | null): boolean {
-  return (preset?.name ?? "") === "[Migrated] prompt_templates";
-}
-
 export function PromptStudioPage() {
   const { projectId } = useParams();
   const toast = useToast();
@@ -568,8 +564,6 @@ export function PromptStudioPage() {
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
   if (loading) return <div className="text-subtext">加载中...</div>;
 
-  const migrated = isMigratedPreset(selectedPreset);
-
   return (
     <div className="grid gap-6">
       <div className="panel p-4">
@@ -579,7 +573,7 @@ export function PromptStudioPage() {
             <div className="text-xs text-subtext">
               预览通过后端渲染接口生成。{" "}
               <Link className="underline" to={`/projects/${projectId}/prompts`}>
-                返回旧 Prompts 页
+                返回模型配置
               </Link>
             </div>
           </div>
@@ -596,9 +590,7 @@ export function PromptStudioPage() {
             role、triggers（按任务触发）、token 预算与后端统一渲染。
           </div>
           <div>
-            若同一任务被多个预设勾选，系统会优先使用“最近更新”的非迁移预设；{" "}
-            <span className="font-medium text-ink">[Migrated] prompt_templates</span> 是旧 Prompts
-            页兼容用（不建议作为新项目主力）。
+            若同一任务被多个预设勾选，系统会优先使用“最近更新”的预设（历史导入的预设通常作为兜底）。
           </div>
         </div>
 
@@ -693,7 +685,7 @@ export function PromptStudioPage() {
             </LayoutGroup>
 
             <div className="mt-2 text-xs text-subtext">
-              {migrated ? "当前选中迁移预设：只读（保证旧 Prompts 无感兼容）。" : "拖拽块可调整排序；预览走后端渲染。"}
+              拖拽块可调整排序；预览走后端渲染。
             </div>
           </div>
         </div>
@@ -706,7 +698,7 @@ export function PromptStudioPage() {
                 <button
                   className="btn btn-primary"
                   onClick={() => void savePreset()}
-                  disabled={busy || !selectedPresetId || migrated}
+                  disabled={busy || !selectedPresetId}
                   type="button"
                 >
                   保存预设
@@ -714,8 +706,7 @@ export function PromptStudioPage() {
                 <button
                   className="btn btn-ghost text-accent hover:bg-accent/10"
                   onClick={() => void deletePreset()}
-                  disabled={busy || !selectedPresetId || migrated}
-                  title={migrated ? "迁移预设在 M0/M1 阶段不允许删除" : undefined}
+                  disabled={busy || !selectedPresetId}
                   type="button"
                 >
                   删除预设
@@ -730,7 +721,7 @@ export function PromptStudioPage() {
                   className="input"
                   value={presetDraftName}
                   onChange={(e) => setPresetDraftName(e.target.value)}
-                  disabled={busy || migrated}
+                  disabled={busy}
                 />
               </div>
 
@@ -747,14 +738,14 @@ export function PromptStudioPage() {
                           checked
                             ? "border-accent/40 bg-accent/10 text-ink"
                             : "border-border bg-canvas text-subtext hover:bg-surface hover:text-ink",
-                          busy || migrated ? "opacity-60" : "cursor-pointer",
+                          busy ? "opacity-60" : "cursor-pointer",
                         )}
                       >
                         <input
                           className="checkbox"
                           type="checkbox"
                           checked={checked}
-                          disabled={busy || migrated}
+                          disabled={busy}
                           onChange={(e) => {
                             const next = new Set(presetDraftActiveFor);
                             if (e.target.checked) next.add(t.key);
@@ -777,8 +768,7 @@ export function PromptStudioPage() {
               <button
                 className="btn btn-secondary"
                 onClick={() => void addBlock()}
-                disabled={busy || !selectedPresetId || migrated}
-                title={migrated ? "迁移预设只读" : undefined}
+                disabled={busy || !selectedPresetId}
                 type="button"
               >
                 添加块
@@ -801,16 +791,14 @@ export function PromptStudioPage() {
                   <div
                     key={b.id}
                     className="surface p-3"
-                    draggable={!migrated}
+                    draggable
                     onDragStart={() => {
                       dragIdRef.current = b.id;
                     }}
                     onDragOver={(e) => {
-                      if (migrated) return;
                       e.preventDefault();
                     }}
                     onDrop={() => {
-                      if (migrated) return;
                       const fromId = dragIdRef.current;
                       dragIdRef.current = null;
                       if (!fromId || fromId === b.id) return;
@@ -823,18 +811,18 @@ export function PromptStudioPage() {
                       ids.splice(insertIdx, 0, fromId);
                       void onReorder(ids);
                     }}
-                    title={migrated ? undefined : "拖拽可调整排序"}
+                    title="拖拽可调整排序"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="select-none text-subtext">{migrated ? "#" : "≡"}</span>
+                        <span className="select-none text-subtext">≡</span>
                         <span className="text-xs text-subtext">#{idx + 1}</span>
                         <label className="flex items-center gap-2 text-sm">
                           <input
                             className="checkbox"
                             type="checkbox"
                             checked={enabled}
-                            disabled={busy || migrated}
+                            disabled={busy}
                             onChange={(e) =>
                               setDrafts((prev) => ({
                                 ...prev,
@@ -857,7 +845,7 @@ export function PromptStudioPage() {
                         <button
                           className="btn btn-secondary px-3 py-1 text-sm"
                           onClick={() => void saveBlock(b.id)}
-                          disabled={busy || migrated}
+                          disabled={busy}
                           type="button"
                         >
                           保存
@@ -865,7 +853,7 @@ export function PromptStudioPage() {
                         <button
                           className="btn btn-ghost px-3 py-1 text-sm text-accent hover:bg-accent/10"
                           onClick={() => void deleteBlock(b.id)}
-                          disabled={busy || migrated}
+                          disabled={busy}
                           type="button"
                         >
                           删除
@@ -880,7 +868,7 @@ export function PromptStudioPage() {
                           <input
                             className="input"
                             value={identifier}
-                            disabled={busy || migrated}
+                            disabled={busy}
                             onChange={(e) =>
                               setDrafts((prev) => ({
                                 ...prev,
@@ -902,7 +890,7 @@ export function PromptStudioPage() {
                           <select
                             className="select"
                             value={role}
-                            disabled={busy || migrated}
+                            disabled={busy}
                             onChange={(e) =>
                               setDrafts((prev) => ({
                                 ...prev,
@@ -931,7 +919,7 @@ export function PromptStudioPage() {
                         <input
                           className="input"
                           value={name}
-                          disabled={busy || migrated}
+                          disabled={busy}
                           onChange={(e) =>
                             setDrafts((prev) => ({
                               ...prev,
@@ -955,7 +943,7 @@ export function PromptStudioPage() {
                           <input
                             className="input"
                             value={triggers}
-                            disabled={busy || migrated}
+                            disabled={busy}
                             onChange={(e) =>
                               setDrafts((prev) => ({
                                 ...prev,
@@ -978,7 +966,7 @@ export function PromptStudioPage() {
                           <input
                             className="input"
                             value={markerKey}
-                            disabled={busy || migrated}
+                            disabled={busy}
                             onChange={(e) =>
                               setDrafts((prev) => ({
                                 ...prev,
@@ -1003,7 +991,7 @@ export function PromptStudioPage() {
                         <textarea
                           className="textarea atelier-mono min-h-[140px] resize-y py-2 text-xs"
                           value={template}
-                          disabled={busy || migrated}
+                          disabled={busy}
                           onChange={(e) =>
                             setDrafts((prev) => ({
                               ...prev,
