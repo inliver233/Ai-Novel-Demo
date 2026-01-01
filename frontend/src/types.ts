@@ -142,3 +142,16 @@ export interface LLMProfile {
   created_at: string;
   updated_at: string;
 }
+
+export interface ProjectSummaryItem {
+  project: Project;
+  settings: ProjectSettings | null;
+  characters_count: number;
+  outline_content_md: string;
+  outline_content_len?: number;
+  outline_content_truncated?: boolean;
+  chapters_total: number;
+  chapters_done: number;
+  llm_preset: { provider: LLMProvider; model: string } | null;
+  llm_profile_has_api_key: boolean;
+}

@@ -79,6 +79,54 @@ def _map_upstream_error(
     return AppError(code="LLM_UPSTREAM_ERROR", message="模型服务异常，请稍后重试", status_code=502, details=details)
 
 
+_MAX_TOKENS_UPPER_BOUND_RE_LIST = [
+    re.compile(r"(?i)max(?:_tokens?|\s+tokens?)\s*>\s*(\d{3,})"),
+    re.compile(r"(?i)max(?:_tokens?|\s+tokens?)\s*(?:must\s*be\s*)?<=\s*(\d{3,})"),
+    re.compile(r"(?i)max(?:OutputTokens|\s+output\s+tokens?)\s*(?:must\s*be\s*)?<=\s*(\d{3,})"),
+]
+
+
+def _extract_max_tokens_upper_bound(text: str) -> int | None:
+    if not text:
+        return None
+    candidates: list[str] = [text]
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        parsed = None
+    if parsed is not None:
+        candidates = []
+
+        def walk(node: Any) -> None:
+            if isinstance(node, str):
+                candidates.append(node)
+                return
+            if isinstance(node, dict):
+                for value in node.values():
+                    walk(value)
+                return
+            if isinstance(node, list):
+                for value in node:
+                    walk(value)
+                return
+
+        walk(parsed)
+        candidates.append(text)
+
+    for candidate in candidates:
+        for pattern in _MAX_TOKENS_UPPER_BOUND_RE_LIST:
+            match = pattern.search(candidate)
+            if not match:
+                continue
+            try:
+                value = int(match.group(1))
+            except Exception:
+                continue
+            if value > 0:
+                return value
+    return None
+
+
 def _openai_messages(*, system: str, user: str, merge_system_into_user: bool) -> list[dict[str, Any]]:
     sys = system.strip()
     if merge_system_into_user and sys:
@@ -251,7 +299,11 @@ def call_llm_stream(
         return client.stream(
             "POST",
             endpoint,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+            },
             json=payload_obj,
             timeout=timeout,
         )
@@ -265,13 +317,26 @@ def call_llm_stream(
         return True
 
     def clamp_max_tokens(limit: int) -> bool:
-        current = payload.get("max_tokens")
-        if not isinstance(current, int):
+        for key in ("max_tokens", "max_completion_tokens"):
+            current = payload.get(key)
+            if not isinstance(current, int):
+                continue
+            if current <= limit:
+                continue
+            payload[key] = limit
+            compat_adjustments.append(f"clamp_max_tokens_{limit}")
+            return True
+        return False
+
+    def use_max_completion_tokens() -> bool:
+        if provider != "openai":
             return False
-        if current <= limit:
+        if "max_tokens" not in payload:
             return False
-        payload["max_tokens"] = limit
-        compat_adjustments.append(f"clamp_max_tokens_{limit}")
+        if "max_completion_tokens" in payload:
+            return False
+        payload["max_completion_tokens"] = payload.pop("max_tokens")
+        compat_adjustments.append("use_max_completion_tokens")
         return True
 
     def merge_system_into_user() -> bool:
@@ -285,11 +350,13 @@ def call_llm_stream(
         lambda: drop_param("stop"),
         lambda: drop_param("top_p"),
         lambda: drop_param("temperature"),
+        use_max_completion_tokens,
         lambda: clamp_max_tokens(16384),
         lambda: clamp_max_tokens(8192),
         lambda: clamp_max_tokens(4096),
         lambda: clamp_max_tokens(1024),
         lambda: drop_param("max_tokens"),
+        lambda: drop_param("max_completion_tokens"),
         merge_system_into_user,
     ]
 
@@ -422,7 +489,11 @@ def call_llm_stream_messages(
         return client.stream(
             "POST",
             endpoint,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+            },
             json=payload_obj,
             timeout=timeout,
         )
@@ -436,13 +507,26 @@ def call_llm_stream_messages(
         return True
 
     def clamp_max_tokens(limit: int) -> bool:
-        current = payload.get("max_tokens")
-        if not isinstance(current, int):
+        for key in ("max_tokens", "max_completion_tokens"):
+            current = payload.get(key)
+            if not isinstance(current, int):
+                continue
+            if current <= limit:
+                continue
+            payload[key] = limit
+            compat_adjustments.append(f"clamp_max_tokens_{limit}")
+            return True
+        return False
+
+    def use_max_completion_tokens() -> bool:
+        if provider != "openai":
             return False
-        if current <= limit:
+        if "max_tokens" not in payload:
             return False
-        payload["max_tokens"] = limit
-        compat_adjustments.append(f"clamp_max_tokens_{limit}")
+        if "max_completion_tokens" in payload:
+            return False
+        payload["max_completion_tokens"] = payload.pop("max_tokens")
+        compat_adjustments.append("use_max_completion_tokens")
         return True
 
     def merge_system_into_user() -> bool:
@@ -454,11 +538,13 @@ def call_llm_stream_messages(
         lambda: drop_param("stop"),
         lambda: drop_param("top_p"),
         lambda: drop_param("temperature"),
+        use_max_completion_tokens,
         lambda: clamp_max_tokens(16384),
         lambda: clamp_max_tokens(8192),
         lambda: clamp_max_tokens(4096),
         lambda: clamp_max_tokens(1024),
         lambda: drop_param("max_tokens"),
+        lambda: drop_param("max_completion_tokens"),
         merge_system_into_user,
     ]
 
@@ -589,7 +675,7 @@ def call_llm(
             def post_openai(payload_obj: dict[str, Any]) -> httpx.Response:
                 return client.post(
                     endpoint,
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "application/json"},
                     json=payload_obj,
                     timeout=timeout,
                 )
@@ -607,13 +693,26 @@ def call_llm(
                     return True
 
                 def clamp_max_tokens(limit: int) -> bool:
-                    current = payload.get("max_tokens")
-                    if not isinstance(current, int):
+                    for key in ("max_tokens", "max_completion_tokens"):
+                        current = payload.get(key)
+                        if not isinstance(current, int):
+                            continue
+                        if current <= limit:
+                            continue
+                        payload[key] = limit
+                        compat_adjustments.append(f"clamp_max_tokens_{limit}")
+                        return True
+                    return False
+
+                def use_max_completion_tokens() -> bool:
+                    if provider != "openai":
                         return False
-                    if current <= limit:
+                    if "max_tokens" not in payload:
                         return False
-                    payload["max_tokens"] = limit
-                    compat_adjustments.append(f"clamp_max_tokens_{limit}")
+                    if "max_completion_tokens" in payload:
+                        return False
+                    payload["max_completion_tokens"] = payload.pop("max_tokens")
+                    compat_adjustments.append("use_max_completion_tokens")
                     return True
 
                 def merge_system_into_user() -> bool:
@@ -627,11 +726,13 @@ def call_llm(
                     lambda: drop_param("stop"),
                     lambda: drop_param("top_p"),
                     lambda: drop_param("temperature"),
+                    use_max_completion_tokens,
                     lambda: clamp_max_tokens(16384),
                     lambda: clamp_max_tokens(8192),
                     lambda: clamp_max_tokens(4096),
                     lambda: clamp_max_tokens(1024),
                     lambda: drop_param("max_tokens"),
+                    lambda: drop_param("max_completion_tokens"),
                     merge_system_into_user,
                 ]
 
@@ -667,6 +768,7 @@ def call_llm(
             endpoint = f"{base_url}/v1/messages"
             anthropic_version = extra.get("anthropic_version") or extra.get("anthropicVersion") or "2023-06-01"
             max_tokens = int(filtered_params.get("max_tokens") or 1500)
+            system_prompt = system if system.strip() else None
             payload = {
                 "model": model,
                 "max_tokens": max_tokens,
@@ -674,28 +776,83 @@ def call_llm(
                 "top_p": filtered_params.get("top_p"),
                 "top_k": filtered_params.get("top_k"),
                 "stop_sequences": filtered_params.get("stop"),
-                "system": system,
-                "messages": [{"role": "user", "content": [{"type": "text", "text": user}]}],
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": user}],
             }
             payload = {k: v for k, v in payload.items() if v is not None}
-            resp = client.post(
-                endpoint,
-                headers={
-                    "x-api-key": api_key,
-                    "anthropic-version": str(anthropic_version),
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=timeout,
-            )
+            compat_adjustments: list[str] = []
+
+            def post_anthropic(payload_obj: dict[str, Any]) -> httpx.Response:
+                return client.post(
+                    endpoint,
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": str(anthropic_version),
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                    json=payload_obj,
+                    timeout=timeout,
+                )
+
+            def drop_payload_param(name: str) -> bool:
+                if name not in payload:
+                    return False
+                payload.pop(name, None)
+                compat_adjustments.append(f"drop_{name}")
+                return True
+
+            def clamp_max_tokens(limit: int) -> bool:
+                current = payload.get("max_tokens")
+                if not isinstance(current, int):
+                    return False
+                if current <= limit:
+                    return False
+                payload["max_tokens"] = limit
+                compat_adjustments.append(f"clamp_max_tokens_{limit}")
+                return True
+
+            def clamp_max_tokens_from_error() -> bool:
+                limit = _extract_max_tokens_upper_bound(_redact(resp.text))
+                if limit is None:
+                    return False
+                return clamp_max_tokens(limit)
+
+            resp = post_anthropic(payload)
+            if resp.status_code in (400, 422):
+                downgrade_steps: list[Callable[[], bool]] = [
+                    clamp_max_tokens_from_error,
+                    lambda: clamp_max_tokens(16384),
+                    lambda: clamp_max_tokens(8192),
+                    lambda: clamp_max_tokens(4096),
+                    lambda: clamp_max_tokens(1024),
+                    lambda: drop_payload_param("stop_sequences"),
+                    lambda: drop_payload_param("top_k"),
+                    lambda: drop_payload_param("top_p"),
+                    lambda: drop_payload_param("temperature"),
+                ]
+                for apply in downgrade_steps:
+                    if resp.status_code not in (400, 422):
+                        break
+                    changed = apply()
+                    if not changed:
+                        continue
+                    resp = post_anthropic(payload)
+
             latency_ms = int((time.perf_counter() - start) * 1000)
             if resp.status_code // 100 != 2:
-                raise _map_upstream_error(resp.status_code, _redact(resp.text))
+                extra_details = {"compat_adjustments": compat_adjustments} if compat_adjustments else None
+                raise _map_upstream_error(resp.status_code, _redact(resp.text), extra_details=extra_details)
             data = resp.json()
             finish_reason = data.get("stop_reason") if isinstance(data, dict) else None
-            parts = data.get("content") or []
-            text_parts = [p.get("text", "") for p in parts if isinstance(p, dict)]
-            text = "".join(text_parts).strip()
+            content_obj = data.get("content") if isinstance(data, dict) else None
+            if isinstance(content_obj, str):
+                text = content_obj.strip()
+            elif isinstance(content_obj, list):
+                text_parts = [p.get("text", "") for p in content_obj if isinstance(p, dict) and isinstance(p.get("text"), str)]
+                text = "".join(text_parts).strip()
+            else:
+                text = ""
             return LLMCallResult(
                 text=text,
                 latency_ms=latency_ms,
@@ -718,16 +875,19 @@ def call_llm(
             if "stop" in filtered_params:
                 generation_config["stopSequences"] = filtered_params["stop"]
 
-            payload: dict[str, Any] = {
-                "systemInstruction": {"parts": [{"text": system}]},
-                "contents": [{"role": "user", "parts": [{"text": user}]}],
-                "generationConfig": generation_config,
-            }
+            payload: dict[str, Any] = {"contents": [{"role": "user", "parts": [{"text": user}]}], "generationConfig": generation_config}
+            if system.strip():
+                payload["systemInstruction"] = {"parts": [{"text": system}]}
             safety = extra.get("safety_settings") or extra.get("safetySettings")
             if safety is not None:
                 payload["safetySettings"] = safety
 
-            resp = client.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=timeout)
+            resp = client.post(
+                url,
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                json=payload,
+                timeout=timeout,
+            )
             latency_ms = int((time.perf_counter() - start) * 1000)
             if resp.status_code // 100 != 2:
                 raise _map_upstream_error(resp.status_code, _redact(resp.text))
@@ -738,9 +898,8 @@ def call_llm(
             finish_reason = candidates[0].get("finishReason") if isinstance(candidates[0], dict) else None
             content = candidates[0].get("content") or {}
             parts = content.get("parts") or []
-            text = ""
-            if parts and isinstance(parts[0], dict):
-                text = parts[0].get("text", "")
+            text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and isinstance(p.get("text"), str)]
+            text = "".join(text_parts)
             return LLMCallResult(
                 text=text,
                 latency_ms=latency_ms,
@@ -797,7 +956,7 @@ def call_llm_messages(
             def post_openai(payload_obj: dict[str, Any]) -> httpx.Response:
                 return client.post(
                     endpoint,
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "application/json"},
                     json=payload_obj,
                     timeout=timeout,
                 )
@@ -815,13 +974,26 @@ def call_llm_messages(
                     return True
 
                 def clamp_max_tokens(limit: int) -> bool:
-                    current = payload.get("max_tokens")
-                    if not isinstance(current, int):
+                    for key in ("max_tokens", "max_completion_tokens"):
+                        current = payload.get(key)
+                        if not isinstance(current, int):
+                            continue
+                        if current <= limit:
+                            continue
+                        payload[key] = limit
+                        compat_adjustments.append(f"clamp_max_tokens_{limit}")
+                        return True
+                    return False
+
+                def use_max_completion_tokens() -> bool:
+                    if provider != "openai":
                         return False
-                    if current <= limit:
+                    if "max_tokens" not in payload:
                         return False
-                    payload["max_tokens"] = limit
-                    compat_adjustments.append(f"clamp_max_tokens_{limit}")
+                    if "max_completion_tokens" in payload:
+                        return False
+                    payload["max_completion_tokens"] = payload.pop("max_tokens")
+                    compat_adjustments.append("use_max_completion_tokens")
                     return True
 
                 def merge_system_into_user() -> bool:
@@ -833,11 +1005,13 @@ def call_llm_messages(
                     lambda: drop_param("stop"),
                     lambda: drop_param("top_p"),
                     lambda: drop_param("temperature"),
+                    use_max_completion_tokens,
                     lambda: clamp_max_tokens(16384),
                     lambda: clamp_max_tokens(8192),
                     lambda: clamp_max_tokens(4096),
                     lambda: clamp_max_tokens(1024),
                     lambda: drop_param("max_tokens"),
+                    lambda: drop_param("max_completion_tokens"),
                     merge_system_into_user,
                 ]
 
@@ -876,6 +1050,7 @@ def call_llm_messages(
 
             normalized = merge_consecutive(messages)
             system, non_system = coalesce_system(normalized)
+            system_prompt = system if system.strip() else None
 
             anthropic_messages: list[dict[str, Any]] = []
             for msg in non_system:
@@ -884,12 +1059,12 @@ def call_llm_messages(
                 if role not in ("user", "assistant"):
                     role = "user"
                     content = f"[{msg.role.upper()}]\n{content}"
-                anthropic_messages.append({"role": role, "content": [{"type": "text", "text": content}]})
+                anthropic_messages.append({"role": role, "content": content})
 
             if not anthropic_messages:
-                anthropic_messages = [{"role": "user", "content": [{"type": "text", "text": ""}]}]
+                anthropic_messages = [{"role": "user", "content": ""}]
             if anthropic_messages and anthropic_messages[0].get("role") != "user":
-                anthropic_messages.insert(0, {"role": "user", "content": [{"type": "text", "text": ""}]})
+                anthropic_messages.insert(0, {"role": "user", "content": ""})
 
             payload = {
                 "model": model,
@@ -898,28 +1073,83 @@ def call_llm_messages(
                 "top_p": filtered_params.get("top_p"),
                 "top_k": filtered_params.get("top_k"),
                 "stop_sequences": filtered_params.get("stop"),
-                "system": system,
+                "system": system_prompt,
                 "messages": anthropic_messages,
             }
             payload = {k: v for k, v in payload.items() if v is not None}
-            resp = client.post(
-                endpoint,
-                headers={
-                    "x-api-key": api_key,
-                    "anthropic-version": str(anthropic_version),
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=timeout,
-            )
+            compat_adjustments: list[str] = []
+
+            def post_anthropic(payload_obj: dict[str, Any]) -> httpx.Response:
+                return client.post(
+                    endpoint,
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": str(anthropic_version),
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                    json=payload_obj,
+                    timeout=timeout,
+                )
+
+            def drop_payload_param(name: str) -> bool:
+                if name not in payload:
+                    return False
+                payload.pop(name, None)
+                compat_adjustments.append(f"drop_{name}")
+                return True
+
+            def clamp_max_tokens(limit: int) -> bool:
+                current = payload.get("max_tokens")
+                if not isinstance(current, int):
+                    return False
+                if current <= limit:
+                    return False
+                payload["max_tokens"] = limit
+                compat_adjustments.append(f"clamp_max_tokens_{limit}")
+                return True
+
+            def clamp_max_tokens_from_error() -> bool:
+                limit = _extract_max_tokens_upper_bound(_redact(resp.text))
+                if limit is None:
+                    return False
+                return clamp_max_tokens(limit)
+
+            resp = post_anthropic(payload)
+            if resp.status_code in (400, 422):
+                downgrade_steps: list[Callable[[], bool]] = [
+                    clamp_max_tokens_from_error,
+                    lambda: clamp_max_tokens(16384),
+                    lambda: clamp_max_tokens(8192),
+                    lambda: clamp_max_tokens(4096),
+                    lambda: clamp_max_tokens(1024),
+                    lambda: drop_payload_param("stop_sequences"),
+                    lambda: drop_payload_param("top_k"),
+                    lambda: drop_payload_param("top_p"),
+                    lambda: drop_payload_param("temperature"),
+                ]
+                for apply in downgrade_steps:
+                    if resp.status_code not in (400, 422):
+                        break
+                    changed = apply()
+                    if not changed:
+                        continue
+                    resp = post_anthropic(payload)
+
             latency_ms = int((time.perf_counter() - start) * 1000)
             if resp.status_code // 100 != 2:
-                raise _map_upstream_error(resp.status_code, _redact(resp.text))
+                extra_details = {"compat_adjustments": compat_adjustments} if compat_adjustments else None
+                raise _map_upstream_error(resp.status_code, _redact(resp.text), extra_details=extra_details)
             data = resp.json()
             finish_reason = data.get("stop_reason") if isinstance(data, dict) else None
-            parts = data.get("content") or []
-            text_parts = [p.get("text", "") for p in parts if isinstance(p, dict)]
-            text = "".join(text_parts).strip()
+            content_obj = data.get("content") if isinstance(data, dict) else None
+            if isinstance(content_obj, str):
+                text = content_obj.strip()
+            elif isinstance(content_obj, list):
+                text_parts = [p.get("text", "") for p in content_obj if isinstance(p, dict) and isinstance(p.get("text"), str)]
+                text = "".join(text_parts).strip()
+            else:
+                text = ""
             return LLMCallResult(
                 text=text,
                 latency_ms=latency_ms,
@@ -967,7 +1197,12 @@ def call_llm_messages(
             if safety is not None:
                 payload["safetySettings"] = safety
 
-            resp = client.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=timeout)
+            resp = client.post(
+                url,
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                json=payload,
+                timeout=timeout,
+            )
             latency_ms = int((time.perf_counter() - start) * 1000)
             if resp.status_code // 100 != 2:
                 raise _map_upstream_error(resp.status_code, _redact(resp.text))
@@ -978,9 +1213,8 @@ def call_llm_messages(
             finish_reason = candidates[0].get("finishReason") if isinstance(candidates[0], dict) else None
             content_obj = candidates[0].get("content") or {}
             parts = content_obj.get("parts") or []
-            text = ""
-            if parts and isinstance(parts[0], dict):
-                text = parts[0].get("text", "")
+            text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and isinstance(p.get("text"), str)]
+            text = "".join(text_parts)
             return LLMCallResult(
                 text=text,
                 latency_ms=latency_ms,

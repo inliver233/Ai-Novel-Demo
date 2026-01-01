@@ -8,6 +8,8 @@ export type GenerateForm = {
   instruction: string;
   target_word_count: number;
   stream: boolean;
+  plan_first: boolean;
+  post_edit: boolean;
   context: {
     include_world_setting: boolean;
     include_style_guide: boolean;

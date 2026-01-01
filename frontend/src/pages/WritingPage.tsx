@@ -16,6 +16,7 @@ import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
+import { createChapterMarkerStreamParser } from "../services/chapterMarkerStreamParser";
 import { SSEError, SSEPostClient } from "../services/sseClient";
 import { markWizardProjectChanged } from "../services/wizard";
 import type { CreateChapterForm, GenerateForm, GenerationRun } from "../components/writing/types";
@@ -118,6 +119,8 @@ export function WritingPage() {
     instruction: "写出本章冲突升级，结尾留钩子。",
     target_word_count: 3000,
     stream: false,
+    plan_first: false,
+    post_edit: false,
     context: {
       include_world_setting: true,
       include_style_guide: true,
@@ -439,98 +442,51 @@ export function WritingPage() {
       genStreamClientRef.current = null;
       genStreamHasChunkRef.current = false;
       try {
-        const payload = {
-          mode,
-          instruction: genForm.instruction,
-          target_word_count: genForm.target_word_count > 0 ? genForm.target_word_count : null,
-          context: {
-            include_world_setting: genForm.context.include_world_setting,
-            include_style_guide: genForm.context.include_style_guide,
-            include_constraints: genForm.context.include_constraints,
+         const payload = {
+           mode,
+           instruction: genForm.instruction,
+           target_word_count: genForm.target_word_count > 0 ? genForm.target_word_count : null,
+           plan_first: genForm.plan_first,
+           post_edit: genForm.post_edit,
+           context: {
+             include_world_setting: genForm.context.include_world_setting,
+             include_style_guide: genForm.context.include_style_guide,
+             include_constraints: genForm.context.include_constraints,
             include_outline: genForm.context.include_outline,
             character_ids: genForm.context.character_ids,
             previous_chapter: genForm.context.previous_chapter === "none" ? null : genForm.context.previous_chapter,
           },
         };
 
-        const baseContent = form.content_md;
-        const baseSummary = form.summary;
+         const baseContent = form.content_md;
+         const baseSummary = form.summary;
 
-        if (genForm.stream) {
-          const markerContent = "<<<CONTENT>>>";
-          const markerSummary = "<<<SUMMARY>>>";
+         if (genForm.stream) {
+           const parser = createChapterMarkerStreamParser();
+           let parsedContent = "";
+           let parsedSummary = "";
+           let requestId: string | undefined;
+           let nonFatalNoticed = false;
 
-          let phase: "before" | "content" | "summary" | "raw" = "before";
-          let pending = "";
-          let parsedContent = "";
-          let parsedSummary = "";
-          let sawContentMarker = false;
-          let rawSeen = 0;
-          let requestId: string | undefined;
+           const processChunk = (chunk: string) => {
+             const out = parser.push(chunk);
+             if (out.contentDelta) parsedContent += out.contentDelta;
+             if (out.summaryDelta) parsedSummary += out.summaryDelta;
+           };
 
-          const closeTo = (s: string, keep: number) => (s.length > keep ? s.slice(s.length - keep) : s);
-          const dropLeadingSpace = (s: string) => s.replace(/^[\s\r\n]+/, "");
-
-          const processChunk = (chunk: string) => {
-            rawSeen += chunk.length;
-            pending += chunk;
-
-            if (!sawContentMarker && rawSeen > 800) {
-              phase = "raw";
-            }
-
-            while (pending) {
-              if (phase === "before") {
-                const idx = pending.indexOf(markerContent);
-                if (idx === -1) {
-                  pending = closeTo(pending, markerContent.length - 1);
-                  return;
-                }
-                sawContentMarker = true;
-                pending = dropLeadingSpace(pending.slice(idx + markerContent.length));
-                phase = "content";
-                continue;
-              }
-
-              if (phase === "content") {
-                const idx = pending.indexOf(markerSummary);
-                if (idx === -1) {
-                  const keep = markerSummary.length - 1;
-                  if (pending.length > keep) {
-                    parsedContent += pending.slice(0, pending.length - keep);
-                    pending = pending.slice(pending.length - keep);
-                  }
-                  return;
-                }
-                parsedContent += pending.slice(0, idx);
-                pending = dropLeadingSpace(pending.slice(idx + markerSummary.length));
-                phase = "summary";
-                continue;
-              }
-
-              if (phase === "summary") {
-                parsedSummary += pending;
-                pending = "";
-                return;
-              }
-
-              if (phase === "raw") {
-                parsedContent += pending;
-                pending = "";
-                return;
-              }
-            }
-          };
-
-          const client = new SSEPostClient(`/api/chapters/${activeChapter.id}/generate-stream`, payload, {
-            headers,
-            onOpen: ({ requestId: rid }) => {
-              requestId = rid;
+           const client = new SSEPostClient(`/api/chapters/${activeChapter.id}/generate-stream`, payload, {
+             headers,
+             onOpen: ({ requestId: rid }) => {
+                requestId = rid;
               setGenRequestId(rid ?? null);
             },
-            onProgress: ({ message, progress, status, wordCount }) => {
-              setGenStreamProgress({ message, progress, status, wordCount });
-            },
+             onProgress: ({ message, progress, status, wordCount }) => {
+               setGenStreamProgress({ message, progress, status, wordCount });
+               if (!nonFatalNoticed && status === "error") {
+                 nonFatalNoticed = true;
+                 toast.toastError(message, requestId);
+               }
+             },
             onChunk: (chunk) => {
               genStreamHasChunkRef.current = true;
               processChunk(chunk);

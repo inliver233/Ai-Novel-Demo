@@ -39,19 +39,19 @@ def list_runs(
         if r.params_json:
             try:
                 params = json.loads(r.params_json)
-            except Exception:
+            except json.JSONDecodeError:
                 params = {"_raw": r.params_json}
         render_log = None
         if r.prompt_render_log_json:
             try:
                 render_log = json.loads(r.prompt_render_log_json)
-            except Exception:
+            except json.JSONDecodeError:
                 render_log = {"_raw": r.prompt_render_log_json}
         err = None
         if r.error_json:
             try:
                 err = json.loads(r.error_json)
-            except Exception:
+            except json.JSONDecodeError:
                 err = {"_raw": r.error_json}
         return GenerationRunOut(
             id=r.id,
@@ -82,19 +82,19 @@ def get_run(request: Request, db: DbDep, user_id: UserIdDep, run_id: str) -> dic
     if row.params_json:
         try:
             params = json.loads(row.params_json)
-        except Exception:
+        except json.JSONDecodeError:
             params = {"_raw": row.params_json}
     err = None
     if row.error_json:
         try:
             err = json.loads(row.error_json)
-        except Exception:
+        except json.JSONDecodeError:
             err = {"_raw": row.error_json}
     render_log = None
     if row.prompt_render_log_json:
         try:
             render_log = json.loads(row.prompt_render_log_json)
-        except Exception:
+        except json.JSONDecodeError:
             render_log = {"_raw": row.prompt_render_log_json}
     payload = GenerationRunOut(
         id=row.id,

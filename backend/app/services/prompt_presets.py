@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.db.utils import new_id
 from app.llm.messages import ChatMessage, flatten_messages, normalize_role
 from app.models.prompt_block import PromptBlock
@@ -752,7 +753,7 @@ def ensure_default_chapter_preset(db: Session, *, project_id: str, activate: boo
     return preset
 
 
-def get_active_preset_for_task(db: Session, *, project_id: str, task: str) -> PromptPreset:
+def get_active_preset_for_task(db: Session, *, project_id: str, task: str, allow_autocreate: bool = True) -> PromptPreset:
     presets = (
         db.execute(select(PromptPreset).where(PromptPreset.project_id == project_id).order_by(PromptPreset.updated_at.desc()))
         .scalars()
@@ -771,18 +772,23 @@ def get_active_preset_for_task(db: Session, *, project_id: str, task: str) -> Pr
         if task in parse_json_list(preset.active_for_json):
             return preset
 
-    if task == "plan_chapter":
-        return ensure_default_plan_preset(db, project_id=project_id)
-    if task == "post_edit":
-        return ensure_default_post_edit_preset(db, project_id=project_id)
-    if task == "outline_generate":
-        return ensure_default_outline_preset(db, project_id=project_id, activate=True)
-    if task == "chapter_generate":
-        return ensure_default_chapter_preset(db, project_id=project_id, activate=True)
+    if allow_autocreate:
+        if task == "plan_chapter":
+            return ensure_default_plan_preset(db, project_id=project_id)
+        if task == "post_edit":
+            return ensure_default_post_edit_preset(db, project_id=project_id)
+        if task == "outline_generate":
+            return ensure_default_outline_preset(db, project_id=project_id, activate=True)
+        if task == "chapter_generate":
+            return ensure_default_chapter_preset(db, project_id=project_id, activate=True)
+
+    if not allow_autocreate:
+        raise AppError.validation(message=f"当前项目未为 task={task} 配置可用 PromptPreset，请先在 Prompt Studio 初始化/激活")
 
     if presets:
         return presets[0]
-    # Last resort: create a minimal preset so preview won't crash.
+
+    # Last resort: create a minimal preset so generation won't crash.
     preset = PromptPreset(
         id=new_id(),
         project_id=project_id,
@@ -818,13 +824,14 @@ def render_preset_for_task(
     macro_seed: str | None = None,
     provider: str | None = None,
     prompt_budget_tokens: int | None = None,
+    allow_autocreate: bool = True,
 ) -> tuple[str, str, list[ChatMessage], list[str], list[RenderedBlock], str, dict]:
     if preset_id is None:
-        preset = get_active_preset_for_task(db, project_id=project_id, task=task)
+        preset = get_active_preset_for_task(db, project_id=project_id, task=task, allow_autocreate=allow_autocreate)
     else:
         preset = db.get(PromptPreset, preset_id)
         if preset is None or preset.project_id != project_id:
-            preset = get_active_preset_for_task(db, project_id=project_id, task=task)
+            preset = get_active_preset_for_task(db, project_id=project_id, task=task, allow_autocreate=allow_autocreate)
 
     blocks = (
         db.execute(

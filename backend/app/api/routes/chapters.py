@@ -11,13 +11,11 @@ from sqlalchemy.exc import IntegrityError
 from app.api.deps import DbDep, UserIdDep, require_owned_chapter, require_owned_outline, require_owned_project
 from app.core.errors import AppError, ok_payload
 from app.core.logging import log_event
-from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.db.session import SessionLocal
 from app.db.utils import new_id
-from app.llm.client import call_llm_stream, call_llm_stream_messages
+from app.llm.client import call_llm_stream_messages
 from app.models.chapter import Chapter
 from app.models.character import Character
-from app.models.llm_profile import LLMProfile
 from app.models.llm_preset import LLMPreset
 from app.models.outline import Outline
 from app.models.project import Project
@@ -26,6 +24,7 @@ from app.schemas.chapters import BulkCreateRequest, ChapterCreate, ChapterOut, C
 from app.schemas.chapter_generate import ChapterGenerateRequest
 from app.schemas.chapter_plan import ChapterPlanRequest
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.length_control import estimate_max_tokens
 from app.services.output_contracts import contract_for_task
 from app.services.outline_store import ensure_active_outline
@@ -221,7 +220,7 @@ def plan_chapter(
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
 ) -> dict:
     request_id = request.state.request_id
-    resolved_api_key: str | None = x_llm_api_key
+    resolved_api_key = ""
 
     prompt_system = ""
     prompt_user = ""
@@ -242,19 +241,7 @@ def plan_chapter(
             raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
         if x_llm_provider and preset.provider != x_llm_provider:
             raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
-
-        if not resolved_api_key:
-            if not project.llm_profile_id:
-                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
-            profile = db.get(LLMProfile, project.llm_profile_id)
-            if profile is None or profile.owner_user_id != user_id or not profile.api_key_ciphertext:
-                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
-            try:
-                resolved_api_key = decrypt_secret(profile.api_key_ciphertext).strip()
-            except SecretCryptoError:
-                raise AppError(code="LLM_KEY_MISSING", message="已保存的 API Key 无法读取，请在 Prompts 页重新保存", status_code=401)
-            if not resolved_api_key:
-                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+        resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
 
         ensure_default_plan_preset(db, project_id=project_id)
 
@@ -398,7 +385,7 @@ def generate_chapter(
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
 ) -> dict:
     request_id = request.state.request_id
-    resolved_api_key: str | None = x_llm_api_key
+    resolved_api_key = ""
 
     prompt_system = ""
     prompt_user = ""
@@ -427,19 +414,7 @@ def generate_chapter(
             raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
         if x_llm_provider and preset.provider != x_llm_provider:
             raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
-
-        if not resolved_api_key:
-            if not project.llm_profile_id:
-                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
-            profile = db.get(LLMProfile, project.llm_profile_id)
-            if profile is None or profile.owner_user_id != user_id or not profile.api_key_ciphertext:
-                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
-            try:
-                resolved_api_key = decrypt_secret(profile.api_key_ciphertext).strip()
-            except SecretCryptoError:
-                raise AppError(code="LLM_KEY_MISSING", message="已保存的 API Key 无法读取，请在 Prompts 页重新保存", status_code=401)
-            if not resolved_api_key:
-                raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+        resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
 
         settings_row = db.get(ProjectSettings, project_id)
         outline_row = db.get(Outline, chapter.outline_id)
@@ -769,7 +744,7 @@ def generate_chapter_stream(
 
         llm_call = None
         project_id = ""
-        resolved_api_key: str | None = x_llm_api_key
+        resolved_api_key = ""
 
         db = SessionLocal()
         try:
@@ -784,19 +759,9 @@ def generate_chapter_stream(
                 raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
             if x_llm_provider and preset.provider != x_llm_provider:
                 raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
-
-            if not resolved_api_key:
-                if not project.llm_profile_id:
-                    raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
-                profile = db.get(LLMProfile, project.llm_profile_id)
-                if profile is None or profile.owner_user_id != user_id or not profile.api_key_ciphertext:
-                    raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
-                try:
-                    resolved_api_key = decrypt_secret(profile.api_key_ciphertext).strip()
-                except SecretCryptoError:
-                    raise AppError(code="LLM_KEY_MISSING", message="已保存的 API Key 无法读取，请在 Prompts 页重新保存", status_code=401)
-                if not resolved_api_key:
-                    raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+            resolved_api_key = resolve_api_key_for_project(
+                db, project=project, user_id=user_id, header_api_key=x_llm_api_key
+            )
 
             settings_row = db.get(ProjectSettings, project_id)
             outline_row = db.get(Outline, chapter.outline_id)
@@ -943,79 +908,95 @@ def generate_chapter_stream(
             yield sse_done()
             return
 
-        if body.plan_first:
-            if not plan_prompt_system.strip() and not plan_prompt_user.strip():
-                yield sse_error(error="缺少 plan_chapter 提示词预设/提示块，请在 Prompt Studio 配置", code=400)
-                yield sse_done()
-                return
-
-            yield sse_progress(message="生成规划...", progress=5)
-            plan_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 1024})
-            plan_result = call_llm_and_record(
-                logger=logger,
-                request_id=request_id,
-                actor_user_id=user_id,
-                project_id=project_id,
-                chapter_id=chapter_id,
-                run_type="plan_chapter",
-                api_key=str(resolved_api_key),
-                prompt_system=plan_prompt_system,
-                prompt_user=plan_prompt_user,
-                prompt_messages=plan_prompt_messages,
-                prompt_render_log_json=plan_prompt_render_log_json,
-                llm_call=plan_call,
-            )
-
-            plan_contract = contract_for_task("plan_chapter")
-            plan_parsed = plan_contract.parse(plan_result.text, finish_reason=plan_result.finish_reason)
-            plan_out, plan_warnings, plan_parse_error = plan_parsed.data, plan_parsed.warnings, plan_parsed.parse_error
-
-            plan_text = str((plan_out or {}).get("plan") or "").strip()
-            if plan_text:
-                instruction_with_plan = f"{str(render_values.get('instruction') or '').rstrip()}\n\n<PLAN>\n{plan_text}\n</PLAN>"
-                render_values["instruction"] = instruction_with_plan
-                render_values["story_plan"] = plan_text
-
-                story_ns = render_values.get("story")
-                if isinstance(story_ns, dict):
-                    story2 = dict(story_ns)
-                    story2["plan"] = plan_text
-                    render_values["story"] = story2
-                else:
-                    render_values["story"] = {"plan": plan_text}
-
-                user_ns = render_values.get("user")
-                if isinstance(user_ns, dict):
-                    user2 = dict(user_ns)
-                    user2["instruction"] = instruction_with_plan
-                    render_values["user"] = user2
-
-            yield sse_progress(message="渲染章节提示词...", progress=8)
-            with SessionLocal() as db2:
-                prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
-                    db2,
-                    project_id=project_id,
-                    task="chapter_generate",
-                    values=render_values,  # type: ignore[arg-type]
-                    macro_seed=request_id,
-                    provider=llm_call.provider,
-                )
-            prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
-
-        if body.target_word_count is not None:
-            llm_call = with_param_overrides(
-                llm_call,
-                {"max_tokens": estimate_max_tokens(target_word_count=body.target_word_count, provider=llm_call.provider)},
-            )
-
-        yield sse_progress(message="调用模型...", progress=10)
-
         raw_output = ""
         finish_reason: str | None = None
         dropped_params: list[str] = []
         latency_ms: int | None = None
         stream_run_written = False
+        generation_started = False
         try:
+            if body.plan_first:
+                if not plan_prompt_system.strip() and not plan_prompt_user.strip():
+                    yield sse_error(error="缺少 plan_chapter 提示词预设/提示块，请在 Prompt Studio 配置", code=400)
+                    yield sse_done()
+                    return
+
+                yield sse_progress(message="生成规划...", progress=5)
+                plan_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 1024})
+                plan_result = call_llm_and_record(
+                    logger=logger,
+                    request_id=request_id,
+                    actor_user_id=user_id,
+                    project_id=project_id,
+                    chapter_id=chapter_id,
+                    run_type="plan_chapter",
+                    api_key=str(resolved_api_key),
+                    prompt_system=plan_prompt_system,
+                    prompt_user=plan_prompt_user,
+                    prompt_messages=plan_prompt_messages,
+                    prompt_render_log_json=plan_prompt_render_log_json,
+                    llm_call=plan_call,
+                )
+
+                plan_contract = contract_for_task("plan_chapter")
+                plan_parsed = plan_contract.parse(plan_result.text, finish_reason=plan_result.finish_reason)
+                plan_out, plan_warnings, plan_parse_error = (
+                    plan_parsed.data,
+                    plan_parsed.warnings,
+                    plan_parsed.parse_error,
+                )
+                if plan_parse_error is not None:
+                    err_code = str(plan_parse_error.get("code") or "PLAN_PARSE_ERROR")
+                    err_msg = str(plan_parse_error.get("message") or "无法解析规划输出")
+                    yield sse_progress(
+                        message=f"规划解析失败（{err_code}）：{err_msg}（将继续生成） (request_id={request_id})",
+                        progress=6,
+                        status="error",
+                    )
+
+                plan_text = str((plan_out or {}).get("plan") or "").strip()
+                if plan_text:
+                    instruction_with_plan = (
+                        f"{str(render_values.get('instruction') or '').rstrip()}\n\n<PLAN>\n{plan_text}\n</PLAN>"
+                    )
+                    render_values["instruction"] = instruction_with_plan
+                    render_values["story_plan"] = plan_text
+
+                    story_ns = render_values.get("story")
+                    if isinstance(story_ns, dict):
+                        story2 = dict(story_ns)
+                        story2["plan"] = plan_text
+                        render_values["story"] = story2
+                    else:
+                        render_values["story"] = {"plan": plan_text}
+
+                    user_ns = render_values.get("user")
+                    if isinstance(user_ns, dict):
+                        user2 = dict(user_ns)
+                        user2["instruction"] = instruction_with_plan
+                        render_values["user"] = user2
+
+                yield sse_progress(message="渲染章节提示词...", progress=8)
+                with SessionLocal() as db2:
+                    prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
+                        db2,
+                        project_id=project_id,
+                        task="chapter_generate",
+                        values=render_values,  # type: ignore[arg-type]
+                        macro_seed=request_id,
+                        provider=llm_call.provider,
+                    )
+                prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
+
+            if body.target_word_count is not None:
+                llm_call = with_param_overrides(
+                    llm_call,
+                    {"max_tokens": estimate_max_tokens(target_word_count=body.target_word_count, provider=llm_call.provider)},
+                )
+
+            yield sse_progress(message="调用模型...", progress=10)
+            generation_started = True
+
             if llm_call.provider in ("openai", "openai_compatible"):
                 stream_iter, state = call_llm_stream_messages(
                     provider=llm_call.provider,
@@ -1204,7 +1185,8 @@ def generate_chapter_stream(
             return
         except AppError as exc:
             if (
-                llm_call is not None
+                generation_started
+                and llm_call is not None
                 and llm_call.provider in ("openai", "openai_compatible")
                 and not stream_run_written
             ):

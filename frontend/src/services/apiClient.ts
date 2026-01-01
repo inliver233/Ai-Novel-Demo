@@ -130,11 +130,13 @@ function unquoteHeaderValue(value: string): string {
   return trimmed;
 }
 
-function sanitizeFilename(value: string): string {
+export function sanitizeFilename(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
   const lastSegment = trimmed.split(/[/\\]/).pop() ?? trimmed;
-  return lastSegment.replaceAll("\0", "");
+  const withoutNull = lastSegment.replaceAll("\0", "");
+  const safe = withoutNull.replaceAll(/[\\/:*?"<>|]+/g, "_").trim();
+  return safe.slice(0, 80);
 }
 
 function parseContentDispositionFilename(header: string): string | null {

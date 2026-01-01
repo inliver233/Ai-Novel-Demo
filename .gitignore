@@ -14,6 +14,7 @@ dist/
 
 # Local DB / env
 *.db
+*.db.bak*
 *.db-journal
 *.db-wal
 *.db-shm
@@ -27,6 +28,7 @@ dist/
 *.sqlite3-shm
 backend/.env
 frontend/.env
+backend/.dev-backend.*.log
 
 # OS / IDE
 .DS_Store

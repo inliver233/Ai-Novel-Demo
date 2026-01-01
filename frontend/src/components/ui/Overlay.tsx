@@ -21,7 +21,7 @@ export function Overlay(props: {
           exit="exit"
           variants={overlayFadeVariants}
           transition={reduceMotion ? { duration: 0.01 } : transition.base}
-          onClick={(e) => {
+          onPointerDown={(e) => {
             if (!props.onBackdropClick) return;
             if (e.target !== e.currentTarget) return;
             props.onBackdropClick();

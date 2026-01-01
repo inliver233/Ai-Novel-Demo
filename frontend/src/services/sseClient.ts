@@ -137,13 +137,10 @@ export class SSEPostClient {
           const trimmed = block.trim();
           if (!trimmed || trimmed.startsWith(":")) continue;
 
-          let eventType: string | undefined;
           const dataLines: string[] = [];
           for (const line of trimmed.split("\n")) {
-            if (line.startsWith("event:")) eventType = line.slice("event:".length).trim();
             if (line.startsWith("data:")) dataLines.push(line.slice("data:".length).trim());
           }
-          void eventType;
 
           if (dataLines.length === 0) continue;
           const dataStr = dataLines.join("\n");
@@ -186,6 +183,12 @@ export class SSEPostClient {
         throw e;
       }
       throw new SSEError({ code: "SSE_STREAM_ERROR", message: "SSE 读取失败", requestId: this.requestId });
+    } finally {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore
+      }
     }
 
     if (this.abortController.signal.aborted) {

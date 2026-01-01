@@ -6,7 +6,7 @@ import { Link, useParams } from "react-router-dom";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { transition } from "../lib/motion";
-import { ApiError, apiJson } from "../services/apiClient";
+import { ApiError, apiJson, sanitizeFilename } from "../services/apiClient";
 import type { Character, Outline, Project, ProjectSettings, PromptBlock, PromptPreset, PromptPreview } from "../types";
 
 type PresetDetails = { preset: PromptPreset; blocks: PromptBlock[] };
@@ -481,7 +481,8 @@ export function PromptStudioPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${selectedPreset.name}.json`;
+      const safeName = sanitizeFilename(selectedPreset.name) || "prompt_preset";
+      a.download = `${safeName}.json`;
       a.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       toast.toastSuccess("已导出");

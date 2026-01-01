@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 
 from app.api.deps import DbDep, UserIdDep, require_owned_project
 from app.core.errors import AppError, ok_payload
-from app.llm.utils import normalize_base_url
+from app.llm.utils import default_max_tokens_for_provider, normalize_base_url
 from app.models.llm_preset import LLMPreset
 from app.schemas.llm_preset import LLMPresetOut, LLMPresetPutRequest
 
@@ -107,7 +107,12 @@ def put_llm_preset(
     row.model = body.model
     row.temperature = body.temperature
     row.top_p = body.top_p
-    row.max_tokens = body.max_tokens
+    if body.max_tokens is None or (
+        body.provider in ("anthropic", "gemini") and body.max_tokens == default_max_tokens_for_provider("openai")
+    ):
+        row.max_tokens = default_max_tokens_for_provider(body.provider)
+    else:
+        row.max_tokens = body.max_tokens
     row.presence_penalty = body.presence_penalty
     row.frequency_penalty = body.frequency_penalty
     row.top_k = body.top_k

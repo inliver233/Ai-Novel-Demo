@@ -231,3 +231,127 @@ export function computeWizardProgress(input: WizardComputeInput): WizardProgress
 
   return { percent, steps, nextStep, exportedAt, writing: { doneChapters, totalChapters } };
 }
+
+export type WizardSummaryComputeInput = {
+  project: Project | null;
+  settings: ProjectSettings | null;
+  characters_count: number;
+  outline_content_md: string;
+  chapters_total: number;
+  chapters_done: number;
+  llm_preset: Pick<LLMPreset, "provider" | "model"> | null;
+  llm_profile_has_api_key: boolean;
+};
+
+export function computeWizardProgressFromSummary(input: WizardSummaryComputeInput): WizardProgress {
+  const projectId = input.project?.id ?? "";
+  const base = projectId ? `/projects/${projectId}` : "";
+
+  const exportedAt = projectId ? getWizardExportedAt(projectId) : null;
+  const changedAt = projectId ? getWizardProjectChangedAt(projectId) : null;
+  const exportIsFresh = Boolean(exportedAt && (!changedAt || exportedAt >= changedAt));
+
+  const totalChapters = input.chapters_total ?? 0;
+  const doneChapters = input.chapters_done ?? 0;
+  const writingProgress = totalChapters > 0 ? doneChapters / totalChapters : 0;
+
+  const makeStep = (step: Omit<WizardStep, "state"> & { done: boolean }): WizardStep => {
+    if (!projectId) return { ...step, state: "todo" };
+    if (isWizardStepSkipped(projectId, step.key)) return { ...step, state: "skipped" };
+    return { ...step, state: step.done ? "done" : "todo" };
+  };
+
+  const steps: WizardStep[] = [
+    makeStep({
+      key: "settings",
+      title: "补齐设定",
+      description: "填写世界观/风格/约束（越具体越好）。",
+      href: `${base}/settings`,
+      done: Boolean(
+        isNonEmpty(input.settings?.world_setting) ||
+          isNonEmpty(input.settings?.style_guide) ||
+          isNonEmpty(input.settings?.constraints) ||
+          isNonEmpty(input.project?.genre) ||
+          isNonEmpty(input.project?.logline),
+      ),
+    }),
+    makeStep({
+      key: "characters",
+      title: "添加角色卡",
+      description: "至少创建 1 个核心角色，后续生成会注入角色信息。",
+      href: `${base}/characters`,
+      done: (input.characters_count ?? 0) > 0,
+    }),
+    makeStep({
+      key: "llm",
+      title: "配置模型并测试连接",
+      description: "保存后端配置（含 API Key），点击“测试连接”。",
+      href: `${base}/prompts`,
+      done: Boolean(
+        projectId &&
+          input.llm_preset &&
+          input.project?.llm_profile_id &&
+          input.llm_profile_has_api_key &&
+          hasWizardLlmTestOk(projectId, input.llm_preset.provider, input.llm_preset.model),
+      ),
+    }),
+    makeStep({
+      key: "outline",
+      title: "生成/编辑大纲",
+      description: "用 AI 生成大纲后“应用生成结果”，或手动编写并保存。",
+      href: `${base}/outline`,
+      done: isNonEmpty(input.outline_content_md),
+    }),
+    makeStep({
+      key: "chapters",
+      title: "创建章节骨架",
+      description: "从大纲一键创建章节骨架，或在写作页手动创建章节。",
+      href: `${base}/outline`,
+      done: totalChapters > 0,
+    }),
+    makeStep({
+      key: "writing",
+      title: "完成全部章节",
+      description: "将所有章节标记为 done（写完一章就设为 done）。",
+      href: `${base}/writing`,
+      done: totalChapters > 0 && doneChapters >= totalChapters,
+    }),
+    makeStep({
+      key: "preview",
+      title: "预览阅读",
+      description: "在预览页通读章节内容，并可跳转回写作页快速修改。",
+      href: `${base}/preview`,
+      done: projectId ? hasWizardPreviewSeen(projectId) : false,
+    }),
+    makeStep({
+      key: "export",
+      title: "导出整本 Markdown",
+      description: "在导出页选择范围，下载 `.md` 文件。",
+      href: `${base}/export`,
+      done: Boolean(projectId && exportIsFresh),
+    }),
+  ];
+
+  const weights: Record<WizardStepKey, number> = {
+    settings: 6,
+    characters: 6,
+    llm: 12,
+    outline: 18,
+    chapters: 10,
+    writing: 36,
+    preview: 6,
+    export: 6,
+  };
+
+  const stepProgress = (key: WizardStepKey, state: WizardStepState): number => {
+    if (state === "done" || state === "skipped") return 1;
+    if (key === "writing") return writingProgress;
+    return 0;
+  };
+
+  const percentRaw = steps.reduce((acc, s) => acc + weights[s.key] * stepProgress(s.key, s.state), 0);
+  const percent = Math.max(0, Math.min(100, Math.floor(percentRaw)));
+  const nextStep = steps.find((s) => s.state === "todo") ?? null;
+
+  return { percent, steps, nextStep, exportedAt, writing: { doneChapters, totalChapters } };
+}

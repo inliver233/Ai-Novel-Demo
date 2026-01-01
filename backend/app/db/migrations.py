@@ -59,6 +59,20 @@ def ensure_db_schema(*, engine: Engine = app_engine) -> None:
             and {"active_outline_id", "llm_profile_id"}.issubset(project_cols)
         )
         stamp_target = "head" if has_new_schema else INIT_REVISION
+        if settings.app_env == "prod":
+            log_event(
+                logger,
+                "error",
+                event="DB_SCHEMA",
+                action="stamp_skipped",
+                reason="prod_env",
+                target=stamp_target,
+            )
+            raise RuntimeError(
+                "Detected a legacy SQLite database without alembic_version. "
+                "Automatic `alembic stamp` is disabled in APP_ENV=prod. "
+                "Please backup the DB and run a manual stamp/upgrade."
+            )
         log_event(logger, "warning", event="DB_SCHEMA", action="stamp", target=stamp_target)
         command.stamp(cfg, stamp_target)
 

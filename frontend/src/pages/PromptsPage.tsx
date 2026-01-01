@@ -466,7 +466,7 @@ export function PromptsPage() {
 
     setTesting(true);
     try {
-      const res = await apiJson<{ latency_ms: number }>("/api/llm/test", {
+      const res = await apiJson<{ latency_ms: number; text?: string }>("/api/llm/test", {
         method: "POST",
         headers: {
           "X-LLM-Provider": llmForm.provider,
@@ -477,13 +477,16 @@ export function PromptsPage() {
           base_url: llmForm.base_url || null,
           model: llmForm.model,
           timeout_seconds: parseTimeoutSecondsForTest(llmForm.timeout_seconds),
+          extra: extraObj,
           params: {
             temperature: parseNumber(llmForm.temperature) ?? 0,
-            max_tokens: 8,
+            // Some models may emit "thinking" blocks before final text; keep this > tiny to ensure we get a text preview.
+            max_tokens: 64,
           },
         }),
       });
-      toast.toastSuccess(`连接成功（延迟 ${res.data.latency_ms}ms）`);
+      const preview = (res.data.text ?? "").trim();
+      toast.toastSuccess(`连接成功（延迟 ${res.data.latency_ms}ms${preview ? `，输出：${preview}` : ""}）`);
       if (projectId) {
         markWizardLlmTestOk(projectId, llmForm.provider, llmForm.model);
         bumpWizardLocal();

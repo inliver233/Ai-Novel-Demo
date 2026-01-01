@@ -279,11 +279,25 @@ def reorder_prompt_blocks(
         .all()
     )
     by_id: dict[str, PromptBlock] = {b.id: b for b in blocks}
-    for idx, block_id in enumerate(body.ordered_block_ids):
-        block = by_id.get(block_id)
-        if block is None:
-            raise AppError.validation(message="ordered_block_ids 包含不属于该 preset 的 block_id")
-        block.injection_order = idx
+    existing_ids = [b.id for b in blocks]
+    existing_set = set(existing_ids)
+    ordered_ids = list(body.ordered_block_ids or [])
+
+    if len(ordered_ids) != len(existing_ids):
+        raise AppError.validation(
+            message=f"ordered_block_ids 必须包含该 preset 的全部 blocks（expected={len(existing_ids)} got={len(ordered_ids)}）"
+        )
+    if len(set(ordered_ids)) != len(ordered_ids):
+        raise AppError.validation(message="ordered_block_ids 包含重复 block_id")
+
+    ordered_set = set(ordered_ids)
+    missing = existing_set - ordered_set
+    extra = ordered_set - existing_set
+    if missing or extra:
+        raise AppError.validation(message="ordered_block_ids 必须与该 preset 的 blocks 集合完全一致")
+
+    for idx, block_id in enumerate(ordered_ids):
+        by_id[block_id].injection_order = idx
 
     preset.updated_at = utc_now_iso()
     db.commit()
@@ -384,6 +398,10 @@ def preview_prompt(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
     request_id = request.state.request_id
     require_owned_project(db, project_id=project_id, user_id=user_id)
 
+    allowed_tasks = {"outline_generate", "chapter_generate", "plan_chapter", "post_edit"}
+    if body.task not in allowed_tasks:
+        raise AppError.validation(message="不支持的 task")
+
     llm_preset = db.get(LLMPreset, project_id)
     provider = llm_preset.provider if llm_preset is not None else None
 
@@ -395,6 +413,7 @@ def preview_prompt(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
         preset_id=body.preset_id,
         macro_seed=request_id,
         provider=provider,
+        allow_autocreate=False,
     )
 
     payload = PromptPreviewOut(

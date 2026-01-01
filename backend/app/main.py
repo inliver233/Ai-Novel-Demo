@@ -93,23 +93,10 @@ async def request_id_and_logging_middleware(request: Request, call_next):  # typ
     set_request_id(rid)
 
     start = time.perf_counter()
-    try:
-        response = await call_next(request)
-    except Exception as exc:
-        latency_ms = int((time.perf_counter() - start) * 1000)
-        log_event(
-            logger,
-            "error",
-            path=request.url.path,
-            method=request.method,
-            status_code=500,
-            latency_ms=latency_ms,
-            error="UNHANDLED_EXCEPTION",
-            exception_type=type(exc).__name__,
-        )
-        raise
-    else:
-        latency_ms = int((time.perf_counter() - start) * 1000)
+    response = await call_next(request)
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    if response.status_code < 400:
         log_event(
             logger,
             "info",
@@ -118,8 +105,8 @@ async def request_id_and_logging_middleware(request: Request, call_next):  # typ
             status_code=response.status_code,
             latency_ms=latency_ms,
         )
-        response.headers["X-Request-Id"] = rid
-        return response
+    response.headers["X-Request-Id"] = rid
+    return response
 
 
 @app.exception_handler(AppError)
@@ -161,7 +148,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         request_id=rid,
         code="VALIDATION_ERROR",
         message="参数校验失败",
-        details={"errors": exc.errors()},
+        details={"errors": safe_errors},
     )
     return JSONResponse(payload, status_code=400, headers={"X-Request-Id": rid})
 
@@ -169,7 +156,15 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
     rid = getattr(request.state, "request_id", new_request_id())
-    log_event(logger, "error", error="DB_ERROR", detail=str(exc))
+    log_event(
+        logger,
+        "error",
+        path=request.url.path,
+        method=request.method,
+        status_code=500,
+        error="DB_ERROR",
+        exception_type=type(exc).__name__,
+    )
     payload = error_payload(request_id=rid, code="DB_ERROR", message="数据库错误", details={})
     return JSONResponse(payload, status_code=500, headers={"X-Request-Id": rid})
 
@@ -177,7 +172,15 @@ async def sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError) -> JS
 @app.exception_handler(Exception)
 async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
     rid = getattr(request.state, "request_id", new_request_id())
-    log_event(logger, "error", error="UNHANDLED_EXCEPTION", exception_type=type(exc).__name__)
+    log_event(
+        logger,
+        "error",
+        path=request.url.path,
+        method=request.method,
+        status_code=500,
+        error="UNHANDLED_EXCEPTION",
+        exception_type=type(exc).__name__,
+    )
     payload = error_payload(request_id=rid, code="INTERNAL_ERROR", message="服务器内部错误", details={})
     return JSONResponse(payload, status_code=500, headers={"X-Request-Id": rid})
 

@@ -15,3 +15,4 @@ class LLMTestRequest(BaseModel):
     model: str = Field(min_length=1, max_length=255)
     timeout_seconds: int | None = Field(default=90, ge=1, le=1800)
     params: dict[str, Any] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)

@@ -57,24 +57,48 @@ export function AiGenerateDrawer(props: Props) {
         </button>
       </div>
 
-      <div className="mt-5 grid gap-4">
-        <div className="panel p-3">
-          <label className="flex items-center justify-between gap-3 text-sm text-ink">
-            <span>流式生成（beta）</span>
-            <input
-              className="checkbox"
-              checked={props.genForm.stream}
-              disabled={props.generating}
-              name="stream"
-              onChange={(e) => props.setGenForm((v) => ({ ...v, stream: e.target.checked }))}
-              type="checkbox"
-            />
-          </label>
+        <div className="mt-5 grid gap-4">
+          <div className="panel p-3">
+            <label className="flex items-center justify-between gap-3 text-sm text-ink">
+              <span>流式生成（beta）</span>
+              <input
+                className="checkbox"
+                checked={props.genForm.stream}
+                disabled={props.generating}
+                name="stream"
+                onChange={(e) => props.setGenForm((v) => ({ ...v, stream: e.target.checked }))}
+                type="checkbox"
+              />
+            </label>
 
-          <label className="grid gap-1">
-            <span className="text-xs text-subtext">目标字数（中文按字数=字符数）</span>
-            <input
-              className="input"
+            <label className="mt-2 flex items-center justify-between gap-3 text-sm text-ink">
+              <span>先生成规划（plan_first）</span>
+              <input
+                className="checkbox"
+                checked={props.genForm.plan_first}
+                disabled={props.generating}
+                name="plan_first"
+                onChange={(e) => props.setGenForm((v) => ({ ...v, plan_first: e.target.checked }))}
+                type="checkbox"
+              />
+            </label>
+
+            <label className="mt-2 flex items-center justify-between gap-3 text-sm text-ink">
+              <span>润色（post_edit）</span>
+              <input
+                className="checkbox"
+                checked={props.genForm.post_edit}
+                disabled={props.generating}
+                name="post_edit"
+                onChange={(e) => props.setGenForm((v) => ({ ...v, post_edit: e.target.checked }))}
+                type="checkbox"
+              />
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">目标字数（中文按字数=字符数）</span>
+              <input
+                className="input"
               disabled={props.generating}
               min={100}
               name="target_word_count"

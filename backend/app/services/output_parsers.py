@@ -9,9 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", flags=re.IGNORECASE)
 
-CONTENT_MARKER = "<<<CONTENT>>>"
-SUMMARY_MARKER = "<<<SUMMARY>>>"
-
 _CHAPTER_CONTENT_MARKER_RE = re.compile(r"(?mi)^[ \t]*<<<\s*CONTENT\b\s*(?:>{1,3})?\s*")
 _CHAPTER_SUMMARY_MARKER_RE = re.compile(r"(?mi)^[ \t]*<<<\s*SUMMARY\b\s*(?:>{1,3})?\s*")
 
@@ -260,11 +257,3 @@ def parse_tag_output(
 
     data = {key: inner, "raw_output": text}
     return data, warnings, None
-
-
-def parse_plan_output(text: str) -> tuple[dict[str, Any], list[str], dict[str, Any] | None]:
-    """
-    Plan task contract (tags): expects one <plan>...</plan> block.
-    Returns: {"plan": inner_text, "raw_output": text}
-    """
-    return parse_tag_output(text, tag="plan", output_key="plan")

@@ -12,10 +12,14 @@ python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # macOS/Linux: source .venv/bin/activate
 python -m pip install -r requirements.txt
+# 可选（推荐）：使用锁定依赖（可复现）：
+# python -m pip install -r requirements.lock.txt
 
 copy .env.example .env  # Windows 可用；或手动创建
 # 可选：应用启动时会自动执行 `alembic upgrade head`；如需手动迁移可执行：
 # alembic upgrade head
+# 注意（`APP_ENV=prod`）：若检测到 legacy SQLite 且缺少 `alembic_version`，启动时不会自动 `stamp`，并会直接失败；
+# 请先备份 DB，再手动执行迁移（`alembic stamp ...` / `alembic upgrade head`）。
 
 # SQLite 模式：必须单进程/单 worker
 uvicorn app.main:app --reload --workers 1 --port 8000

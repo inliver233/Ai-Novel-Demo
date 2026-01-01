@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { useProjectData } from "./useProjectData";
 import { apiJson } from "../services/apiClient";
@@ -24,7 +24,7 @@ export function useWizardProgress(projectId: string | undefined): {
   refresh: () => Promise<void>;
   bumpLocal: () => void;
 } {
-  const [version, setVersion] = useState(0);
+  const [, setVersion] = useState(0);
 
   const wizardQuery = useProjectData<WizardLoaded>(projectId, async (id) => {
     const [pRes, settingsRes, charsRes, outlineRes, presetRes, profilesRes] = await Promise.all([
@@ -51,22 +51,19 @@ export function useWizardProgress(projectId: string | undefined): {
     setVersion((v) => v + 1);
   }, []);
 
-  const progress = useMemo(() => {
-    void version;
-    const project = wizardQuery.data?.project ?? null;
-    const selectedProfileId = project?.llm_profile_id ?? null;
-    const profiles = wizardQuery.data?.profiles ?? [];
-    const llmProfile = selectedProfileId ? (profiles.find((p) => p.id === selectedProfileId) ?? null) : null;
-    return computeWizardProgress({
-      project,
-      settings: wizardQuery.data?.settings ?? null,
-      characters: wizardQuery.data?.characters ?? EMPTY_CHARACTERS,
-      outline: wizardQuery.data?.outline ?? null,
-      chapters: wizardQuery.data?.chapters ?? EMPTY_CHAPTERS,
-      llmPreset: wizardQuery.data?.llmPreset ?? null,
-      llmProfile,
-    });
-  }, [version, wizardQuery.data]);
+  const project = wizardQuery.data?.project ?? null;
+  const selectedProfileId = project?.llm_profile_id ?? null;
+  const profiles = wizardQuery.data?.profiles ?? [];
+  const llmProfile = selectedProfileId ? (profiles.find((p) => p.id === selectedProfileId) ?? null) : null;
+  const progress = computeWizardProgress({
+    project,
+    settings: wizardQuery.data?.settings ?? null,
+    characters: wizardQuery.data?.characters ?? EMPTY_CHARACTERS,
+    outline: wizardQuery.data?.outline ?? null,
+    chapters: wizardQuery.data?.chapters ?? EMPTY_CHAPTERS,
+    llmPreset: wizardQuery.data?.llmPreset ?? null,
+    llmProfile,
+  });
 
   return {
     loading: wizardQuery.loading,

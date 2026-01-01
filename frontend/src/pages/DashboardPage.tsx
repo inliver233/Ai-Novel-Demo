@@ -8,8 +8,8 @@ import { useToast } from "../components/ui/toast";
 import { useProjects } from "../contexts/projects";
 import { duration, transition } from "../lib/motion";
 import { ApiError, apiJson } from "../services/apiClient";
-import { computeWizardProgress } from "../services/wizard";
-import type { Chapter, Character, LLMProfile, LLMPreset, Outline, Project, ProjectSettings } from "../types";
+import { computeWizardProgressFromSummary } from "../services/wizard";
+import type { Project, ProjectSummaryItem } from "../types";
 
 type CreateProjectForm = {
   name: string;
@@ -37,50 +37,44 @@ export function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      let profilesById: Record<string, LLMProfile> = {};
-      try {
-        const profilesRes = await apiJson<{ profiles: LLMProfile[] }>(`/api/llm_profiles`);
-        profilesById = Object.fromEntries(profilesRes.data.profiles.map((p) => [p.id, p]));
-      } catch {
-        // ignore
+      if (sorted.length === 0) {
+        setWizardByProjectId({});
+        setWizardLoadingByProjectId({});
+        return;
       }
-      for (const p of sorted) {
-        if (cancelled) return;
-        setWizardLoadingByProjectId((prev) => ({ ...prev, [p.id]: true }));
-        try {
-          const [settingsRes, charsRes, outlineRes, chaptersRes, presetRes] = await Promise.all([
-            apiJson<{ settings: ProjectSettings }>(`/api/projects/${p.id}/settings`),
-            apiJson<{ characters: Character[] }>(`/api/projects/${p.id}/characters`),
-            apiJson<{ outline: Outline }>(`/api/projects/${p.id}/outline`),
-            apiJson<{ chapters: Chapter[] }>(`/api/projects/${p.id}/chapters`),
-            apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${p.id}/llm_preset`),
-          ]);
 
-          const llmProfile = p.llm_profile_id ? (profilesById[p.llm_profile_id] ?? null) : null;
-          const progress = computeWizardProgress({
-            project: p,
-            settings: settingsRes.data.settings,
-            characters: charsRes.data.characters,
-            outline: outlineRes.data.outline,
-            chapters: chaptersRes.data.chapters,
-            llmPreset: presetRes.data.llm_preset,
-            llmProfile,
+      setWizardLoadingByProjectId(Object.fromEntries(sorted.map((p) => [p.id, true])));
+      try {
+        const res = await apiJson<{ items: ProjectSummaryItem[] }>(`/api/projects/summary`);
+        if (cancelled) return;
+
+        const summaryByProjectId = Object.fromEntries(res.data.items.map((it) => [it.project.id, it]));
+        const nextWizardByProjectId: Record<string, WizardSummary> = {};
+        for (const p of sorted) {
+          const summary = summaryByProjectId[p.id];
+          if (!summary) continue;
+          const progress = computeWizardProgressFromSummary({
+            project: summary.project,
+            settings: summary.settings,
+            characters_count: summary.characters_count,
+            outline_content_md: summary.outline_content_md,
+            chapters_total: summary.chapters_total,
+            chapters_done: summary.chapters_done,
+            llm_preset: summary.llm_preset,
+            llm_profile_has_api_key: summary.llm_profile_has_api_key,
           });
 
-          if (cancelled) return;
-          setWizardByProjectId((prev) => ({
-            ...prev,
-            [p.id]: {
-              percent: progress.percent,
-              nextTitle: progress.nextStep?.title ?? null,
-              nextHref: progress.nextStep?.href ?? null,
-            },
-          }));
-        } catch {
-          if (cancelled) return;
-        } finally {
-          if (!cancelled) setWizardLoadingByProjectId((prev) => ({ ...prev, [p.id]: false }));
+          nextWizardByProjectId[p.id] = {
+            percent: progress.percent,
+            nextTitle: progress.nextStep?.title ?? null,
+            nextHref: progress.nextStep?.href ?? null,
+          };
         }
+        setWizardByProjectId(nextWizardByProjectId);
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setWizardLoadingByProjectId(Object.fromEntries(sorted.map((p) => [p.id, false])));
       }
     })();
 

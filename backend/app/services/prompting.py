@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from datetime import datetime, timezone
 from random import Random
@@ -118,21 +117,3 @@ def render_template(template: str, values: dict[str, Any], *, macro_seed: str | 
     final = _evaluate_macros(restored, seed=macro_seed)
     error = ";".join(errors) if errors else None
     return final, missing, error
-
-
-def extract_json_object(text: str) -> tuple[dict[str, Any] | None, str | None]:
-    m = re.search(r"```json\s*(\{[\s\S]*?\})\s*```", text, flags=re.IGNORECASE)
-    candidate = m.group(1) if m else None
-    if not candidate:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            candidate = text[start : end + 1]
-
-    if not candidate:
-        return None, None
-
-    try:
-        return json.loads(candidate), candidate
-    except Exception:
-        return None, candidate
