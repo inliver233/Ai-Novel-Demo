@@ -74,7 +74,7 @@ python -m compileall -q backend\\app backend\\alembic
 ## 环境变量（后端）
 
 见 `backend/.env.example`：
-- `DATABASE_URL`：默认 `sqlite:///./ainovel.db`
+- `DATABASE_URL`：默认 `sqlite:///./ainovel.db`（SQLite 相对路径会按 `backend/` 目录解析，避免因工作目录不同导致读错库）
 - `CORS_ORIGINS`：默认 `http://localhost:5173`
 - `LOG_LEVEL`：默认 `INFO`
 - `APP_ENV`：`dev|prod`

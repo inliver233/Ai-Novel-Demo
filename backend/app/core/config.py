@@ -1,9 +1,24 @@
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Literal
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine.url import make_url
+
+
+def _backend_dir() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _is_abs_path(value: str) -> bool:
+    if value.startswith("/"):
+        return True
+    if value.startswith("\\\\"):
+        return True
+    return bool(re.match(r"^[A-Za-z]:[\\/]", value))
 
 
 AppEnv = Literal["dev", "prod"]
@@ -19,7 +34,7 @@ class Settings(BaseSettings):
     secret_encryption_key: str | None = None
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_backend_dir() / ".env"),
         env_prefix="",
         extra="ignore",
         case_sensitive=False,
@@ -44,6 +59,31 @@ class Settings(BaseSettings):
         if raw in ("DEBUG", "INFO", "WARNING", "ERROR"):
             return raw
         raise ValueError("LOG_LEVEL must be one of: DEBUG/INFO/WARNING/ERROR")
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, value: object) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return "sqlite:///./ainovel.db"
+
+        try:
+            url = make_url(raw)
+        except Exception:
+            return raw
+
+        if url.get_backend_name() != "sqlite":
+            return raw
+
+        db = str(url.database or "").strip()
+        if not db or db == ":memory:" or db.startswith("file:"):
+            return raw
+
+        if _is_abs_path(db):
+            return raw
+
+        abs_path = (_backend_dir() / db).resolve()
+        return str(url.set(database=abs_path.as_posix()))
 
     @field_validator("secret_encryption_key", mode="before")
     @classmethod
