@@ -29,42 +29,9 @@ import type {
   GenerateForm,
   GenerationRun,
 } from "../components/writing/types";
+import { appendMarkdown, chapterToForm, nextChapterNumber } from "./writing/writingUtils";
+import type { ChapterForm } from "./writing/writingUtils";
 import type { Chapter, ChapterStatus, Character, LLMPreset, Outline, OutlineListItem, Project } from "../types";
-
-type ChapterForm = {
-  title: string;
-  plan: string;
-  content_md: string;
-  summary: string;
-  status: ChapterStatus;
-};
-
-function normalizeText(v: string | null | undefined): string {
-  return v ?? "";
-}
-
-function appendMarkdown(base: string, fragment: string): string {
-  const a = (base ?? "").trimEnd();
-  const b = (fragment ?? "").trimStart();
-  if (!a) return b;
-  if (!b) return a;
-  return `${a}\n\n${b}`;
-}
-
-function nextChapterNumber(chapters: Chapter[]): number {
-  const max = chapters.reduce((acc, c) => Math.max(acc, c.number ?? 0), 0);
-  return max + 1;
-}
-
-function chapterToForm(chapter: Chapter): ChapterForm {
-  return {
-    title: normalizeText(chapter.title),
-    plan: normalizeText(chapter.plan),
-    content_md: normalizeText(chapter.content_md),
-    summary: normalizeText(chapter.summary),
-    status: chapter.status,
-  };
-}
 
 type WritingLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LLMPreset; characters: Character[] };
 
