@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import DbDep, UserIdDep, require_owned_chapter, require_owned_outline, require_owned_project
 from app.core.errors import AppError, ok_payload
-from app.core.logging import log_event
+from app.core.logging import exception_log_fields, log_event
 from app.db.session import SessionLocal
 from app.db.utils import new_id
 from app.llm.client import call_llm_stream_messages
@@ -1442,9 +1442,50 @@ def generate_chapter_stream(
                     output_text=raw_output or None,
                     error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),
                 )
+                stream_run_written = True
             yield sse_error(error=f"{exc.message} ({exc.code})", code=exc.status_code)
             yield sse_done()
-        except Exception:
+        except Exception as exc:
+            log_event(
+                logger,
+                "error",
+                error="SSE_STREAM_ERROR",
+                path=request.url.path,
+                method=request.method,
+                chapter_id=chapter_id,
+                **exception_log_fields(exc),
+            )
+            if (
+                generation_started
+                and llm_call is not None
+                and llm_call.provider in ("openai", "openai_compatible")
+                and not stream_run_written
+            ):
+                err_fields = dict(exception_log_fields(exc))
+                err_fields.pop("stack", None)
+                write_generation_run(
+                    request_id=request_id,
+                    actor_user_id=user_id,
+                    project_id=project_id,
+                    chapter_id=chapter_id,
+                    run_type="chapter_stream",
+                    provider=llm_call.provider,
+                    model=llm_call.model,
+                    prompt_system=prompt_system,
+                    prompt_user=prompt_user,
+                    prompt_render_log_json=prompt_render_log_json,
+                    params_json=llm_call.params_json,
+                    output_text=raw_output or None,
+                    error_json=json.dumps(
+                        {
+                            "code": "INTERNAL_ERROR",
+                            "message": "服务器内部错误",
+                            "details": err_fields,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+                stream_run_written = True
             yield sse_error(error="服务器内部错误", code=500)
             yield sse_done()
 

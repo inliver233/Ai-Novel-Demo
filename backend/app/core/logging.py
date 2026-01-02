@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import re
+import traceback
 from typing import Any, Literal
 
 from app.core.config import settings
@@ -17,6 +20,46 @@ def configure_logging() -> None:
 
 
 LogLevel = Literal["debug", "info", "warning", "error"]
+
+_QUERY_SECRET_RE = re.compile(r"(?i)([?&](?:key|api_key|apikey|token)=)([^&\s]+)")
+_KEY_TOKEN_RE = re.compile(r"\b(?:sk|rk|pk)-[A-Za-z0-9_-]{8,}\b")
+
+
+def _mask_key_token(token: str) -> str:
+    key = (token or "").strip()
+    if not key:
+        return ""
+    last4 = key[-4:] if len(key) >= 4 else key
+    dash = key.find("-")
+    if 0 <= dash <= 5:
+        prefix = key[: dash + 1]
+    else:
+        prefix = key[:2]
+    return f"{prefix}****{last4}"
+
+
+def _redact_secrets(text: str) -> str:
+    s = text
+    s = _QUERY_SECRET_RE.sub(lambda m: m.group(1) + "****", s)
+    s = _KEY_TOKEN_RE.sub(lambda m: _mask_key_token(m.group(0)), s)
+    return s
+
+
+def exception_log_fields(exc: Exception) -> dict[str, Any]:
+    exc_type = type(exc).__name__
+    msg = str(exc)
+    if settings.app_env == "dev":
+        return {
+            "exception_type": exc_type,
+            "exception": _redact_secrets(msg.replace("\n", " ").strip())[:500],
+            # Keep stack frames but avoid including the exception message line (which may carry secrets).
+            "stack": "".join(traceback.format_tb(exc.__traceback__)),
+        }
+
+    # prod: do not log exception message/stack, only a stable fingerprint.
+    fingerprint = f"{exc_type}:{msg}".encode("utf-8", errors="replace")
+    exc_hash = hashlib.sha256(fingerprint).hexdigest()[:12]
+    return {"exception_type": exc_type, "exception_hash": exc_hash}
 
 
 def log_event(logger: logging.Logger, level: LogLevel, **fields: Any) -> None:

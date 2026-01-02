@@ -15,7 +15,7 @@ from app.api.deps import LOCAL_USER_ID
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.errors import AppError, error_payload
-from app.core.logging import configure_logging, log_event
+from app.core.logging import configure_logging, exception_log_fields, log_event
 from app.core.request_id import new_request_id, set_request_id
 from app.db.migrations import ensure_db_schema
 from app.db.session import SessionLocal
@@ -163,7 +163,7 @@ async def sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError) -> JS
         method=request.method,
         status_code=500,
         error="DB_ERROR",
-        exception_type=type(exc).__name__,
+        **exception_log_fields(exc),
     )
     payload = error_payload(request_id=rid, code="DB_ERROR", message="数据库错误", details={})
     return JSONResponse(payload, status_code=500, headers={"X-Request-Id": rid})
@@ -179,7 +179,7 @@ async def unhandled_error_handler(request: Request, exc: Exception) -> JSONRespo
         method=request.method,
         status_code=500,
         error="UNHANDLED_EXCEPTION",
-        exception_type=type(exc).__name__,
+        **exception_log_fields(exc),
     )
     payload = error_payload(request_id=rid, code="INTERNAL_ERROR", message="服务器内部错误", details={})
     return JSONResponse(payload, status_code=500, headers={"X-Request-Id": rid})
