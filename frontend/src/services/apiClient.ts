@@ -26,6 +26,12 @@ export class ApiError extends Error {
   }
 }
 
+export type ApiRequestInit = RequestInit & {
+  timeoutMs?: number;
+};
+
+const DEFAULT_TIMEOUT_MS = 120_000;
+
 async function parseJsonSafe(res: Response): Promise<unknown> {
   const text = await res.text();
   if (!text) return null;
@@ -36,17 +42,45 @@ async function parseJsonSafe(res: Response): Promise<unknown> {
   }
 }
 
-export async function apiJson<T>(path: string, init?: RequestInit): Promise<ApiOkPayload<T>> {
-  let res: Response;
+async function fetchWithTimeout(path: string, init?: ApiRequestInit): Promise<Response> {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, signal: externalSignal, ...rest } = init ?? {};
+  const controller = new AbortController();
+  let timedOut = false;
+
+  const onAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener("abort", onAbort, { once: true });
+  }
+
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
   try {
-    res = await fetch(path, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
-    });
+    return await fetch(path, { ...rest, signal: controller.signal });
   } catch (e) {
+    if (timedOut) {
+      throw new ApiError({
+        code: "TIMEOUT",
+        message: "请求超时，请稍后重试",
+        requestId: "unknown",
+        status: 0,
+        details: e instanceof Error ? e.message : String(e),
+      });
+    }
+
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new ApiError({
+        code: "REQUEST_ABORTED",
+        message: "请求已取消",
+        requestId: "unknown",
+        status: 0,
+        details: e.message,
+      });
+    }
+
     throw new ApiError({
       code: "NETWORK_ERROR",
       message: "网络错误，请检查后端是否启动",
@@ -54,7 +88,20 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<ApiO
       status: 0,
       details: e instanceof Error ? e.message : String(e),
     });
+  } finally {
+    clearTimeout(timeoutId);
+    if (externalSignal) externalSignal.removeEventListener("abort", onAbort);
   }
+}
+
+export async function apiJson<T>(path: string, init?: ApiRequestInit): Promise<ApiOkPayload<T>> {
+  const res = await fetchWithTimeout(path, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
 
   const requestIdHeader = res.headers.get("X-Request-Id") ?? undefined;
   const payload = (await parseJsonSafe(res)) as ApiOkPayload<T> | ApiErrorPayload | unknown;
@@ -72,7 +119,7 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<ApiO
   }
 
   throw new ApiError({
-    code: "DB_ERROR",
+    code: "BAD_RESPONSE",
     message: "响应格式错误",
     requestId: requestIdHeader ?? "unknown",
     status: res.status,
@@ -81,18 +128,7 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<ApiO
 }
 
 export async function apiDownloadMarkdown(path: string): Promise<{ filename: string; content: string }> {
-  let res: Response;
-  try {
-    res = await fetch(path);
-  } catch (e) {
-    throw new ApiError({
-      code: "NETWORK_ERROR",
-      message: "网络错误，请检查后端是否启动",
-      requestId: "unknown",
-      status: 0,
-      details: e instanceof Error ? e.message : String(e),
-    });
-  }
+  const res = await fetchWithTimeout(path);
   const contentType = res.headers.get("Content-Type") ?? "";
   const requestIdHeader = res.headers.get("X-Request-Id") ?? "unknown";
 
@@ -116,7 +152,7 @@ export async function apiDownloadMarkdown(path: string): Promise<{ filename: str
   }
 
   throw new ApiError({
-    code: "DB_ERROR",
+    code: "BAD_RESPONSE",
     message: "导出失败",
     requestId: requestIdHeader,
     status: res.status,
