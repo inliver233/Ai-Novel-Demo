@@ -11,6 +11,7 @@ from app.models.character import Character
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.project_settings import ProjectSettings
+from app.schemas.chapter_analysis import ChapterAnalyzeRequest, ChapterRewriteRequest
 from app.schemas.chapter_generate import ChapterGenerateContext, ChapterGenerateRequest
 from app.services.prompt_store import format_characters
 
@@ -312,3 +313,149 @@ def build_chapter_generate_render_values(
     values["user"] = {"instruction": instruction, "requirements": requirements_obj}
 
     return values, base_instruction, requirements_obj
+
+
+def build_chapter_analyze_render_values(
+    db: Session,
+    *,
+    project: Project,
+    chapter: Chapter,
+    body: ChapterAnalyzeRequest,
+) -> dict[str, object]:
+    world_setting, style_guide, constraints, outline_text, characters_text = _load_project_story_text_context(
+        db,
+        project_id=chapter.project_id,
+        outline_id=chapter.outline_id,
+        ctx=body.context,
+    )
+
+    smart_recent_summaries = ""
+    smart_recent_full = ""
+    smart_story_skeleton = ""
+    if body.context.include_smart_context:
+        smart_recent_summaries, smart_recent_full, smart_story_skeleton = build_smart_context(
+            db,
+            project_id=chapter.project_id,
+            outline_id=chapter.outline_id,
+            chapter_number=int(chapter.number),
+        )
+
+    draft_title = body.draft_title if body.draft_title is not None else (chapter.title or "")
+    draft_plan = body.draft_plan if body.draft_plan is not None else (chapter.plan or "")
+    draft_summary = body.draft_summary if body.draft_summary is not None else (chapter.summary or "")
+    draft_content_md = body.draft_content_md if body.draft_content_md is not None else (chapter.content_md or "")
+
+    values: dict[str, object] = {
+        "project_name": project.name or "",
+        "genre": project.genre or "",
+        "logline": project.logline or "",
+        "world_setting": world_setting,
+        "style_guide": style_guide,
+        "constraints": constraints,
+        "characters": characters_text,
+        "outline": outline_text,
+        "chapter_number": str(chapter.number),
+        "chapter_title": draft_title,
+        "chapter_plan": draft_plan,
+        "chapter_summary": draft_summary,
+        "chapter_content_md": draft_content_md,
+        "instruction": body.instruction.strip(),
+        "smart_context_recent_summaries": smart_recent_summaries,
+        "smart_context_recent_full": smart_recent_full,
+        "smart_context_story_skeleton": smart_story_skeleton,
+    }
+    values["project"] = {
+        "name": project.name or "",
+        "genre": project.genre or "",
+        "logline": project.logline or "",
+        "world_setting": world_setting,
+        "style_guide": style_guide,
+        "constraints": constraints,
+        "characters": characters_text,
+    }
+    values["story"] = {
+        "outline": outline_text,
+        "chapter_number": int(chapter.number),
+        "chapter_title": draft_title,
+        "chapter_plan": draft_plan,
+        "chapter_summary": draft_summary,
+        "chapter_content_md": draft_content_md,
+        "smart_context_recent_summaries": smart_recent_summaries,
+        "smart_context_recent_full": smart_recent_full,
+        "smart_context_story_skeleton": smart_story_skeleton,
+    }
+    values["user"] = {"instruction": body.instruction.strip()}
+    return values
+
+
+def build_chapter_rewrite_render_values(
+    db: Session,
+    *,
+    project: Project,
+    chapter: Chapter,
+    body: ChapterRewriteRequest,
+    analysis_json: str,
+    draft_content_md: str,
+) -> dict[str, object]:
+    world_setting, style_guide, constraints, outline_text, characters_text = _load_project_story_text_context(
+        db,
+        project_id=chapter.project_id,
+        outline_id=chapter.outline_id,
+        ctx=body.context,
+    )
+
+    smart_recent_summaries = ""
+    smart_recent_full = ""
+    smart_story_skeleton = ""
+    if body.context.include_smart_context:
+        smart_recent_summaries, smart_recent_full, smart_story_skeleton = build_smart_context(
+            db,
+            project_id=chapter.project_id,
+            outline_id=chapter.outline_id,
+            chapter_number=int(chapter.number),
+        )
+
+    draft_title = chapter.title or ""
+    draft_plan = chapter.plan or ""
+
+    values: dict[str, object] = {
+        "project_name": project.name or "",
+        "genre": project.genre or "",
+        "logline": project.logline or "",
+        "world_setting": world_setting,
+        "style_guide": style_guide,
+        "constraints": constraints,
+        "characters": characters_text,
+        "outline": outline_text,
+        "chapter_number": str(chapter.number),
+        "chapter_title": draft_title,
+        "chapter_plan": draft_plan,
+        "chapter_content_md": draft_content_md,
+        "analysis_json": analysis_json,
+        "instruction": body.instruction.strip(),
+        "smart_context_recent_summaries": smart_recent_summaries,
+        "smart_context_recent_full": smart_recent_full,
+        "smart_context_story_skeleton": smart_story_skeleton,
+    }
+    values["project"] = {
+        "name": project.name or "",
+        "genre": project.genre or "",
+        "logline": project.logline or "",
+        "world_setting": world_setting,
+        "style_guide": style_guide,
+        "constraints": constraints,
+        "characters": characters_text,
+    }
+    values["story"] = {
+        "outline": outline_text,
+        "chapter_number": int(chapter.number),
+        "chapter_title": draft_title,
+        "chapter_plan": draft_plan,
+        "chapter_content_md": draft_content_md,
+        "analysis_json": analysis_json,
+        "smart_context_recent_summaries": smart_recent_summaries,
+        "smart_context_recent_full": smart_recent_full,
+        "smart_context_story_skeleton": smart_story_skeleton,
+    }
+    values["user"] = {"instruction": body.instruction.strip()}
+    return values
