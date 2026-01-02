@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./ainovel.db"
     cors_origins: str = "http://localhost:5173"
     app_version: str = "0.1.0"
+    secret_encryption_key: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -43,6 +44,18 @@ class Settings(BaseSettings):
         if raw in ("DEBUG", "INFO", "WARNING", "ERROR"):
             return raw
         raise ValueError("LOG_LEVEL must be one of: DEBUG/INFO/WARNING/ERROR")
+
+    @field_validator("secret_encryption_key", mode="before")
+    @classmethod
+    def _normalize_secret_encryption_key(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @model_validator(mode="after")
+    def _validate_crypto_config(self) -> "Settings":
+        if self.app_env == "prod" and not self.secret_encryption_key:
+            raise ValueError("SECRET_ENCRYPTION_KEY must be set when APP_ENV=prod")
+        return self
 
     def cors_origins_list(self) -> list[str]:
         raw = self.cors_origins.strip()

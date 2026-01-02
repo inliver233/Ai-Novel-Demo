@@ -1482,7 +1482,7 @@ v2.4（现行契约，必须）：
 
 实现建议（按环境）：
 - Windows 开发环境：可使用平台密钥（如 DPAPI）进行加密后落库，避免引入额外依赖
-- 生产环境：建议使用服务端密钥或 KMS（例如 `LLM_KEY_ENCRYPTION_SECRET` + AEAD/AES-GCM，或云 KMS），并确保日志与错误体全链路脱敏
+- 生产环境：必须使用可迁移的服务端密钥（`SECRET_ENCRYPTION_KEY`，用于 `enc:` 加密）；上线前先运行迁移脚本把历史 `dpapi:`/`plain:` Key 迁移为 `enc:`（见 `backend/scripts/migrate_llm_profile_secrets.py`），并确保日志与错误体全链路脱敏
 
 v2.3 旧方案（历史，已废弃）：前端 localStorage 保存 Key + header 透传（存在同域脚本可读、共享电脑串用、反代日志泄露等风险）
 

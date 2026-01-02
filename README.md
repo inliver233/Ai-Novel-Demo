@@ -78,6 +78,7 @@ python -m compileall -q backend\\app backend\\alembic
 - `CORS_ORIGINS`：默认 `http://localhost:5173`
 - `LOG_LEVEL`：默认 `INFO`
 - `APP_ENV`：`dev|prod`
+- `SECRET_ENCRYPTION_KEY`：prod 必填（用于可迁移的 `enc:` 加密）。升级旧数据库时可先运行 `backend/scripts/migrate_llm_profile_secrets.py` 迁移历史 API Key。
 
 ## SQLite 约束（MVP 口径）
 

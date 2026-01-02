@@ -4,6 +4,10 @@ import base64
 import sys
 from typing import Final
 
+from cryptography.fernet import Fernet, InvalidToken
+
+from app.core.config import settings
+
 
 class SecretCryptoError(Exception):
     pass
@@ -11,6 +15,7 @@ class SecretCryptoError(Exception):
 
 _PREFIX_DPAPI: Final[str] = "dpapi:"
 _PREFIX_PLAIN: Final[str] = "plain:"
+_PREFIX_ENC: Final[str] = "enc:"
 
 
 def mask_api_key(api_key: str) -> str:
@@ -34,10 +39,17 @@ def encrypt_secret(plaintext: str) -> str:
     raw = (plaintext or "").encode("utf-8")
     if not raw:
         return ""
+    # Production: always use a portable key-based scheme so secrets can be migrated across machines/containers.
+    if settings.app_env == "prod" or settings.secret_encryption_key:
+        return _PREFIX_ENC + _fernet().encrypt(raw).decode("ascii")
+
+    # Dev: allow DPAPI on Windows as a convenience for local single-user MVP.
     if sys.platform == "win32":
         encrypted = _dpapi_encrypt(raw)
         return _PREFIX_DPAPI + base64.b64encode(encrypted).decode("ascii")
-    return _PREFIX_PLAIN + base64.b64encode(raw).decode("ascii")
+
+    # Dev on non-win32 must still use portable encryption (no insecure fallback).
+    raise SecretCryptoError("SECRET_ENCRYPTION_KEY is required on non-win32")
 
 
 def decrypt_secret(ciphertext: str) -> str:
@@ -45,18 +57,42 @@ def decrypt_secret(ciphertext: str) -> str:
         return ""
 
     if ciphertext.startswith(_PREFIX_DPAPI):
+        if settings.app_env == "prod":
+            raise SecretCryptoError("dpapi secrets are not supported in prod; migrate to enc:")
         if sys.platform != "win32":
             raise SecretCryptoError("dpapi secret cannot be decrypted on non-win32")
         raw = base64.b64decode(ciphertext[len(_PREFIX_DPAPI) :])
         decrypted = _dpapi_decrypt(raw)
         return decrypted.decode("utf-8")
 
+    if ciphertext.startswith(_PREFIX_ENC):
+        raw = ciphertext[len(_PREFIX_ENC) :].encode("ascii")
+        try:
+            decrypted = _fernet().decrypt(raw)
+        except InvalidToken as exc:
+            raise SecretCryptoError("invalid encrypted secret") from exc
+        return decrypted.decode("utf-8")
+
     if ciphertext.startswith(_PREFIX_PLAIN):
+        if settings.app_env == "prod":
+            raise SecretCryptoError("plain secrets are not supported in prod; migrate to enc:")
         raw = base64.b64decode(ciphertext[len(_PREFIX_PLAIN) :])
         return raw.decode("utf-8")
 
-    # Backward compatibility: treat as plain text.
-    return ciphertext
+    # Backward compatibility: treat as plain text in dev only.
+    if settings.app_env == "dev":
+        return ciphertext
+    raise SecretCryptoError("unknown secret prefix")
+
+
+def _fernet() -> Fernet:
+    key = (settings.secret_encryption_key or "").strip()
+    if not key:
+        raise SecretCryptoError("SECRET_ENCRYPTION_KEY is not configured")
+    try:
+        return Fernet(key.encode("utf-8"))
+    except Exception as exc:
+        raise SecretCryptoError("SECRET_ENCRYPTION_KEY is invalid") from exc
 
 
 if sys.platform == "win32":
@@ -152,4 +188,3 @@ else:
 
     def _dpapi_decrypt(data: bytes) -> bytes:  # type: ignore[no-redef]
         raise SecretCryptoError("dpapi is only available on win32")
-

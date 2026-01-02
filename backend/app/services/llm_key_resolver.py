@@ -43,7 +43,11 @@ def resolve_api_key_for_profile(*, profile: LLMProfile, header_api_key: str | No
     try:
         resolved = decrypt_secret(profile.api_key_ciphertext).strip()
     except SecretCryptoError:
-        raise AppError(code="LLM_KEY_MISSING", message="已保存的 API Key 无法读取，请在 Prompts 页重新保存", status_code=401)
+        raise AppError(
+            code="LLM_KEY_MISSING",
+            message="已保存的 API Key 无法读取（可能需要迁移或重新保存），请在 Prompts 页重新保存",
+            status_code=401,
+        )
 
     if not resolved:
         raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)

@@ -5,7 +5,7 @@ from sqlalchemy import select, update
 
 from app.api.deps import DbDep, UserIdDep, require_owned_llm_profile
 from app.core.errors import AppError, ok_payload
-from app.core.secrets import encrypt_secret, mask_api_key
+from app.core.secrets import SecretCryptoError, encrypt_secret, mask_api_key
 from app.db.utils import new_id
 from app.llm.utils import default_max_tokens_for_provider, normalize_base_url
 from app.models.llm_preset import LLMPreset
@@ -105,7 +105,10 @@ def create_profile(request: Request, db: DbDep, user_id: UserIdDep, body: LLMPro
     if body.api_key is not None:
         key = body.api_key.strip()
         if key:
-            row.api_key_ciphertext = encrypt_secret(key)
+            try:
+                row.api_key_ciphertext = encrypt_secret(key)
+            except SecretCryptoError:
+                raise AppError(code="SECRET_CONFIG_ERROR", message="服务端未配置 SECRET_ENCRYPTION_KEY", status_code=500)
             row.api_key_masked = mask_api_key(key)
     db.add(row)
     db.commit()
@@ -134,7 +137,10 @@ def update_profile(request: Request, db: DbDep, user_id: UserIdDep, profile_id: 
     if "api_key" in body.model_fields_set:
         key = (body.api_key or "").strip()
         if key:
-            row.api_key_ciphertext = encrypt_secret(key)
+            try:
+                row.api_key_ciphertext = encrypt_secret(key)
+            except SecretCryptoError:
+                raise AppError(code="SECRET_CONFIG_ERROR", message="服务端未配置 SECRET_ENCRYPTION_KEY", status_code=500)
             row.api_key_masked = mask_api_key(key)
         else:
             row.api_key_ciphertext = None
