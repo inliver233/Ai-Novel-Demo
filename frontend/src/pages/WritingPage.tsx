@@ -6,10 +6,11 @@ import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator
 import { MarkdownEditor } from "../components/atelier/MarkdownEditor";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { Drawer } from "../components/ui/Drawer";
-import { Modal } from "../components/ui/Modal";
 import { AiGenerateDrawer } from "../components/writing/AiGenerateDrawer";
+import { BatchGenerationModal } from "../components/writing/BatchGenerationModal";
 import { ChapterListPanel } from "../components/writing/ChapterListPanel";
 import { CreateChapterDialog } from "../components/writing/CreateChapterDialog";
+import { ChapterAnalysisModal } from "../components/writing/ChapterAnalysisModal";
 import { GenerationHistoryDrawer } from "../components/writing/GenerationHistoryDrawer";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
@@ -1261,337 +1262,36 @@ export function WritingPage() {
         onSubmit={() => void createChapter()}
       />
 
-      <Modal
+      <BatchGenerationModal
         open={batchOpen}
-        onClose={batchLoading ? undefined : () => setBatchOpen(false)}
-        panelClassName="surface max-w-2xl p-5"
-        ariaLabel="批量生成"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="font-content text-xl text-ink">批量顺序生成</div>
-            <div className="mt-1 text-xs text-subtext">
-              批量生成只会写入“生成记录”，不会自动保存到章节；你可以逐章“应用到编辑器”后再保存。
-            </div>
-          </div>
-          <button className="btn btn-secondary" onClick={() => setBatchOpen(false)} disabled={batchLoading} type="button">
-            关闭
-          </button>
-        </div>
+        batchLoading={batchLoading}
+        activeChapterNumber={activeChapter?.number ?? null}
+        batchCount={batchCount}
+        setBatchCount={setBatchCount}
+        batchIncludeExisting={batchIncludeExisting}
+        setBatchIncludeExisting={setBatchIncludeExisting}
+        batchTask={batchTask}
+        batchItems={batchItems}
+        onClose={() => setBatchOpen(false)}
+        onCancelTask={() => void cancelBatchGeneration()}
+        onStartTask={() => void startBatchGeneration()}
+        onApplyItemToEditor={(it) => void applyBatchItemToEditor(it)}
+      />
 
-        <div className="mt-4 grid gap-3">
-          <div className="grid gap-2 rounded-atelier border border-border bg-canvas p-3">
-            <div className="text-xs text-subtext">
-              起点：{activeChapter ? `第 ${activeChapter.number} 章之后` : "从第 1 章开始"}
-            </div>
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">数量（1~20）</span>
-                <input
-                  className="input w-28"
-                  min={1}
-                  max={20}
-                  type="number"
-                  value={batchCount}
-                  onChange={(e) => setBatchCount(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
-                />
-              </label>
-              <label className="flex items-center gap-2 pb-2 text-sm text-ink">
-                <input
-                  className="checkbox"
-                  type="checkbox"
-                  checked={batchIncludeExisting}
-                  disabled={batchLoading}
-                  onChange={(e) => setBatchIncludeExisting(e.target.checked)}
-                />
-                包含已有内容章节
-              </label>
-              <div className="flex-1" />
-              {batchTask && (batchTask.status === "queued" || batchTask.status === "running") ? (
-                <button className="btn btn-secondary" disabled={batchLoading} onClick={() => void cancelBatchGeneration()} type="button">
-                  {batchLoading ? "取消中..." : "取消任务"}
-                </button>
-              ) : (
-                <button className="btn btn-primary" disabled={batchLoading} onClick={() => void startBatchGeneration()} type="button">
-                  {batchLoading ? "启动中..." : "开始批量生成"}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {batchTask ? (
-            <div className="grid gap-2 rounded-atelier border border-border bg-surface p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm text-ink">
-                  任务状态：{batchTask.status}（{batchTask.completed_count}/{batchTask.total_count}）
-                </div>
-                {batchTask.status === "failed" && batchTask.error_json ? (
-                  <div className="text-xs text-subtext">错误：{batchTask.error_json}</div>
-                ) : null}
-              </div>
-              <div className="h-2 w-full rounded bg-border">
-                <div
-                  className="h-2 rounded bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
-                  style={{
-                    width: `${Math.round(
-                      (batchTask.total_count > 0 ? batchTask.completed_count / batchTask.total_count : 0) * 100,
-                    )}%`,
-                  }}
-                />
-              </div>
-              <div className="max-h-64 overflow-auto rounded-atelier border border-border bg-canvas">
-                {batchItems.length === 0 ? (
-                  <div className="p-3 text-sm text-subtext">暂无任务项</div>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {batchItems.map((it) => (
-                      <div key={it.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                        <div className="min-w-0">
-                          <div className="text-sm text-ink">第 {it.chapter_number} 章</div>
-                          <div className="text-xs text-subtext">
-                            {it.status}
-                            {it.error_message ? ` · ${it.error_message}` : ""}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {it.status === "succeeded" && it.chapter_id && it.generation_run_id ? (
-                            <button
-                              className="btn btn-secondary"
-                              onClick={() => void applyBatchItemToEditor(it)}
-                              disabled={batchLoading}
-                              type="button"
-                            >
-                              应用到编辑器
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-subtext">当前没有进行中的任务。</div>
-          )}
-        </div>
-      </Modal>
-
-      <Modal
+      <ChapterAnalysisModal
         open={analysisOpen}
-        onClose={analysisLoading || rewriteLoading ? undefined : () => setAnalysisOpen(false)}
-        panelClassName="surface max-w-3xl p-5"
-        ariaLabel="章节分析"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="font-content text-xl text-ink">章节分析 / 建议</div>
-            <div className="mt-1 text-xs text-subtext">分析与重写只会写入“生成记录”，不会自动保存到章节。</div>
-          </div>
-          <button
-            className="btn btn-secondary"
-            onClick={() => setAnalysisOpen(false)}
-            disabled={analysisLoading || rewriteLoading}
-            type="button"
-          >
-            关闭
-          </button>
-        </div>
-
-        <div className="mt-4 grid gap-3">
-          <label className="grid gap-1">
-            <span className="text-xs text-subtext">分析重点（可选）</span>
-            <input
-              className="input"
-              value={analysisFocus}
-              onChange={(e) => setAnalysisFocus(e.target.value)}
-              disabled={analysisLoading || rewriteLoading}
-              placeholder="例如：钩子/伏笔回收、节奏、人物动机、逻辑矛盾…"
-            />
-          </label>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button className="btn btn-primary" disabled={analysisLoading || rewriteLoading} onClick={() => void analyzeChapter()} type="button">
-              {analysisLoading ? "分析中..." : analysisResult ? "重新分析" : "开始分析"}
-            </button>
-            {analysisResult?.generation_run_id ? (
-              <button
-                className="btn btn-secondary"
-                disabled={analysisLoading || rewriteLoading}
-                onClick={() => void navigator.clipboard.writeText(analysisResult.generation_run_id)}
-                type="button"
-              >
-                复制 run_id
-              </button>
-            ) : null}
-          </div>
-
-          {analysisResult ? (
-            <div className="grid gap-4">
-              {analysisResult.parse_error?.message ? (
-                <div className="rounded-atelier border border-border bg-surface p-3 text-sm text-accent">
-                  解析失败：{analysisResult.parse_error.message}
-                  {analysisResult.parse_error.hint ? (
-                    <div className="mt-1 text-xs text-subtext">hint: {analysisResult.parse_error.hint}</div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {analysisResult.warnings && analysisResult.warnings.length > 0 ? (
-                <div className="rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
-                  warnings: {analysisResult.warnings.join(", ")}
-                </div>
-              ) : null}
-
-              <div className="grid gap-3 rounded-atelier border border-border bg-surface p-3">
-                <div className="text-sm text-ink">本章摘要</div>
-                <div className="text-sm text-ink">
-                  {(analysisResult.analysis?.chapter_summary ?? "").trim() || "（空）"}
-                </div>
-              </div>
-
-              <div className="grid gap-2 rounded-atelier border border-border bg-surface p-3">
-                <div className="text-sm text-ink">Hooks / 钩子</div>
-                {(analysisResult.analysis?.hooks ?? []).length === 0 ? (
-                  <div className="text-sm text-subtext">（无）</div>
-                ) : (
-                  <div className="grid gap-2">
-                    {(analysisResult.analysis?.hooks ?? []).map((it, idx) => (
-                      <div key={idx} className="rounded-atelier border border-border bg-canvas p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-xs text-subtext">{(it.excerpt ?? "").trim() || "（无 excerpt）"}</div>
-                          {it.excerpt ? (
-                            <button className="btn btn-ghost px-2 py-1 text-xs" onClick={() => locateInEditor(it.excerpt ?? "")} type="button">
-                              定位
-                            </button>
-                          ) : null}
-                        </div>
-                        {it.note ? <div className="mt-2 text-sm text-ink">{it.note}</div> : null}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="grid gap-2 rounded-atelier border border-border bg-surface p-3">
-                <div className="text-sm text-ink">Foreshadows / 伏笔</div>
-                {(analysisResult.analysis?.foreshadows ?? []).length === 0 ? (
-                  <div className="text-sm text-subtext">（无）</div>
-                ) : (
-                  <div className="grid gap-2">
-                    {(analysisResult.analysis?.foreshadows ?? []).map((it, idx) => (
-                      <div key={idx} className="rounded-atelier border border-border bg-canvas p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-xs text-subtext">{(it.excerpt ?? "").trim() || "（无 excerpt）"}</div>
-                          {it.excerpt ? (
-                            <button className="btn btn-ghost px-2 py-1 text-xs" onClick={() => locateInEditor(it.excerpt ?? "")} type="button">
-                              定位
-                            </button>
-                          ) : null}
-                        </div>
-                        {it.note ? <div className="mt-2 text-sm text-ink">{it.note}</div> : null}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="grid gap-2 rounded-atelier border border-border bg-surface p-3">
-                <div className="text-sm text-ink">Plot Points / 情节点</div>
-                {(analysisResult.analysis?.plot_points ?? []).length === 0 ? (
-                  <div className="text-sm text-subtext">（无）</div>
-                ) : (
-                  <div className="grid gap-2">
-                    {(analysisResult.analysis?.plot_points ?? []).map((it, idx) => (
-                      <div key={idx} className="rounded-atelier border border-border bg-canvas p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-sm text-ink">{(it.beat ?? "").trim() || "（无 beat）"}</div>
-                          {it.excerpt ? (
-                            <button className="btn btn-ghost px-2 py-1 text-xs" onClick={() => locateInEditor(it.excerpt ?? "")} type="button">
-                              定位
-                            </button>
-                          ) : null}
-                        </div>
-                        {it.excerpt ? <div className="mt-2 text-xs text-subtext">{it.excerpt}</div> : null}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="grid gap-2 rounded-atelier border border-border bg-surface p-3">
-                <div className="text-sm text-ink">Suggestions / 修改建议</div>
-                {(analysisResult.analysis?.suggestions ?? []).length === 0 ? (
-                  <div className="text-sm text-subtext">（无）</div>
-                ) : (
-                  <div className="grid gap-2">
-                    {(analysisResult.analysis?.suggestions ?? []).map((it, idx) => (
-                      <div key={idx} className="rounded-atelier border border-border bg-canvas p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-sm text-ink">
-                            {(it.title ?? "").trim() || "建议"}{" "}
-                            {(it.priority ?? "").trim() ? <span className="text-xs text-subtext">({it.priority})</span> : null}
-                          </div>
-                          {it.excerpt ? (
-                            <button className="btn btn-ghost px-2 py-1 text-xs" onClick={() => locateInEditor(it.excerpt ?? "")} type="button">
-                              定位
-                            </button>
-                          ) : null}
-                        </div>
-                        {it.excerpt ? <div className="mt-2 text-xs text-subtext">{it.excerpt}</div> : null}
-                        {it.issue ? <div className="mt-2 text-sm text-ink">问题：{it.issue}</div> : null}
-                        {it.recommendation ? (
-                          <div className="mt-2 text-sm text-ink">建议：{it.recommendation}</div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {analysisResult.analysis?.overall_notes ? (
-                <div className="grid gap-2 rounded-atelier border border-border bg-surface p-3">
-                  <div className="text-sm text-ink">总体备注</div>
-                  <div className="text-sm text-ink">{analysisResult.analysis.overall_notes}</div>
-                </div>
-              ) : null}
-
-              <details>
-                <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">raw_output</summary>
-                <pre className="mt-2 max-h-56 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
-                  {analysisResult.raw_output ?? ""}
-                </pre>
-              </details>
-            </div>
-          ) : (
-            <div className="text-sm text-subtext">暂无分析结果。</div>
-          )}
-
-          <div className="grid gap-3 rounded-atelier border border-border bg-surface p-3">
-            <div className="text-sm text-ink">按建议重写（覆盖编辑器正文）</div>
-            <label className="grid gap-1">
-              <span className="text-xs text-subtext">重写指令（可选）</span>
-              <input
-                className="input"
-                value={rewriteInstruction}
-                onChange={(e) => setRewriteInstruction(e.target.value)}
-                disabled={analysisLoading || rewriteLoading}
-              />
-            </label>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-xs text-subtext">重写结果不会自动保存，记得 Ctrl/Cmd+S 保存。</div>
-              <button
-                className="btn btn-primary"
-                disabled={!analysisResult || analysisLoading || rewriteLoading}
-                onClick={() => void rewriteFromAnalysis()}
-                type="button"
-              >
-                {rewriteLoading ? "重写中..." : "按建议重写并应用"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </Modal>
+        analysisLoading={analysisLoading}
+        rewriteLoading={rewriteLoading}
+        analysisFocus={analysisFocus}
+        setAnalysisFocus={setAnalysisFocus}
+        analysisResult={analysisResult}
+        rewriteInstruction={rewriteInstruction}
+        setRewriteInstruction={setRewriteInstruction}
+        onClose={() => setAnalysisOpen(false)}
+        onAnalyze={() => void analyzeChapter()}
+        onLocateInEditor={locateInEditor}
+        onRewriteFromAnalysis={() => void rewriteFromAnalysis()}
+      />
 
       <Drawer
         open={chapterListOpen}
