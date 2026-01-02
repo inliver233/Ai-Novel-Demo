@@ -18,7 +18,12 @@ from app.models.llm_preset import LLMPreset
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.project_settings import ProjectSettings
-from app.services.chapter_context_service import build_smart_context
+from app.services.chapter_context_service import (
+    PREVIOUS_CHAPTER_ENDING_CHARS,
+    assemble_chapter_generate_render_values,
+    build_smart_context,
+    load_previous_chapter_context,
+)
 from app.services.generation_service import PreparedLlmCall, call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.length_control import estimate_max_tokens
 from app.services.llm_key_resolver import resolve_api_key_for_project
@@ -27,8 +32,6 @@ from app.services.prompt_presets import ensure_default_post_edit_preset, ensure_
 from app.services.prompt_store import format_characters
 
 logger = logging.getLogger("ainovel")
-
-PREVIOUS_CHAPTER_ENDING_CHARS = 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,46 +80,6 @@ def _parse_params(task: BatchGenerationTask) -> BatchGenerateParams:
         character_ids=character_ids2,
         previous_chapter=str(ctx_obj.get("previous_chapter") or "none"),
     )
-
-
-def _load_previous_chapter_context_from_db(
-    db: Session,
-    *,
-    project_id: str,
-    outline_id: str,
-    chapter_number: int,
-    previous_chapter: str | None,
-) -> tuple[str, str]:
-    mode = previous_chapter or "none"
-    if mode == "none" or chapter_number <= 1:
-        return "", ""
-
-    prev = (
-        db.execute(
-            select(Chapter).where(
-                Chapter.project_id == project_id,
-                Chapter.outline_id == outline_id,
-                Chapter.number == (chapter_number - 1),
-            )
-        )
-        .scalars()
-        .first()
-    )
-    if prev is None:
-        return "", ""
-
-    if mode == "summary":
-        return (prev.summary or "").strip(), ""
-    if mode == "content":
-        return (prev.content_md or "").strip(), ""
-    if mode == "tail":
-        raw = (prev.content_md or "").strip()
-        if not raw:
-            return "", ""
-        tail = raw[-PREVIOUS_CHAPTER_ENDING_CHARS:].lstrip()
-        return "", tail
-
-    return "", ""
 
 
 def _cancel_task(task_id: str) -> None:
@@ -291,7 +254,7 @@ def run_batch_generation_task(*, task_id: str) -> None:
                     raw_prev = (prev_content_md or "").strip()
                     prev_ending = raw_prev[-PREVIOUS_CHAPTER_ENDING_CHARS:].lstrip() if raw_prev else ""
             else:
-                prev_text, prev_ending = _load_previous_chapter_context_from_db(
+                prev_text, prev_ending = load_previous_chapter_context(
                     db,
                     project_id=task.project_id,
                     outline_id=task.outline_id,
@@ -314,57 +277,26 @@ def run_batch_generation_task(*, task_id: str) -> None:
         base_instruction = params.instruction
         instruction = f"【替换模式】输出完整替换稿（整章）。\n{base_instruction}".strip()
 
-        requirements_obj: dict[str, object] = {}
-        if params.target_word_count is not None:
-            requirements_obj["target_word_count"] = params.target_word_count
-        requirements_text = json.dumps(requirements_obj, ensure_ascii=False, indent=2) if requirements_obj else ""
-
-        values: dict[str, object] = {
-            "mode": "replace",
-            "project_name": project.name or "",
-            "genre": project.genre or "",
-            "logline": project.logline or "",
-            "world_setting": world_setting,
-            "style_guide": style_guide,
-            "constraints": constraints,
-            "characters": characters_text,
-            "outline": outline_text,
-            "chapter_number": str(chapter_number),
-            "chapter_title": (chapter.title or ""),
-            "chapter_plan": (chapter.plan or ""),
-            "requirements": requirements_text,
-            "target_word_count": str(params.target_word_count or ""),
-            "instruction": instruction,
-            "previous_chapter": prev_text,
-            "previous_chapter_ending": prev_ending,
-            "current_draft_tail": "",
-            "smart_context_recent_summaries": smart_recent_summaries,
-            "smart_context_recent_full": smart_recent_full,
-            "smart_context_story_skeleton": smart_story_skeleton,
-        }
-        values["project"] = {
-            "name": project.name or "",
-            "genre": project.genre or "",
-            "logline": project.logline or "",
-            "world_setting": world_setting,
-            "style_guide": style_guide,
-            "constraints": constraints,
-            "characters": characters_text,
-        }
-        values["story"] = {
-            "outline": outline_text,
-            "chapter_number": int(chapter_number),
-            "chapter_title": (chapter.title or ""),
-            "chapter_plan": (chapter.plan or ""),
-            "previous_chapter": prev_text,
-            "previous_chapter_ending": prev_ending,
-            "mode": "replace",
-            "current_draft_tail": "",
-            "smart_context_recent_summaries": smart_recent_summaries,
-            "smart_context_recent_full": smart_recent_full,
-            "smart_context_story_skeleton": smart_story_skeleton,
-        }
-        values["user"] = {"instruction": instruction, "requirements": requirements_obj}
+        values, requirements_obj = assemble_chapter_generate_render_values(
+            project=project,
+            mode="replace",
+            chapter_number=int(chapter_number),
+            chapter_title=(chapter.title or ""),
+            chapter_plan=(chapter.plan or ""),
+            world_setting=world_setting,
+            style_guide=style_guide,
+            constraints=constraints,
+            characters_text=characters_text,
+            outline_text=outline_text,
+            instruction=instruction,
+            target_word_count=params.target_word_count,
+            previous_chapter=prev_text,
+            previous_chapter_ending=prev_ending,
+            current_draft_tail="",
+            smart_context_recent_summaries=smart_recent_summaries,
+            smart_context_recent_full=smart_recent_full,
+            smart_context_story_skeleton=smart_story_skeleton,
+        )
 
         try:
             llm_call = llm_call_base

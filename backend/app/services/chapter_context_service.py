@@ -219,6 +219,81 @@ def _format_chapter_generate_instruction(*, mode: Literal["replace", "append"], 
     return instruction
 
 
+def assemble_chapter_generate_render_values(
+    *,
+    project: Project,
+    mode: Literal["replace", "append"],
+    chapter_number: int,
+    chapter_title: str,
+    chapter_plan: str,
+    world_setting: str,
+    style_guide: str,
+    constraints: str,
+    characters_text: str,
+    outline_text: str,
+    instruction: str,
+    target_word_count: int | None,
+    previous_chapter: str,
+    previous_chapter_ending: str,
+    current_draft_tail: str,
+    smart_context_recent_summaries: str,
+    smart_context_recent_full: str,
+    smart_context_story_skeleton: str,
+) -> tuple[dict[str, object], dict[str, object]]:
+    requirements_obj: dict[str, object] = {}
+    if target_word_count is not None:
+        requirements_obj["target_word_count"] = target_word_count
+    requirements_text = json.dumps(requirements_obj, ensure_ascii=False, indent=2) if requirements_obj else ""
+
+    values: dict[str, object] = {
+        "mode": mode,
+        "project_name": project.name or "",
+        "genre": project.genre or "",
+        "logline": project.logline or "",
+        "world_setting": world_setting,
+        "style_guide": style_guide,
+        "constraints": constraints,
+        "characters": characters_text,
+        "outline": outline_text,
+        "chapter_number": str(chapter_number),
+        "chapter_title": chapter_title,
+        "chapter_plan": chapter_plan,
+        "requirements": requirements_text,
+        "target_word_count": str(target_word_count or ""),
+        "instruction": instruction,
+        "previous_chapter": previous_chapter,
+        "previous_chapter_ending": previous_chapter_ending,
+        "current_draft_tail": current_draft_tail,
+        "smart_context_recent_summaries": smart_context_recent_summaries,
+        "smart_context_recent_full": smart_context_recent_full,
+        "smart_context_story_skeleton": smart_context_story_skeleton,
+    }
+    values["project"] = {
+        "name": project.name or "",
+        "genre": project.genre or "",
+        "logline": project.logline or "",
+        "world_setting": world_setting,
+        "style_guide": style_guide,
+        "constraints": constraints,
+        "characters": characters_text,
+    }
+    values["story"] = {
+        "outline": outline_text,
+        "chapter_number": int(chapter_number),
+        "chapter_title": chapter_title,
+        "chapter_plan": chapter_plan,
+        "previous_chapter": previous_chapter,
+        "previous_chapter_ending": previous_chapter_ending,
+        "mode": mode,
+        "current_draft_tail": current_draft_tail,
+        "smart_context_recent_summaries": smart_context_recent_summaries,
+        "smart_context_recent_full": smart_context_recent_full,
+        "smart_context_story_skeleton": smart_context_story_skeleton,
+    }
+    values["user"] = {"instruction": instruction, "requirements": requirements_obj}
+    return values, requirements_obj
+
+
 def build_chapter_generate_render_values(
     db: Session,
     *,
@@ -259,58 +334,26 @@ def build_chapter_generate_render_values(
     base_instruction = body.instruction.strip()
     instruction = _format_chapter_generate_instruction(mode=body.mode, base_instruction=base_instruction)
 
-    requirements_obj: dict[str, object] = {}
-    if body.target_word_count is not None:
-        requirements_obj["target_word_count"] = body.target_word_count
-    requirements_text = json.dumps(requirements_obj, ensure_ascii=False, indent=2) if requirements_obj else ""
-
-    values: dict[str, object] = {
-        "mode": body.mode,
-        "project_name": project.name or "",
-        "genre": project.genre or "",
-        "logline": project.logline or "",
-        "world_setting": world_setting,
-        "style_guide": style_guide,
-        "constraints": constraints,
-        "characters": characters_text,
-        "outline": outline_text,
-        "chapter_number": str(chapter.number),
-        "chapter_title": (chapter.title or ""),
-        "chapter_plan": (chapter.plan or ""),
-        "requirements": requirements_text,
-        "target_word_count": str(body.target_word_count or ""),
-        "instruction": instruction,
-        "previous_chapter": prev_text,
-        "previous_chapter_ending": prev_ending,
-        "current_draft_tail": current_draft_tail,
-        "smart_context_recent_summaries": smart_recent_summaries,
-        "smart_context_recent_full": smart_recent_full,
-        "smart_context_story_skeleton": smart_story_skeleton,
-    }
-
-    values["project"] = {
-        "name": project.name or "",
-        "genre": project.genre or "",
-        "logline": project.logline or "",
-        "world_setting": world_setting,
-        "style_guide": style_guide,
-        "constraints": constraints,
-        "characters": characters_text,
-    }
-    values["story"] = {
-        "outline": outline_text,
-        "chapter_number": int(chapter.number),
-        "chapter_title": (chapter.title or ""),
-        "chapter_plan": (chapter.plan or ""),
-        "previous_chapter": prev_text,
-        "previous_chapter_ending": prev_ending,
-        "mode": body.mode,
-        "current_draft_tail": current_draft_tail,
-        "smart_context_recent_summaries": smart_recent_summaries,
-        "smart_context_recent_full": smart_recent_full,
-        "smart_context_story_skeleton": smart_story_skeleton,
-    }
-    values["user"] = {"instruction": instruction, "requirements": requirements_obj}
+    values, requirements_obj = assemble_chapter_generate_render_values(
+        project=project,
+        mode=body.mode,
+        chapter_number=int(chapter.number),
+        chapter_title=(chapter.title or ""),
+        chapter_plan=(chapter.plan or ""),
+        world_setting=world_setting,
+        style_guide=style_guide,
+        constraints=constraints,
+        characters_text=characters_text,
+        outline_text=outline_text,
+        instruction=instruction,
+        target_word_count=body.target_word_count,
+        previous_chapter=prev_text,
+        previous_chapter_ending=prev_ending,
+        current_draft_tail=current_draft_tail,
+        smart_context_recent_summaries=smart_recent_summaries,
+        smart_context_recent_full=smart_recent_full,
+        smart_context_story_skeleton=smart_story_skeleton,
+    )
 
     return values, base_instruction, requirements_obj
 
