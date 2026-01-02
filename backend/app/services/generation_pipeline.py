@@ -19,6 +19,14 @@ class PostEditStepResult:
     parse_error: dict[str, object] | None
 
 
+@dataclass(frozen=True, slots=True)
+class PlanStepResult:
+    plan_out: dict[str, object]
+    warnings: list[str]
+    parse_error: dict[str, object] | None
+    finish_reason: str | None
+
+
 def run_post_edit_step(
     *,
     logger: logging.Logger,
@@ -78,3 +86,42 @@ def run_post_edit_step(
         parse_error=parse_error,
     )
 
+
+def run_plan_llm_step(
+    *,
+    logger: logging.Logger,
+    request_id: str,
+    actor_user_id: str,
+    project_id: str,
+    chapter_id: str | None,
+    api_key: str,
+    llm_call: PreparedLlmCall,
+    prompt_system: str,
+    prompt_user: str,
+    prompt_messages: list,
+    prompt_render_log_json: str | None,
+) -> PlanStepResult:
+    plan_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 1024})
+    plan_result = call_llm_and_record(
+        logger=logger,
+        request_id=request_id,
+        actor_user_id=actor_user_id,
+        project_id=project_id,
+        chapter_id=chapter_id,
+        run_type="plan_chapter",
+        api_key=api_key,
+        prompt_system=prompt_system,
+        prompt_user=prompt_user,
+        prompt_messages=prompt_messages,
+        prompt_render_log_json=prompt_render_log_json,
+        llm_call=plan_call,
+    )
+
+    plan_contract = contract_for_task("plan_chapter")
+    parsed = plan_contract.parse(plan_result.text, finish_reason=plan_result.finish_reason)
+    return PlanStepResult(
+        plan_out=parsed.data,
+        warnings=list(parsed.warnings),
+        parse_error=parsed.parse_error,
+        finish_reason=plan_result.finish_reason,
+    )

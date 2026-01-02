@@ -25,7 +25,7 @@ from app.schemas.chapters import BulkCreateRequest, ChapterCreate, ChapterOut, C
 from app.schemas.chapter_generate import ChapterGenerateRequest
 from app.schemas.chapter_plan import ChapterPlanRequest
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
-from app.services.generation_pipeline import run_post_edit_step
+from app.services.generation_pipeline import run_plan_llm_step, run_post_edit_step
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.length_control import estimate_max_tokens
 from app.services.output_contracts import contract_for_task
@@ -562,26 +562,22 @@ def generate_chapter(
                 status_code=400,
             )
 
-        plan_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 1024})
-        plan_result = call_llm_and_record(
+        plan_step = run_plan_llm_step(
             logger=logger,
             request_id=request_id,
             actor_user_id=user_id,
             project_id=project_id,
             chapter_id=chapter_id,
-            run_type="plan_chapter",
             api_key=str(resolved_api_key),
+            llm_call=llm_call,
             prompt_system=plan_prompt_system,
             prompt_user=plan_prompt_user,
             prompt_messages=plan_prompt_messages,
             prompt_render_log_json=plan_prompt_render_log_json,
-            llm_call=plan_call,
         )
-        plan_contract = contract_for_task("plan_chapter")
-        plan_parsed = plan_contract.parse(plan_result.text, finish_reason=plan_result.finish_reason)
-        plan_out, plan_warnings, plan_parse_error = plan_parsed.data, plan_parsed.warnings, plan_parsed.parse_error
-        if plan_result.finish_reason is not None:
-            plan_out["finish_reason"] = plan_result.finish_reason
+        plan_out, plan_warnings, plan_parse_error = plan_step.plan_out, plan_step.warnings, plan_step.parse_error
+        if plan_step.finish_reason is not None:
+            plan_out["finish_reason"] = plan_step.finish_reason
 
         plan_text = str((plan_out or {}).get("plan") or "").strip()
         if plan_text:
@@ -803,29 +799,20 @@ def generate_chapter_stream(
                     return
 
                 yield sse_progress(message="生成规划...", progress=5)
-                plan_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 1024})
-                plan_result = call_llm_and_record(
+                plan_step = run_plan_llm_step(
                     logger=logger,
                     request_id=request_id,
                     actor_user_id=user_id,
                     project_id=project_id,
                     chapter_id=chapter_id,
-                    run_type="plan_chapter",
                     api_key=str(resolved_api_key),
+                    llm_call=llm_call,
                     prompt_system=plan_prompt_system,
                     prompt_user=plan_prompt_user,
                     prompt_messages=plan_prompt_messages,
                     prompt_render_log_json=plan_prompt_render_log_json,
-                    llm_call=plan_call,
                 )
-
-                plan_contract = contract_for_task("plan_chapter")
-                plan_parsed = plan_contract.parse(plan_result.text, finish_reason=plan_result.finish_reason)
-                plan_out, plan_warnings, plan_parse_error = (
-                    plan_parsed.data,
-                    plan_parsed.warnings,
-                    plan_parsed.parse_error,
-                )
+                plan_out, plan_warnings, plan_parse_error = plan_step.plan_out, plan_step.warnings, plan_step.parse_error
                 if plan_parse_error is not None:
                     err_code = str(plan_parse_error.get("code") or "PLAN_PARSE_ERROR")
                     err_msg = str(plan_parse_error.get("message") or "无法解析规划输出")

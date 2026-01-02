@@ -26,7 +26,7 @@ from app.services.chapter_context_service import (
     load_previous_chapter_context,
 )
 from app.services.generation_service import PreparedLlmCall, call_llm_and_record, prepare_llm_call, with_param_overrides
-from app.services.generation_pipeline import run_post_edit_step
+from app.services.generation_pipeline import run_plan_llm_step, run_post_edit_step
 from app.services.length_control import estimate_max_tokens
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.output_contracts import contract_for_task
@@ -323,25 +323,20 @@ def run_batch_generation_task(*, task_id: str) -> None:
                         provider=llm_call.provider,
                     )
                 plan_render_log_json = json.dumps(plan_render_log, ensure_ascii=False)
-                plan_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 1024})
-                plan_result = call_llm_and_record(
+                plan_step = run_plan_llm_step(
                     logger=logger,
                     request_id=f"{chapter_request_id}:plan",
                     actor_user_id=actor_user_id,
                     project_id=task.project_id,
                     chapter_id=chapter_id,
-                    run_type="plan_chapter",
                     api_key=str(resolved_api_key),
+                    llm_call=llm_call,
                     prompt_system=plan_system,
                     prompt_user=plan_user,
                     prompt_messages=plan_messages,
                     prompt_render_log_json=plan_render_log_json,
-                    llm_call=plan_call,
                 )
-
-                plan_contract = contract_for_task("plan_chapter")
-                plan_parsed = plan_contract.parse(plan_result.text, finish_reason=plan_result.finish_reason)
-                plan_text = str((plan_parsed.data or {}).get("plan") or "").strip()
+                plan_text = str((plan_step.plan_out or {}).get("plan") or "").strip()
                 if plan_text:
                     render_values = inject_plan_into_render_values(render_values, plan_text=plan_text)
 
