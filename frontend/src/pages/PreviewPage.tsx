@@ -38,10 +38,7 @@ export function PreviewPage() {
   });
 
   const chapters = previewQuery.data?.chapters ?? EMPTY_CHAPTERS;
-  const sortedChapters = useMemo(
-    () => [...chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)),
-    [chapters],
-  );
+  const sortedChapters = useMemo(() => [...chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)), [chapters]);
 
   const effectiveActiveId = useMemo(() => {
     if (activeId && sortedChapters.some((c) => c.id === activeId)) return activeId;

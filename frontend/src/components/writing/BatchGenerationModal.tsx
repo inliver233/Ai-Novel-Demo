@@ -50,9 +50,7 @@ export function BatchGenerationModal(props: {
                 max={20}
                 type="number"
                 value={props.batchCount}
-                onChange={(e) =>
-                  props.setBatchCount(Math.max(1, Math.min(20, Number(e.target.value) || 1)))
-                }
+                onChange={(e) => props.setBatchCount(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
               />
             </label>
             <label className="flex items-center gap-2 pb-2 text-sm text-ink">
@@ -76,7 +74,12 @@ export function BatchGenerationModal(props: {
                 {props.batchLoading ? "取消中..." : "取消任务"}
               </button>
             ) : (
-              <button className="btn btn-primary" disabled={props.batchLoading} onClick={props.onStartTask} type="button">
+              <button
+                className="btn btn-primary"
+                disabled={props.batchLoading}
+                onClick={props.onStartTask}
+                type="button"
+              >
                 {props.batchLoading ? "启动中..." : "开始批量生成"}
               </button>
             )}
@@ -98,7 +101,9 @@ export function BatchGenerationModal(props: {
                 className="h-2 rounded bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
                 style={{
                   width: `${Math.round(
-                    (props.batchTask.total_count > 0 ? props.batchTask.completed_count / props.batchTask.total_count : 0) * 100,
+                    (props.batchTask.total_count > 0
+                      ? props.batchTask.completed_count / props.batchTask.total_count
+                      : 0) * 100,
                   )}%`,
                 }}
               />
@@ -142,4 +147,3 @@ export function BatchGenerationModal(props: {
     </Modal>
   );
 }
-

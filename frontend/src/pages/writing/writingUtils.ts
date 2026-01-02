@@ -34,4 +34,3 @@ export function chapterToForm(chapter: Chapter): ChapterForm {
     status: chapter.status,
   };
 }
-

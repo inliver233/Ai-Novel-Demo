@@ -192,7 +192,11 @@ export function WizardNextBar(props: {
                       >
                         <Icon
                           className={clsx(
-                            s.state === "done" ? "text-success" : s.state === "skipped" ? "text-subtext" : "text-subtext",
+                            s.state === "done"
+                              ? "text-success"
+                              : s.state === "skipped"
+                                ? "text-subtext"
+                                : "text-subtext",
                           )}
                           size={14}
                         />
@@ -216,7 +220,12 @@ export function WizardNextBar(props: {
                 </button>
 
                 {showBackToOverview ? (
-                  <button className="btn btn-secondary" disabled={loading || busy} onClick={() => goto("/")} type="button">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={loading || busy}
+                    onClick={() => goto("/")}
+                    type="button"
+                  >
                     已完成：回到项目概览
                   </button>
                 ) : null}

@@ -269,10 +269,10 @@ export function computeWizardProgressFromSummary(input: WizardSummaryComputeInpu
       href: `${base}/settings`,
       done: Boolean(
         isNonEmpty(input.settings?.world_setting) ||
-          isNonEmpty(input.settings?.style_guide) ||
-          isNonEmpty(input.settings?.constraints) ||
-          isNonEmpty(input.project?.genre) ||
-          isNonEmpty(input.project?.logline),
+        isNonEmpty(input.settings?.style_guide) ||
+        isNonEmpty(input.settings?.constraints) ||
+        isNonEmpty(input.project?.genre) ||
+        isNonEmpty(input.project?.logline),
       ),
     }),
     makeStep({
@@ -289,10 +289,10 @@ export function computeWizardProgressFromSummary(input: WizardSummaryComputeInpu
       href: `${base}/prompts`,
       done: Boolean(
         projectId &&
-          input.llm_preset &&
-          input.project?.llm_profile_id &&
-          input.llm_profile_has_api_key &&
-          hasWizardLlmTestOk(projectId, input.llm_preset.provider, input.llm_preset.model),
+        input.llm_preset &&
+        input.project?.llm_profile_id &&
+        input.llm_profile_has_api_key &&
+        hasWizardLlmTestOk(projectId, input.llm_preset.provider, input.llm_preset.model),
       ),
     }),
     makeStep({

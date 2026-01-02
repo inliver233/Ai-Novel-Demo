@@ -22,11 +22,7 @@ import { ApiError, apiJson } from "../services/apiClient";
 import { createChapterMarkerStreamParser } from "../services/chapterMarkerStreamParser";
 import { SSEError, SSEPostClient } from "../services/sseClient";
 import { markWizardProjectChanged } from "../services/wizard";
-import type {
-  CreateChapterForm,
-  GenerateForm,
-  GenerationRun,
-} from "../components/writing/types";
+import type { CreateChapterForm, GenerateForm, GenerationRun } from "../components/writing/types";
 import { appendMarkdown, chapterToForm, nextChapterNumber } from "./writing/writingUtils";
 import type { ChapterForm } from "./writing/writingUtils";
 import { useBatchGeneration } from "./writing/useBatchGeneration";
@@ -504,59 +500,56 @@ export function WritingPage() {
       genStreamClientRef.current = null;
       genStreamHasChunkRef.current = false;
       try {
-        const currentDraftTail =
-          mode === "append"
-            ? (form.content_md ?? "").trimEnd().slice(-1200)
-            : null;
+        const currentDraftTail = mode === "append" ? (form.content_md ?? "").trimEnd().slice(-1200) : null;
 
-          const payload = {
-            mode,
-            instruction: genForm.instruction,
-            target_word_count: genForm.target_word_count > 0 ? genForm.target_word_count : null,
-             plan_first: genForm.plan_first,
-             post_edit: genForm.post_edit,
-             context: {
-               include_world_setting: genForm.context.include_world_setting,
-               include_style_guide: genForm.context.include_style_guide,
-               include_constraints: genForm.context.include_constraints,
-              include_outline: genForm.context.include_outline,
-              include_smart_context: genForm.context.include_smart_context,
-              require_sequential: genForm.context.require_sequential,
-              character_ids: genForm.context.character_ids,
-              previous_chapter: genForm.context.previous_chapter === "none" ? null : genForm.context.previous_chapter,
-              current_draft_tail: currentDraftTail,
-            },
+        const payload = {
+          mode,
+          instruction: genForm.instruction,
+          target_word_count: genForm.target_word_count > 0 ? genForm.target_word_count : null,
+          plan_first: genForm.plan_first,
+          post_edit: genForm.post_edit,
+          context: {
+            include_world_setting: genForm.context.include_world_setting,
+            include_style_guide: genForm.context.include_style_guide,
+            include_constraints: genForm.context.include_constraints,
+            include_outline: genForm.context.include_outline,
+            include_smart_context: genForm.context.include_smart_context,
+            require_sequential: genForm.context.require_sequential,
+            character_ids: genForm.context.character_ids,
+            previous_chapter: genForm.context.previous_chapter === "none" ? null : genForm.context.previous_chapter,
+            current_draft_tail: currentDraftTail,
+          },
+        };
+
+        const baseContent = form.content_md;
+        const baseSummary = form.summary;
+
+        if (genForm.stream) {
+          const parser = createChapterMarkerStreamParser();
+          let parsedContent = "";
+          let parsedSummary = "";
+          let requestId: string | undefined;
+          let nonFatalNoticed = false;
+
+          const processChunk = (chunk: string) => {
+            const out = parser.push(chunk);
+            if (out.contentDelta) parsedContent += out.contentDelta;
+            if (out.summaryDelta) parsedSummary += out.summaryDelta;
           };
 
-         const baseContent = form.content_md;
-         const baseSummary = form.summary;
-
-         if (genForm.stream) {
-           const parser = createChapterMarkerStreamParser();
-           let parsedContent = "";
-           let parsedSummary = "";
-           let requestId: string | undefined;
-           let nonFatalNoticed = false;
-
-           const processChunk = (chunk: string) => {
-             const out = parser.push(chunk);
-             if (out.contentDelta) parsedContent += out.contentDelta;
-             if (out.summaryDelta) parsedSummary += out.summaryDelta;
-           };
-
-           const client = new SSEPostClient(`/api/chapters/${activeChapter.id}/generate-stream`, payload, {
-             headers,
-             onOpen: ({ requestId: rid }) => {
-                requestId = rid;
+          const client = new SSEPostClient(`/api/chapters/${activeChapter.id}/generate-stream`, payload, {
+            headers,
+            onOpen: ({ requestId: rid }) => {
+              requestId = rid;
               setGenRequestId(rid ?? null);
             },
-             onProgress: ({ message, progress, status, wordCount }) => {
-               setGenStreamProgress({ message, progress, status, wordCount });
-               if (!nonFatalNoticed && status === "error") {
-                 nonFatalNoticed = true;
-                 toast.toastError(message, requestId);
-               }
-             },
+            onProgress: ({ message, progress, status, wordCount }) => {
+              setGenStreamProgress({ message, progress, status, wordCount });
+              if (!nonFatalNoticed && status === "error") {
+                nonFatalNoticed = true;
+                toast.toastError(message, requestId);
+              }
+            },
             onChunk: (chunk) => {
               genStreamHasChunkRef.current = true;
               processChunk(chunk);
@@ -635,7 +628,7 @@ export function WritingPage() {
               toast.toastError(`${err.message} (${err.code})`, err.requestId);
               return;
             }
-             if (err instanceof ApiError) {
+            if (err instanceof ApiError) {
               const missingNumbers =
                 err.code === "CHAPTER_PREREQ_MISSING" &&
                 err.details &&
@@ -663,10 +656,10 @@ export function WritingPage() {
               }
               toast.toastError(`${err.message} (${err.code})`, err.requestId);
               return;
-             }
-             toast.toastError("生成失败");
-           }
-         } else {
+            }
+            toast.toastError("生成失败");
+          }
+        } else {
           const res = await apiJson<{ content_md: string; summary: string; raw_output: string }>(
             `/api/chapters/${activeChapter.id}/generate`,
             {
@@ -692,7 +685,7 @@ export function WritingPage() {
 
           toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
         }
-        } catch (e) {
+      } catch (e) {
         const err = e as ApiError;
         const missingNumbers =
           err.code === "CHAPTER_PREREQ_MISSING" &&
@@ -830,11 +823,7 @@ export function WritingPage() {
               <List size={16} />
               章节列表
             </button>
-            <button
-              className="btn btn-secondary"
-              onClick={batch.openModal}
-              type="button"
-            >
+            <button className="btn btn-secondary" onClick={batch.openModal} type="button">
               批量生成
               {batch.batchTask && (batch.batchTask.status === "queued" || batch.batchTask.status === "running")
                 ? `（${batch.batchTask.completed_count}/${batch.batchTask.total_count}）`

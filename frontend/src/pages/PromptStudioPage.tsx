@@ -626,9 +626,7 @@ export function PromptStudioPage() {
             <span className="font-medium text-ink">提示块（Block）</span>：可排序/启停，支持
             role、triggers（按任务触发）、token 预算与后端统一渲染。
           </div>
-          <div>
-            若同一任务被多个预设勾选，系统会优先使用“最近更新”的预设（历史导入的预设通常作为兜底）。
-          </div>
+          <div>若同一任务被多个预设勾选，系统会优先使用“最近更新”的预设（历史导入的预设通常作为兜底）。</div>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
@@ -721,9 +719,7 @@ export function PromptStudioPage() {
               </div>
             </LayoutGroup>
 
-            <div className="mt-2 text-xs text-subtext">
-              拖拽块可调整排序；预览走后端渲染。
-            </div>
+            <div className="mt-2 text-xs text-subtext">拖拽块可调整排序；预览走后端渲染。</div>
           </div>
         </div>
 

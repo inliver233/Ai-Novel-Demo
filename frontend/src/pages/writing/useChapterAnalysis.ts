@@ -11,7 +11,10 @@ export function useChapterAnalysis(args: {
   genForm: GenerateForm;
   form: ChapterForm | null;
   setForm: React.Dispatch<React.SetStateAction<ChapterForm | null>>;
-  toast: { toastError: (message: string, requestId?: string) => void; toastSuccess: (message: string, requestId?: string) => void };
+  toast: {
+    toastError: (message: string, requestId?: string) => void;
+    toastSuccess: (message: string, requestId?: string) => void;
+  };
 }) {
   const { activeChapter, preset, genForm, form, setForm, toast } = args;
 
@@ -155,4 +158,3 @@ export function useChapterAnalysis(args: {
     rewriteFromAnalysis,
   };
 }
-

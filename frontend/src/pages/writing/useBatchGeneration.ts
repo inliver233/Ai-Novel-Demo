@@ -14,10 +14,22 @@ export function useBatchGeneration(args: {
   searchParams: URLSearchParams;
   setSearchParams: SetURLSearchParams;
   requestSelectChapter: (chapterId: string) => Promise<void>;
-  toast: { toastError: (message: string, requestId?: string, action?: { label: string; onClick: () => void }) => void; toastSuccess: (message: string, requestId?: string) => void };
+  toast: {
+    toastError: (message: string, requestId?: string, action?: { label: string; onClick: () => void }) => void;
+    toastSuccess: (message: string, requestId?: string) => void;
+  };
 }) {
-  const { projectId, preset, activeChapter, chapters, genForm, searchParams, setSearchParams, requestSelectChapter, toast } =
-    args;
+  const {
+    projectId,
+    preset,
+    activeChapter,
+    chapters,
+    genForm,
+    searchParams,
+    setSearchParams,
+    requestSelectChapter,
+    toast,
+  } = args;
 
   const [open, setOpen] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);

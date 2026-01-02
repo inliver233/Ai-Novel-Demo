@@ -81,7 +81,9 @@ export function ChapterAnalysisModal(props: {
 
             <div className="grid gap-3 rounded-atelier border border-border bg-surface p-3">
               <div className="text-sm text-ink">本章摘要</div>
-              <div className="text-sm text-ink">{(props.analysisResult.analysis?.chapter_summary ?? "").trim() || "（空）"}</div>
+              <div className="text-sm text-ink">
+                {(props.analysisResult.analysis?.chapter_summary ?? "").trim() || "（空）"}
+              </div>
             </div>
 
             <div className="grid gap-2 rounded-atelier border border-border bg-surface p-3">
@@ -192,7 +194,9 @@ export function ChapterAnalysisModal(props: {
                       </div>
                       {it.excerpt ? <div className="mt-2 text-xs text-subtext">{it.excerpt}</div> : null}
                       {it.issue ? <div className="mt-2 text-sm text-ink">问题：{it.issue}</div> : null}
-                      {it.recommendation ? <div className="mt-2 text-sm text-ink">建议：{it.recommendation}</div> : null}
+                      {it.recommendation ? (
+                        <div className="mt-2 text-sm text-ink">建议：{it.recommendation}</div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -246,4 +250,3 @@ export function ChapterAnalysisModal(props: {
     </Modal>
   );
 }
-
