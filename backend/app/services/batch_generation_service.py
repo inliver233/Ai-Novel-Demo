@@ -21,16 +21,16 @@ from app.models.project_settings import ProjectSettings
 from app.services.chapter_context_service import (
     PREVIOUS_CHAPTER_ENDING_CHARS,
     assemble_chapter_generate_render_values,
-    build_post_edit_render_values,
     build_smart_context,
     inject_plan_into_render_values,
     load_previous_chapter_context,
 )
 from app.services.generation_service import PreparedLlmCall, call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.generation_pipeline import run_post_edit_step
 from app.services.length_control import estimate_max_tokens
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.output_contracts import contract_for_task
-from app.services.prompt_presets import ensure_default_post_edit_preset, ensure_default_plan_preset, render_preset_for_task
+from app.services.prompt_presets import ensure_default_plan_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
 
 logger = logging.getLogger("ainovel")
@@ -384,39 +384,20 @@ def run_batch_generation_task(*, task_id: str) -> None:
             if params.post_edit:
                 raw_content = str(data.get("content_md") or "").strip()
                 if raw_content:
-                    with SessionLocal() as db:
-                        ensure_default_post_edit_preset(db, project_id=task.project_id)
-                        post_values = build_post_edit_render_values(render_values, raw_content=raw_content)
-
-                        post_system, post_user, post_messages, _, _, _, post_render_log = render_preset_for_task(
-                            db,
-                            project_id=task.project_id,
-                            task="post_edit",
-                            values=post_values,  # type: ignore[arg-type]
-                            macro_seed=f"{chapter_request_id}:post_edit",
-                            provider=llm_call.provider,
-                        )
-                    post_render_log_json = json.dumps(post_render_log, ensure_ascii=False)
-                    post_call = with_param_overrides(llm_call, {"temperature": 0.4})
-                    post_result = call_llm_and_record(
+                    step = run_post_edit_step(
                         logger=logger,
                         request_id=f"{chapter_request_id}:post_edit",
                         actor_user_id=actor_user_id,
                         project_id=task.project_id,
                         chapter_id=chapter_id,
-                        run_type="post_edit",
                         api_key=str(resolved_api_key),
-                        prompt_system=post_system,
-                        prompt_user=post_user,
-                        prompt_messages=post_messages,
-                        prompt_render_log_json=post_render_log_json,
-                        llm_call=post_call,
+                        llm_call=llm_call,
+                        render_values=render_values,
+                        raw_content=raw_content,
+                        macro_seed=f"{chapter_request_id}:post_edit",
                     )
-                    post_contract = contract_for_task("post_edit")
-                    post_parsed = post_contract.parse(post_result.text, finish_reason=post_result.finish_reason)
-                    edited = str(post_parsed.data.get("content_md") or "").strip()
-                    if post_parsed.parse_error is None and edited:
-                        data["content_md"] = edited
+                    if step.applied:
+                        data["content_md"] = step.edited_content_md
 
             final_content = str(data.get("content_md") or "").strip()
             final_summary = str(data.get("summary") or "").strip()

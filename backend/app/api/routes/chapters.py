@@ -25,13 +25,13 @@ from app.schemas.chapters import BulkCreateRequest, ChapterCreate, ChapterOut, C
 from app.schemas.chapter_generate import ChapterGenerateRequest
 from app.schemas.chapter_plan import ChapterPlanRequest
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.generation_pipeline import run_post_edit_step
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.length_control import estimate_max_tokens
 from app.services.output_contracts import contract_for_task
 from app.services.outline_store import ensure_active_outline
 from app.services.chapter_context_service import (
     build_chapter_generate_render_values,
-    build_post_edit_render_values,
     inject_plan_into_render_values,
 )
 from app.services.prompt_presets import ensure_default_plan_preset, ensure_default_post_edit_preset, render_preset_for_task
@@ -631,46 +631,23 @@ def generate_chapter(
         post_edit_parse_error: dict[str, object] | None = None
 
         if raw_content:
-            with SessionLocal() as db3:
-                ensure_default_post_edit_preset(db3, project_id=project_id)
-                post_values = build_post_edit_render_values(render_values or {}, raw_content=raw_content)
-
-                post_system, post_user, post_messages, _, _, _, post_render_log = render_preset_for_task(
-                    db3,
-                    project_id=project_id,
-                    task="post_edit",
-                    values=post_values,  # type: ignore[arg-type]
-                    macro_seed=f"{request_id}:post_edit",
-                    provider=llm_call.provider,
-                )
-
-            post_render_log_json = json.dumps(post_render_log, ensure_ascii=False)
-            post_call = with_param_overrides(llm_call, {"temperature": 0.4})
-            post_result = call_llm_and_record(
+            step = run_post_edit_step(
                 logger=logger,
                 request_id=request_id,
                 actor_user_id=user_id,
                 project_id=project_id,
                 chapter_id=chapter_id,
-                run_type="post_edit",
                 api_key=str(resolved_api_key),
-                prompt_system=post_system,
-                prompt_user=post_user,
-                prompt_messages=post_messages,
-                prompt_render_log_json=post_render_log_json,
-                llm_call=post_call,
+                llm_call=llm_call,
+                render_values=render_values or {},
+                raw_content=raw_content,
+                macro_seed=f"{request_id}:post_edit",
             )
-
-            post_contract = contract_for_task("post_edit")
-            post_parsed = post_contract.parse(post_result.text, finish_reason=post_result.finish_reason)
-            post_edit_warnings = list(post_parsed.warnings)
-            post_edit_parse_error = post_parsed.parse_error
-            edited = str(post_parsed.data.get("content_md") or "").strip()
-            if post_edit_parse_error is None and edited:
-                data["content_md"] = edited
+            post_edit_warnings = step.warnings
+            post_edit_parse_error = step.parse_error
+            if step.applied:
+                data["content_md"] = step.edited_content_md
                 post_edit_applied = True
-            else:
-                post_edit_warnings.append("post_edit_failed")
         else:
             post_edit_warnings.append("post_edit_no_content")
 
@@ -989,46 +966,23 @@ def generate_chapter_stream(
 
                 if raw_content:
                     yield sse_progress(message="润色中...", progress=95)
-                    with SessionLocal() as db3:
-                        ensure_default_post_edit_preset(db3, project_id=project_id)
-                        post_values = build_post_edit_render_values(render_values or {}, raw_content=raw_content)
-
-                        post_system, post_user, post_messages, _, _, _, post_render_log = render_preset_for_task(
-                            db3,
-                            project_id=project_id,
-                            task="post_edit",
-                            values=post_values,  # type: ignore[arg-type]
-                            macro_seed=f"{request_id}:post_edit",
-                            provider=llm_call.provider,
-                        )
-
-                    post_render_log_json = json.dumps(post_render_log, ensure_ascii=False)
-                    post_call = with_param_overrides(llm_call, {"temperature": 0.4})
-                    post_result = call_llm_and_record(
+                    step = run_post_edit_step(
                         logger=logger,
                         request_id=request_id,
                         actor_user_id=user_id,
                         project_id=project_id,
                         chapter_id=chapter_id,
-                        run_type="post_edit",
                         api_key=str(resolved_api_key),
-                        prompt_system=post_system,
-                        prompt_user=post_user,
-                        prompt_messages=post_messages,
-                        prompt_render_log_json=post_render_log_json,
-                        llm_call=post_call,
+                        llm_call=llm_call,
+                        render_values=render_values or {},
+                        raw_content=raw_content,
+                        macro_seed=f"{request_id}:post_edit",
                     )
-
-                    post_contract = contract_for_task("post_edit")
-                    post_parsed = post_contract.parse(post_result.text, finish_reason=post_result.finish_reason)
-                    post_edit_warnings = list(post_parsed.warnings)
-                    post_edit_parse_error = post_parsed.parse_error
-                    edited = str(post_parsed.data.get("content_md") or "").strip()
-                    if post_edit_parse_error is None and edited:
-                        data["content_md"] = edited
+                    post_edit_warnings = step.warnings
+                    post_edit_parse_error = step.parse_error
+                    if step.applied:
+                        data["content_md"] = step.edited_content_md
                         post_edit_applied = True
-                    else:
-                        post_edit_warnings.append("post_edit_failed")
                 else:
                     post_edit_warnings.append("post_edit_no_content")
 
