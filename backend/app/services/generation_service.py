@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.errors import AppError
-from app.core.logging import log_event
+from app.core.logging import exception_log_fields, log_event
 from app.llm.client import call_llm, call_llm_messages
 from app.llm.messages import ChatMessage
 from app.models.llm_preset import LLMPreset
@@ -214,5 +214,45 @@ def call_llm_and_record(
             params_json=llm_call.params_json,
             output_text=None,
             error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),
+        )
+        raise
+    except Exception as exc:
+        prompt_chars = len(prompt_system) + len(prompt_user)
+        if prompt_messages is not None:
+            prompt_chars = sum(len(m.content or "") for m in prompt_messages)
+
+        err_fields = dict(exception_log_fields(exc))
+        err_fields.pop("stack", None)
+
+        log_event(
+            logger,
+            "error",
+            llm={
+                "provider": llm_call.provider,
+                "model": llm_call.model,
+                "timeout_seconds": llm_call.timeout_seconds,
+                "prompt_chars": prompt_chars,
+                "output_chars": 0,
+                "error_code": "INTERNAL_ERROR",
+                **err_fields,
+            },
+        )
+        write_generation_run(
+            request_id=request_id,
+            actor_user_id=actor_user_id,
+            project_id=project_id,
+            chapter_id=chapter_id,
+            run_type=run_type,
+            provider=llm_call.provider,
+            model=llm_call.model,
+            prompt_system=prompt_system,
+            prompt_user=prompt_user,
+            prompt_render_log_json=prompt_render_log_json,
+            params_json=llm_call.params_json,
+            output_text=None,
+            error_json=json.dumps(
+                {"code": "INTERNAL_ERROR", "message": "服务器内部错误", "details": err_fields},
+                ensure_ascii=False,
+            ),
         )
         raise
