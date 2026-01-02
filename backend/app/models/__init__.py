@@ -1,3 +1,4 @@
+from app.models.batch_generation_task import BatchGenerationTask, BatchGenerationTaskItem
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.generation_run import GenerationRun
@@ -11,6 +12,8 @@ from app.models.prompt_preset import PromptPreset
 from app.models.user import User
 
 __all__ = [
+    "BatchGenerationTask",
+    "BatchGenerationTaskItem",
     "Chapter",
     "Character",
     "GenerationRun",

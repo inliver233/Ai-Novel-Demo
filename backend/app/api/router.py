@@ -3,6 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.routes import (
+    batch_generation,
+    chapter_analysis,
     chapters,
     characters,
     export,
@@ -26,6 +28,8 @@ api_router.include_router(settings.router, tags=["settings"])
 api_router.include_router(characters.router, tags=["characters"])
 api_router.include_router(outline.router, tags=["outline"])
 api_router.include_router(chapters.router, tags=["chapters"])
+api_router.include_router(chapter_analysis.router, tags=["chapter_analysis"])
+api_router.include_router(batch_generation.router, tags=["batch_generation"])
 api_router.include_router(prompts.router, tags=["prompts"])
 api_router.include_router(llm_preset.router, tags=["llm_preset"])
 api_router.include_router(llm.router, tags=["llm"])

@@ -3,10 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from app.services.output_parsers import build_outline_fix_json_prompt, parse_chapter_output, parse_outline_output, parse_tag_output
+from app.services.output_parsers import (
+    build_outline_fix_json_prompt,
+    parse_chapter_analysis_output,
+    parse_chapter_output,
+    parse_outline_output,
+    parse_tag_output,
+)
 
 
-OutputContractType = Literal["markers", "json", "tags"]
+OutputContractType = Literal["markers", "json", "tags", "analysis_json"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +46,19 @@ class OutputContract:
                     )
             return OutputParseResult(data=data, warnings=warnings, parse_error=parse_error)
 
+        if self.type == "analysis_json":
+            data, warnings, parse_error = parse_chapter_analysis_output(text)
+            if finish_reason == "length":
+                warnings = list(warnings)
+                warnings.append("output_truncated")
+                if parse_error is not None:
+                    parse_error = dict(parse_error)
+                    parse_error.setdefault(
+                        "hint",
+                        "输出疑似被截断（finish_reason=length），可尝试增大 max_tokens 或减少分析输出长度",
+                    )
+            return OutputParseResult(data=data, warnings=warnings, parse_error=parse_error)
+
         if self.type == "tags":
             tag = (self.tag or "").strip()
             if not tag:
@@ -62,11 +81,15 @@ def contract_for_task(task: str) -> OutputContract:
     task = (task or "").strip()
     if task == "outline_generate":
         return OutputContract(type="json")
+    if task == "chapter_analyze":
+        return OutputContract(type="analysis_json")
     if task == "chapter_generate":
         return OutputContract(type="markers")
     if task == "plan_chapter":
         return OutputContract(type="tags", tag="plan", output_key="plan")
     if task == "post_edit":
+        return OutputContract(type="tags", tag="rewrite", output_key="content_md")
+    if task == "chapter_rewrite":
         return OutputContract(type="tags", tag="rewrite", output_key="content_md")
     return OutputContract(type="markers")
 

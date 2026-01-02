@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+from app.schemas.base import ORMModel
+from app.schemas.chapter_generate import ChapterGenerateContext
+
+
+BatchGenerationTaskStatus = Literal["queued", "running", "succeeded", "failed", "canceled"]
+BatchGenerationItemStatus = Literal["queued", "running", "succeeded", "failed", "canceled", "skipped"]
+
+
+class BatchGenerationCreateRequest(BaseModel):
+    after_chapter_id: str | None = None
+    count: int = Field(ge=1, le=20)
+    include_existing: bool = False
+    instruction: str = Field(default="", max_length=4000)
+    target_word_count: int | None = Field(default=None, ge=100, le=50000)
+    plan_first: bool = False
+    post_edit: bool = False
+    context: ChapterGenerateContext = Field(default_factory=ChapterGenerateContext)
+
+
+class BatchGenerationTaskItemOut(ORMModel):
+    id: str
+    task_id: str
+    chapter_id: str | None = None
+    chapter_number: int
+    status: BatchGenerationItemStatus
+    generation_run_id: str | None = None
+    error_message: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class BatchGenerationTaskOut(ORMModel):
+    id: str
+    project_id: str
+    outline_id: str
+    actor_user_id: str | None = None
+    status: BatchGenerationTaskStatus
+    total_count: int
+    completed_count: int
+    cancel_requested: bool
+    error_json: str | None = None
+    created_at: str
+    updated_at: str

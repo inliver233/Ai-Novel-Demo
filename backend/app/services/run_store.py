@@ -7,6 +7,7 @@ from app.models.generation_run import GenerationRun
 
 def write_generation_run(
     *,
+    run_id: str | None = None,
     request_id: str,
     actor_user_id: str,
     project_id: str,
@@ -20,17 +21,18 @@ def write_generation_run(
     params_json: str,
     output_text: str | None,
     error_json: str | None,
-) -> None:
+) -> str:
     """
     Persist a generation run using an independent session.
 
     Rationale: generation requests often hold a long-lived transaction (prompt rendering, LLM call, etc.).
     Writing runs in a separate short-lived session avoids coupling the audit trail to the request session lifecycle.
     """
+    rid = run_id or new_id()
     with SessionLocal() as db:
         db.add(
             GenerationRun(
-                id=new_id(),
+                id=rid,
                 project_id=project_id,
                 actor_user_id=actor_user_id,
                 chapter_id=chapter_id,
@@ -51,3 +53,4 @@ def write_generation_run(
         except Exception:
             db.rollback()
             raise
+    return rid

@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base import Base
+from app.db.utils import utc_now_iso
+
+
+class BatchGenerationTask(Base):
+    __tablename__ = "batch_generation_tasks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    outline_id: Mapped[str] = mapped_column(ForeignKey("outlines.id", ondelete="CASCADE"), nullable=False)
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    params_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso, onupdate=utc_now_iso)
+
+
+class BatchGenerationTaskItem(Base):
+    __tablename__ = "batch_generation_task_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("batch_generation_tasks.id", ondelete="CASCADE"), nullable=False)
+    chapter_id: Mapped[str | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
+    chapter_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    generation_run_id: Mapped[str | None] = mapped_column(ForeignKey("generation_runs.id", ondelete="SET NULL"), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso)
+    updated_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso, onupdate=utc_now_iso)
+
+    __table_args__ = (UniqueConstraint("task_id", "chapter_number", name="uq_batch_generation_task_items_task_number"),)
+
+
+Index("ix_batch_generation_tasks_project_id", BatchGenerationTask.project_id)
+Index("ix_batch_generation_tasks_status", BatchGenerationTask.status)
+Index("ix_batch_generation_task_items_task_id", BatchGenerationTaskItem.task_id)

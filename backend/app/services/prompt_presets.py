@@ -21,6 +21,8 @@ DEFAULT_PLAN_PRESET_NAME = "Default plan_chapter v1"
 DEFAULT_POST_EDIT_PRESET_NAME = "Default post_edit v1"
 DEFAULT_OUTLINE_PRESET_NAME = "默认·大纲生成 v3（推荐）"
 DEFAULT_CHAPTER_PRESET_NAME = "默认·章节生成 v3（推荐）"
+DEFAULT_CHAPTER_ANALYZE_PRESET_NAME = "默认·章节分析 v1（推荐）"
+DEFAULT_CHAPTER_REWRITE_PRESET_NAME = "默认·章节重写 v1（推荐）"
 
 
 def parse_json_list(raw: str | None) -> list[str]:
@@ -422,26 +424,27 @@ def ensure_default_chapter_preset(db: Session, *, project_id: str, activate: boo
         .scalars()
         .first()
     )
-    if preset is not None:
-        if activate:
-            active_for = parse_json_list(preset.active_for_json)
-            merged = list(dict.fromkeys([*active_for, "chapter_generate"]))
-            if merged != active_for:
-                preset.active_for_json = json.dumps(merged, ensure_ascii=False)
-                db.commit()
-                db.refresh(preset)
-        return preset
 
-    preset = PromptPreset(
-        id=new_id(),
-        project_id=project_id,
-        name=DEFAULT_CHAPTER_PRESET_NAME,
-        scope="project",
-        version=3,
-        active_for_json=json.dumps(["chapter_generate"], ensure_ascii=False) if activate else json.dumps([], ensure_ascii=False),
-    )
-    db.add(preset)
-    db.flush()
+    created = False
+    active_for_changed = False
+    if preset is None:
+        preset = PromptPreset(
+            id=new_id(),
+            project_id=project_id,
+            name=DEFAULT_CHAPTER_PRESET_NAME,
+            scope="project",
+            version=3,
+            active_for_json=json.dumps(["chapter_generate"], ensure_ascii=False) if activate else json.dumps([], ensure_ascii=False),
+        )
+        db.add(preset)
+        db.flush()
+        created = True
+    elif activate:
+        active_for = parse_json_list(preset.active_for_json)
+        merged = list(dict.fromkeys([*active_for, "chapter_generate"]))
+        if merged != active_for:
+            preset.active_for_json = json.dumps(merged, ensure_ascii=False)
+            active_for_changed = True
 
     triggers_json = json.dumps(["chapter_generate"], ensure_ascii=False)
     budget_must = json.dumps({"priority": "must"}, ensure_ascii=False)
@@ -508,6 +511,47 @@ def ensure_default_chapter_preset(db: Session, *, project_id: str, activate: boo
     )
 
     sys_prev = "{% if previous_chapter %}<PREVIOUS_CHAPTER>\n{{previous_chapter}}\n</PREVIOUS_CHAPTER>\n{% endif %}"
+    sys_prev_ending = (
+        "{% if previous_chapter_ending %}<PREVIOUS_CHAPTER_ENDING>\n{{previous_chapter_ending}}\n</PREVIOUS_CHAPTER_ENDING>\n{% endif %}"
+    )
+    sys_no_repeat_rules = (
+        "【硬规则：承接与防重复（对替换/追加均适用）】\n"
+        "- 如果提供了 <PREVIOUS_CHAPTER_ENDING>：必须承接其最后的动作/情绪/悬念继续写，不要另起炉灶。\n"
+        "- 禁止复述上一章已发生内容（尤其开头大段回顾/铺垫）。\n"
+        "- 禁止用“回顾式段落”凑字数。\n"
+        "- 禁止任何元话语：不要说自己在续写/替换/根据提示写作，也不要解释规则。\n"
+    )
+
+    sys_current_draft_tail = (
+        "{% if current_draft_tail %}<CURRENT_DRAFT_TAIL>\n{{current_draft_tail}}\n</CURRENT_DRAFT_TAIL>\n{% endif %}"
+    )
+    sys_append_rules = (
+        "{% if mode == 'append' %}"
+        "【追加模式规则】\n"
+        "- 你只输出需要追加到正文末尾的新增片段；不要重写整章，不要复述已写内容。\n"
+        "- 必须从 <CURRENT_DRAFT_TAIL> 之后自然续写，保持语气/时态/视角连续。\n"
+        "- 不要重复章节号/章节标题。\n"
+        "{% endif %}"
+    )
+
+    sys_smart_recent_summaries = (
+        "{% if smart_context_recent_summaries %}<SMART_CONTEXT_RECENT_SUMMARIES>\n"
+        "{{smart_context_recent_summaries}}\n"
+        "</SMART_CONTEXT_RECENT_SUMMARIES>\n"
+        "{% endif %}"
+    )
+    sys_smart_story_skeleton = (
+        "{% if smart_context_story_skeleton %}<SMART_CONTEXT_STORY_SKELETON>\n"
+        "{{smart_context_story_skeleton}}\n"
+        "</SMART_CONTEXT_STORY_SKELETON>\n"
+        "{% endif %}"
+    )
+    sys_smart_recent_full = (
+        "{% if smart_context_recent_full %}<SMART_CONTEXT_RECENT_FULL>\n"
+        "{{smart_context_recent_full}}\n"
+        "</SMART_CONTEXT_RECENT_FULL>\n"
+        "{% endif %}"
+    )
 
     user_instruction = (
         "<USER_INSTRUCTION>\n"
@@ -516,6 +560,140 @@ def ensure_default_chapter_preset(db: Session, *, project_id: str, activate: boo
         "{% if requirements %}<REQUIREMENTS>\n{{requirements}}\n</REQUIREMENTS>\n{% endif %}"
         "{% if target_word_count %}<TARGET_WORD_COUNT>{{target_word_count}}</TARGET_WORD_COUNT>\n{% endif %}"
     )
+
+    upgrade_blocks = [
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.previous_chapter_ending",
+            name="素材：上一章结尾（可选，可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_prev_ending,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=105,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "important", "maxTokens": 1400}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.no_repeat_rules",
+            name="规则：承接与防重复（硬规则）",
+            role="system",
+            enabled=True,
+            template=sys_no_repeat_rules,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=108,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=budget_must,
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.current_draft_tail",
+            name="素材：当前草稿尾部（追加模式锚点，可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_current_draft_tail,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=112,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "important", "maxTokens": 1400}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.append_rules",
+            name="规则：追加模式（硬规则）",
+            role="system",
+            enabled=True,
+            template=sys_append_rules,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=115,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=budget_must,
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.smart_context.recent_summaries",
+            name="素材：智能上下文·最近摘要（可选，可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_smart_recent_summaries,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=118,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 1800}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.smart_context.story_skeleton",
+            name="素材：智能上下文·故事骨架（可选，可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_smart_story_skeleton,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=120,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 1600}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.smart_context.recent_full",
+            name="素材：智能上下文·最近全文节选（可选，可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_smart_recent_full,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=122,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 2200}, ensure_ascii=False),
+            cache_json=None,
+        ),
+    ]
+
+    if not created:
+        existing_identifiers = set(
+            db.execute(select(PromptBlock.identifier).where(PromptBlock.preset_id == preset.id)).scalars().all()
+        )
+        to_add = [b for b in upgrade_blocks if b.identifier not in existing_identifiers]
+        if to_add:
+            db.add_all(to_add)
+        if to_add or active_for_changed:
+            db.commit()
+            db.refresh(preset)
+        return preset
 
     blocks = [
         PromptBlock(
@@ -688,6 +866,7 @@ def ensure_default_chapter_preset(db: Session, *, project_id: str, activate: boo
             budget_json=json.dumps({"priority": "must", "maxTokens": 1800}, ensure_ascii=False),
             cache_json=None,
         ),
+        *upgrade_blocks,
         PromptBlock(
             id=new_id(),
             preset_id=preset.id,
@@ -753,6 +932,589 @@ def ensure_default_chapter_preset(db: Session, *, project_id: str, activate: boo
     return preset
 
 
+def ensure_default_chapter_analyze_preset(db: Session, *, project_id: str, activate: bool = False) -> PromptPreset:
+    preset = (
+        db.execute(
+            select(PromptPreset).where(
+                PromptPreset.project_id == project_id,
+                PromptPreset.name == DEFAULT_CHAPTER_ANALYZE_PRESET_NAME,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if preset is not None:
+        if activate:
+            active_for = parse_json_list(preset.active_for_json)
+            merged = list(dict.fromkeys([*active_for, "chapter_analyze"]))
+            if merged != active_for:
+                preset.active_for_json = json.dumps(merged, ensure_ascii=False)
+                db.commit()
+                db.refresh(preset)
+        return preset
+
+    preset = PromptPreset(
+        id=new_id(),
+        project_id=project_id,
+        name=DEFAULT_CHAPTER_ANALYZE_PRESET_NAME,
+        scope="project",
+        version=1,
+        active_for_json=json.dumps(["chapter_analyze"], ensure_ascii=False) if activate else json.dumps([], ensure_ascii=False),
+    )
+    db.add(preset)
+    db.flush()
+
+    triggers_json = json.dumps(["chapter_analyze"], ensure_ascii=False)
+    budget_must = json.dumps({"priority": "must"}, ensure_ascii=False)
+    budget_important = json.dumps({"priority": "important"}, ensure_ascii=False)
+
+    sys_role = (
+        "你是一名小说章节分析师/责任编辑。\n"
+        "你将收到“当前章节”的草稿与参考资料，你的任务是输出结构化分析，帮助作者控制剧情质量与伏笔回收。\n\n"
+        "规则：\n"
+        "- 只基于提供的内容分析，不要虚构未出现的情节\n"
+        "- excerpt 尽量从 <CHAPTER_CONTENT> 中原文摘取（10~60 字，用于定位）；找不到则留空\n"
+        "- 不要输出任何元话语/解释\n"
+    )
+
+    sys_contract = (
+        "【输出格式契约：必须严格遵守】\n"
+        "你必须只输出一个 JSON 对象；不能输出任何额外文字；不要 Markdown，不要代码块。\n"
+        "JSON Schema：\n"
+        "{\n"
+        '  \"chapter_summary\": string,\n'
+        '  \"hooks\": [{\"excerpt\": string, \"note\": string}],\n'
+        '  \"foreshadows\": [{\"excerpt\": string, \"note\": string}],\n'
+        '  \"plot_points\": [{\"beat\": string, \"excerpt\": string}],\n'
+        '  \"suggestions\": [{\"title\": string, \"excerpt\": string, \"issue\": string, \"recommendation\": string, \"priority\": string}],\n'
+        '  \"overall_notes\": string\n'
+        "}\n"
+    )
+
+    sys_project_meta = (
+        "<PROJECT>\n"
+        "{{project_name}} / {{genre}} / {{logline}}\n"
+        "</PROJECT>\n"
+    )
+    sys_style = "{% if style_guide %}<STYLE_GUIDE>\n{{style_guide}}\n</STYLE_GUIDE>\n{% endif %}"
+    sys_constraints = "{% if constraints %}<CONSTRAINTS>\n{{constraints}}\n</CONSTRAINTS>\n{% endif %}"
+    sys_world = "{% if world_setting %}<WORLD_SETTING>\n{{world_setting}}\n</WORLD_SETTING>\n{% endif %}"
+    sys_characters = "{% if characters %}<CHARACTERS>\n{{characters}}\n</CHARACTERS>\n{% endif %}"
+    sys_outline = "{% if outline %}<OUTLINE>\n{{outline}}\n</OUTLINE>\n{% endif %}"
+
+    sys_smart_recent_summaries = (
+        "{% if smart_context_recent_summaries %}<SMART_CONTEXT_RECENT_SUMMARIES>\n"
+        "{{smart_context_recent_summaries}}\n"
+        "</SMART_CONTEXT_RECENT_SUMMARIES>\n"
+        "{% endif %}"
+    )
+    sys_smart_story_skeleton = (
+        "{% if smart_context_story_skeleton %}<SMART_CONTEXT_STORY_SKELETON>\n"
+        "{{smart_context_story_skeleton}}\n"
+        "</SMART_CONTEXT_STORY_SKELETON>\n"
+        "{% endif %}"
+    )
+    sys_smart_recent_full = (
+        "{% if smart_context_recent_full %}<SMART_CONTEXT_RECENT_FULL>\n"
+        "{{smart_context_recent_full}}\n"
+        "</SMART_CONTEXT_RECENT_FULL>\n"
+        "{% endif %}"
+    )
+
+    user_tpl = (
+        "<CHAPTER_INFO>\n"
+        "第{{chapter_number}}章 {{chapter_title}}\n"
+        "{% if chapter_plan %}\n本章要点：{{chapter_plan}}\n{% endif %}"
+        "{% if chapter_summary %}\n本章摘要：{{chapter_summary}}\n{% endif %}"
+        "</CHAPTER_INFO>\n\n"
+        "{% if instruction %}<FOCUS>\n{{instruction}}\n</FOCUS>\n\n{% endif %}"
+        "<CHAPTER_CONTENT>\n"
+        "{{chapter_content_md}}\n"
+        "</CHAPTER_CONTENT>\n"
+    )
+
+    blocks = [
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.chapter_analyze.role",
+            name="章节分析：角色与原则",
+            role="system",
+            enabled=True,
+            template=sys_role,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=10,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=budget_must,
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.chapter_analyze.contract.json",
+            name="章节分析：输出契约（JSON）",
+            role="system",
+            enabled=True,
+            template=sys_contract,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=20,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=budget_must,
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.project.meta",
+            name="素材：项目元信息",
+            role="system",
+            enabled=True,
+            template=sys_project_meta,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=30,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=budget_important,
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.project.style_guide",
+            name="素材：风格指南（可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_style,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=40,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 900}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.project.constraints",
+            name="素材：写作约束（可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_constraints,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=42,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 900}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.project.world_setting",
+            name="素材：世界观（可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_world,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=45,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 1600}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.project.characters",
+            name="素材：角色卡（可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_characters,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=48,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 2200}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.outline",
+            name="素材：大纲（可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_outline,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=50,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 2600}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.smart_context.recent_summaries",
+            name="素材：智能上下文·最近摘要（可选，可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_smart_recent_summaries,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=60,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 1800}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.smart_context.story_skeleton",
+            name="素材：智能上下文·故事骨架（可选，可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_smart_story_skeleton,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=62,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 1600}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.smart_context.recent_full",
+            name="素材：智能上下文·最近全文节选（可选，可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_smart_recent_full,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=64,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 2200}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="user.chapter_analyze.input",
+            name="用户：章节草稿与分析重点",
+            role="user",
+            enabled=True,
+            template=user_tpl,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=200,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "must", "maxTokens": 9000}, ensure_ascii=False),
+            cache_json=None,
+        ),
+    ]
+
+    db.add_all(blocks)
+    db.commit()
+    db.refresh(preset)
+    return preset
+
+
+def ensure_default_chapter_rewrite_preset(db: Session, *, project_id: str, activate: bool = False) -> PromptPreset:
+    preset = (
+        db.execute(
+            select(PromptPreset).where(
+                PromptPreset.project_id == project_id,
+                PromptPreset.name == DEFAULT_CHAPTER_REWRITE_PRESET_NAME,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if preset is not None:
+        if activate:
+            active_for = parse_json_list(preset.active_for_json)
+            merged = list(dict.fromkeys([*active_for, "chapter_rewrite"]))
+            if merged != active_for:
+                preset.active_for_json = json.dumps(merged, ensure_ascii=False)
+                db.commit()
+                db.refresh(preset)
+        return preset
+
+    preset = PromptPreset(
+        id=new_id(),
+        project_id=project_id,
+        name=DEFAULT_CHAPTER_REWRITE_PRESET_NAME,
+        scope="project",
+        version=1,
+        active_for_json=json.dumps(["chapter_rewrite"], ensure_ascii=False) if activate else json.dumps([], ensure_ascii=False),
+    )
+    db.add(preset)
+    db.flush()
+
+    triggers_json = json.dumps(["chapter_rewrite"], ensure_ascii=False)
+    budget_must = json.dumps({"priority": "must"}, ensure_ascii=False)
+    budget_important = json.dumps({"priority": "important"}, ensure_ascii=False)
+
+    sys_role = (
+        "你是小说章节重写助手。\n"
+        "你将收到：章节原文（RAW_CONTENT）与分析建议（ANALYSIS_JSON）。\n"
+        "你的任务：在不违背设定/人设/因果的前提下，按建议重写整段正文，使其更自然、更有节奏、更少重复。\n\n"
+        "硬规则：\n"
+        "- 不要改变关键剧情事实（除非建议明确要求修正矛盾）\n"
+        "- 不要新增“元话语”（如：作为AI、我将、下面开始）\n"
+        "- 不要输出标题\n\n"
+        "输出要求：\n"
+        "- 你必须只输出一个 <rewrite>...</rewrite> 标签块，标签外禁止任何文字\n"
+        "- <rewrite> 内只包含重写后的正文（Markdown）\n"
+    )
+
+    sys_project_meta = (
+        "<PROJECT>\n"
+        "{{project_name}} / {{genre}} / {{logline}}\n"
+        "</PROJECT>\n"
+    )
+    sys_style = "{% if style_guide %}<STYLE_GUIDE>\n{{style_guide}}\n</STYLE_GUIDE>\n{% endif %}"
+    sys_constraints = "{% if constraints %}<CONSTRAINTS>\n{{constraints}}\n</CONSTRAINTS>\n{% endif %}"
+    sys_characters = "{% if characters %}<CHARACTERS>\n{{characters}}\n</CHARACTERS>\n{% endif %}"
+    sys_outline = "{% if outline %}<OUTLINE>\n{{outline}}\n</OUTLINE>\n{% endif %}"
+
+    sys_smart_recent_summaries = (
+        "{% if smart_context_recent_summaries %}<SMART_CONTEXT_RECENT_SUMMARIES>\n"
+        "{{smart_context_recent_summaries}}\n"
+        "</SMART_CONTEXT_RECENT_SUMMARIES>\n"
+        "{% endif %}"
+    )
+    sys_smart_story_skeleton = (
+        "{% if smart_context_story_skeleton %}<SMART_CONTEXT_STORY_SKELETON>\n"
+        "{{smart_context_story_skeleton}}\n"
+        "</SMART_CONTEXT_STORY_SKELETON>\n"
+        "{% endif %}"
+    )
+    sys_smart_recent_full = (
+        "{% if smart_context_recent_full %}<SMART_CONTEXT_RECENT_FULL>\n"
+        "{{smart_context_recent_full}}\n"
+        "</SMART_CONTEXT_RECENT_FULL>\n"
+        "{% endif %}"
+    )
+
+    user_tpl = (
+        "<CHAPTER_INFO>\n"
+        "第{{chapter_number}}章 {{chapter_title}}\n"
+        "{% if chapter_plan %}\n本章要点：{{chapter_plan}}\n{% endif %}"
+        "</CHAPTER_INFO>\n\n"
+        "{% if instruction %}<INSTRUCTION>\n{{instruction}}\n</INSTRUCTION>\n\n{% endif %}"
+        "{% if analysis_json %}<ANALYSIS_JSON>\n{{analysis_json}}\n</ANALYSIS_JSON>\n\n{% endif %}"
+        "<RAW_CONTENT>\n"
+        "{{chapter_content_md}}\n"
+        "</RAW_CONTENT>\n"
+    )
+
+    blocks = [
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.chapter_rewrite.role",
+            name="章节重写：角色与规则",
+            role="system",
+            enabled=True,
+            template=sys_role,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=10,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=budget_must,
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.project.meta",
+            name="素材：项目元信息",
+            role="system",
+            enabled=True,
+            template=sys_project_meta,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=20,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=budget_important,
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.project.style_guide",
+            name="素材：风格指南（可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_style,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=30,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "important", "maxTokens": 1200}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.project.constraints",
+            name="素材：写作约束（可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_constraints,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=32,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "important", "maxTokens": 1200}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.project.characters",
+            name="素材：角色卡（可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_characters,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=40,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 2200}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.outline",
+            name="素材：大纲（可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_outline,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=50,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 2600}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.smart_context.recent_summaries",
+            name="素材：智能上下文·最近摘要（可选，可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_smart_recent_summaries,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=60,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 1800}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.smart_context.story_skeleton",
+            name="素材：智能上下文·故事骨架（可选，可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_smart_story_skeleton,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=62,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 1600}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="sys.story.smart_context.recent_full",
+            name="素材：智能上下文·最近全文节选（可选，可裁剪）",
+            role="system",
+            enabled=True,
+            template=sys_smart_recent_full,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=64,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "optional", "maxTokens": 2200}, ensure_ascii=False),
+            cache_json=None,
+        ),
+        PromptBlock(
+            id=new_id(),
+            preset_id=preset.id,
+            identifier="user.chapter_rewrite.input",
+            name="用户：分析建议与原文",
+            role="user",
+            enabled=True,
+            template=user_tpl,
+            marker_key=None,
+            injection_position="relative",
+            injection_depth=None,
+            injection_order=200,
+            triggers_json=triggers_json,
+            forbid_overrides=False,
+            budget_json=json.dumps({"priority": "must", "maxTokens": 9000}, ensure_ascii=False),
+            cache_json=None,
+        ),
+    ]
+
+    db.add_all(blocks)
+    db.commit()
+    db.refresh(preset)
+    return preset
+
+
 def get_active_preset_for_task(db: Session, *, project_id: str, task: str, allow_autocreate: bool = True) -> PromptPreset:
     presets = (
         db.execute(select(PromptPreset).where(PromptPreset.project_id == project_id).order_by(PromptPreset.updated_at.desc()))
@@ -781,6 +1543,10 @@ def get_active_preset_for_task(db: Session, *, project_id: str, task: str, allow
             return ensure_default_outline_preset(db, project_id=project_id, activate=True)
         if task == "chapter_generate":
             return ensure_default_chapter_preset(db, project_id=project_id, activate=True)
+        if task == "chapter_analyze":
+            return ensure_default_chapter_analyze_preset(db, project_id=project_id, activate=True)
+        if task == "chapter_rewrite":
+            return ensure_default_chapter_rewrite_preset(db, project_id=project_id, activate=True)
 
     if not allow_autocreate:
         raise AppError.validation(message=f"当前项目未为 task={task} 配置可用 PromptPreset，请先在 Prompt Studio 初始化/激活")

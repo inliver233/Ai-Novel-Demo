@@ -31,6 +31,8 @@ from app.services.prompt_presets import (
     ensure_default_post_edit_preset,
     ensure_default_outline_preset,
     ensure_default_chapter_preset,
+    ensure_default_chapter_analyze_preset,
+    ensure_default_chapter_rewrite_preset,
     parse_json_dict,
     parse_json_list,
     render_preset_for_task,
@@ -85,6 +87,8 @@ def list_prompt_presets(request: Request, db: DbDep, user_id: UserIdDep, project
     # Recommended presets for learning (not auto-active for existing projects).
     ensure_default_outline_preset(db, project_id=project_id, activate=False)
     ensure_default_chapter_preset(db, project_id=project_id, activate=False)
+    ensure_default_chapter_analyze_preset(db, project_id=project_id, activate=False)
+    ensure_default_chapter_rewrite_preset(db, project_id=project_id, activate=False)
 
     presets = (
         db.execute(select(PromptPreset).where(PromptPreset.project_id == project_id).order_by(PromptPreset.updated_at.desc()))
@@ -398,7 +402,7 @@ def preview_prompt(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
     request_id = request.state.request_id
     require_owned_project(db, project_id=project_id, user_id=user_id)
 
-    allowed_tasks = {"outline_generate", "chapter_generate", "plan_chapter", "post_edit"}
+    allowed_tasks = {"outline_generate", "chapter_generate", "plan_chapter", "post_edit", "chapter_analyze", "chapter_rewrite"}
     if body.task not in allowed_tasks:
         raise AppError.validation(message="不支持的 task")
 

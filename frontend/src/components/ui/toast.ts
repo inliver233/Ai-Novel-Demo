@@ -1,8 +1,8 @@
 import { createContext, useContext } from "react";
 
 export type ToastApi = {
-  toastSuccess: (message: string, requestId?: string) => void;
-  toastError: (message: string, requestId?: string) => void;
+  toastSuccess: (message: string, requestId?: string, action?: { label: string; onClick: () => void | Promise<void> }) => void;
+  toastError: (message: string, requestId?: string, action?: { label: string; onClick: () => void | Promise<void> }) => void;
 };
 
 export const ToastContext = createContext<ToastApi | null>(null);

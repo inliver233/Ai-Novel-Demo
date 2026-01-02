@@ -59,11 +59,33 @@ function guessPreviewValues(args: {
   const chapterNumber = 1;
   const chapterTitle = "第一章";
   const chapterPlan = "（示例要点）";
+  const chapterSummary = "（示例摘要）";
   const instruction = "（示例指令）";
   const previousChapter = "（示例上一章摘要）";
   const targetWordCount = 2500;
   const rawContent = "（示例已生成正文，用于 post_edit 预览）";
+  const chapterContentMd = "（示例章节正文，用于 chapter_analyze / chapter_rewrite）";
   const planText = "（示例规划，可用于 plan_first 注入）";
+  const analysisJson = JSON.stringify(
+    {
+      chapter_summary: "（示例分析摘要）",
+      hooks: [{ excerpt: "（示例 excerpt）", note: "（示例 hook 备注）" }],
+      foreshadows: [],
+      plot_points: [{ beat: "（示例情节点）", excerpt: "（示例 excerpt）" }],
+      suggestions: [
+        {
+          title: "（示例建议）",
+          excerpt: "（示例 excerpt）",
+          issue: "（示例问题）",
+          recommendation: "（示例建议）",
+          priority: "medium",
+        },
+      ],
+      overall_notes: "",
+    },
+    null,
+    2,
+  );
   const requirementsObj = { chapter_count: 12 };
 
   const values: Record<string, unknown> = {
@@ -78,12 +100,18 @@ function guessPreviewValues(args: {
     chapter_number: String(chapterNumber),
     chapter_title: chapterTitle,
     chapter_plan: chapterPlan,
+    chapter_summary: chapterSummary,
+    chapter_content_md: chapterContentMd,
+    analysis_json: analysisJson,
     requirements: JSON.stringify(requirementsObj, null, 2),
     instruction,
     previous_chapter: previousChapter,
     target_word_count: String(targetWordCount),
     raw_content: rawContent,
     story_plan: planText,
+    smart_context_recent_summaries: "（示例 smart_context_recent_summaries）",
+    smart_context_recent_full: "（示例 smart_context_recent_full）",
+    smart_context_story_skeleton: "（示例 smart_context_story_skeleton）",
   };
 
   values.project = {
@@ -100,9 +128,15 @@ function guessPreviewValues(args: {
     chapter_number: chapterNumber,
     chapter_title: chapterTitle,
     chapter_plan: chapterPlan,
+    chapter_summary: chapterSummary,
     previous_chapter: previousChapter,
     plan: planText,
     raw_content: rawContent,
+    chapter_content_md: chapterContentMd,
+    analysis_json: analysisJson,
+    smart_context_recent_summaries: "（示例 smart_context_recent_summaries）",
+    smart_context_recent_full: "（示例 smart_context_recent_full）",
+    smart_context_story_skeleton: "（示例 smart_context_story_skeleton）",
   };
   values.user = { instruction, requirements: requirementsObj };
 
@@ -558,6 +592,8 @@ export function PromptStudioPage() {
       { key: "chapter_generate", label: "chapter_generate（章节）" },
       { key: "plan_chapter", label: "plan_chapter（规划，M3）" },
       { key: "post_edit", label: "post_edit（润色，M3）" },
+      { key: "chapter_analyze", label: "chapter_analyze（章节分析，P2）" },
+      { key: "chapter_rewrite", label: "chapter_rewrite（章节重写，P2）" },
     ],
     [],
   );

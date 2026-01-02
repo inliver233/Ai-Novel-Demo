@@ -15,8 +15,10 @@ export type GenerateForm = {
     include_style_guide: boolean;
     include_constraints: boolean;
     include_outline: boolean;
+    include_smart_context: boolean;
+    require_sequential: boolean;
     character_ids: string[];
-    previous_chapter: "none" | "summary" | "content";
+    previous_chapter: "none" | "summary" | "content" | "tail";
   };
 };
 
@@ -35,4 +37,71 @@ export type GenerationRun = {
   output_text?: string | null;
   error?: unknown;
   created_at: string;
+};
+
+export type BatchGenerationTaskStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
+export type BatchGenerationItemStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "skipped";
+
+export type BatchGenerationTask = {
+  id: string;
+  project_id: string;
+  outline_id: string;
+  actor_user_id?: string | null;
+  status: BatchGenerationTaskStatus;
+  total_count: number;
+  completed_count: number;
+  cancel_requested: boolean;
+  error_json?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BatchGenerationTaskItem = {
+  id: string;
+  task_id: string;
+  chapter_id?: string | null;
+  chapter_number: number;
+  status: BatchGenerationItemStatus;
+  generation_run_id?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChapterAnalysisNote = { excerpt?: string; note?: string };
+export type ChapterAnalysisPlotPoint = { beat?: string; excerpt?: string };
+export type ChapterAnalysisSuggestion = {
+  title?: string;
+  excerpt?: string;
+  issue?: string;
+  recommendation?: string;
+  priority?: string;
+};
+
+export type ChapterAnalysis = {
+  chapter_summary?: string;
+  hooks?: ChapterAnalysisNote[];
+  foreshadows?: ChapterAnalysisNote[];
+  plot_points?: ChapterAnalysisPlotPoint[];
+  suggestions?: ChapterAnalysisSuggestion[];
+  overall_notes?: string;
+};
+
+export type ChapterAnalyzeResult = {
+  analysis: ChapterAnalysis;
+  raw_output?: string;
+  raw_json?: string;
+  warnings?: string[];
+  parse_error?: { code?: string; message?: string; hint?: string };
+  finish_reason?: string;
+  generation_run_id: string;
+};
+
+export type ChapterRewriteResult = {
+  content_md: string;
+  raw_output?: string;
+  warnings?: string[];
+  parse_error?: { code?: string; message?: string; hint?: string };
+  finish_reason?: string;
+  generation_run_id: string;
 };

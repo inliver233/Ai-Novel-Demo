@@ -30,6 +30,7 @@ class RecordedLlmResult:
     finish_reason: str | None
     latency_ms: int
     dropped_params: list[str]
+    run_id: str
 
 
 def _parse_json_list(value: str | None) -> list[str]:
@@ -160,7 +161,7 @@ def call_llm_and_record(
             },
         )
 
-        write_generation_run(
+        run_id = write_generation_run(
             request_id=request_id,
             actor_user_id=actor_user_id,
             project_id=project_id,
@@ -181,6 +182,7 @@ def call_llm_and_record(
             finish_reason=result.finish_reason,
             latency_ms=result.latency_ms,
             dropped_params=result.dropped_params,
+            run_id=run_id,
         )
     except AppError as exc:
         prompt_chars = len(prompt_system) + len(prompt_user)

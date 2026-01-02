@@ -28,6 +28,41 @@ class OutlineSchema(BaseModel):
     chapters: list[OutlineChapterSchema] = Field(default_factory=list)
 
 
+class ChapterAnalysisNoteSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    excerpt: str = ""
+    note: str = ""
+
+
+class ChapterAnalysisPlotPointSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    beat: str = ""
+    excerpt: str = ""
+
+
+class ChapterAnalysisSuggestionSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    title: str = ""
+    excerpt: str = ""
+    issue: str = ""
+    recommendation: str = ""
+    priority: str = ""
+
+
+class ChapterAnalysisSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    chapter_summary: str = ""
+    hooks: list[ChapterAnalysisNoteSchema] = Field(default_factory=list)
+    foreshadows: list[ChapterAnalysisNoteSchema] = Field(default_factory=list)
+    plot_points: list[ChapterAnalysisPlotPointSchema] = Field(default_factory=list)
+    suggestions: list[ChapterAnalysisSuggestionSchema] = Field(default_factory=list)
+    overall_notes: str = ""
+
+
 def extract_json_value(text: str) -> tuple[Any | None, str | None]:
     if not text:
         return None, None
@@ -114,6 +149,111 @@ def parse_outline_output(text: str) -> tuple[dict[str, Any], list[str], dict[str
         return data, warnings, parse_error
 
     data = {"outline_md": outline_md, "chapters": chapters_out, "raw_output": text}
+    if raw_json:
+        data["raw_json"] = raw_json
+    return data, warnings, None
+
+
+def _coerce_note_list(value: Any) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    if not isinstance(value, list):
+        return out
+    for item in value:
+        if isinstance(item, str):
+            text = item.strip()
+            if not text:
+                continue
+            out.append({"excerpt": "", "note": text})
+            continue
+        if not isinstance(item, dict):
+            continue
+        excerpt = str(item.get("excerpt") or item.get("quote") or "").strip()
+        note = str(item.get("note") or item.get("text") or item.get("desc") or "").strip()
+        if not excerpt and not note:
+            continue
+        out.append({"excerpt": excerpt, "note": note})
+    return out
+
+
+def _coerce_plot_points(value: Any) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    if not isinstance(value, list):
+        return out
+    for item in value:
+        if isinstance(item, str):
+            text = item.strip()
+            if not text:
+                continue
+            out.append({"beat": text, "excerpt": ""})
+            continue
+        if not isinstance(item, dict):
+            continue
+        beat = str(item.get("beat") or item.get("text") or item.get("desc") or "").strip()
+        excerpt = str(item.get("excerpt") or item.get("quote") or "").strip()
+        if not beat and not excerpt:
+            continue
+        out.append({"beat": beat, "excerpt": excerpt})
+    return out
+
+
+def _coerce_suggestions(value: Any) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    if not isinstance(value, list):
+        return out
+    for item in value:
+        if isinstance(item, str):
+            text = item.strip()
+            if not text:
+                continue
+            out.append({"title": "", "excerpt": "", "issue": text, "recommendation": "", "priority": ""})
+            continue
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        excerpt = str(item.get("excerpt") or item.get("quote") or "").strip()
+        issue = str(item.get("issue") or item.get("problem") or item.get("note") or "").strip()
+        recommendation = str(item.get("recommendation") or item.get("action") or item.get("fix") or "").strip()
+        priority = str(item.get("priority") or item.get("severity") or "").strip()
+        if not title and not excerpt and not issue and not recommendation:
+            continue
+        out.append(
+            {
+                "title": title,
+                "excerpt": excerpt,
+                "issue": issue,
+                "recommendation": recommendation,
+                "priority": priority,
+            }
+        )
+    return out
+
+
+def parse_chapter_analysis_output(text: str) -> tuple[dict[str, Any], list[str], dict[str, Any] | None]:
+    warnings: list[str] = []
+    value, raw_json = extract_json_value(text)
+    if not isinstance(value, dict):
+        parse_error: dict[str, Any] = {"code": "ANALYSIS_PARSE_ERROR", "message": "无法从模型输出解析章节分析 JSON"}
+        if likely_truncated_json(text):
+            parse_error["hint"] = "输出疑似被截断（JSON 未闭合），可尝试增大 max_tokens 或减少分析维度/输出长度"
+        data = {"analysis": {}, "raw_output": text}
+        return data, warnings, parse_error
+
+    analysis: dict[str, Any]
+    try:
+        parsed = ChapterAnalysisSchema.model_validate(value)
+        analysis = parsed.model_dump()
+    except ValidationError:
+        warnings.append("analysis_json_schema_invalid")
+        analysis = {
+            "chapter_summary": str(value.get("chapter_summary") or value.get("summary") or "").strip(),
+            "hooks": _coerce_note_list(value.get("hooks")),
+            "foreshadows": _coerce_note_list(value.get("foreshadows")),
+            "plot_points": _coerce_plot_points(value.get("plot_points")),
+            "suggestions": _coerce_suggestions(value.get("suggestions")),
+            "overall_notes": str(value.get("overall_notes") or value.get("notes") or "").strip(),
+        }
+
+    data = {"analysis": analysis, "raw_output": text}
     if raw_json:
         data["raw_json"] = raw_json
     return data, warnings, None

@@ -12,6 +12,7 @@ type ToastItem = {
   variant: "success" | "error";
   message: string;
   requestId?: string;
+  action?: { label: string; onClick: () => void | Promise<void> };
 };
 
 export function ToastProvider(props: { children: React.ReactNode }) {
@@ -26,15 +27,16 @@ export function ToastProvider(props: { children: React.ReactNode }) {
     (toast: Omit<ToastItem, "id">) => {
       const id = crypto.randomUUID();
       setItems((prev) => [...prev, { id, ...toast }]);
-      window.setTimeout(() => remove(id), 4500);
+      const ttl = toast.action ? 12000 : 4500;
+      window.setTimeout(() => remove(id), ttl);
     },
     [remove],
   );
 
   const api = useMemo<ToastApi>(
     () => ({
-      toastSuccess: (message, requestId) => push({ variant: "success", message, requestId }),
-      toastError: (message, requestId) => push({ variant: "error", message, requestId }),
+      toastSuccess: (message, requestId, action) => push({ variant: "success", message, requestId, action }),
+      toastError: (message, requestId, action) => push({ variant: "error", message, requestId, action }),
     }),
     [push],
   );
@@ -68,6 +70,23 @@ export function ToastProvider(props: { children: React.ReactNode }) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm text-ink">{t.message}</div>
+                    {t.action ? (
+                      <div className="mt-2">
+                        <button
+                          className="btn btn-secondary w-full"
+                          onClick={async () => {
+                            try {
+                              await t.action?.onClick();
+                            } finally {
+                              remove(t.id);
+                            }
+                          }}
+                          type="button"
+                        >
+                          {t.action.label}
+                        </button>
+                      </div>
+                    ) : null}
                     {t.requestId ? (
                       <div className="mt-1 flex items-center gap-2 text-xs text-subtext">
                         <span className="truncate">request_id: {t.requestId}</span>

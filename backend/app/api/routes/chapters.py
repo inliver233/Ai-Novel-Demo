@@ -7,6 +7,7 @@ import time
 from fastapi import APIRouter, Header, Query, Request
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.api.deps import DbDep, UserIdDep, require_owned_chapter, require_owned_outline, require_owned_project
 from app.core.errors import AppError, ok_payload
@@ -43,6 +44,184 @@ from app.utils.sse_response import (
 
 router = APIRouter()
 logger = logging.getLogger("ainovel")
+
+PREVIOUS_CHAPTER_ENDING_CHARS = 1000
+CURRENT_DRAFT_TAIL_CHARS = 1200
+SMART_CONTEXT_RECENT_SUMMARIES_MAX = 20
+SMART_CONTEXT_RECENT_FULL_MAX = 2
+SMART_CONTEXT_RECENT_FULL_HEAD_CHARS = 1200
+SMART_CONTEXT_RECENT_FULL_TAIL_CHARS = 1200
+SMART_CONTEXT_SKELETON_STRIDE_SMALL = 10
+SMART_CONTEXT_SKELETON_STRIDE_LARGE = 20
+SMART_CONTEXT_SKELETON_LARGE_THRESHOLD = 80
+
+
+def _find_missing_prereq_numbers(
+    db: Session,
+    *,
+    project_id: str,
+    outline_id: str,
+    chapter_number: int,
+) -> list[int]:
+    if chapter_number <= 1:
+        return []
+
+    rows = db.execute(
+        select(Chapter.number, Chapter.content_md, Chapter.summary)
+        .where(
+            Chapter.project_id == project_id,
+            Chapter.outline_id == outline_id,
+            Chapter.number < chapter_number,
+        )
+        .order_by(Chapter.number.asc())
+    ).all()
+
+    existing: dict[int, tuple[str | None, str | None]] = {int(r[0]): (r[1], r[2]) for r in rows}
+    missing: list[int] = []
+    for n in range(1, int(chapter_number)):
+        content_md, summary = existing.get(n, (None, None))
+        if not ((content_md or "").strip() or (summary or "").strip()):
+            missing.append(n)
+    return missing
+
+
+def _load_previous_chapter_context(
+    db: Session,
+    *,
+    project_id: str,
+    outline_id: str,
+    chapter_number: int,
+    previous_chapter: str | None,
+) -> tuple[str, str]:
+    mode = previous_chapter or "none"
+    if mode == "none" or chapter_number <= 1:
+        return "", ""
+
+    prev = (
+        db.execute(
+            select(Chapter).where(
+                Chapter.project_id == project_id,
+                Chapter.outline_id == outline_id,
+                Chapter.number == (chapter_number - 1),
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if prev is None:
+        return "", ""
+
+    if mode == "summary":
+        return (prev.summary or "").strip(), ""
+    if mode == "content":
+        return (prev.content_md or "").strip(), ""
+    if mode == "tail":
+        raw = (prev.content_md or "").strip()
+        if not raw:
+            return "", ""
+        tail = raw[-PREVIOUS_CHAPTER_ENDING_CHARS:].lstrip()
+        return "", tail
+
+    return "", ""
+
+
+def _resolve_current_draft_tail(*, chapter: Chapter, request_tail: str | None) -> str:
+    if request_tail is not None and request_tail.strip():
+        return request_tail.strip()[-CURRENT_DRAFT_TAIL_CHARS:].lstrip()
+    raw = (chapter.content_md or "").strip()
+    if not raw:
+        return ""
+    return raw[-CURRENT_DRAFT_TAIL_CHARS:].lstrip()
+
+
+def _build_smart_context(
+    db: Session,
+    *,
+    project_id: str,
+    outline_id: str,
+    chapter_number: int,
+) -> tuple[str, str, str]:
+    if chapter_number <= 1:
+        return "", "", ""
+
+    summary_rows = db.execute(
+        select(Chapter.number, Chapter.title, Chapter.summary)
+        .where(
+            Chapter.project_id == project_id,
+            Chapter.outline_id == outline_id,
+            Chapter.number < chapter_number,
+        )
+        .order_by(Chapter.number.desc())
+        .limit(SMART_CONTEXT_RECENT_SUMMARIES_MAX)
+    ).all()
+    summary_rows.reverse()
+    recent_summary_lines: list[str] = []
+    for num, title, summary in summary_rows:
+        text = (summary or "").strip()
+        if not text:
+            continue
+        title_str = (title or "").strip()
+        head = f"第{num}章 {title_str}" if title_str else f"第{num}章"
+        recent_summary_lines.append(f"- {head}：{text}")
+    recent_summaries = "\n".join(recent_summary_lines).strip()
+
+    full_rows = db.execute(
+        select(Chapter.number, Chapter.title, Chapter.content_md)
+        .where(
+            Chapter.project_id == project_id,
+            Chapter.outline_id == outline_id,
+            Chapter.number < chapter_number,
+        )
+        .order_by(Chapter.number.desc())
+        .limit(SMART_CONTEXT_RECENT_FULL_MAX)
+    ).all()
+    full_rows.reverse()
+    recent_full_parts: list[str] = []
+    for num, title, content_md in full_rows:
+        raw = (content_md or "").strip()
+        if not raw:
+            continue
+        title_str = (title or "").strip()
+        head = f"第{num}章 {title_str}" if title_str else f"第{num}章"
+        if len(raw) <= SMART_CONTEXT_RECENT_FULL_HEAD_CHARS + SMART_CONTEXT_RECENT_FULL_TAIL_CHARS + 80:
+            snippet = raw
+        else:
+            snippet = (
+                raw[:SMART_CONTEXT_RECENT_FULL_HEAD_CHARS].rstrip()
+                + "\n...\n"
+                + raw[-SMART_CONTEXT_RECENT_FULL_TAIL_CHARS :].lstrip()
+            )
+        recent_full_parts.append(f"【{head} 正文节选】\n{snippet}")
+    recent_full = "\n\n".join(recent_full_parts).strip()
+
+    total_prev = max(0, chapter_number - 1)
+    stride = SMART_CONTEXT_SKELETON_STRIDE_LARGE if total_prev >= SMART_CONTEXT_SKELETON_LARGE_THRESHOLD else SMART_CONTEXT_SKELETON_STRIDE_SMALL
+    skeleton_numbers = [n for n in range(1, chapter_number, stride)]
+    if skeleton_numbers and skeleton_numbers[-1] >= chapter_number:
+        skeleton_numbers = [n for n in skeleton_numbers if n < chapter_number]
+
+    skeleton = ""
+    if len(skeleton_numbers) >= 2:
+        skeleton_rows = db.execute(
+            select(Chapter.number, Chapter.title, Chapter.summary, Chapter.plan)
+            .where(
+                Chapter.project_id == project_id,
+                Chapter.outline_id == outline_id,
+                Chapter.number.in_(skeleton_numbers),
+            )
+            .order_by(Chapter.number.asc())
+        ).all()
+        skeleton_lines: list[str] = []
+        for num, title, summary, plan in skeleton_rows:
+            text = (summary or "").strip() or (plan or "").strip()
+            if not text:
+                continue
+            title_str = (title or "").strip()
+            head = f"第{num}章 {title_str}" if title_str else f"第{num}章"
+            skeleton_lines.append(f"- {head}：{text}")
+        skeleton = "\n".join(skeleton_lines).strip()
+
+    return recent_summaries, recent_full, skeleton
 
 
 @router.get("/projects/{project_id}/chapters")
@@ -277,24 +456,17 @@ def plan_chapter(
             )
         characters_text = format_characters(chars)
 
-        prev_text = ""
-        if body.context.previous_chapter and chapter.number > 1:
-            prev = (
-                db.execute(
-                    select(Chapter).where(
-                        Chapter.project_id == project_id,
-                        Chapter.outline_id == chapter.outline_id,
-                        Chapter.number == (chapter.number - 1),
-                    )
-                )
-                .scalars()
-                .first()
-            )
-            if prev is not None:
-                if body.context.previous_chapter == "summary":
-                    prev_text = (prev.summary or "").strip()
-                elif body.context.previous_chapter == "content":
-                    prev_text = (prev.content_md or "").strip()
+        prev_text, prev_ending = _load_previous_chapter_context(
+            db,
+            project_id=project_id,
+            outline_id=chapter.outline_id,
+            chapter_number=chapter.number,
+            previous_chapter=body.context.previous_chapter,
+        )
+
+        current_draft_tail = ""
+        if body.mode == "append":
+            current_draft_tail = _resolve_current_draft_tail(chapter=chapter, request_tail=body.context.current_draft_tail)
 
         values: dict[str, object] = {
             "project_name": project.name or "",
@@ -310,6 +482,7 @@ def plan_chapter(
             "chapter_plan": (chapter.plan or ""),
             "instruction": body.instruction.strip(),
             "previous_chapter": prev_text,
+            "previous_chapter_ending": prev_ending,
         }
         values["project"] = {
             "name": project.name or "",
@@ -326,6 +499,7 @@ def plan_chapter(
             "chapter_title": (chapter.title or ""),
             "chapter_plan": (chapter.plan or ""),
             "previous_chapter": prev_text,
+            "previous_chapter_ending": prev_ending,
         }
         values["user"] = {"instruction": body.instruction.strip()}
 
@@ -405,6 +579,20 @@ def generate_chapter(
     try:
         chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
         project_id = chapter.project_id
+        if body.context.require_sequential:
+            missing_numbers = _find_missing_prereq_numbers(
+                db,
+                project_id=project_id,
+                outline_id=chapter.outline_id,
+                chapter_number=int(chapter.number),
+            )
+            if missing_numbers:
+                raise AppError(
+                    code="CHAPTER_PREREQ_MISSING",
+                    message=f"缺少前置章节内容：第 {', '.join(str(n) for n in missing_numbers)} 章",
+                    status_code=400,
+                    details={"missing_numbers": missing_numbers},
+                )
         project = db.get(Project, project_id)
         if project is None:
             raise AppError.not_found()
@@ -448,24 +636,28 @@ def generate_chapter(
             )
         characters_text = format_characters(chars)
 
-        prev_text = ""
-        if body.context.previous_chapter and chapter.number > 1:
-            prev = (
-                db.execute(
-                    select(Chapter).where(
-                        Chapter.project_id == project_id,
-                        Chapter.outline_id == chapter.outline_id,
-                        Chapter.number == (chapter.number - 1),
-                    )
-                )
-                .scalars()
-                .first()
+        prev_text, prev_ending = _load_previous_chapter_context(
+            db,
+            project_id=project_id,
+            outline_id=chapter.outline_id,
+            chapter_number=chapter.number,
+            previous_chapter=body.context.previous_chapter,
+        )
+
+        current_draft_tail = ""
+        if body.mode == "append":
+            current_draft_tail = _resolve_current_draft_tail(chapter=chapter, request_tail=body.context.current_draft_tail)
+
+        smart_recent_summaries = ""
+        smart_recent_full = ""
+        smart_story_skeleton = ""
+        if body.context.include_smart_context:
+            smart_recent_summaries, smart_recent_full, smart_story_skeleton = _build_smart_context(
+                db,
+                project_id=project_id,
+                outline_id=chapter.outline_id,
+                chapter_number=int(chapter.number),
             )
-            if prev is not None:
-                if body.context.previous_chapter == "summary":
-                    prev_text = (prev.summary or "").strip()
-                elif body.context.previous_chapter == "content":
-                    prev_text = (prev.content_md or "").strip()
 
         base_instruction = body.instruction.strip()
         instruction = base_instruction
@@ -480,6 +672,7 @@ def generate_chapter(
         requirements_text = json.dumps(requirements_obj, ensure_ascii=False, indent=2) if requirements_obj else ""
 
         values: dict[str, object] = {
+            "mode": body.mode,
             "project_name": project.name or "",
             "genre": project.genre or "",
             "logline": project.logline or "",
@@ -495,6 +688,11 @@ def generate_chapter(
             "target_word_count": str(body.target_word_count or ""),
             "instruction": instruction,
             "previous_chapter": prev_text,
+            "previous_chapter_ending": prev_ending,
+            "current_draft_tail": current_draft_tail,
+            "smart_context_recent_summaries": smart_recent_summaries,
+            "smart_context_recent_full": smart_recent_full,
+            "smart_context_story_skeleton": smart_story_skeleton,
         }
 
         values["project"] = {
@@ -512,6 +710,12 @@ def generate_chapter(
             "chapter_title": (chapter.title or ""),
             "chapter_plan": (chapter.plan or ""),
             "previous_chapter": prev_text,
+            "previous_chapter_ending": prev_ending,
+            "mode": body.mode,
+            "current_draft_tail": current_draft_tail,
+            "smart_context_recent_summaries": smart_recent_summaries,
+            "smart_context_recent_full": smart_recent_full,
+            "smart_context_story_skeleton": smart_story_skeleton,
         }
         values["user"] = {"instruction": instruction, "requirements": requirements_obj}
         render_values = values
@@ -725,6 +929,23 @@ def generate_chapter_stream(
 ):
     request_id = request.state.request_id
 
+    if body.context.require_sequential:
+        with SessionLocal() as db:
+            chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+            missing_numbers = _find_missing_prereq_numbers(
+                db,
+                project_id=chapter.project_id,
+                outline_id=chapter.outline_id,
+                chapter_number=int(chapter.number),
+            )
+            if missing_numbers:
+                raise AppError(
+                    code="CHAPTER_PREREQ_MISSING",
+                    message=f"缺少前置章节内容：第 {', '.join(str(n) for n in missing_numbers)} 章",
+                    status_code=400,
+                    details={"missing_numbers": missing_numbers},
+                )
+
     def event_generator():
         yield sse_progress(message="准备生成...", progress=0)
 
@@ -795,24 +1016,28 @@ def generate_chapter_stream(
                 )
             characters_text = format_characters(chars)
 
-            prev_text = ""
-            if body.context.previous_chapter and chapter.number > 1:
-                prev = (
-                    db.execute(
-                        select(Chapter).where(
-                            Chapter.project_id == project_id,
-                            Chapter.outline_id == chapter.outline_id,
-                            Chapter.number == (chapter.number - 1),
-                        )
-                    )
-                    .scalars()
-                    .first()
+            prev_text, prev_ending = _load_previous_chapter_context(
+                db,
+                project_id=project_id,
+                outline_id=chapter.outline_id,
+                chapter_number=chapter.number,
+                previous_chapter=body.context.previous_chapter,
+            )
+
+            current_draft_tail = ""
+            if body.mode == "append":
+                current_draft_tail = _resolve_current_draft_tail(chapter=chapter, request_tail=body.context.current_draft_tail)
+
+            smart_recent_summaries = ""
+            smart_recent_full = ""
+            smart_story_skeleton = ""
+            if body.context.include_smart_context:
+                smart_recent_summaries, smart_recent_full, smart_story_skeleton = _build_smart_context(
+                    db,
+                    project_id=project_id,
+                    outline_id=chapter.outline_id,
+                    chapter_number=int(chapter.number),
                 )
-                if prev is not None:
-                    if body.context.previous_chapter == "summary":
-                        prev_text = (prev.summary or "").strip()
-                    elif body.context.previous_chapter == "content":
-                        prev_text = (prev.content_md or "").strip()
 
             base_instruction = body.instruction.strip()
             instruction = base_instruction
@@ -827,6 +1052,7 @@ def generate_chapter_stream(
             requirements_text = json.dumps(requirements_obj, ensure_ascii=False, indent=2) if requirements_obj else ""
 
             values: dict[str, object] = {
+                "mode": body.mode,
                 "project_name": project.name or "",
                 "genre": project.genre or "",
                 "logline": project.logline or "",
@@ -842,6 +1068,11 @@ def generate_chapter_stream(
                 "target_word_count": str(body.target_word_count or ""),
                 "instruction": instruction,
                 "previous_chapter": prev_text,
+                "previous_chapter_ending": prev_ending,
+                "current_draft_tail": current_draft_tail,
+                "smart_context_recent_summaries": smart_recent_summaries,
+                "smart_context_recent_full": smart_recent_full,
+                "smart_context_story_skeleton": smart_story_skeleton,
             }
 
             values["project"] = {
@@ -859,6 +1090,12 @@ def generate_chapter_stream(
                 "chapter_title": (chapter.title or ""),
                 "chapter_plan": (chapter.plan or ""),
                 "previous_chapter": prev_text,
+                "previous_chapter_ending": prev_ending,
+                "mode": body.mode,
+                "current_draft_tail": current_draft_tail,
+                "smart_context_recent_summaries": smart_recent_summaries,
+                "smart_context_recent_full": smart_recent_full,
+                "smart_context_story_skeleton": smart_story_skeleton,
             }
             values["user"] = {"instruction": instruction, "requirements": requirements_obj}
             render_values = values

@@ -197,6 +197,32 @@ export function AiGenerateDrawer(props: Props) {
             />
             大纲
           </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={props.genForm.context.include_smart_context}
+              disabled={props.generating}
+              name="context_include_smart_context"
+              onChange={(e) =>
+                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_smart_context: e.target.checked } }))
+              }
+              type="checkbox"
+            />
+            智能上下文
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={props.genForm.context.require_sequential}
+              disabled={props.generating}
+              name="context_require_sequential"
+              onChange={(e) =>
+                props.setGenForm((v) => ({ ...v, context: { ...v.context, require_sequential: e.target.checked } }))
+              }
+              type="checkbox"
+            />
+            严格顺序
+          </label>
         </div>
 
         <label className="grid gap-1">
@@ -217,9 +243,11 @@ export function AiGenerateDrawer(props: Props) {
             }
           >
             <option value="none">不注入</option>
+            <option value="tail">结尾（推荐）</option>
             <option value="summary">摘要</option>
             <option value="content">正文</option>
           </select>
+          <div className="text-[11px] text-subtext">结尾更利于强衔接，减少开头复述。</div>
         </label>
 
         <div className="grid gap-2">

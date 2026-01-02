@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { BookOpen, ChevronLeft, Edit3, List } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useNavigate, useParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
@@ -38,21 +38,71 @@ export function PreviewPage() {
   });
 
   const chapters = previewQuery.data?.chapters ?? EMPTY_CHAPTERS;
+  const sortedChapters = useMemo(
+    () => [...chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)),
+    [chapters],
+  );
 
   const effectiveActiveId = useMemo(() => {
-    if (activeId && chapters.some((c) => c.id === activeId)) return activeId;
-    return chapters[0]?.id ?? null;
-  }, [activeId, chapters]);
+    if (activeId && sortedChapters.some((c) => c.id === activeId)) return activeId;
+    return sortedChapters[0]?.id ?? null;
+  }, [activeId, sortedChapters]);
 
-  const activeChapter = useMemo(
-    () => chapters.find((c) => c.id === effectiveActiveId) ?? null,
-    [effectiveActiveId, chapters],
-  );
+  const activeIndex = useMemo(() => {
+    if (!effectiveActiveId) return -1;
+    return sortedChapters.findIndex((c) => c.id === effectiveActiveId);
+  }, [effectiveActiveId, sortedChapters]);
+
+  const activeChapter = useMemo(() => {
+    if (activeIndex < 0) return null;
+    return sortedChapters[activeIndex] ?? null;
+  }, [activeIndex, sortedChapters]);
+
+  const prevChapter = useMemo(() => {
+    if (activeIndex <= 0) return null;
+    return sortedChapters[activeIndex - 1] ?? null;
+  }, [activeIndex, sortedChapters]);
+
+  const nextChapter = useMemo(() => {
+    if (activeIndex < 0) return null;
+    if (activeIndex >= sortedChapters.length - 1) return null;
+    return sortedChapters[activeIndex + 1] ?? null;
+  }, [activeIndex, sortedChapters]);
 
   const openEditor = (chapterId: string) => {
     if (!projectId) return;
     navigate(`/projects/${projectId}/writing?chapterId=${encodeURIComponent(chapterId)}`);
   };
+
+  const openChapter = useCallback((chapterId: string) => {
+    setActiveId(chapterId);
+    setMobileListOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+
+      const activeEl = document.activeElement;
+      const isTypingTarget =
+        activeEl instanceof HTMLElement &&
+        (activeEl.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(activeEl.tagName));
+      if (isTypingTarget) return;
+
+      if (e.key === "ArrowLeft" && prevChapter) {
+        e.preventDefault();
+        openChapter(prevChapter.id);
+        return;
+      }
+      if (e.key === "ArrowRight" && nextChapter) {
+        e.preventDefault();
+        openChapter(nextChapter.id);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [nextChapter, openChapter, prevChapter]);
 
   const list = (
     <div className="flex h-full flex-col">
@@ -64,9 +114,9 @@ export function PreviewPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-2">
-        {chapters.length === 0 ? <div className="p-3 text-sm text-subtext">暂无章节</div> : null}
+        {sortedChapters.length === 0 ? <div className="p-3 text-sm text-subtext">暂无章节</div> : null}
         <div className="grid gap-1">
-          {chapters.map((c) => {
+          {sortedChapters.map((c) => {
             const isActive = c.id === effectiveActiveId;
             return (
               <button
@@ -78,8 +128,7 @@ export function PreviewPage() {
                     : "border-border bg-canvas text-subtext hover:bg-surface",
                 )}
                 onClick={() => {
-                  setActiveId(c.id);
-                  setMobileListOpen(false);
+                  openChapter(c.id);
                 }}
                 type="button"
               >
@@ -99,19 +148,38 @@ export function PreviewPage() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <button className="btn btn-secondary lg:hidden" onClick={() => setMobileListOpen(true)} type="button">
-          <List size={16} />
-          章节列表
-        </button>
-        <button
-          className="btn btn-secondary hidden lg:inline-flex"
-          onClick={() => setCollapsed((v) => !v)}
-          type="button"
-        >
-          <List size={16} />
-          {collapsed ? "显示章节列表" : "隐藏章节列表"}
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn btn-secondary lg:hidden" onClick={() => setMobileListOpen(true)} type="button">
+            <List size={16} />
+            章节列表
+          </button>
+          <button
+            className="btn btn-secondary hidden lg:inline-flex"
+            onClick={() => setCollapsed((v) => !v)}
+            type="button"
+          >
+            <List size={16} />
+            {collapsed ? "显示章节列表" : "隐藏章节列表"}
+          </button>
+
+          <button
+            className="btn btn-secondary"
+            disabled={!prevChapter}
+            onClick={() => (prevChapter ? openChapter(prevChapter.id) : undefined)}
+            type="button"
+          >
+            上一章
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={!nextChapter}
+            onClick={() => (nextChapter ? openChapter(nextChapter.id) : undefined)}
+            type="button"
+          >
+            下一章
+          </button>
+        </div>
 
         <div className="min-w-0 truncate text-xs text-subtext">
           {activeChapter ? `正在预览：第 ${activeChapter.number} 章` : "请选择章节"}

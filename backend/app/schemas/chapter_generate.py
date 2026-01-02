@@ -10,8 +10,11 @@ class ChapterGenerateContext(BaseModel):
     include_style_guide: bool = True
     include_constraints: bool = True
     include_outline: bool = True
+    include_smart_context: bool = True
+    require_sequential: bool = False
     character_ids: list[str] = Field(default_factory=list)
-    previous_chapter: str | None = None
+    previous_chapter: Literal["none", "summary", "content", "tail"] | None = None
+    current_draft_tail: str | None = Field(default=None, max_length=5000)
 
 
 class ChapterGenerateRequest(BaseModel):

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { Ref } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { LayoutGroup, motion } from "framer-motion";
@@ -6,7 +7,9 @@ import clsx from "clsx";
 
 import { transition } from "../../lib/motion";
 
-export function MarkdownEditor(props: {
+type EditorTab = "edit" | "preview";
+
+type MarkdownEditorProps = {
   value: string;
   onChange: (next: string) => void;
   placeholder?: string;
@@ -14,8 +17,30 @@ export function MarkdownEditor(props: {
   mono?: boolean;
   name?: string;
   readOnly?: boolean;
-}) {
-  const [tab, setTab] = useState<"edit" | "preview">("edit");
+  tab?: EditorTab;
+  onTabChange?: (next: EditorTab) => void;
+  textareaRef?: Ref<HTMLTextAreaElement>;
+};
+
+export function MarkdownEditor({
+  value,
+  onChange,
+  placeholder,
+  minRows,
+  mono,
+  name,
+  readOnly,
+  tab: controlledTab,
+  onTabChange,
+  textareaRef,
+}: MarkdownEditorProps) {
+  const [internalTab, setInternalTab] = useState<EditorTab>("edit");
+  const tab = controlledTab ?? internalTab;
+  const setTab = (next: EditorTab) => {
+    if (onTabChange) onTabChange(next);
+    else setInternalTab(next);
+  };
+  const isReadOnly = Boolean(readOnly);
 
   return (
     <div className="surface ui-transition-fast focus-within:border-accent/40 focus-within:ring-1 focus-within:ring-accent focus-within:ring-offset-2 focus-within:ring-offset-canvas">
@@ -58,27 +83,28 @@ export function MarkdownEditor(props: {
             </button>
           </div>
         </LayoutGroup>
-        <div className="text-xs text-subtext">{props.value.length} chars</div>
+        <div className="text-xs text-subtext">{value.length} chars</div>
       </div>
       {tab === "edit" ? (
         <textarea
           className={clsx(
-            props.mono ? "atelier-mono" : "atelier-content",
+            mono ? "atelier-mono" : "atelier-content",
             "w-full resize-y bg-transparent px-3 py-3 text-ink outline-none placeholder:text-subtext/70",
           )}
-          name={props.name}
-          placeholder={props.placeholder}
-          readOnly={Boolean(props.readOnly)}
-          rows={props.minRows ?? 12}
-          value={props.value}
+          ref={textareaRef}
+          name={name}
+          placeholder={placeholder}
+          readOnly={isReadOnly}
+          rows={minRows ?? 12}
+          value={value}
           onChange={(e) => {
-            if (props.readOnly) return;
-            props.onChange(e.target.value);
+            if (isReadOnly) return;
+            onChange(e.target.value);
           }}
         />
       ) : (
         <div className="atelier-content max-w-none px-3 py-4 text-ink">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{props.value || "_（空）_"}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{value || "_（空）_"}</ReactMarkdown>
         </div>
       )}
     </div>
