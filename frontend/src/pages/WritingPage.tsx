@@ -23,8 +23,6 @@ import { createChapterMarkerStreamParser } from "../services/chapterMarkerStream
 import { SSEError, SSEPostClient } from "../services/sseClient";
 import { markWizardProjectChanged } from "../services/wizard";
 import type {
-  ChapterAnalyzeResult,
-  ChapterRewriteResult,
   CreateChapterForm,
   GenerateForm,
   GenerationRun,
@@ -32,6 +30,7 @@ import type {
 import { appendMarkdown, chapterToForm, nextChapterNumber } from "./writing/writingUtils";
 import type { ChapterForm } from "./writing/writingUtils";
 import { useBatchGeneration } from "./writing/useBatchGeneration";
+import { useChapterAnalysis } from "./writing/useChapterAnalysis";
 import type { Chapter, ChapterStatus, Character, LLMPreset, Outline, OutlineListItem, Project } from "../types";
 
 type WritingLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LLMPreset; characters: Character[] };
@@ -118,13 +117,6 @@ export function WritingPage() {
   const [runs, setRuns] = useState<GenerationRun[]>([]);
   const [selectedRun, setSelectedRun] = useState<GenerationRun | null>(null);
 
-  const [analysisOpen, setAnalysisOpen] = useState(false);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<ChapterAnalyzeResult | null>(null);
-  const [analysisFocus, setAnalysisFocus] = useState("");
-  const [rewriteInstruction, setRewriteInstruction] = useState("按分析建议重写，减少重复，保持叙事连续。");
-  const [rewriteLoading, setRewriteLoading] = useState(false);
-
   const dirty = useMemo(() => {
     if (!baseline || !form) return false;
     return (
@@ -152,13 +144,6 @@ export function WritingPage() {
       setRunsLoading(false);
     }
   }, [projectId, toast]);
-
-  useEffect(() => {
-    setAnalysisOpen(false);
-    setAnalysisResult(null);
-    setAnalysisLoading(false);
-    setRewriteLoading(false);
-  }, [activeChapter?.id]);
 
   const selectRun = useCallback(
     async (run: GenerationRun) => {
@@ -370,6 +355,8 @@ export function WritingPage() {
     requestSelectChapter,
     toast,
   });
+
+  const analysis = useChapterAnalysis({ activeChapter, preset, genForm, form, setForm, toast });
 
   const activeOutlineId = outline?.id ?? "";
 
@@ -769,114 +756,6 @@ export function WritingPage() {
     [contentTextareaRef, form, setContentEditorTab, toast],
   );
 
-  const analyzeChapter = useCallback(async () => {
-    if (!activeChapter || !form) return;
-    if (!preset) {
-      toast.toastError("请先在 Prompts 页保存 LLM 配置");
-      return;
-    }
-    if (!(form.content_md ?? "").trim()) {
-      toast.toastError("正文为空，无法分析");
-      return;
-    }
-
-    const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
-    setAnalysisLoading(true);
-    try {
-      const payload = {
-        instruction: analysisFocus,
-        context: {
-          include_world_setting: genForm.context.include_world_setting,
-          include_style_guide: genForm.context.include_style_guide,
-          include_constraints: genForm.context.include_constraints,
-          include_outline: genForm.context.include_outline,
-          include_smart_context: genForm.context.include_smart_context,
-          require_sequential: genForm.context.require_sequential,
-          character_ids: genForm.context.character_ids,
-          previous_chapter: genForm.context.previous_chapter === "none" ? null : genForm.context.previous_chapter,
-        },
-        draft_title: form.title,
-        draft_plan: form.plan,
-        draft_summary: form.summary,
-        draft_content_md: form.content_md,
-      };
-
-      const res = await apiJson<ChapterAnalyzeResult>(`/api/chapters/${activeChapter.id}/analyze`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
-      setAnalysisResult(res.data);
-      if (res.data.parse_error?.message) {
-        toast.toastError(`分析解析失败：${res.data.parse_error.message}`, res.request_id);
-      } else {
-        toast.toastSuccess("分析完成", res.request_id);
-      }
-    } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    } finally {
-      setAnalysisLoading(false);
-    }
-  }, [activeChapter, analysisFocus, form, genForm, preset, toast]);
-
-  const rewriteFromAnalysis = useCallback(async () => {
-    if (!activeChapter || !form) return;
-    if (!preset) {
-      toast.toastError("请先在 Prompts 页保存 LLM 配置");
-      return;
-    }
-    if (!analysisResult?.analysis) {
-      toast.toastError("请先完成章节分析");
-      return;
-    }
-    if (!(form.content_md ?? "").trim()) {
-      toast.toastError("正文为空，无法重写");
-      return;
-    }
-
-    const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
-    setRewriteLoading(true);
-    try {
-      const payload = {
-        instruction: rewriteInstruction,
-        analysis: analysisResult.analysis,
-        draft_content_md: form.content_md,
-        context: {
-          include_world_setting: genForm.context.include_world_setting,
-          include_style_guide: genForm.context.include_style_guide,
-          include_constraints: genForm.context.include_constraints,
-          include_outline: genForm.context.include_outline,
-          include_smart_context: genForm.context.include_smart_context,
-          require_sequential: genForm.context.require_sequential,
-          character_ids: genForm.context.character_ids,
-          previous_chapter: genForm.context.previous_chapter === "none" ? null : genForm.context.previous_chapter,
-        },
-      };
-
-      const res = await apiJson<ChapterRewriteResult>(`/api/chapters/${activeChapter.id}/rewrite`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
-
-      const nextContent = (res.data.content_md ?? "").trim();
-      if (!nextContent) {
-        const msg = res.data.parse_error?.message ?? "重写解析失败";
-        toast.toastError(msg, res.request_id);
-        return;
-      }
-
-      setForm((prev) => (prev ? { ...prev, content_md: nextContent, status: "drafting" } : prev));
-      toast.toastSuccess("已应用重写结果到编辑器（未保存）", res.request_id);
-    } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    } finally {
-      setRewriteLoading(false);
-    }
-  }, [activeChapter, analysisResult?.analysis, form, genForm, preset, rewriteInstruction, toast]);
-
   const saveAndGenerateNext = useCallback(async () => {
     if (!activeChapter) return;
 
@@ -1011,7 +890,7 @@ export function WritingPage() {
                   <button
                     className="btn btn-secondary"
                     disabled={loadingChapter || generating}
-                    onClick={() => setAnalysisOpen(true)}
+                    onClick={analysis.openModal}
                     type="button"
                   >
                     分析
@@ -1144,18 +1023,18 @@ export function WritingPage() {
       />
 
       <ChapterAnalysisModal
-        open={analysisOpen}
-        analysisLoading={analysisLoading}
-        rewriteLoading={rewriteLoading}
-        analysisFocus={analysisFocus}
-        setAnalysisFocus={setAnalysisFocus}
-        analysisResult={analysisResult}
-        rewriteInstruction={rewriteInstruction}
-        setRewriteInstruction={setRewriteInstruction}
-        onClose={() => setAnalysisOpen(false)}
-        onAnalyze={() => void analyzeChapter()}
+        open={analysis.open}
+        analysisLoading={analysis.analysisLoading}
+        rewriteLoading={analysis.rewriteLoading}
+        analysisFocus={analysis.analysisFocus}
+        setAnalysisFocus={analysis.setAnalysisFocus}
+        analysisResult={analysis.analysisResult}
+        rewriteInstruction={analysis.rewriteInstruction}
+        setRewriteInstruction={analysis.setRewriteInstruction}
+        onClose={analysis.closeModal}
+        onAnalyze={() => void analysis.analyzeChapter()}
         onLocateInEditor={locateInEditor}
-        onRewriteFromAnalysis={() => void rewriteFromAnalysis()}
+        onRewriteFromAnalysis={() => void analysis.rewriteFromAnalysis()}
       />
 
       <Drawer
