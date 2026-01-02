@@ -502,3 +502,44 @@ def build_chapter_rewrite_render_values(
     }
     values["user"] = {"instruction": body.instruction.strip()}
     return values
+
+
+def inject_plan_into_render_values(render_values: dict[str, object], *, plan_text: str) -> dict[str, object]:
+    if not plan_text.strip():
+        return render_values
+
+    instruction_with_plan = f"{str(render_values.get('instruction') or '').rstrip()}\n\n<PLAN>\n{plan_text}\n</PLAN>"
+    next_values = dict(render_values)
+    next_values["instruction"] = instruction_with_plan
+    next_values["story_plan"] = plan_text
+
+    story_ns = next_values.get("story")
+    if isinstance(story_ns, dict):
+        story2 = dict(story_ns)
+        story2["plan"] = plan_text
+        next_values["story"] = story2
+    else:
+        next_values["story"] = {"plan": plan_text}
+
+    user_ns = next_values.get("user")
+    if isinstance(user_ns, dict):
+        user2 = dict(user_ns)
+        user2["instruction"] = instruction_with_plan
+        next_values["user"] = user2
+
+    return next_values
+
+
+def build_post_edit_render_values(render_values: dict[str, object], *, raw_content: str) -> dict[str, object]:
+    next_values = dict(render_values)
+    next_values["raw_content"] = raw_content
+
+    story_ns = next_values.get("story")
+    if isinstance(story_ns, dict):
+        story2 = dict(story_ns)
+        story2["raw_content"] = raw_content
+        next_values["story"] = story2
+    else:
+        next_values["story"] = {"raw_content": raw_content}
+
+    return next_values

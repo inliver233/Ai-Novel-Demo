@@ -29,7 +29,11 @@ from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.length_control import estimate_max_tokens
 from app.services.output_contracts import contract_for_task
 from app.services.outline_store import ensure_active_outline
-from app.services.chapter_context_service import build_chapter_generate_render_values
+from app.services.chapter_context_service import (
+    build_chapter_generate_render_values,
+    build_post_edit_render_values,
+    inject_plan_into_render_values,
+)
 from app.services.prompt_presets import ensure_default_plan_preset, ensure_default_post_edit_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
 from app.services.run_store import write_generation_run
@@ -581,23 +585,7 @@ def generate_chapter(
 
         plan_text = str((plan_out or {}).get("plan") or "").strip()
         if plan_text:
-            instruction_with_plan = f"{str(render_values.get('instruction') or '').rstrip()}\n\n<PLAN>\n{plan_text}\n</PLAN>"
-            render_values["instruction"] = instruction_with_plan
-            render_values["story_plan"] = plan_text
-
-            story = render_values.get("story")
-            if isinstance(story, dict):
-                story2 = dict(story)
-                story2["plan"] = plan_text
-                render_values["story"] = story2
-            else:
-                render_values["story"] = {"plan": plan_text}
-
-            user_ns = render_values.get("user")
-            if isinstance(user_ns, dict):
-                user2 = dict(user_ns)
-                user2["instruction"] = instruction_with_plan
-                render_values["user"] = user2
+            render_values = inject_plan_into_render_values(render_values, plan_text=plan_text)
 
         # Render chapter prompt after plan injection.
         with SessionLocal() as db2:
@@ -645,16 +633,7 @@ def generate_chapter(
         if raw_content:
             with SessionLocal() as db3:
                 ensure_default_post_edit_preset(db3, project_id=project_id)
-                post_values = dict(render_values or {})
-                post_values["raw_content"] = raw_content
-
-                story_ns = post_values.get("story")
-                if isinstance(story_ns, dict):
-                    story2 = dict(story_ns)
-                    story2["raw_content"] = raw_content
-                    post_values["story"] = story2
-                else:
-                    post_values["story"] = {"raw_content": raw_content}
+                post_values = build_post_edit_render_values(render_values or {}, raw_content=raw_content)
 
                 post_system, post_user, post_messages, _, _, _, post_render_log = render_preset_for_task(
                     db3,
@@ -881,25 +860,7 @@ def generate_chapter_stream(
 
                 plan_text = str((plan_out or {}).get("plan") or "").strip()
                 if plan_text:
-                    instruction_with_plan = (
-                        f"{str(render_values.get('instruction') or '').rstrip()}\n\n<PLAN>\n{plan_text}\n</PLAN>"
-                    )
-                    render_values["instruction"] = instruction_with_plan
-                    render_values["story_plan"] = plan_text
-
-                    story_ns = render_values.get("story")
-                    if isinstance(story_ns, dict):
-                        story2 = dict(story_ns)
-                        story2["plan"] = plan_text
-                        render_values["story"] = story2
-                    else:
-                        render_values["story"] = {"plan": plan_text}
-
-                    user_ns = render_values.get("user")
-                    if isinstance(user_ns, dict):
-                        user2 = dict(user_ns)
-                        user2["instruction"] = instruction_with_plan
-                        render_values["user"] = user2
+                    render_values = inject_plan_into_render_values(render_values, plan_text=plan_text)
 
                 yield sse_progress(message="渲染章节提示词...", progress=8)
                 with SessionLocal() as db2:
@@ -1030,16 +991,7 @@ def generate_chapter_stream(
                     yield sse_progress(message="润色中...", progress=95)
                     with SessionLocal() as db3:
                         ensure_default_post_edit_preset(db3, project_id=project_id)
-                        post_values = dict(render_values or {})
-                        post_values["raw_content"] = raw_content
-
-                        story_ns = post_values.get("story")
-                        if isinstance(story_ns, dict):
-                            story2 = dict(story_ns)
-                            story2["raw_content"] = raw_content
-                            post_values["story"] = story2
-                        else:
-                            post_values["story"] = {"raw_content": raw_content}
+                        post_values = build_post_edit_render_values(render_values or {}, raw_content=raw_content)
 
                         post_system, post_user, post_messages, _, _, _, post_render_log = render_preset_for_task(
                             db3,

@@ -21,7 +21,9 @@ from app.models.project_settings import ProjectSettings
 from app.services.chapter_context_service import (
     PREVIOUS_CHAPTER_ENDING_CHARS,
     assemble_chapter_generate_render_values,
+    build_post_edit_render_values,
     build_smart_context,
+    inject_plan_into_render_values,
     load_previous_chapter_context,
 )
 from app.services.generation_service import PreparedLlmCall, call_llm_and_record, prepare_llm_call, with_param_overrides
@@ -341,24 +343,7 @@ def run_batch_generation_task(*, task_id: str) -> None:
                 plan_parsed = plan_contract.parse(plan_result.text, finish_reason=plan_result.finish_reason)
                 plan_text = str((plan_parsed.data or {}).get("plan") or "").strip()
                 if plan_text:
-                    instruction_with_plan = f"{str(render_values.get('instruction') or '').rstrip()}\n\n<PLAN>\n{plan_text}\n</PLAN>"
-                    render_values = dict(render_values)
-                    render_values["instruction"] = instruction_with_plan
-                    render_values["story_plan"] = plan_text
-
-                    story = render_values.get("story")
-                    if isinstance(story, dict):
-                        story2 = dict(story)
-                        story2["plan"] = plan_text
-                        render_values["story"] = story2
-                    else:
-                        render_values["story"] = {"plan": plan_text}
-
-                    user_ns = render_values.get("user")
-                    if isinstance(user_ns, dict):
-                        user2 = dict(user_ns)
-                        user2["instruction"] = instruction_with_plan
-                        render_values["user"] = user2
+                    render_values = inject_plan_into_render_values(render_values, plan_text=plan_text)
 
             with SessionLocal() as db:
                 prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
@@ -401,16 +386,7 @@ def run_batch_generation_task(*, task_id: str) -> None:
                 if raw_content:
                     with SessionLocal() as db:
                         ensure_default_post_edit_preset(db, project_id=task.project_id)
-                        post_values = dict(render_values)
-                        post_values["raw_content"] = raw_content
-
-                        story_ns = post_values.get("story")
-                        if isinstance(story_ns, dict):
-                            story2 = dict(story_ns)
-                            story2["raw_content"] = raw_content
-                            post_values["story"] = story2
-                        else:
-                            post_values["story"] = {"raw_content": raw_content}
+                        post_values = build_post_edit_render_values(render_values, raw_content=raw_content)
 
                         post_system, post_user, post_messages, _, _, _, post_render_log = render_preset_for_task(
                             db,
