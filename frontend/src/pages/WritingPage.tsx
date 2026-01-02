@@ -27,6 +27,7 @@ import { appendMarkdown, chapterToForm, nextChapterNumber } from "./writing/writ
 import type { ChapterForm } from "./writing/writingUtils";
 import { useBatchGeneration } from "./writing/useBatchGeneration";
 import { useChapterAnalysis } from "./writing/useChapterAnalysis";
+import { useGenerationHistory } from "./writing/useGenerationHistory";
 import type { Chapter, ChapterStatus, Character, LLMPreset, Outline, OutlineListItem, Project } from "../types";
 
 type WritingLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LLMPreset; characters: Character[] };
@@ -108,11 +109,6 @@ export function WritingPage() {
     },
   });
 
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [runsLoading, setRunsLoading] = useState(false);
-  const [runs, setRuns] = useState<GenerationRun[]>([]);
-  const [selectedRun, setSelectedRun] = useState<GenerationRun | null>(null);
-
   const dirty = useMemo(() => {
     if (!baseline || !form) return false;
     return (
@@ -125,35 +121,6 @@ export function WritingPage() {
   }, [baseline, form]);
 
   useUnsavedChangesGuard(dirty);
-
-  const refreshRuns = useCallback(async () => {
-    if (!projectId) return;
-    setRunsLoading(true);
-    try {
-      const res = await apiJson<{ runs: GenerationRun[] }>(`/api/projects/${projectId}/generation_runs?limit=5`);
-      setRuns(res.data.runs);
-      setSelectedRun(res.data.runs[0] ?? null);
-    } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    } finally {
-      setRunsLoading(false);
-    }
-  }, [projectId, toast]);
-
-  const selectRun = useCallback(
-    async (run: GenerationRun) => {
-      setSelectedRun(run);
-      try {
-        const res = await apiJson<{ run: GenerationRun }>(`/api/generation_runs/${run.id}`);
-        setSelectedRun(res.data.run);
-      } catch (e) {
-        const err = e as ApiError;
-        toast.toastError(`${err.message} (${err.code})`, err.requestId);
-      }
-    },
-    [toast],
-  );
 
   const refreshChapters = useCallback(async () => {
     if (!projectId) return;
@@ -353,6 +320,7 @@ export function WritingPage() {
   });
 
   const analysis = useChapterAnalysis({ activeChapter, preset, genForm, form, setForm, toast });
+  const history = useGenerationHistory({ projectId, toast });
 
   const activeOutlineId = outline?.id ?? "";
 
@@ -829,14 +797,7 @@ export function WritingPage() {
                 ? `（${batch.batchTask.completed_count}/${batch.batchTask.total_count}）`
                 : ""}
             </button>
-            <button
-              className="btn btn-secondary"
-              onClick={() => {
-                setHistoryOpen(true);
-                void refreshRuns();
-              }}
-              type="button"
-            >
+            <button className="btn btn-secondary" onClick={history.openDrawer} type="button">
               生成记录
             </button>
             <button className="btn btn-primary" onClick={openCreate} type="button">
@@ -1109,12 +1070,12 @@ export function WritingPage() {
       ) : null}
 
       <GenerationHistoryDrawer
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        loading={runsLoading}
-        runs={runs}
-        selectedRun={selectedRun}
-        onSelectRun={(run) => void selectRun(run)}
+        open={history.open}
+        onClose={history.closeDrawer}
+        loading={history.runsLoading}
+        runs={history.runs}
+        selectedRun={history.selectedRun}
+        onSelectRun={(run) => void history.selectRun(run)}
       />
 
       <WizardNextBar
