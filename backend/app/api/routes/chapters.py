@@ -29,7 +29,7 @@ from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.length_control import estimate_max_tokens
 from app.services.output_contracts import contract_for_task
 from app.services.outline_store import ensure_active_outline
-from app.services.chapter_context_service import build_smart_context
+from app.services.chapter_context_service import build_chapter_generate_render_values
 from app.services.prompt_presets import ensure_default_plan_preset, ensure_default_post_edit_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
 from app.services.run_store import write_generation_run
@@ -508,120 +508,12 @@ def generate_chapter(
             raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
         resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
 
-        settings_row = db.get(ProjectSettings, project_id)
-        outline_row = db.get(Outline, chapter.outline_id)
-
-        world_setting = (settings_row.world_setting if settings_row else "") or ""
-        style_guide = (settings_row.style_guide if settings_row else "") or ""
-        constraints = (settings_row.constraints if settings_row else "") or ""
-
-        if not body.context.include_world_setting:
-            world_setting = ""
-        if not body.context.include_style_guide:
-            style_guide = ""
-        if not body.context.include_constraints:
-            constraints = ""
-
-        outline_text = (outline_row.content_md if outline_row else "") or ""
-        if not body.context.include_outline:
-            outline_text = ""
-
-        chars: list[Character] = []
-        if body.context.character_ids:
-            chars = (
-                db.execute(
-                    select(Character).where(
-                        Character.project_id == project_id,
-                        Character.id.in_(body.context.character_ids),
-                    )
-                )
-                .scalars()
-                .all()
-            )
-        characters_text = format_characters(chars)
-
-        prev_text, prev_ending = _load_previous_chapter_context(
+        values, base_instruction, requirements_obj = build_chapter_generate_render_values(
             db,
-            project_id=project_id,
-            outline_id=chapter.outline_id,
-            chapter_number=chapter.number,
-            previous_chapter=body.context.previous_chapter,
+            project=project,
+            chapter=chapter,
+            body=body,
         )
-
-        current_draft_tail = ""
-        if body.mode == "append":
-            current_draft_tail = _resolve_current_draft_tail(chapter=chapter, request_tail=body.context.current_draft_tail)
-
-        smart_recent_summaries = ""
-        smart_recent_full = ""
-        smart_story_skeleton = ""
-        if body.context.include_smart_context:
-            smart_recent_summaries, smart_recent_full, smart_story_skeleton = build_smart_context(
-                db,
-                project_id=project_id,
-                outline_id=chapter.outline_id,
-                chapter_number=int(chapter.number),
-            )
-
-        base_instruction = body.instruction.strip()
-        instruction = base_instruction
-        if body.mode == "append":
-            instruction = "【追加模式】只输出需要追加到正文末尾的新增片段，不要重复已写内容。\\n" + instruction
-        else:
-            instruction = "【替换模式】输出完整替换稿（整章）。\\n" + instruction
-
-        requirements_obj: dict[str, object] = {}
-        if body.target_word_count is not None:
-            requirements_obj["target_word_count"] = body.target_word_count
-        requirements_text = json.dumps(requirements_obj, ensure_ascii=False, indent=2) if requirements_obj else ""
-
-        values: dict[str, object] = {
-            "mode": body.mode,
-            "project_name": project.name or "",
-            "genre": project.genre or "",
-            "logline": project.logline or "",
-            "world_setting": world_setting,
-            "style_guide": style_guide,
-            "constraints": constraints,
-            "characters": characters_text,
-            "outline": outline_text,
-            "chapter_number": str(chapter.number),
-            "chapter_title": (chapter.title or ""),
-            "chapter_plan": (chapter.plan or ""),
-            "requirements": requirements_text,
-            "target_word_count": str(body.target_word_count or ""),
-            "instruction": instruction,
-            "previous_chapter": prev_text,
-            "previous_chapter_ending": prev_ending,
-            "current_draft_tail": current_draft_tail,
-            "smart_context_recent_summaries": smart_recent_summaries,
-            "smart_context_recent_full": smart_recent_full,
-            "smart_context_story_skeleton": smart_story_skeleton,
-        }
-
-        values["project"] = {
-            "name": project.name or "",
-            "genre": project.genre or "",
-            "logline": project.logline or "",
-            "world_setting": world_setting,
-            "style_guide": style_guide,
-            "constraints": constraints,
-            "characters": characters_text,
-        }
-        values["story"] = {
-            "outline": outline_text,
-            "chapter_number": int(chapter.number),
-            "chapter_title": (chapter.title or ""),
-            "chapter_plan": (chapter.plan or ""),
-            "previous_chapter": prev_text,
-            "previous_chapter_ending": prev_ending,
-            "mode": body.mode,
-            "current_draft_tail": current_draft_tail,
-            "smart_context_recent_summaries": smart_recent_summaries,
-            "smart_context_recent_full": smart_recent_full,
-            "smart_context_story_skeleton": smart_story_skeleton,
-        }
-        values["user"] = {"instruction": instruction, "requirements": requirements_obj}
         render_values = values
 
         if body.plan_first:
@@ -888,120 +780,12 @@ def generate_chapter_stream(
                 db, project=project, user_id=user_id, header_api_key=x_llm_api_key
             )
 
-            settings_row = db.get(ProjectSettings, project_id)
-            outline_row = db.get(Outline, chapter.outline_id)
-
-            world_setting = (settings_row.world_setting if settings_row else "") or ""
-            style_guide = (settings_row.style_guide if settings_row else "") or ""
-            constraints = (settings_row.constraints if settings_row else "") or ""
-
-            if not body.context.include_world_setting:
-                world_setting = ""
-            if not body.context.include_style_guide:
-                style_guide = ""
-            if not body.context.include_constraints:
-                constraints = ""
-
-            outline_text = (outline_row.content_md if outline_row else "") or ""
-            if not body.context.include_outline:
-                outline_text = ""
-
-            chars: list[Character] = []
-            if body.context.character_ids:
-                chars = (
-                    db.execute(
-                        select(Character).where(
-                            Character.project_id == project_id,
-                            Character.id.in_(body.context.character_ids),
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
-            characters_text = format_characters(chars)
-
-            prev_text, prev_ending = _load_previous_chapter_context(
+            values, base_instruction, requirements_obj = build_chapter_generate_render_values(
                 db,
-                project_id=project_id,
-                outline_id=chapter.outline_id,
-                chapter_number=chapter.number,
-                previous_chapter=body.context.previous_chapter,
+                project=project,
+                chapter=chapter,
+                body=body,
             )
-
-            current_draft_tail = ""
-            if body.mode == "append":
-                current_draft_tail = _resolve_current_draft_tail(chapter=chapter, request_tail=body.context.current_draft_tail)
-
-            smart_recent_summaries = ""
-            smart_recent_full = ""
-            smart_story_skeleton = ""
-            if body.context.include_smart_context:
-                smart_recent_summaries, smart_recent_full, smart_story_skeleton = build_smart_context(
-                    db,
-                    project_id=project_id,
-                    outline_id=chapter.outline_id,
-                    chapter_number=int(chapter.number),
-                )
-
-            base_instruction = body.instruction.strip()
-            instruction = base_instruction
-            if body.mode == "append":
-                instruction = "【追加模式】只输出需要追加到正文末尾的新增片段，不要重复已写内容。\\n" + instruction
-            else:
-                instruction = "【替换模式】输出完整替换稿（整章）。\\n" + instruction
-
-            requirements_obj: dict[str, object] = {}
-            if body.target_word_count is not None:
-                requirements_obj["target_word_count"] = body.target_word_count
-            requirements_text = json.dumps(requirements_obj, ensure_ascii=False, indent=2) if requirements_obj else ""
-
-            values: dict[str, object] = {
-                "mode": body.mode,
-                "project_name": project.name or "",
-                "genre": project.genre or "",
-                "logline": project.logline or "",
-                "world_setting": world_setting,
-                "style_guide": style_guide,
-                "constraints": constraints,
-                "characters": characters_text,
-                "outline": outline_text,
-                "chapter_number": str(chapter.number),
-                "chapter_title": (chapter.title or ""),
-                "chapter_plan": (chapter.plan or ""),
-                "requirements": requirements_text,
-                "target_word_count": str(body.target_word_count or ""),
-                "instruction": instruction,
-                "previous_chapter": prev_text,
-                "previous_chapter_ending": prev_ending,
-                "current_draft_tail": current_draft_tail,
-                "smart_context_recent_summaries": smart_recent_summaries,
-                "smart_context_recent_full": smart_recent_full,
-                "smart_context_story_skeleton": smart_story_skeleton,
-            }
-
-            values["project"] = {
-                "name": project.name or "",
-                "genre": project.genre or "",
-                "logline": project.logline or "",
-                "world_setting": world_setting,
-                "style_guide": style_guide,
-                "constraints": constraints,
-                "characters": characters_text,
-            }
-            values["story"] = {
-                "outline": outline_text,
-                "chapter_number": int(chapter.number),
-                "chapter_title": (chapter.title or ""),
-                "chapter_plan": (chapter.plan or ""),
-                "previous_chapter": prev_text,
-                "previous_chapter_ending": prev_ending,
-                "mode": body.mode,
-                "current_draft_tail": current_draft_tail,
-                "smart_context_recent_summaries": smart_recent_summaries,
-                "smart_context_recent_full": smart_recent_full,
-                "smart_context_story_skeleton": smart_story_skeleton,
-            }
-            values["user"] = {"instruction": instruction, "requirements": requirements_obj}
             render_values = values
 
             if body.plan_first:
