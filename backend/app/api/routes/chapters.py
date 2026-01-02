@@ -25,7 +25,7 @@ from app.schemas.chapters import BulkCreateRequest, ChapterCreate, ChapterOut, C
 from app.schemas.chapter_generate import ChapterGenerateRequest
 from app.schemas.chapter_plan import ChapterPlanRequest
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
-from app.services.generation_pipeline import run_plan_llm_step, run_post_edit_step
+from app.services.generation_pipeline import run_chapter_generate_llm_step, run_plan_llm_step, run_post_edit_step
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.length_control import estimate_max_tokens
 from app.services.output_contracts import contract_for_task
@@ -601,7 +601,7 @@ def generate_chapter(
             {"max_tokens": estimate_max_tokens(target_word_count=body.target_word_count, provider=llm_call.provider)},
         )
 
-    llm_result = call_llm_and_record(
+    gen_step = run_chapter_generate_llm_step(
         logger=logger,
         request_id=request_id,
         actor_user_id=user_id,
@@ -609,16 +609,13 @@ def generate_chapter(
         chapter_id=chapter_id,
         run_type="chapter",
         api_key=str(resolved_api_key),
+        llm_call=llm_call,
         prompt_system=prompt_system,
         prompt_user=prompt_user,
         prompt_messages=prompt_messages,
         prompt_render_log_json=prompt_render_log_json,
-        llm_call=llm_call,
     )
-
-    chapter_contract = contract_for_task("chapter_generate")
-    parsed = chapter_contract.parse(llm_result.text, finish_reason=llm_result.finish_reason)
-    data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
+    data, warnings, parse_error = gen_step.data, gen_step.warnings, gen_step.parse_error
 
     if body.post_edit:
         raw_content = str(data.get("content_md") or "").strip()
@@ -663,6 +660,8 @@ def generate_chapter(
             data["plan_warnings"] = plan_warnings
         if plan_parse_error is not None:
             data["plan_parse_error"] = plan_parse_error
+    if gen_step.finish_reason is not None:
+        data["finish_reason"] = gen_step.finish_reason
     return ok_payload(request_id=request_id, data=data)
 
 

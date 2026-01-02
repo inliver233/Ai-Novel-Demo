@@ -25,11 +25,10 @@ from app.services.chapter_context_service import (
     inject_plan_into_render_values,
     load_previous_chapter_context,
 )
-from app.services.generation_service import PreparedLlmCall, call_llm_and_record, prepare_llm_call, with_param_overrides
-from app.services.generation_pipeline import run_plan_llm_step, run_post_edit_step
+from app.services.generation_service import PreparedLlmCall, prepare_llm_call, with_param_overrides
+from app.services.generation_pipeline import run_chapter_generate_llm_step, run_plan_llm_step, run_post_edit_step
 from app.services.length_control import estimate_max_tokens
 from app.services.llm_key_resolver import resolve_api_key_for_project
-from app.services.output_contracts import contract_for_task
 from app.services.prompt_presets import ensure_default_plan_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
 
@@ -357,7 +356,7 @@ def run_batch_generation_task(*, task_id: str) -> None:
                     {"max_tokens": estimate_max_tokens(target_word_count=params.target_word_count, provider=llm_call.provider)},
                 )
 
-            llm_result = call_llm_and_record(
+            gen_step = run_chapter_generate_llm_step(
                 logger=logger,
                 request_id=chapter_request_id,
                 actor_user_id=actor_user_id,
@@ -365,16 +364,13 @@ def run_batch_generation_task(*, task_id: str) -> None:
                 chapter_id=chapter_id,
                 run_type="chapter",
                 api_key=str(resolved_api_key),
+                llm_call=llm_call,
                 prompt_system=prompt_system,
                 prompt_user=prompt_user,
                 prompt_messages=prompt_messages,
                 prompt_render_log_json=prompt_render_log_json,
-                llm_call=llm_call,
             )
-
-            chapter_contract = contract_for_task("chapter_generate")
-            parsed = chapter_contract.parse(llm_result.text, finish_reason=llm_result.finish_reason)
-            data = parsed.data
+            data = gen_step.data
 
             if params.post_edit:
                 raw_content = str(data.get("content_md") or "").strip()
@@ -405,7 +401,7 @@ def run_batch_generation_task(*, task_id: str) -> None:
                 if task is None or item is None:
                     return
                 item.status = "succeeded"
-                item.generation_run_id = llm_result.run_id
+                item.generation_run_id = gen_step.run_id
                 item.error_message = None
                 task.completed_count = int(task.completed_count or 0) + 1
                 db.commit()

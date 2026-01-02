@@ -27,6 +27,17 @@ class PlanStepResult:
     finish_reason: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class ChapterGenerateStepResult:
+    data: dict[str, object]
+    warnings: list[str]
+    parse_error: dict[str, object] | None
+    finish_reason: str | None
+    dropped_params: list[str]
+    latency_ms: int
+    run_id: str
+
+
 def run_post_edit_step(
     *,
     logger: logging.Logger,
@@ -124,4 +135,47 @@ def run_plan_llm_step(
         warnings=list(parsed.warnings),
         parse_error=parsed.parse_error,
         finish_reason=plan_result.finish_reason,
+    )
+
+
+def run_chapter_generate_llm_step(
+    *,
+    logger: logging.Logger,
+    request_id: str,
+    actor_user_id: str,
+    project_id: str,
+    chapter_id: str | None,
+    run_type: str,
+    api_key: str,
+    llm_call: PreparedLlmCall,
+    prompt_system: str,
+    prompt_user: str,
+    prompt_messages: list,
+    prompt_render_log_json: str | None,
+) -> ChapterGenerateStepResult:
+    llm_result = call_llm_and_record(
+        logger=logger,
+        request_id=request_id,
+        actor_user_id=actor_user_id,
+        project_id=project_id,
+        chapter_id=chapter_id,
+        run_type=run_type,
+        api_key=api_key,
+        prompt_system=prompt_system,
+        prompt_user=prompt_user,
+        prompt_messages=prompt_messages,
+        prompt_render_log_json=prompt_render_log_json,
+        llm_call=llm_call,
+    )
+
+    chapter_contract = contract_for_task("chapter_generate")
+    parsed = chapter_contract.parse(llm_result.text, finish_reason=llm_result.finish_reason)
+    return ChapterGenerateStepResult(
+        data=parsed.data,
+        warnings=list(parsed.warnings),
+        parse_error=parsed.parse_error,
+        finish_reason=llm_result.finish_reason,
+        dropped_params=list(llm_result.dropped_params),
+        latency_ms=int(llm_result.latency_ms),
+        run_id=llm_result.run_id,
     )
