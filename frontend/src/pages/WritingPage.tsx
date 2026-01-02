@@ -8,6 +8,7 @@ import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { Drawer } from "../components/ui/Drawer";
 import { Modal } from "../components/ui/Modal";
 import { AiGenerateDrawer } from "../components/writing/AiGenerateDrawer";
+import { ChapterListPanel } from "../components/writing/ChapterListPanel";
 import { CreateChapterDialog } from "../components/writing/CreateChapterDialog";
 import { GenerationHistoryDrawer } from "../components/writing/GenerationHistoryDrawer";
 import { useConfirm } from "../components/ui/confirm";
@@ -1113,34 +1114,11 @@ export function WritingPage() {
 
       <div className="flex gap-4">
         <aside className="hidden w-[240px] shrink-0 lg:block">
-          <div className="panel p-2">
-            {chapters.length === 0 ? (
-              <div className="p-3 text-sm text-subtext">还没有章节，先新建一个吧。</div>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {chapters.map((c) => (
-                  <button
-                    key={c.id}
-                    className={
-                      c.id === activeId
-                        ? "ui-focus-ring ui-transition-fast rounded-atelier bg-canvas px-3 py-2 text-left text-sm text-ink"
-                        : "ui-focus-ring ui-transition-fast rounded-atelier px-3 py-2 text-left text-sm text-subtext hover:bg-canvas hover:text-ink"
-                    }
-                    onClick={() => void requestSelectChapter(c.id)}
-                    type="button"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 truncate">
-                        <span className="mr-2 text-xs text-subtext">#{c.number}</span>
-                        <span className="truncate">{c.title ?? "未命名章节"}</span>
-                      </div>
-                      <span className="shrink-0 text-[11px] text-subtext">{c.status}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <ChapterListPanel
+            chapters={chapters}
+            activeId={activeId}
+            onSelectChapter={(chapterId) => void requestSelectChapter(chapterId)}
+          />
         </aside>
 
         <section className="min-w-0 flex-1">
@@ -1631,35 +1609,15 @@ export function WritingPage() {
         </div>
 
         <div className="h-full overflow-auto p-2">
-          {chapters.length === 0 ? (
-            <div className="p-3 text-sm text-subtext">还没有章节，先新建一个吧。</div>
-          ) : (
-            <div className="flex flex-col gap-1">
-              {chapters.map((c) => (
-                <button
-                  key={c.id}
-                  className={
-                    c.id === activeId
-                      ? "ui-focus-ring ui-transition-fast rounded-atelier bg-canvas px-3 py-2 text-left text-sm text-ink"
-                      : "ui-focus-ring ui-transition-fast rounded-atelier px-3 py-2 text-left text-sm text-subtext hover:bg-canvas hover:text-ink"
-                  }
-                  onClick={() => {
-                    setChapterListOpen(false);
-                    void requestSelectChapter(c.id);
-                  }}
-                  type="button"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0 truncate">
-                      <span className="mr-2 text-xs text-subtext">#{c.number}</span>
-                      <span className="truncate">{c.title ?? "未命名章节"}</span>
-                    </div>
-                    <span className="shrink-0 text-[11px] text-subtext">{c.status}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+          <ChapterListPanel
+            chapters={chapters}
+            activeId={activeId}
+            containerClassName=""
+            onSelectChapter={(chapterId) => {
+              setChapterListOpen(false);
+              void requestSelectChapter(chapterId);
+            }}
+          />
         </div>
       </Drawer>
 
