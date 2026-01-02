@@ -23,8 +23,6 @@ import { createChapterMarkerStreamParser } from "../services/chapterMarkerStream
 import { SSEError, SSEPostClient } from "../services/sseClient";
 import { markWizardProjectChanged } from "../services/wizard";
 import type {
-  BatchGenerationTask,
-  BatchGenerationTaskItem,
   ChapterAnalyzeResult,
   ChapterRewriteResult,
   CreateChapterForm,
@@ -33,6 +31,7 @@ import type {
 } from "../components/writing/types";
 import { appendMarkdown, chapterToForm, nextChapterNumber } from "./writing/writingUtils";
 import type { ChapterForm } from "./writing/writingUtils";
+import { useBatchGeneration } from "./writing/useBatchGeneration";
 import type { Chapter, ChapterStatus, Character, LLMPreset, Outline, OutlineListItem, Project } from "../types";
 
 type WritingLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LLMPreset; characters: Character[] };
@@ -114,13 +113,6 @@ export function WritingPage() {
     },
   });
 
-  const [batchOpen, setBatchOpen] = useState(false);
-  const [batchCount, setBatchCount] = useState(3);
-  const [batchIncludeExisting, setBatchIncludeExisting] = useState(false);
-  const [batchLoading, setBatchLoading] = useState(false);
-  const [batchTask, setBatchTask] = useState<BatchGenerationTask | null>(null);
-  const [batchItems, setBatchItems] = useState<BatchGenerationTaskItem[]>([]);
-
   const [historyOpen, setHistoryOpen] = useState(false);
   const [runsLoading, setRunsLoading] = useState(false);
   const [runs, setRuns] = useState<GenerationRun[]>([]);
@@ -160,36 +152,6 @@ export function WritingPage() {
       setRunsLoading(false);
     }
   }, [projectId, toast]);
-
-  const refreshBatchTask = useCallback(
-    async (opts?: { silent?: boolean }) => {
-      if (!projectId) return;
-      try {
-        const res = await apiJson<{ task: BatchGenerationTask | null; items: BatchGenerationTaskItem[] }>(
-          `/api/projects/${projectId}/batch_generation_tasks/active`,
-        );
-        setBatchTask(res.data.task);
-        setBatchItems(res.data.items);
-      } catch (e) {
-        if (!opts?.silent) {
-          const err = e as ApiError;
-          toast.toastError(`${err.message} (${err.code})`, err.requestId);
-        }
-      }
-    },
-    [projectId, toast],
-  );
-
-  useEffect(() => {
-    void refreshBatchTask({ silent: true });
-  }, [refreshBatchTask]);
-
-  useEffect(() => {
-    if (!batchTask) return;
-    if (batchTask.status !== "queued" && batchTask.status !== "running") return;
-    const id = window.setInterval(() => void refreshBatchTask({ silent: true }), 1500);
-    return () => window.clearInterval(id);
-  }, [batchTask, refreshBatchTask]);
 
   useEffect(() => {
     setAnalysisOpen(false);
@@ -396,6 +358,18 @@ export function WritingPage() {
     },
     [activeId, confirm, dirty, saveChapter],
   );
+
+  const batch = useBatchGeneration({
+    projectId,
+    preset,
+    activeChapter,
+    chapters,
+    genForm,
+    searchParams,
+    setSearchParams,
+    requestSelectChapter,
+    toast,
+  });
 
   const activeOutlineId = outline?.id ?? "";
 
@@ -903,112 +877,6 @@ export function WritingPage() {
     }
   }, [activeChapter, analysisResult?.analysis, form, genForm, preset, rewriteInstruction, toast]);
 
-  const startBatchGeneration = useCallback(async () => {
-    if (!projectId) return;
-    if (!preset) {
-      toast.toastError("请先在 Prompts 页保存 LLM 配置");
-      return;
-    }
-    setBatchLoading(true);
-    try {
-      const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
-      const payload = {
-        after_chapter_id: activeChapter?.id ?? null,
-        count: batchCount,
-        include_existing: batchIncludeExisting,
-        instruction: genForm.instruction,
-        target_word_count: genForm.target_word_count > 0 ? genForm.target_word_count : null,
-        plan_first: genForm.plan_first,
-        post_edit: genForm.post_edit,
-        context: {
-          include_world_setting: genForm.context.include_world_setting,
-          include_style_guide: genForm.context.include_style_guide,
-          include_constraints: genForm.context.include_constraints,
-          include_outline: genForm.context.include_outline,
-          include_smart_context: genForm.context.include_smart_context,
-          require_sequential: true,
-          character_ids: genForm.context.character_ids,
-          previous_chapter: genForm.context.previous_chapter === "none" ? null : genForm.context.previous_chapter,
-        },
-      };
-
-      const res = await apiJson<{ task: BatchGenerationTask; items: BatchGenerationTaskItem[] }>(
-        `/api/projects/${projectId}/batch_generation_tasks`,
-        { method: "POST", headers, body: JSON.stringify(payload) },
-      );
-      setBatchTask(res.data.task);
-      setBatchItems(res.data.items);
-      toast.toastSuccess("已开始批量生成", res.request_id);
-    } catch (e) {
-      const err = e as ApiError;
-      const missingNumbers =
-        err.code === "CHAPTER_PREREQ_MISSING" &&
-        err.details &&
-        typeof err.details === "object" &&
-        "missing_numbers" in err.details &&
-        Array.isArray((err.details as { missing_numbers?: unknown }).missing_numbers)
-          ? ((err.details as { missing_numbers?: unknown }).missing_numbers as unknown[])
-              .filter((n) => typeof n === "number")
-              .map((n) => n as number)
-          : [];
-      if (missingNumbers.length > 0) {
-        const targetNumber = missingNumbers[0]!;
-        const target = chapters.find((c) => c.number === targetNumber);
-        toast.toastError(
-          `缺少前置章节内容：第 ${missingNumbers.join("、")} 章`,
-          err.requestId,
-          target
-            ? {
-                label: `跳转到第 ${targetNumber} 章`,
-                onClick: () => void requestSelectChapter(target.id),
-              }
-            : undefined,
-        );
-        return;
-      }
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    } finally {
-      setBatchLoading(false);
-    }
-  }, [
-    activeChapter,
-    batchCount,
-    batchIncludeExisting,
-    chapters,
-    genForm,
-    preset,
-    projectId,
-    requestSelectChapter,
-    toast,
-  ]);
-
-  const cancelBatchGeneration = useCallback(async () => {
-    if (!batchTask) return;
-    setBatchLoading(true);
-    try {
-      await apiJson(`/api/batch_generation_tasks/${batchTask.id}/cancel`, { method: "POST" });
-      toast.toastSuccess("已请求取消批量生成");
-      await refreshBatchTask();
-    } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    } finally {
-      setBatchLoading(false);
-    }
-  }, [batchTask, refreshBatchTask, toast]);
-
-  const applyBatchItemToEditor = useCallback(
-    async (item: BatchGenerationTaskItem) => {
-      if (!item.chapter_id || !item.generation_run_id) return;
-      setBatchOpen(false);
-      await requestSelectChapter(item.chapter_id);
-      const next = new URLSearchParams(searchParams);
-      next.set("applyRunId", item.generation_run_id);
-      setSearchParams(next, { replace: true });
-    },
-    [requestSelectChapter, searchParams, setSearchParams],
-  );
-
   const saveAndGenerateNext = useCallback(async () => {
     if (!activeChapter) return;
 
@@ -1085,15 +953,12 @@ export function WritingPage() {
             </button>
             <button
               className="btn btn-secondary"
-              onClick={() => {
-                setBatchOpen(true);
-                void refreshBatchTask();
-              }}
+              onClick={batch.openModal}
               type="button"
             >
               批量生成
-              {batchTask && (batchTask.status === "queued" || batchTask.status === "running")
-                ? `（${batchTask.completed_count}/${batchTask.total_count}）`
+              {batch.batchTask && (batch.batchTask.status === "queued" || batch.batchTask.status === "running")
+                ? `（${batch.batchTask.completed_count}/${batch.batchTask.total_count}）`
                 : ""}
             </button>
             <button
@@ -1263,19 +1128,19 @@ export function WritingPage() {
       />
 
       <BatchGenerationModal
-        open={batchOpen}
-        batchLoading={batchLoading}
+        open={batch.open}
+        batchLoading={batch.batchLoading}
         activeChapterNumber={activeChapter?.number ?? null}
-        batchCount={batchCount}
-        setBatchCount={setBatchCount}
-        batchIncludeExisting={batchIncludeExisting}
-        setBatchIncludeExisting={setBatchIncludeExisting}
-        batchTask={batchTask}
-        batchItems={batchItems}
-        onClose={() => setBatchOpen(false)}
-        onCancelTask={() => void cancelBatchGeneration()}
-        onStartTask={() => void startBatchGeneration()}
-        onApplyItemToEditor={(it) => void applyBatchItemToEditor(it)}
+        batchCount={batch.batchCount}
+        setBatchCount={batch.setBatchCount}
+        batchIncludeExisting={batch.batchIncludeExisting}
+        setBatchIncludeExisting={batch.setBatchIncludeExisting}
+        batchTask={batch.batchTask}
+        batchItems={batch.batchItems}
+        onClose={batch.closeModal}
+        onCancelTask={() => void batch.cancelBatchGeneration()}
+        onStartTask={() => void batch.startBatchGeneration()}
+        onApplyItemToEditor={(it) => void batch.applyBatchItemToEditor(it)}
       />
 
       <ChapterAnalysisModal
