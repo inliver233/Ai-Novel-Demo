@@ -429,31 +429,27 @@ def plan_chapter(
     if not prompt_system.strip() and not prompt_user.strip():
         raise AppError(code="PROMPT_CONFIG_ERROR", message="缺少 plan_chapter 提示词预设/提示块", status_code=400)
 
-    llm_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 1024})
-    llm_result = call_llm_and_record(
+    plan_step = run_plan_llm_step(
         logger=logger,
         request_id=request_id,
         actor_user_id=user_id,
         project_id=project_id,
         chapter_id=chapter_id,
-        run_type="plan_chapter",
         api_key=str(resolved_api_key),
+        llm_call=llm_call,
         prompt_system=prompt_system,
         prompt_user=prompt_user,
         prompt_messages=prompt_messages,
         prompt_render_log_json=prompt_render_log_json,
-        llm_call=llm_call,
     )
 
-    plan_contract = contract_for_task("plan_chapter")
-    parsed = plan_contract.parse(llm_result.text, finish_reason=llm_result.finish_reason)
-    data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
-    if warnings:
-        data["warnings"] = warnings
-    if parse_error is not None:
-        data["parse_error"] = parse_error
-    if llm_result.finish_reason is not None:
-        data["finish_reason"] = llm_result.finish_reason
+    data = dict(plan_step.plan_out)
+    if plan_step.warnings:
+        data["warnings"] = plan_step.warnings
+    if plan_step.parse_error is not None:
+        data["parse_error"] = plan_step.parse_error
+    if plan_step.finish_reason is not None:
+        data["finish_reason"] = plan_step.finish_reason
     return ok_payload(request_id=request_id, data=data)
 
 
