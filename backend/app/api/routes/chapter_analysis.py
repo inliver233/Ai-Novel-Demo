@@ -25,8 +25,7 @@ from app.services.prompt_presets import (
 )
 from app.services.prompt_store import format_characters
 
-# Reuse smart_context helper to keep behavior aligned with chapter_generate.
-from app.api.routes.chapters import _build_smart_context
+from app.services.chapter_context_service import build_smart_context
 
 router = APIRouter()
 logger = logging.getLogger("ainovel")
@@ -103,7 +102,7 @@ def analyze_chapter(
         smart_recent_full = ""
         smart_story_skeleton = ""
         if body.context.include_smart_context:
-            smart_recent_summaries, smart_recent_full, smart_story_skeleton = _build_smart_context(
+            smart_recent_summaries, smart_recent_full, smart_story_skeleton = build_smart_context(
                 db,
                 project_id=project_id,
                 outline_id=chapter.outline_id,
@@ -279,7 +278,7 @@ def rewrite_chapter(
         smart_recent_full = ""
         smart_story_skeleton = ""
         if body.context.include_smart_context:
-            smart_recent_summaries, smart_recent_full, smart_story_skeleton = _build_smart_context(
+            smart_recent_summaries, smart_recent_full, smart_story_skeleton = build_smart_context(
                 db,
                 project_id=project_id,
                 outline_id=chapter.outline_id,
