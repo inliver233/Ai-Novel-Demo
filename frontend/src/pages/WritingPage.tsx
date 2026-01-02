@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { List } from "lucide-react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
@@ -12,6 +11,7 @@ import { ChapterListPanel } from "../components/writing/ChapterListPanel";
 import { CreateChapterDialog } from "../components/writing/CreateChapterDialog";
 import { ChapterAnalysisModal } from "../components/writing/ChapterAnalysisModal";
 import { GenerationHistoryDrawer } from "../components/writing/GenerationHistoryDrawer";
+import { WritingToolbar } from "../components/writing/WritingToolbar";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
@@ -766,46 +766,21 @@ export function WritingPage() {
 
   return (
     <div className="grid gap-4">
-      <div className="panel p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-subtext">当前大纲</span>
-            <select
-              className="select w-auto"
-              name="active_outline_id"
-              value={activeOutlineId}
-              onChange={(e) => void switchOutline(e.target.value)}
-            >
-              {outlines.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.title}
-                  {o.has_chapters ? "（已有章节）" : ""}
-                </option>
-              ))}
-            </select>
-            <span className="text-xs text-subtext">共 {chapters.length} 章</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button className="btn btn-secondary lg:hidden" onClick={() => setChapterListOpen(true)} type="button">
-              <List size={16} />
-              章节列表
-            </button>
-            <button className="btn btn-secondary" onClick={batch.openModal} type="button">
-              批量生成
-              {batch.batchTask && (batch.batchTask.status === "queued" || batch.batchTask.status === "running")
-                ? `（${batch.batchTask.completed_count}/${batch.batchTask.total_count}）`
-                : ""}
-            </button>
-            <button className="btn btn-secondary" onClick={history.openDrawer} type="button">
-              生成记录
-            </button>
-            <button className="btn btn-primary" onClick={openCreate} type="button">
-              新增章节
-            </button>
-          </div>
-        </div>
-      </div>
+      <WritingToolbar
+        outlines={outlines}
+        activeOutlineId={activeOutlineId}
+        chaptersCount={chapters.length}
+        batchProgressText={
+          batch.batchTask && (batch.batchTask.status === "queued" || batch.batchTask.status === "running")
+            ? `（${batch.batchTask.completed_count}/${batch.batchTask.total_count}）`
+            : ""
+        }
+        onSwitchOutline={(outlineId) => void switchOutline(outlineId)}
+        onOpenChapterList={() => setChapterListOpen(true)}
+        onOpenBatch={batch.openModal}
+        onOpenHistory={history.openDrawer}
+        onCreateChapter={openCreate}
+      />
 
       <div className="flex gap-4">
         <aside className="hidden w-[240px] shrink-0 lg:block">
