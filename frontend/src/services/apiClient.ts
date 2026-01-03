@@ -53,10 +53,13 @@ async function fetchWithTimeout(path: string, init?: ApiRequestInit): Promise<Re
     else externalSignal.addEventListener("abort", onAbort, { once: true });
   }
 
-  const timeoutId = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
+  const timeoutEnabled = timeoutMs > 0;
+  const timeoutId = timeoutEnabled
+    ? setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs)
+    : null;
 
   try {
     return await fetch(path, { ...rest, signal: controller.signal });
@@ -89,7 +92,7 @@ async function fetchWithTimeout(path: string, init?: ApiRequestInit): Promise<Re
       details: e instanceof Error ? e.message : String(e),
     });
   } finally {
-    clearTimeout(timeoutId);
+    if (timeoutId !== null) clearTimeout(timeoutId);
     if (externalSignal) externalSignal.removeEventListener("abort", onAbort);
   }
 }

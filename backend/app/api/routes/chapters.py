@@ -656,6 +656,10 @@ def generate_chapter(
             data["plan_warnings"] = plan_warnings
         if plan_parse_error is not None:
             data["plan_parse_error"] = plan_parse_error
+    data["generation_run_id"] = gen_step.run_id
+    data["latency_ms"] = gen_step.latency_ms
+    if gen_step.dropped_params:
+        data["dropped_params"] = gen_step.dropped_params
     if gen_step.finish_reason is not None:
         data["finish_reason"] = gen_step.finish_reason
     return ok_payload(request_id=request_id, data=data)
@@ -781,6 +785,7 @@ def generate_chapter_stream(
             return
 
         raw_output = ""
+        generation_run_id: str | None = None
         finish_reason: str | None = None
         dropped_params: list[str] = []
         latency_ms: int | None = None
@@ -874,7 +879,7 @@ def generate_chapter_stream(
                             next_progress = max(last_progress, min(90, next_progress))
                             if next_progress != last_progress:
                                 last_progress = next_progress
-                                yield sse_progress(message="生成中...", progress=next_progress, word_count=len(raw_output))
+                                yield sse_progress(message="生成中...", progress=next_progress, char_count=len(raw_output))
                             last_progress_ts = now
                 finally:
                     close = getattr(stream_iter, "close", None)
@@ -899,7 +904,7 @@ def generate_chapter_stream(
                         "stream": True,
                     },
                 )
-                write_generation_run(
+                generation_run_id = write_generation_run(
                     request_id=request_id,
                     actor_user_id=user_id,
                     project_id=project_id,
@@ -931,6 +936,7 @@ def generate_chapter_stream(
                     llm_call=llm_call,
                 )
                 raw_output = fallback.text
+                generation_run_id = fallback.run_id
                 finish_reason = fallback.finish_reason
                 dropped_params = fallback.dropped_params
                 latency_ms = fallback.latency_ms
@@ -990,6 +996,8 @@ def generate_chapter_stream(
                 data["latency_ms"] = latency_ms
             if dropped_params:
                 data["dropped_params"] = dropped_params
+            if generation_run_id is not None:
+                data["generation_run_id"] = generation_run_id
 
             yield sse_progress(message="完成", progress=100, status="success")
             yield sse_result(data)

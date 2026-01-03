@@ -99,6 +99,9 @@ def analyze_chapter(
     parsed = contract.parse(llm_result.text, finish_reason=llm_result.finish_reason)
     data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
     data["generation_run_id"] = llm_result.run_id
+    data["latency_ms"] = llm_result.latency_ms
+    if llm_result.dropped_params:
+        data["dropped_params"] = llm_result.dropped_params
     if warnings:
         data["warnings"] = warnings
     if parse_error is not None:
@@ -198,6 +201,9 @@ def rewrite_chapter(
     parsed = contract.parse(llm_result.text, finish_reason=llm_result.finish_reason)
     data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
     data["generation_run_id"] = llm_result.run_id
+    data["latency_ms"] = llm_result.latency_ms
+    if llm_result.dropped_params:
+        data["dropped_params"] = llm_result.dropped_params
     if warnings:
         data["warnings"] = warnings
     if parse_error is not None:

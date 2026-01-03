@@ -227,6 +227,10 @@ def generate_outline(
         data["warnings"] = warnings
     if parse_error is not None:
         data["parse_error"] = parse_error
+    data["generation_run_id"] = llm_result.run_id
+    data["latency_ms"] = llm_result.latency_ms
+    if llm_result.dropped_params:
+        data["dropped_params"] = llm_result.dropped_params
     if finish_reason is not None:
         data["finish_reason"] = finish_reason
     return ok_payload(request_id=request_id, data=data)
@@ -325,6 +329,7 @@ def generate_outline_stream(
         yield sse_progress(message="调用模型...", progress=10)
 
         raw_output = ""
+        generation_run_id: str | None = None
         finish_reason: str | None = None
         dropped_params: list[str] = []
         latency_ms: int | None = None
@@ -384,7 +389,7 @@ def generate_outline_stream(
                         "stream": True,
                     },
                 )
-                write_generation_run(
+                generation_run_id = write_generation_run(
                     request_id=request_id,
                     actor_user_id=user_id,
                     project_id=project_id,
@@ -416,6 +421,7 @@ def generate_outline_stream(
                     llm_call=llm_call,
                 )
                 raw_output = fallback.text
+                generation_run_id = fallback.run_id
                 finish_reason = fallback.finish_reason
                 dropped_params = fallback.dropped_params
                 latency_ms = fallback.latency_ms
@@ -469,6 +475,8 @@ def generate_outline_stream(
                 data["latency_ms"] = latency_ms
             if dropped_params:
                 data["dropped_params"] = dropped_params
+            if generation_run_id is not None:
+                data["generation_run_id"] = generation_run_id
 
             yield sse_progress(message="完成", progress=100, status="success")
             yield sse_result(data)

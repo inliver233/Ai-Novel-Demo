@@ -14,7 +14,7 @@ type Props = {
   genForm: GenerateForm;
   setGenForm: Dispatch<SetStateAction<GenerateForm>>;
   characters: Character[];
-  streamProgress?: { message: string; progress: number; status: string; wordCount?: number } | null;
+  streamProgress?: { message: string; progress: number; status: string; charCount?: number } | null;
   onClose: () => void;
   onSave: () => void | Promise<unknown>;
   onSaveAndGenerateNext?: () => void | Promise<unknown>;

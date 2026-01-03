@@ -1,0 +1,307 @@
+import { useCallback, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
+
+import type { GenerateForm } from "../../components/writing/types";
+import type { ConfirmApi } from "../../components/ui/confirm";
+import type { ToastApi } from "../../components/ui/toast";
+import { ApiError, apiJson } from "../../services/apiClient";
+import { createChapterMarkerStreamParser } from "../../services/chapterMarkerStreamParser";
+import { SSEError, SSEPostClient } from "../../services/sseClient";
+import type { Chapter, LLMPreset } from "../../types";
+import { extractMissingNumbers } from "./writingErrorUtils";
+import { appendMarkdown } from "./writingUtils";
+import type { ChapterForm } from "./writingUtils";
+
+type StreamProgress = {
+  message: string;
+  progress: number;
+  status: string;
+  charCount?: number;
+};
+
+const DEFAULT_GEN_FORM: GenerateForm = {
+  instruction: "写出本章冲突升级，结尾留钩子。",
+  target_word_count: 3000,
+  stream: false,
+  plan_first: false,
+  post_edit: false,
+  context: {
+    include_world_setting: true,
+    include_style_guide: true,
+    include_constraints: true,
+    include_outline: true,
+    include_smart_context: true,
+    require_sequential: false,
+    character_ids: [],
+    previous_chapter: "summary",
+  },
+};
+
+export function useChapterGeneration(args: {
+  activeChapter: Chapter | null;
+  chapters: Chapter[];
+  form: ChapterForm | null;
+  setForm: Dispatch<SetStateAction<ChapterForm | null>>;
+  preset: LLMPreset | null;
+  dirty: boolean;
+  saveChapter: () => Promise<boolean>;
+  requestSelectChapter: (chapterId: string) => Promise<void>;
+  toast: ToastApi;
+  confirm: ConfirmApi;
+}) {
+  const { activeChapter, chapters, form, setForm, preset, dirty, saveChapter, requestSelectChapter, toast, confirm } =
+    args;
+
+  const [generating, setGenerating] = useState(false);
+  const [genRequestId, setGenRequestId] = useState<string | null>(null);
+  const [genStreamProgress, setGenStreamProgress] = useState<StreamProgress | null>(null);
+  const genStreamClientRef = useRef<SSEPostClient | null>(null);
+  const genStreamHasChunkRef = useRef(false);
+
+  const [genForm, setGenForm] = useState<GenerateForm>(DEFAULT_GEN_FORM);
+
+  const abortGenerate = useCallback(() => genStreamClientRef.current?.abort(), []);
+
+  const generate = useCallback(
+    async (mode: "replace" | "append") => {
+      if (!activeChapter || !form) return;
+      if (!preset) {
+        toast.toastError("请先在 Prompts 页保存 LLM 配置");
+        return;
+      }
+      const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
+
+      if (dirty) {
+        const choice = await confirm.choose({
+          title: "章节有未保存修改，如何生成？",
+          description: "生成结果会写入编辑器，但不会自动保存。",
+          confirmText: "保存并生成",
+          secondaryText: "直接生成（不保存当前修改）",
+          cancelText: "取消",
+        });
+        if (choice === "cancel") return;
+        if (choice === "confirm") {
+          const ok = await saveChapter();
+          if (!ok) return;
+        }
+      }
+
+      setGenerating(true);
+      setGenRequestId(null);
+      setGenStreamProgress(null);
+      genStreamClientRef.current = null;
+      genStreamHasChunkRef.current = false;
+      try {
+        const currentDraftTail = mode === "append" ? (form.content_md ?? "").trimEnd().slice(-1200) : null;
+
+        const payload = {
+          mode,
+          instruction: genForm.instruction,
+          target_word_count: genForm.target_word_count > 0 ? genForm.target_word_count : null,
+          plan_first: genForm.plan_first,
+          post_edit: genForm.post_edit,
+          context: {
+            include_world_setting: genForm.context.include_world_setting,
+            include_style_guide: genForm.context.include_style_guide,
+            include_constraints: genForm.context.include_constraints,
+            include_outline: genForm.context.include_outline,
+            include_smart_context: genForm.context.include_smart_context,
+            require_sequential: genForm.context.require_sequential,
+            character_ids: genForm.context.character_ids,
+            previous_chapter: genForm.context.previous_chapter === "none" ? null : genForm.context.previous_chapter,
+            current_draft_tail: currentDraftTail,
+          },
+        };
+
+        const baseContent = form.content_md;
+        const baseSummary = form.summary;
+
+        if (genForm.stream) {
+          const parser = createChapterMarkerStreamParser();
+          let parsedContent = "";
+          let parsedSummary = "";
+          let requestId: string | undefined;
+          let nonFatalNoticed = false;
+
+          const processChunk = (chunk: string) => {
+            const out = parser.push(chunk);
+            if (out.contentDelta) parsedContent += out.contentDelta;
+            if (out.summaryDelta) parsedSummary += out.summaryDelta;
+          };
+
+          const client = new SSEPostClient(`/api/chapters/${activeChapter.id}/generate-stream`, payload, {
+            headers,
+            onOpen: ({ requestId: rid }) => {
+              requestId = rid;
+              setGenRequestId(rid ?? null);
+            },
+            onProgress: ({ message, progress, status, charCount }) => {
+              setGenStreamProgress({ message, progress, status, charCount });
+              if (!nonFatalNoticed && status === "error") {
+                nonFatalNoticed = true;
+                toast.toastError(message, requestId);
+              }
+            },
+            onChunk: (chunk) => {
+              genStreamHasChunkRef.current = true;
+              processChunk(chunk);
+              setForm((prev) => {
+                if (!prev) return prev;
+                const nextContent = mode === "append" ? appendMarkdown(baseContent, parsedContent) : parsedContent;
+                return { ...prev, content_md: nextContent, status: "drafting" };
+              });
+            },
+            onResult: (data) => {
+              const obj = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+              const content = typeof obj?.content_md === "string" ? obj.content_md : "";
+              const summary = typeof obj?.summary === "string" ? obj.summary : "";
+              const parseErrObj =
+                obj?.parse_error && typeof obj.parse_error === "object"
+                  ? (obj.parse_error as Record<string, unknown>)
+                  : null;
+              const parseErrCode = typeof parseErrObj?.code === "string" ? parseErrObj.code : undefined;
+              const parseErrMessage = typeof parseErrObj?.message === "string" ? parseErrObj.message : undefined;
+              if (parseErrCode === "OUTPUT_TRUNCATED") {
+                toast.toastError(parseErrMessage ?? "输出被截断", requestId);
+              }
+              setForm((prev) => {
+                if (!prev) return prev;
+                const nextContent = mode === "append" ? appendMarkdown(baseContent, content) : content;
+                const nextSummary = summary || parsedSummary.trim() || prev.summary || baseSummary;
+                return { ...prev, content_md: nextContent, summary: nextSummary, status: "drafting" };
+              });
+            },
+          });
+          genStreamClientRef.current = client;
+
+          try {
+            await client.connect();
+            toast.toastSuccess("生成完成（别忘了保存）", requestId);
+          } catch (e) {
+            const err = e as unknown;
+            if (err instanceof SSEError && err.code === "ABORTED") {
+              setForm((prev) => (prev ? { ...prev, content_md: baseContent, summary: baseSummary } : prev));
+              toast.toastSuccess("已取消生成", err.requestId ?? requestId);
+              return;
+            }
+            if (err instanceof SSEError && err.code !== "SSE_SERVER_ERROR") {
+              if (!genStreamHasChunkRef.current) {
+                toast.toastError("流式生成失败，已回退非流式", err.requestId ?? requestId);
+                const res = await apiJson<{ content_md: string; summary: string; raw_output: string }>(
+                  `/api/chapters/${activeChapter.id}/generate`,
+                  {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify(payload),
+                  },
+                );
+
+                setForm((prev) => {
+                  if (!prev) return prev;
+                  const nextContent =
+                    mode === "append"
+                      ? appendMarkdown(prev.content_md, res.data.content_md ?? "")
+                      : (res.data.content_md ?? "");
+                  return {
+                    ...prev,
+                    content_md: nextContent,
+                    summary: res.data.summary ?? prev.summary,
+                    status: "drafting",
+                  };
+                });
+
+                toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
+                return;
+              }
+              toast.toastError(`${err.message} (${err.code})`, err.requestId);
+              return;
+            }
+            if (err instanceof SSEError && err.code === "SSE_SERVER_ERROR") {
+              toast.toastError(`${err.message} (${err.code})`, err.requestId);
+              return;
+            }
+            if (err instanceof ApiError) {
+              const missingNumbers = extractMissingNumbers(err);
+              if (missingNumbers.length > 0) {
+                const targetNumber = missingNumbers[0]!;
+                const target = chapters.find((c) => c.number === targetNumber);
+                toast.toastError(
+                  `缺少前置章节内容：第 ${missingNumbers.join("、")} 章`,
+                  err.requestId,
+                  target
+                    ? {
+                        label: `跳转到第 ${targetNumber} 章`,
+                        onClick: () => void requestSelectChapter(target.id),
+                      }
+                    : undefined,
+                );
+                return;
+              }
+              toast.toastError(`${err.message} (${err.code})`, err.requestId);
+              return;
+            }
+            toast.toastError("生成失败");
+          }
+        } else {
+          const res = await apiJson<{ content_md: string; summary: string; raw_output: string }>(
+            `/api/chapters/${activeChapter.id}/generate`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify(payload),
+            },
+          );
+
+          setForm((prev) => {
+            if (!prev) return prev;
+            const nextContent =
+              mode === "append"
+                ? appendMarkdown(prev.content_md, res.data.content_md ?? "")
+                : (res.data.content_md ?? "");
+            return {
+              ...prev,
+              content_md: nextContent,
+              summary: res.data.summary ?? prev.summary,
+              status: "drafting",
+            };
+          });
+
+          toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
+        }
+      } catch (e) {
+        const err = e as ApiError;
+        const missingNumbers = extractMissingNumbers(err);
+        if (missingNumbers.length > 0) {
+          const targetNumber = missingNumbers[0]!;
+          const target = chapters.find((c) => c.number === targetNumber);
+          toast.toastError(
+            `缺少前置章节内容：第 ${missingNumbers.join("、")} 章`,
+            err.requestId,
+            target
+              ? {
+                  label: `跳转到第 ${targetNumber} 章`,
+                  onClick: () => void requestSelectChapter(target.id),
+                }
+              : undefined,
+          );
+          return;
+        }
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setGenerating(false);
+      }
+    },
+    [activeChapter, chapters, confirm, dirty, form, genForm, preset, requestSelectChapter, saveChapter, setForm, toast],
+  );
+
+  return {
+    generating,
+    genRequestId,
+    genStreamProgress,
+    genStreamClientRef,
+    genForm,
+    setGenForm,
+    generate,
+    abortGenerate,
+  };
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
@@ -15,20 +15,17 @@ import { WritingToolbar } from "../components/writing/WritingToolbar";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
-import { useSaveHotkey } from "../hooks/useSaveHotkey";
-import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
-import { ApiError, apiJson } from "../services/apiClient";
-import { createChapterMarkerStreamParser } from "../services/chapterMarkerStreamParser";
-import { SSEError, SSEPostClient } from "../services/sseClient";
-import { markWizardProjectChanged } from "../services/wizard";
-import type { CreateChapterForm, GenerateForm, GenerationRun } from "../components/writing/types";
-import { appendMarkdown, chapterToForm, nextChapterNumber } from "./writing/writingUtils";
-import type { ChapterForm } from "./writing/writingUtils";
+import { apiJson } from "../services/apiClient";
+import { useApplyGenerationRun } from "./writing/useApplyGenerationRun";
 import { useBatchGeneration } from "./writing/useBatchGeneration";
 import { useChapterAnalysis } from "./writing/useChapterAnalysis";
+import { useChapterCrud } from "./writing/useChapterCrud";
+import { useChapterEditor } from "./writing/useChapterEditor";
+import { useChapterGeneration } from "./writing/useChapterGeneration";
 import { useGenerationHistory } from "./writing/useGenerationHistory";
-import type { Chapter, ChapterStatus, Character, LLMPreset, Outline, OutlineListItem, Project } from "../types";
+import { useOutlineSwitcher } from "./writing/useOutlineSwitcher";
+import type { ChapterStatus, Character, LLMPreset, Outline, OutlineListItem } from "../types";
 
 type WritingLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LLMPreset; characters: Character[] };
 
@@ -43,8 +40,6 @@ export function WritingPage() {
   const refreshWizard = wizard.refresh;
   const bumpWizardLocal = wizard.bumpLocal;
 
-  const [loading, setLoading] = useState(true);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [chapterListOpen, setChapterListOpen] = useState(false);
   const writingQuery = useProjectData<WritingLoaded>(projectId, async (id) => {
     const [outlineRes, presetRes, charactersRes] = await Promise.all([
@@ -66,246 +61,89 @@ export function WritingPage() {
   const preset = writingQuery.data?.preset ?? null;
   const refreshWriting = writingQuery.refresh;
 
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [activeChapter, setActiveChapter] = useState<Chapter | null>(null);
-  const [baseline, setBaseline] = useState<ChapterForm | null>(null);
-  const [form, setForm] = useState<ChapterForm | null>(null);
-  const [loadingChapter, setLoadingChapter] = useState(false);
-  const requestedChapterHandledRef = useRef(false);
+  const chapterEditor = useChapterEditor({
+    projectId,
+    requestedChapterId,
+    searchParams,
+    setSearchParams,
+    toast,
+    confirm,
+    refreshWizard,
+    bumpWizardLocal,
+  });
+  const {
+    loading,
+    chapters,
+    setChapters,
+    refreshChapters,
+    activeId,
+    setActiveId,
+    activeChapter,
+    form,
+    setForm,
+    dirty,
+    saveChapter,
+    requestSelectChapter: requestSelectChapterBase,
+    loadingChapter,
+  } = chapterEditor;
   const contentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [contentEditorTab, setContentEditorTab] = useState<"edit" | "preview">("edit");
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createSaving, setCreateSaving] = useState(false);
-  const [createForm, setCreateForm] = useState<CreateChapterForm>({ number: 1, title: "", plan: "" });
-
   const [aiOpen, setAiOpen] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [genRequestId, setGenRequestId] = useState<string | null>(null);
-  const [genStreamProgress, setGenStreamProgress] = useState<{
-    message: string;
-    progress: number;
-    status: string;
-    wordCount?: number;
-  } | null>(null);
-  const genStreamClientRef = useRef<SSEPostClient | null>(null);
-  const genStreamHasChunkRef = useRef(false);
   const autoGenerateNextRef = useRef<{ chapterId: string; mode: "replace" | "append" } | null>(null);
-  const [genForm, setGenForm] = useState<GenerateForm>({
-    instruction: "写出本章冲突升级，结尾留钩子。",
-    target_word_count: 3000,
-    stream: false,
-    plan_first: false,
-    post_edit: false,
-    context: {
-      include_world_setting: true,
-      include_style_guide: true,
-      include_constraints: true,
-      include_outline: true,
-      include_smart_context: true,
-      require_sequential: false,
-      character_ids: [],
-      previous_chapter: "summary",
-    },
+
+  useEffect(() => {
+    if (!activeChapter) autoGenerateNextRef.current = null;
+  }, [activeChapter]);
+
+  useApplyGenerationRun({
+    applyRunId,
+    activeChapter,
+    form,
+    dirty,
+    confirm,
+    toast,
+    saveChapter,
+    searchParams,
+    setSearchParams,
+    setForm,
   });
-
-  const dirty = useMemo(() => {
-    if (!baseline || !form) return false;
-    return (
-      form.title !== baseline.title ||
-      form.plan !== baseline.plan ||
-      form.content_md !== baseline.content_md ||
-      form.summary !== baseline.summary ||
-      form.status !== baseline.status
-    );
-  }, [baseline, form]);
-
-  useUnsavedChangesGuard(dirty);
-
-  const refreshChapters = useCallback(async () => {
-    if (!projectId) return;
-    setLoading(true);
-    try {
-      const res = await apiJson<{ chapters: Chapter[] }>(`/api/projects/${projectId}/chapters`);
-      setChapters(res.data.chapters);
-      setActiveId((prev) => {
-        if (prev && res.data.chapters.some((c) => c.id === prev)) return prev;
-        return res.data.chapters[0]?.id ?? null;
-      });
-    } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, toast]);
-
-  useEffect(() => {
-    void refreshChapters();
-  }, [refreshChapters]);
-
-  useEffect(() => {
-    if (requestedChapterHandledRef.current) return;
-    if (!requestedChapterId) return;
-    if (!chapters.some((c) => c.id === requestedChapterId)) return;
-    requestedChapterHandledRef.current = true;
-    setActiveId(requestedChapterId);
-    const next = new URLSearchParams(searchParams);
-    next.delete("chapterId");
-    setSearchParams(next, { replace: true });
-  }, [chapters, requestedChapterId, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    if (!activeId) {
-      setActiveChapter(null);
-      setBaseline(null);
-      setForm(null);
-      autoGenerateNextRef.current = null;
-      return;
-    }
-    setLoadingChapter(true);
-    void (async () => {
-      try {
-        const res = await apiJson<{ chapter: Chapter }>(`/api/chapters/${activeId}`);
-        setActiveChapter(res.data.chapter);
-        const next = chapterToForm(res.data.chapter);
-        setBaseline(next);
-        setForm(next);
-      } catch (e) {
-        const err = e as ApiError;
-        toast.toastError(`${err.message} (${err.code})`, err.requestId);
-        setActiveChapter(null);
-        setBaseline(null);
-        setForm(null);
-        autoGenerateNextRef.current = null;
-      } finally {
-        setLoadingChapter(false);
-      }
-    })();
-  }, [activeId, toast]);
-
-  const saveChapter = useCallback(async () => {
-    if (!activeChapter || !form) return false;
-    if (!dirty) return true;
-    try {
-      const res = await apiJson<{ chapter: Chapter }>(`/api/chapters/${activeChapter.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          title: form.title.trim(),
-          plan: form.plan,
-          content_md: form.content_md,
-          summary: form.summary,
-          status: form.status,
-        }),
-      });
-      setActiveChapter(res.data.chapter);
-      const next = chapterToForm(res.data.chapter);
-      setBaseline(next);
-      setForm(next);
-      setChapters((prev) => prev.map((c) => (c.id === res.data.chapter.id ? res.data.chapter : c)));
-      markWizardProjectChanged(activeChapter.project_id);
-      bumpWizardLocal();
-      await refreshWizard();
-      toast.toastSuccess("已保存", res.request_id);
-      return true;
-    } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-      return false;
-    }
-  }, [activeChapter, bumpWizardLocal, dirty, form, refreshWizard, toast]);
-
-  useSaveHotkey(() => void saveChapter(), dirty);
-
-  useEffect(() => {
-    if (!applyRunId) return;
-    if (!activeChapter || !form) return;
-
-    let canceled = false;
-    void (async () => {
-      try {
-        if (dirty) {
-          const choice = await confirm.choose({
-            title: "章节有未保存修改，是否应用生成记录？",
-            description: "应用后会覆盖编辑器内容（不会自动保存）。",
-            confirmText: "保存并应用",
-            secondaryText: "直接应用（不保存）",
-            cancelText: "取消",
-          });
-          if (choice === "cancel") return;
-          if (choice === "confirm") {
-            const ok = await saveChapter();
-            if (!ok) return;
-          }
-        }
-
-        const res = await apiJson<{ run: GenerationRun }>(`/api/generation_runs/${applyRunId}`);
-        if (canceled) return;
-
-        const run = res.data.run;
-        if (run.chapter_id && run.chapter_id !== activeChapter.id) {
-          toast.toastError("生成记录不属于当前章节，请先切换到对应章节再应用", res.request_id);
-          return;
-        }
-        const raw = typeof run.output_text === "string" ? run.output_text : "";
-        if (!raw.trim()) {
-          toast.toastError("生成记录为空，无法应用", res.request_id);
-          return;
-        }
-
-        const parser = createChapterMarkerStreamParser();
-        let content = "";
-        let summary = "";
-        const out1 = parser.push(raw);
-        content += out1.contentDelta;
-        summary += out1.summaryDelta;
-        const out2 = parser.finalize();
-        content += out2.contentDelta;
-        summary += out2.summaryDelta;
-
-        const nextContent = content.trim() || raw.trim();
-        const nextSummary = summary.trim();
-        setForm((prev) =>
-          prev ? { ...prev, content_md: nextContent, summary: nextSummary || prev.summary, status: "drafting" } : prev,
-        );
-        toast.toastSuccess("已应用生成结果（别忘了保存）", res.request_id);
-      } catch (e) {
-        const err = e as ApiError;
-        toast.toastError(`${err.message} (${err.code})`, err.requestId);
-      } finally {
-        const next = new URLSearchParams(searchParams);
-        next.delete("applyRunId");
-        setSearchParams(next, { replace: true });
-      }
-    })();
-
-    return () => {
-      canceled = true;
-    };
-  }, [activeChapter, applyRunId, confirm, dirty, form, saveChapter, searchParams, setSearchParams, toast]);
 
   const requestSelectChapter = useCallback(
     async (id: string) => {
-      if (id === activeId) return;
       autoGenerateNextRef.current = null;
-      if (dirty) {
-        const choice = await confirm.choose({
-          title: "章节有未保存修改，是否切换？",
-          description: "切换后未保存内容会丢失。",
-          confirmText: "保存并切换",
-          secondaryText: "不保存切换",
-          cancelText: "取消",
-        });
-        if (choice === "cancel") return;
-        if (choice === "confirm") {
-          const ok = await saveChapter();
-          if (!ok) return;
-        }
-      }
-      setActiveId(id);
+      await requestSelectChapterBase(id);
     },
-    [activeId, confirm, dirty, saveChapter],
+    [requestSelectChapterBase],
   );
+
+  const chapterCrud = useChapterCrud({
+    projectId,
+    chapters,
+    setChapters,
+    activeChapter,
+    setActiveId,
+    refreshChapters,
+    requestSelectChapter,
+    toast,
+    confirm,
+    bumpWizardLocal,
+    refreshWizard,
+  });
+
+  const generation = useChapterGeneration({
+    activeChapter,
+    chapters,
+    form,
+    setForm,
+    preset,
+    dirty,
+    saveChapter,
+    requestSelectChapter,
+    toast,
+    confirm,
+  });
+  const { generating, genRequestId, genStreamProgress, genForm, setGenForm, generate, abortGenerate } = generation;
 
   const batch = useBatchGeneration({
     projectId,
@@ -323,370 +161,18 @@ export function WritingPage() {
   const history = useGenerationHistory({ projectId, toast });
 
   const activeOutlineId = outline?.id ?? "";
-
-  const switchOutline = useCallback(
-    async (nextOutlineId: string) => {
-      if (!projectId) return;
-      if (!nextOutlineId || nextOutlineId === activeOutlineId) return;
-
-      if (dirty) {
-        const choice = await confirm.choose({
-          title: "章节有未保存修改，是否切换大纲？",
-          description: "切换大纲后未保存内容会丢失。",
-          confirmText: "保存并切换",
-          secondaryText: "不保存切换",
-          cancelText: "取消",
-        });
-        if (choice === "cancel") return;
-        if (choice === "confirm") {
-          const ok = await saveChapter();
-          if (!ok) return;
-        }
-      }
-
-      try {
-        await apiJson<{ project: Project }>(`/api/projects/${projectId}`, {
-          method: "PUT",
-          body: JSON.stringify({ active_outline_id: nextOutlineId }),
-        });
-        markWizardProjectChanged(projectId);
-        bumpWizardLocal();
-        await refreshWriting();
-        await refreshChapters();
-        await refreshWizard();
-        toast.toastSuccess("已切换大纲");
-      } catch (e) {
-        const err = e as ApiError;
-        toast.toastError(`${err.message} (${err.code})`, err.requestId);
-      }
-    },
-    [
-      activeOutlineId,
-      bumpWizardLocal,
-      confirm,
-      dirty,
-      projectId,
-      refreshChapters,
-      refreshWriting,
-      refreshWizard,
-      saveChapter,
-      toast,
-    ],
-  );
-
-  const openCreate = useCallback(() => {
-    setCreateForm({ number: nextChapterNumber(chapters), title: "", plan: "" });
-    setCreateOpen(true);
-  }, [chapters]);
-
-  const createChapter = useCallback(async () => {
-    if (!projectId) return;
-    if (createSaving) return;
-    if (!createForm.number || createForm.number < 1) {
-      toast.toastError("章号必须 >= 1");
-      return;
-    }
-    setCreateSaving(true);
-    try {
-      const res = await apiJson<{ chapter: Chapter }>(`/api/projects/${projectId}/chapters`, {
-        method: "POST",
-        body: JSON.stringify({
-          number: createForm.number,
-          title: createForm.title.trim() || null,
-          plan: createForm.plan.trim() || null,
-          status: "planned",
-        }),
-      });
-      setChapters((prev) => [...prev, res.data.chapter].sort((a, b) => a.number - b.number));
-      markWizardProjectChanged(projectId);
-      bumpWizardLocal();
-      void refreshWizard();
-      toast.toastSuccess("已创建", res.request_id);
-      setCreateOpen(false);
-      await requestSelectChapter(res.data.chapter.id);
-    } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    } finally {
-      setCreateSaving(false);
-    }
-  }, [bumpWizardLocal, createForm, createSaving, projectId, refreshWizard, requestSelectChapter, toast]);
-
-  const deleteChapter = useCallback(async () => {
-    if (!activeChapter) return;
-    const ok = await confirm.confirm({
-      title: "删除章节？",
-      description: "删除后该章节正文与摘要将丢失。",
-      confirmText: "删除",
-      danger: true,
-    });
-    if (!ok) return;
-
-    try {
-      await apiJson<Record<string, never>>(`/api/chapters/${activeChapter.id}`, { method: "DELETE" });
-      markWizardProjectChanged(activeChapter.project_id);
-      bumpWizardLocal();
-      void refreshWizard();
-      toast.toastSuccess("已删除");
-      const idx = chapters.findIndex((c) => c.id === activeChapter.id);
-      const next = chapters[idx - 1]?.id ?? chapters[idx + 1]?.id ?? null;
-      setActiveId(next);
-      await refreshChapters();
-    } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    }
-  }, [activeChapter, bumpWizardLocal, chapters, confirm, refreshChapters, refreshWizard, toast]);
-
-  const generate = useCallback(
-    async (mode: "replace" | "append") => {
-      if (!activeChapter || !form) return;
-      if (!preset) {
-        toast.toastError("请先在 Prompts 页保存 LLM 配置");
-        return;
-      }
-      const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
-
-      if (dirty) {
-        const choice = await confirm.choose({
-          title: "章节有未保存修改，如何生成？",
-          description: "生成结果会写入编辑器，但不会自动保存。",
-          confirmText: "保存并生成",
-          secondaryText: "直接生成（不保存当前修改）",
-          cancelText: "取消",
-        });
-        if (choice === "cancel") return;
-        if (choice === "confirm") {
-          const ok = await saveChapter();
-          if (!ok) return;
-        }
-      }
-
-      setGenerating(true);
-      setGenRequestId(null);
-      setGenStreamProgress(null);
-      genStreamClientRef.current = null;
-      genStreamHasChunkRef.current = false;
-      try {
-        const currentDraftTail = mode === "append" ? (form.content_md ?? "").trimEnd().slice(-1200) : null;
-
-        const payload = {
-          mode,
-          instruction: genForm.instruction,
-          target_word_count: genForm.target_word_count > 0 ? genForm.target_word_count : null,
-          plan_first: genForm.plan_first,
-          post_edit: genForm.post_edit,
-          context: {
-            include_world_setting: genForm.context.include_world_setting,
-            include_style_guide: genForm.context.include_style_guide,
-            include_constraints: genForm.context.include_constraints,
-            include_outline: genForm.context.include_outline,
-            include_smart_context: genForm.context.include_smart_context,
-            require_sequential: genForm.context.require_sequential,
-            character_ids: genForm.context.character_ids,
-            previous_chapter: genForm.context.previous_chapter === "none" ? null : genForm.context.previous_chapter,
-            current_draft_tail: currentDraftTail,
-          },
-        };
-
-        const baseContent = form.content_md;
-        const baseSummary = form.summary;
-
-        if (genForm.stream) {
-          const parser = createChapterMarkerStreamParser();
-          let parsedContent = "";
-          let parsedSummary = "";
-          let requestId: string | undefined;
-          let nonFatalNoticed = false;
-
-          const processChunk = (chunk: string) => {
-            const out = parser.push(chunk);
-            if (out.contentDelta) parsedContent += out.contentDelta;
-            if (out.summaryDelta) parsedSummary += out.summaryDelta;
-          };
-
-          const client = new SSEPostClient(`/api/chapters/${activeChapter.id}/generate-stream`, payload, {
-            headers,
-            onOpen: ({ requestId: rid }) => {
-              requestId = rid;
-              setGenRequestId(rid ?? null);
-            },
-            onProgress: ({ message, progress, status, wordCount }) => {
-              setGenStreamProgress({ message, progress, status, wordCount });
-              if (!nonFatalNoticed && status === "error") {
-                nonFatalNoticed = true;
-                toast.toastError(message, requestId);
-              }
-            },
-            onChunk: (chunk) => {
-              genStreamHasChunkRef.current = true;
-              processChunk(chunk);
-              setForm((prev) => {
-                if (!prev) return prev;
-                const nextContent = mode === "append" ? appendMarkdown(baseContent, parsedContent) : parsedContent;
-                return { ...prev, content_md: nextContent, status: "drafting" };
-              });
-            },
-            onResult: (data) => {
-              const obj = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
-              const content = typeof obj?.content_md === "string" ? obj.content_md : "";
-              const summary = typeof obj?.summary === "string" ? obj.summary : "";
-              const parseErrObj =
-                obj?.parse_error && typeof obj.parse_error === "object"
-                  ? (obj.parse_error as Record<string, unknown>)
-                  : null;
-              const parseErrCode = typeof parseErrObj?.code === "string" ? parseErrObj.code : undefined;
-              const parseErrMessage = typeof parseErrObj?.message === "string" ? parseErrObj.message : undefined;
-              if (parseErrCode === "OUTPUT_TRUNCATED") {
-                toast.toastError(parseErrMessage ?? "输出被截断", requestId);
-              }
-              setForm((prev) => {
-                if (!prev) return prev;
-                const nextContent = mode === "append" ? appendMarkdown(baseContent, content) : content;
-                const nextSummary = summary || parsedSummary.trim() || prev.summary || baseSummary;
-                return { ...prev, content_md: nextContent, summary: nextSummary, status: "drafting" };
-              });
-            },
-          });
-          genStreamClientRef.current = client;
-
-          try {
-            await client.connect();
-            toast.toastSuccess("生成完成（别忘了保存）", requestId);
-          } catch (e) {
-            const err = e as unknown;
-            if (err instanceof SSEError && err.code === "ABORTED") {
-              setForm((prev) => (prev ? { ...prev, content_md: baseContent, summary: baseSummary } : prev));
-              toast.toastSuccess("已取消生成", err.requestId ?? requestId);
-              return;
-            }
-            if (err instanceof SSEError && err.code !== "SSE_SERVER_ERROR") {
-              if (!genStreamHasChunkRef.current) {
-                toast.toastError("流式生成失败，已回退非流式", err.requestId ?? requestId);
-                const res = await apiJson<{ content_md: string; summary: string; raw_output: string }>(
-                  `/api/chapters/${activeChapter.id}/generate`,
-                  {
-                    method: "POST",
-                    headers,
-                    body: JSON.stringify(payload),
-                  },
-                );
-
-                setForm((prev) => {
-                  if (!prev) return prev;
-                  const nextContent =
-                    mode === "append"
-                      ? appendMarkdown(prev.content_md, res.data.content_md ?? "")
-                      : (res.data.content_md ?? "");
-                  return {
-                    ...prev,
-                    content_md: nextContent,
-                    summary: res.data.summary ?? prev.summary,
-                    status: "drafting",
-                  };
-                });
-
-                toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
-                return;
-              }
-              toast.toastError(`${err.message} (${err.code})`, err.requestId);
-              return;
-            }
-            if (err instanceof SSEError && err.code === "SSE_SERVER_ERROR") {
-              toast.toastError(`${err.message} (${err.code})`, err.requestId);
-              return;
-            }
-            if (err instanceof ApiError) {
-              const missingNumbers =
-                err.code === "CHAPTER_PREREQ_MISSING" &&
-                err.details &&
-                typeof err.details === "object" &&
-                "missing_numbers" in err.details &&
-                Array.isArray((err.details as { missing_numbers?: unknown }).missing_numbers)
-                  ? ((err.details as { missing_numbers?: unknown }).missing_numbers as unknown[])
-                      .filter((n) => typeof n === "number")
-                      .map((n) => n as number)
-                  : [];
-              if (missingNumbers.length > 0) {
-                const targetNumber = missingNumbers[0]!;
-                const target = chapters.find((c) => c.number === targetNumber);
-                toast.toastError(
-                  `缺少前置章节内容：第 ${missingNumbers.join("、")} 章`,
-                  err.requestId,
-                  target
-                    ? {
-                        label: `跳转到第 ${targetNumber} 章`,
-                        onClick: () => void requestSelectChapter(target.id),
-                      }
-                    : undefined,
-                );
-                return;
-              }
-              toast.toastError(`${err.message} (${err.code})`, err.requestId);
-              return;
-            }
-            toast.toastError("生成失败");
-          }
-        } else {
-          const res = await apiJson<{ content_md: string; summary: string; raw_output: string }>(
-            `/api/chapters/${activeChapter.id}/generate`,
-            {
-              method: "POST",
-              headers,
-              body: JSON.stringify(payload),
-            },
-          );
-
-          setForm((prev) => {
-            if (!prev) return prev;
-            const nextContent =
-              mode === "append"
-                ? appendMarkdown(prev.content_md, res.data.content_md ?? "")
-                : (res.data.content_md ?? "");
-            return {
-              ...prev,
-              content_md: nextContent,
-              summary: res.data.summary ?? prev.summary,
-              status: "drafting",
-            };
-          });
-
-          toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
-        }
-      } catch (e) {
-        const err = e as ApiError;
-        const missingNumbers =
-          err.code === "CHAPTER_PREREQ_MISSING" &&
-          err.details &&
-          typeof err.details === "object" &&
-          "missing_numbers" in err.details &&
-          Array.isArray((err.details as { missing_numbers?: unknown }).missing_numbers)
-            ? ((err.details as { missing_numbers?: unknown }).missing_numbers as unknown[])
-                .filter((n) => typeof n === "number")
-                .map((n) => n as number)
-            : [];
-        if (missingNumbers.length > 0) {
-          const targetNumber = missingNumbers[0]!;
-          const target = chapters.find((c) => c.number === targetNumber);
-          toast.toastError(
-            `缺少前置章节内容：第 ${missingNumbers.join("、")} 章`,
-            err.requestId,
-            target
-              ? {
-                  label: `跳转到第 ${targetNumber} 章`,
-                  onClick: () => void requestSelectChapter(target.id),
-                }
-              : undefined,
-          );
-          return;
-        }
-        toast.toastError(`${err.message} (${err.code})`, err.requestId);
-      } finally {
-        setGenerating(false);
-      }
-    },
-    [activeChapter, chapters, confirm, dirty, form, genForm, preset, requestSelectChapter, saveChapter, toast],
-  );
+  const switchOutline = useOutlineSwitcher({
+    projectId,
+    activeOutlineId,
+    dirty,
+    confirm,
+    toast,
+    saveChapter,
+    bumpWizardLocal,
+    refreshWizard,
+    refreshChapters,
+    refreshWriting,
+  });
 
   const locateInEditor = useCallback(
     (excerpt: string) => {
@@ -750,7 +236,7 @@ export function WritingPage() {
     autoGenerateNextRef.current = { chapterId: next.id, mode: "replace" };
     setActiveId(next.id);
     setAiOpen(true);
-  }, [activeChapter, chapters, confirm, saveChapter, toast]);
+  }, [activeChapter, chapters, confirm, saveChapter, setActiveId, setAiOpen, toast]);
 
   useEffect(() => {
     const pending = autoGenerateNextRef.current;
@@ -779,7 +265,7 @@ export function WritingPage() {
         onOpenChapterList={() => setChapterListOpen(true)}
         onOpenBatch={batch.openModal}
         onOpenHistory={history.openDrawer}
-        onCreateChapter={openCreate}
+        onCreateChapter={chapterCrud.openCreate}
       />
 
       <div className="flex gap-4">
@@ -823,7 +309,7 @@ export function WritingPage() {
                   <button
                     className="btn btn-ghost text-accent hover:bg-accent/10"
                     disabled={loadingChapter || generating}
-                    onClick={() => void deleteChapter()}
+                    onClick={() => void chapterCrud.deleteChapter()}
                     type="button"
                   >
                     删除
@@ -923,12 +409,12 @@ export function WritingPage() {
       </div>
 
       <CreateChapterDialog
-        open={createOpen}
-        saving={createSaving}
-        form={createForm}
-        setForm={setCreateForm}
-        onClose={() => setCreateOpen(false)}
-        onSubmit={() => void createChapter()}
+        open={chapterCrud.createOpen}
+        saving={chapterCrud.createSaving}
+        form={chapterCrud.createForm}
+        setForm={chapterCrud.setCreateForm}
+        onClose={() => chapterCrud.setCreateOpen(false)}
+        onSubmit={() => void chapterCrud.createChapter()}
       />
 
       <BatchGenerationModal
@@ -1006,7 +492,7 @@ export function WritingPage() {
         onSaveAndGenerateNext={() => void saveAndGenerateNext()}
         onGenerateAppend={() => void generate("append")}
         onGenerateReplace={() => void generate("replace")}
-        onCancelGenerate={() => genStreamClientRef.current?.abort()}
+        onCancelGenerate={abortGenerate}
       />
 
       {generating && genForm.stream && !aiOpen ? (
@@ -1036,7 +522,7 @@ export function WritingPage() {
               <button className="btn btn-secondary" onClick={() => setAiOpen(true)} type="button">
                 展开
               </button>
-              <button className="btn btn-secondary" onClick={() => genStreamClientRef.current?.abort()} type="button">
+              <button className="btn btn-secondary" onClick={abortGenerate} type="button">
                 取消
               </button>
             </div>

@@ -6,6 +6,7 @@ export type SSEMessage =
       message: string;
       progress: number;
       status: "processing" | "success" | "error";
+      char_count?: number;
       word_count?: number;
     }
   | { type: "chunk"; content: string }
@@ -15,7 +16,7 @@ export type SSEMessage =
 
 export type SSEClientOptions = {
   headers?: Record<string, string>;
-  onProgress?: (msg: { message: string; progress: number; status: string; wordCount?: number }) => void;
+  onProgress?: (msg: { message: string; progress: number; status: string; charCount?: number }) => void;
   onChunk?: (content: string) => void;
   onResult?: (data: unknown) => void;
   onError?: (error: string, code?: number) => void;
@@ -157,7 +158,7 @@ export class SSEPostClient {
               message: msg.message,
               progress: msg.progress,
               status: msg.status,
-              wordCount: msg.word_count,
+              charCount: msg.char_count ?? msg.word_count,
             });
           } else if (msg.type === "chunk") {
             this.accumulatedContent += msg.content;

@@ -22,7 +22,11 @@ copy .env.example .env  # Windows 可用；或手动创建
 # 请先备份 DB，再手动执行迁移（`alembic stamp ...` / `alembic upgrade head`）。
 
 # SQLite 模式：必须单进程/单 worker
-uvicorn app.main:app --reload --workers 1 --port 8000
+# 建议直接用 venv python 启动（避免误用系统 python 导致依赖错位）
+# Windows:
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --workers 1 --port 8000
+# macOS/Linux:
+./.venv/bin/python -m uvicorn app.main:app --reload --workers 1 --port 8000
 ```
 
 ### 2) 前端（Vite）
@@ -41,6 +45,7 @@ npm run dev
 
 - **不要提交运行/构建产物**：例如 `backend/.env`、`backend/*.db`、`frontend/dist`、`frontend/node_modules`、`demo/**/__pycache__` 等（已由根 `.gitignore` 统一忽略）。
 - **安全红线**：任何日志/错误/调试信息不得输出明文 API Key（响应/导出/控制台也不允许；仅允许 `has_api_key/masked_api_key`）。
+- **后端命令一律使用 venv python**：Windows 用 `backend\\.venv\\Scripts\\python.exe`（不要用系统 python，避免出现“装了依赖但 uvicorn 缺包/版本错位”的坑）。
 - **Prompt 模板安全**：Prompt Studio 的模板渲染使用“安全子集”（不执行 Jinja2）。仅支持：
   - 变量：`{{var}}` / `{{a.b}}`（仅 dict/list 路径；拒绝 `__xxx__` 等危险段）
   - 条件：`{% if ... %}{% else %}{% endif %}`（表达式仅允许 `and/or/not/in/==/!=` + 字符串字面量 + 变量路径）
@@ -58,13 +63,16 @@ npm run dev
 ```bash
 cd frontend
 npm run lint
+npm test
 npm run build
 ```
 
 后端：
 
 ```bash
-python -m compileall -q backend\\app backend\\alembic
+cd backend
+.\.venv\Scripts\python.exe -m compileall -q app alembic
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
 ```
 
 手工闭环：

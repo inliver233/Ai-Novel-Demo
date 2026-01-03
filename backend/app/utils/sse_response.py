@@ -19,11 +19,11 @@ def sse_progress(
     message: str,
     progress: int,
     status: str = "processing",
-    word_count: int | None = None,
+    char_count: int | None = None,
 ) -> str:
     payload: dict[str, Any] = {"type": "progress", "message": message, "progress": progress, "status": status}
-    if word_count is not None:
-        payload["word_count"] = word_count
+    if char_count is not None:
+        payload["char_count"] = char_count
     return format_sse(payload)
 
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import clsx from "clsx";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
@@ -18,20 +18,45 @@ type ToastItem = {
 export function ToastProvider(props: { children: React.ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const reduceMotion = useReducedMotion();
+  const motionGroupId = useId();
+  const timersByIdRef = useRef<Map<string, number>>(new Map());
 
-  const remove = useCallback((id: string) => {
-    setItems((prev) => prev.filter((t) => t.id !== id));
+  const clearTimer = useCallback((id: string) => {
+    const timer = timersByIdRef.current.get(id);
+    if (timer === undefined) return;
+
+    window.clearTimeout(timer);
+    timersByIdRef.current.delete(id);
   }, []);
+
+  const remove = useCallback(
+    (id: string) => {
+      clearTimer(id);
+      setItems((prev) => prev.filter((t) => t.id !== id));
+    },
+    [clearTimer],
+  );
 
   const push = useCallback(
     (toast: Omit<ToastItem, "id">) => {
       const id = crypto.randomUUID();
       setItems((prev) => [...prev, { id, ...toast }]);
       const ttl = toast.action ? 12000 : 4500;
-      window.setTimeout(() => remove(id), ttl);
+      const timer = window.setTimeout(() => remove(id), ttl);
+      timersByIdRef.current.set(id, timer);
     },
     [remove],
   );
+
+  useEffect(() => {
+    const timersById = timersByIdRef.current;
+    return () => {
+      for (const timer of timersById.values()) {
+        window.clearTimeout(timer);
+      }
+      timersById.clear();
+    };
+  }, []);
 
   const api = useMemo<ToastApi>(
     () => ({
@@ -44,7 +69,7 @@ export function ToastProvider(props: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={api}>
       {props.children}
-      <LayoutGroup id="atelier-toast-stack">
+      <LayoutGroup id={`atelier-toast-stack-${motionGroupId}`}>
         <div className="fixed bottom-4 right-4 z-50 flex w-[360px] flex-col gap-2" aria-live="polite" role="status">
           <AnimatePresence initial={false}>
             {items.map((t) => (

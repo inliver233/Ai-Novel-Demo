@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { Ref } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -36,6 +36,8 @@ export function MarkdownEditor({
 }: MarkdownEditorProps) {
   const [internalTab, setInternalTab] = useState<EditorTab>("edit");
   const tab = controlledTab ?? internalTab;
+  const motionGroupId = useId();
+  const tabIndicatorLayoutId = `atelier-markdown-editor-tab-${motionGroupId}`;
   const setTab = (next: EditorTab) => {
     if (onTabChange) onTabChange(next);
     else setInternalTab(next);
@@ -45,7 +47,7 @@ export function MarkdownEditor({
   return (
     <div className="surface ui-transition-fast focus-within:border-accent/40 focus-within:ring-1 focus-within:ring-accent focus-within:ring-offset-2 focus-within:ring-offset-canvas">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <LayoutGroup id="atelier-markdown-editor-tabs">
+        <LayoutGroup id={`atelier-markdown-editor-tabs-${motionGroupId}`}>
           <div className="flex gap-1 rounded-atelier bg-surface p-1 text-xs">
             <button
               className={clsx(
@@ -57,7 +59,7 @@ export function MarkdownEditor({
             >
               {tab === "edit" ? (
                 <motion.span
-                  layoutId="atelier-markdown-editor-tab"
+                  layoutId={tabIndicatorLayoutId}
                   className="absolute inset-0 rounded-atelier bg-canvas"
                   transition={transition.fast}
                 />
@@ -74,7 +76,7 @@ export function MarkdownEditor({
             >
               {tab === "preview" ? (
                 <motion.span
-                  layoutId="atelier-markdown-editor-tab"
+                  layoutId={tabIndicatorLayoutId}
                   className="absolute inset-0 rounded-atelier bg-canvas"
                   transition={transition.fast}
                 />

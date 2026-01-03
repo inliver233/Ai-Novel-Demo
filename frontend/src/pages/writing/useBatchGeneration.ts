@@ -4,6 +4,7 @@ import type { SetURLSearchParams } from "react-router-dom";
 import type { BatchGenerationTask, BatchGenerationTaskItem, GenerateForm } from "../../components/writing/types";
 import { ApiError, apiJson } from "../../services/apiClient";
 import type { Chapter, LLMPreset } from "../../types";
+import { extractMissingNumbers } from "./writingErrorUtils";
 
 export function useBatchGeneration(args: {
   projectId: string | undefined;
@@ -113,16 +114,7 @@ export function useBatchGeneration(args: {
       toast.toastSuccess("已开始批量生成", res.request_id);
     } catch (e) {
       const err = e as ApiError;
-      const missingNumbers =
-        err.code === "CHAPTER_PREREQ_MISSING" &&
-        err.details &&
-        typeof err.details === "object" &&
-        "missing_numbers" in err.details &&
-        Array.isArray((err.details as { missing_numbers?: unknown }).missing_numbers)
-          ? ((err.details as { missing_numbers?: unknown }).missing_numbers as unknown[])
-              .filter((n) => typeof n === "number")
-              .map((n) => n as number)
-          : [];
+      const missingNumbers = extractMissingNumbers(err);
       if (missingNumbers.length > 0) {
         const targetNumber = missingNumbers[0]!;
         const target = chapters.find((c) => c.number === targetNumber);

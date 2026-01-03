@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
 
 import { ProjectProviderGuard } from "./components/layout/ProjectProviderGuard";
@@ -5,38 +6,88 @@ import { AppShell } from "./components/layout/AppShell";
 import { ConfirmProvider } from "./components/ui/ConfirmProvider";
 import { ToastProvider } from "./components/ui/ToastProvider";
 import { ProjectsProvider } from "./contexts/ProjectsContext";
-import { CharactersPage } from "./pages/CharactersPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { ExportPage } from "./pages/ExportPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { OutlinePage } from "./pages/OutlinePage";
-import { PreviewPage } from "./pages/PreviewPage";
-import { ProjectWizardPage } from "./pages/ProjectWizardPage";
-import { PromptsPage } from "./pages/PromptsPage";
-import { PromptStudioPage } from "./pages/PromptStudioPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { WritingPage } from "./pages/WritingPage";
 
 const router = createBrowserRouter([
   {
     path: "/",
     element: <AppShell />,
     children: [
-      { index: true, element: <DashboardPage /> },
+      {
+        index: true,
+        lazy: async () => {
+          const mod = await import("./pages/DashboardPage");
+          return { Component: mod.DashboardPage };
+        },
+      },
       {
         path: "projects/:projectId",
         element: <ProjectProviderGuard />,
         children: [
           { index: true, element: <Navigate to="writing" replace /> },
-          { path: "wizard", element: <ProjectWizardPage /> },
-          { path: "settings", element: <SettingsPage /> },
-          { path: "characters", element: <CharactersPage /> },
-          { path: "outline", element: <OutlinePage /> },
-          { path: "writing", element: <WritingPage /> },
-          { path: "preview", element: <PreviewPage /> },
-          { path: "prompts", element: <PromptsPage /> },
-          { path: "prompt-studio", element: <PromptStudioPage /> },
-          { path: "export", element: <ExportPage /> },
+          {
+            path: "wizard",
+            lazy: async () => {
+              const mod = await import("./pages/ProjectWizardPage");
+              return { Component: mod.ProjectWizardPage };
+            },
+          },
+          {
+            path: "settings",
+            lazy: async () => {
+              const mod = await import("./pages/SettingsPage");
+              return { Component: mod.SettingsPage };
+            },
+          },
+          {
+            path: "characters",
+            lazy: async () => {
+              const mod = await import("./pages/CharactersPage");
+              return { Component: mod.CharactersPage };
+            },
+          },
+          {
+            path: "outline",
+            lazy: async () => {
+              const mod = await import("./pages/OutlinePage");
+              return { Component: mod.OutlinePage };
+            },
+          },
+          {
+            path: "writing",
+            lazy: async () => {
+              const mod = await import("./pages/WritingPage");
+              return { Component: mod.WritingPage };
+            },
+          },
+          {
+            path: "preview",
+            lazy: async () => {
+              const mod = await import("./pages/PreviewPage");
+              return { Component: mod.PreviewPage };
+            },
+          },
+          {
+            path: "prompts",
+            lazy: async () => {
+              const mod = await import("./pages/PromptsPage");
+              return { Component: mod.PromptsPage };
+            },
+          },
+          {
+            path: "prompt-studio",
+            lazy: async () => {
+              const mod = await import("./pages/PromptStudioPage");
+              return { Component: mod.PromptStudioPage };
+            },
+          },
+          {
+            path: "export",
+            lazy: async () => {
+              const mod = await import("./pages/ExportPage");
+              return { Component: mod.ExportPage };
+            },
+          },
         ],
       },
       { path: "*", element: <NotFoundPage /> },
@@ -49,7 +100,9 @@ export default function App() {
     <ToastProvider>
       <ConfirmProvider>
         <ProjectsProvider>
-          <RouterProvider router={router} />
+          <Suspense fallback={<div className="p-6 text-subtext">加载中...</div>}>
+            <RouterProvider router={router} />
+          </Suspense>
         </ProjectsProvider>
       </ConfirmProvider>
     </ToastProvider>
