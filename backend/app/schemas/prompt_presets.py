@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -12,8 +13,8 @@ class PromptPresetOut(BaseModel):
     scope: str
     version: int
     active_for: list[str] = Field(default_factory=list)
-    created_at: str | None = None
-    updated_at: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class PromptPresetCreate(BaseModel):
@@ -46,8 +47,8 @@ class PromptBlockOut(BaseModel):
     forbid_overrides: bool = False
     budget: dict[str, Any] = Field(default_factory=dict)
     cache: dict[str, Any] = Field(default_factory=dict)
-    created_at: str | None = None
-    updated_at: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class PromptBlockCreate(BaseModel):

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.db.utils import utc_now_iso
+from app.db.utils import utc_now
 
 
 class PromptBlock(Base):
@@ -25,9 +27,8 @@ class PromptBlock(Base):
     forbid_overrides: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     budget_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     cache_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso)
-    updated_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso, onupdate=utc_now_iso)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 Index("ix_prompt_blocks_preset_id", PromptBlock.preset_id)
-

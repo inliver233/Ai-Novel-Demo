@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -20,4 +21,4 @@ class GenerationRunOut(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     output_text: str | None = None
     error: dict[str, Any] | None = None
-    created_at: str
+    created_at: datetime

@@ -6,7 +6,8 @@ from fastapi import APIRouter, Request
 
 from app.api.deps import DbDep, UserIdDep, require_owned_project
 from app.core.errors import AppError, ok_payload
-from app.llm.utils import default_max_tokens_for_provider, normalize_base_url
+from app.llm.capabilities import max_context_tokens_limit, max_output_tokens_limit, recommended_max_tokens
+from app.llm.utils import default_max_tokens, normalize_base_url
 from app.models.llm_preset import LLMPreset
 from app.schemas.llm_preset import LLMPresetOut, LLMPresetPutRequest
 
@@ -21,7 +22,7 @@ def _default_preset(project_id: str) -> LLMPreset:
         model="gpt-4o-mini",
         temperature=0.7,
         top_p=1.0,
-        max_tokens=32000,
+        max_tokens=default_max_tokens("openai", "gpt-4o-mini"),
         presence_penalty=0.0,
         frequency_penalty=0.0,
         top_k=None,
@@ -44,6 +45,10 @@ def _to_out(row: LLMPreset) -> dict:
             extra = json.loads(row.extra_json)
         except Exception:
             extra = {}
+
+    max_tokens_limit = max_output_tokens_limit(row.provider, row.model)
+    max_tokens_recommended = recommended_max_tokens(row.provider, row.model)
+    context_window_limit = max_context_tokens_limit(row.provider, row.model)
     return LLMPresetOut(
         project_id=row.project_id,
         provider=row.provider,  # type: ignore[arg-type]
@@ -52,6 +57,9 @@ def _to_out(row: LLMPreset) -> dict:
         temperature=row.temperature,
         top_p=row.top_p,
         max_tokens=row.max_tokens,
+        max_tokens_limit=max_tokens_limit,
+        max_tokens_recommended=max_tokens_recommended,
+        context_window_limit=context_window_limit,
         presence_penalty=row.presence_penalty,
         frequency_penalty=row.frequency_penalty,
         top_k=row.top_k,
@@ -107,12 +115,14 @@ def put_llm_preset(
     row.model = body.model
     row.temperature = body.temperature
     row.top_p = body.top_p
-    if body.max_tokens is None or (
-        body.provider in ("anthropic", "gemini") and body.max_tokens == default_max_tokens_for_provider("openai")
-    ):
-        row.max_tokens = default_max_tokens_for_provider(body.provider)
+    if body.max_tokens is None:
+        row.max_tokens = default_max_tokens(body.provider, body.model)
     else:
-        row.max_tokens = body.max_tokens
+        max_tokens = int(body.max_tokens)
+        if max_tokens <= 0:
+            raise AppError.validation(message="max_tokens 必须为正整数")
+        limit = max_output_tokens_limit(body.provider, body.model)
+        row.max_tokens = min(max_tokens, limit) if limit else max_tokens
     row.presence_penalty = body.presence_penalty
     row.frequency_penalty = body.frequency_penalty
     row.top_k = body.top_k

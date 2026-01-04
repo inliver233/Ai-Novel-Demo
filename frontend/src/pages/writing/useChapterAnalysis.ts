@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ChapterAnalyzeResult, ChapterRewriteResult, GenerateForm } from "../../components/writing/types";
+import { UI_COPY } from "../../lib/uiCopy";
+import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../../services/apiClient";
 import type { Chapter, LLMPreset } from "../../types";
 import type { ChapterForm } from "./writingUtils";
@@ -24,8 +26,21 @@ export function useChapterAnalysis(args: {
   const [analysisFocus, setAnalysisFocus] = useState("");
   const [rewriteInstruction, setRewriteInstruction] = useState("按分析建议重写，减少重复，保持叙事连续。");
   const [rewriteLoading, setRewriteLoading] = useState(false);
+  const analyzeGuardRef = useRef(createRequestSeqGuard());
+  const rewriteGuardRef = useRef(createRequestSeqGuard());
 
   useEffect(() => {
+    const analyzeGuard = analyzeGuardRef.current;
+    const rewriteGuard = rewriteGuardRef.current;
+    return () => {
+      analyzeGuard.invalidate();
+      rewriteGuard.invalidate();
+    };
+  }, []);
+
+  useEffect(() => {
+    analyzeGuardRef.current.invalidate();
+    rewriteGuardRef.current.invalidate();
     setOpen(false);
     setAnalysisResult(null);
     setAnalysisLoading(false);
@@ -47,6 +62,7 @@ export function useChapterAnalysis(args: {
     }
 
     const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
+    const seq = analyzeGuardRef.current.next();
     setAnalysisLoading(true);
     try {
       const payload = {
@@ -72,17 +88,25 @@ export function useChapterAnalysis(args: {
         headers,
         body: JSON.stringify(payload),
       });
+      if (!analyzeGuardRef.current.isLatest(seq)) return;
       setAnalysisResult(res.data);
       if (res.data.parse_error?.message) {
         toast.toastError(`分析解析失败：${res.data.parse_error.message}`, res.request_id);
       } else {
         toast.toastSuccess("分析完成", res.request_id);
       }
+      const droppedParams = res.data.dropped_params ?? [];
+      if (droppedParams.length > 0) {
+        toast.toastSuccess(`${UI_COPY.common.droppedParamsPrefix}${droppedParams.join("、")}`, res.request_id);
+      }
     } catch (e) {
+      if (!analyzeGuardRef.current.isLatest(seq)) return;
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
-      setAnalysisLoading(false);
+      if (analyzeGuardRef.current.isLatest(seq)) {
+        setAnalysisLoading(false);
+      }
     }
   }, [activeChapter, analysisFocus, form, genForm, preset, toast]);
 
@@ -102,6 +126,7 @@ export function useChapterAnalysis(args: {
     }
 
     const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
+    const seq = rewriteGuardRef.current.next();
     setRewriteLoading(true);
     try {
       const payload = {
@@ -125,6 +150,7 @@ export function useChapterAnalysis(args: {
         headers,
         body: JSON.stringify(payload),
       });
+      if (!rewriteGuardRef.current.isLatest(seq)) return;
 
       const nextContent = (res.data.content_md ?? "").trim();
       if (!nextContent) {
@@ -135,11 +161,18 @@ export function useChapterAnalysis(args: {
 
       setForm((prev) => (prev ? { ...prev, content_md: nextContent, status: "drafting" } : prev));
       toast.toastSuccess("已应用重写结果到编辑器（未保存）", res.request_id);
+      const droppedParams = res.data.dropped_params ?? [];
+      if (droppedParams.length > 0) {
+        toast.toastSuccess(`${UI_COPY.common.droppedParamsPrefix}${droppedParams.join("、")}`, res.request_id);
+      }
     } catch (e) {
+      if (!rewriteGuardRef.current.isLatest(seq)) return;
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
-      setRewriteLoading(false);
+      if (rewriteGuardRef.current.isLatest(seq)) {
+        setRewriteLoading(false);
+      }
     }
   }, [activeChapter, analysisResult?.analysis, form, genForm, preset, rewriteInstruction, setForm, toast]);
 

@@ -353,7 +353,7 @@ def run_batch_generation_task(*, task_id: str) -> None:
             if params.target_word_count is not None:
                 llm_call = with_param_overrides(
                     llm_call,
-                    {"max_tokens": estimate_max_tokens(target_word_count=params.target_word_count, provider=llm_call.provider)},
+                    {"max_tokens": estimate_max_tokens(target_word_count=params.target_word_count, provider=llm_call.provider, model=llm_call.model)},
                 )
 
             gen_step = run_chapter_generate_llm_step(

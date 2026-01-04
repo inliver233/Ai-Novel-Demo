@@ -592,10 +592,10 @@ def generate_chapter(
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
     if body.target_word_count is not None:
-        llm_call = with_param_overrides(
-            llm_call,
-            {"max_tokens": estimate_max_tokens(target_word_count=body.target_word_count, provider=llm_call.provider)},
-        )
+            llm_call = with_param_overrides(
+                llm_call,
+                {"max_tokens": estimate_max_tokens(target_word_count=body.target_word_count, provider=llm_call.provider, model=llm_call.model)},
+            )
 
     gen_step = run_chapter_generate_llm_step(
         logger=logger,
@@ -841,7 +841,7 @@ def generate_chapter_stream(
             if body.target_word_count is not None:
                 llm_call = with_param_overrides(
                     llm_call,
-                    {"max_tokens": estimate_max_tokens(target_word_count=body.target_word_count, provider=llm_call.provider)},
+                    {"max_tokens": estimate_max_tokens(target_word_count=body.target_word_count, provider=llm_call.provider, model=llm_call.model)},
                 )
 
             yield sse_progress(message="调用模型...", progress=10)

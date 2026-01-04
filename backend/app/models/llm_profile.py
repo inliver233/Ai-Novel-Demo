@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Index, String, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.db.utils import utc_now_iso
+from app.db.utils import utc_now
 
 
 class LLMProfile(Base):
@@ -18,8 +20,8 @@ class LLMProfile(Base):
     model: Mapped[str] = mapped_column(String(255), nullable=False)
     api_key_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
     api_key_masked: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    created_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso)
-    updated_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso, onupdate=utc_now_iso)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 Index("ix_llm_profiles_owner_user_id", LLMProfile.owner_user_id)

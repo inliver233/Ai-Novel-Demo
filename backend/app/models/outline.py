@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Index, String, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.db.utils import utc_now_iso
+from app.db.utils import utc_now
 
 
 class Outline(Base):
@@ -15,8 +17,8 @@ class Outline(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     content_md: Mapped[str | None] = mapped_column(Text, nullable=True)
     structure_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso)
-    updated_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso, onupdate=utc_now_iso)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 Index("ix_outlines_project_id", Outline.project_id)

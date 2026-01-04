@@ -6,7 +6,7 @@ export type CreateChapterForm = {
 
 export type GenerateForm = {
   instruction: string;
-  target_word_count: number;
+  target_word_count: number | null;
   stream: boolean;
   plan_first: boolean;
   post_edit: boolean;
@@ -94,6 +94,7 @@ export type ChapterAnalyzeResult = {
   warnings?: string[];
   parse_error?: { code?: string; message?: string; hint?: string };
   finish_reason?: string;
+  dropped_params?: string[];
   generation_run_id: string;
 };
 
@@ -103,5 +104,6 @@ export type ChapterRewriteResult = {
   warnings?: string[];
   parse_error?: { code?: string; message?: string; hint?: string };
   finish_reason?: string;
+  dropped_params?: string[];
   generation_run_id: string;
 };

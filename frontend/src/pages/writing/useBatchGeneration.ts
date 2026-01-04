@@ -85,12 +85,16 @@ export function useBatchGeneration(args: {
     setBatchLoading(true);
     try {
       const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
+      const safeTargetWordCount =
+        typeof genForm.target_word_count === "number" && genForm.target_word_count >= 100
+          ? genForm.target_word_count
+          : null;
       const payload = {
         after_chapter_id: activeChapter?.id ?? null,
         count: batchCount,
         include_existing: batchIncludeExisting,
         instruction: genForm.instruction,
-        target_word_count: genForm.target_word_count > 0 ? genForm.target_word_count : null,
+        target_word_count: safeTargetWordCount,
         plan_first: genForm.plan_first,
         post_edit: genForm.post_edit,
         context: {

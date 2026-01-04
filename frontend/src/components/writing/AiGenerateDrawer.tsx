@@ -103,8 +103,11 @@ export function AiGenerateDrawer(props: Props) {
               min={100}
               name="target_word_count"
               type="number"
-              value={props.genForm.target_word_count}
-              onChange={(e) => props.setGenForm((v) => ({ ...v, target_word_count: Number(e.target.value) }))}
+              value={props.genForm.target_word_count ?? ""}
+              onChange={(e) => {
+                const next = e.currentTarget.valueAsNumber;
+                props.setGenForm((v) => ({ ...v, target_word_count: Number.isNaN(next) ? null : next }));
+              }}
             />
           </label>
         </div>

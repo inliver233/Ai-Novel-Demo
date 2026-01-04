@@ -1,0 +1,414 @@
+{
+  "schema_version": 1,
+  "name": "默认·章节生成 v3（推荐）",
+  "scope": "project",
+  "version": 3,
+  "activation_tasks": [
+    "chapter_generate"
+  ],
+  "upgrade_add_identifiers": [
+    "sys.story.chapter_info",
+    "sys.story.previous_chapter_ending",
+    "sys.story.no_repeat_rules",
+    "sys.story.current_draft_tail",
+    "sys.story.append_rules",
+    "sys.story.smart_context.recent_summaries",
+    "sys.story.smart_context.story_skeleton",
+    "sys.story.smart_context.recent_full",
+    "doc.chapter.notes"
+  ],
+  "blocks": [
+    {
+      "identifier": "sys.chapter.core_role",
+      "name": "章节：核心角色与写作规则",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.chapter.core_role.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 10,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.chapter.contract.markers",
+      "name": "章节：输出契约（分隔符）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.chapter.contract.markers.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 20,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.chapter.plot_tools",
+      "name": "章节：剧情推进与转折",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.chapter.plot_tools.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 30,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "important"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.meta",
+      "name": "素材：项目元信息",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.meta.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 40,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "important"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.style_guide",
+      "name": "素材：风格指南（可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.style_guide.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 50,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "important",
+        "maxTokens": 1200
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.constraints",
+      "name": "素材：写作约束（可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.constraints.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 60,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "important",
+        "maxTokens": 900
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.world_setting",
+      "name": "素材：世界观（可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.world_setting.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 70,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 1800
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.characters",
+      "name": "素材：角色卡（可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.characters.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 80,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "important",
+        "maxTokens": 2200
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.outline",
+      "name": "素材：大纲（可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.outline.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 90,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "important",
+        "maxTokens": 4200
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.chapter_info",
+      "name": "素材：本章信息（含 PLAN 注入）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.chapter_info.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 100,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must",
+        "maxTokens": 1800
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.previous_chapter_ending",
+      "name": "素材：上一章结尾（可选，可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.previous_chapter_ending.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 105,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "important",
+        "maxTokens": 1400
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.no_repeat_rules",
+      "name": "规则：承接与防重复（硬规则）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.no_repeat_rules.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 108,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.previous_chapter",
+      "name": "素材：上一章（可选，可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.previous_chapter.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 110,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 2600
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.current_draft_tail",
+      "name": "素材：当前草稿尾部（追加模式锚点，可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.current_draft_tail.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 112,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "important",
+        "maxTokens": 1400
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.append_rules",
+      "name": "规则：追加模式（硬规则）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.append_rules.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 115,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.smart_context.recent_summaries",
+      "name": "素材：智能上下文·最近摘要（可选，可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.smart_context.recent_summaries.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 118,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 1800
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.smart_context.story_skeleton",
+      "name": "素材：智能上下文·故事骨架（可选，可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.smart_context.story_skeleton.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 120,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 1600
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.smart_context.recent_full",
+      "name": "素材：智能上下文·最近全文节选（可选，可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.smart_context.recent_full.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 122,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 2200
+      },
+      "cache": null
+    },
+    {
+      "identifier": "user.chapter.instruction",
+      "name": "用户：本次指令",
+      "role": "user",
+      "enabled": true,
+      "template_file": "templates/user.chapter.instruction.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 200,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "doc.chapter.notes",
+      "name": "DOC：如何改章节预设（不发送）",
+      "role": "system",
+      "enabled": false,
+      "template_file": "templates/doc.chapter.notes.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 999,
+      "triggers": [
+        "chapter_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional"
+      },
+      "cache": null
+    }
+  ]
+}

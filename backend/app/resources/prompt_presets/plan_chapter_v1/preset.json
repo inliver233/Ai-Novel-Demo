@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "name": "Default plan_chapter v1",
+  "scope": "project",
+  "version": 1,
+  "activation_tasks": [
+    "plan_chapter"
+  ],
+  "blocks": [
+    {
+      "identifier": "sys.plan_chapter.role",
+      "name": "plan_chapter system",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.plan_chapter.role.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 10,
+      "triggers": [
+        "plan_chapter"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "user.plan_chapter.input",
+      "name": "plan_chapter user",
+      "role": "user",
+      "enabled": true,
+      "template_file": "templates/user.plan_chapter.input.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 20,
+      "triggers": [
+        "plan_chapter"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    }
+  ]
+}

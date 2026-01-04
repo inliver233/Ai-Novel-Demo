@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { GenerateForm } from "../../components/writing/types";
 import type { ConfirmApi } from "../../components/ui/confirm";
 import type { ToastApi } from "../../components/ui/toast";
+import { UI_COPY } from "../../lib/uiCopy";
 import { ApiError, apiJson } from "../../services/apiClient";
 import { createChapterMarkerStreamParser } from "../../services/chapterMarkerStreamParser";
 import { SSEError, SSEPostClient } from "../../services/sseClient";
@@ -17,6 +18,13 @@ type StreamProgress = {
   progress: number;
   status: string;
   charCount?: number;
+};
+
+type GenerateResponse = {
+  content_md: string;
+  summary: string;
+  raw_output: string;
+  dropped_params?: string[];
 };
 
 const DEFAULT_GEN_FORM: GenerateForm = {
@@ -93,11 +101,15 @@ export function useChapterGeneration(args: {
       genStreamHasChunkRef.current = false;
       try {
         const currentDraftTail = mode === "append" ? (form.content_md ?? "").trimEnd().slice(-1200) : null;
+        const safeTargetWordCount =
+          typeof genForm.target_word_count === "number" && genForm.target_word_count >= 100
+            ? genForm.target_word_count
+            : null;
 
         const payload = {
           mode,
           instruction: genForm.instruction,
-          target_word_count: genForm.target_word_count > 0 ? genForm.target_word_count : null,
+          target_word_count: safeTargetWordCount,
           plan_first: genForm.plan_first,
           post_edit: genForm.post_edit,
           context: {
@@ -122,6 +134,7 @@ export function useChapterGeneration(args: {
           let parsedSummary = "";
           let requestId: string | undefined;
           let nonFatalNoticed = false;
+          let droppedParams: string[] = [];
 
           const processChunk = (chunk: string) => {
             const out = parser.push(chunk);
@@ -155,6 +168,10 @@ export function useChapterGeneration(args: {
               const obj = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
               const content = typeof obj?.content_md === "string" ? obj.content_md : "";
               const summary = typeof obj?.summary === "string" ? obj.summary : "";
+              const dropped = Array.isArray(obj?.dropped_params)
+                ? obj.dropped_params.filter((p): p is string => typeof p === "string" && p.trim().length > 0)
+                : [];
+              droppedParams = dropped;
               const parseErrObj =
                 obj?.parse_error && typeof obj.parse_error === "object"
                   ? (obj.parse_error as Record<string, unknown>)
@@ -177,6 +194,9 @@ export function useChapterGeneration(args: {
           try {
             await client.connect();
             toast.toastSuccess("生成完成（别忘了保存）", requestId);
+            if (droppedParams.length > 0) {
+              toast.toastSuccess(`${UI_COPY.common.droppedParamsPrefix}${droppedParams.join("、")}`, requestId);
+            }
           } catch (e) {
             const err = e as unknown;
             if (err instanceof SSEError && err.code === "ABORTED") {
@@ -187,14 +207,11 @@ export function useChapterGeneration(args: {
             if (err instanceof SSEError && err.code !== "SSE_SERVER_ERROR") {
               if (!genStreamHasChunkRef.current) {
                 toast.toastError("流式生成失败，已回退非流式", err.requestId ?? requestId);
-                const res = await apiJson<{ content_md: string; summary: string; raw_output: string }>(
-                  `/api/chapters/${activeChapter.id}/generate`,
-                  {
-                    method: "POST",
-                    headers,
-                    body: JSON.stringify(payload),
-                  },
-                );
+                const res = await apiJson<GenerateResponse>(`/api/chapters/${activeChapter.id}/generate`, {
+                  method: "POST",
+                  headers,
+                  body: JSON.stringify(payload),
+                });
 
                 setForm((prev) => {
                   if (!prev) return prev;
@@ -211,6 +228,10 @@ export function useChapterGeneration(args: {
                 });
 
                 toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
+                const dp = res.data.dropped_params ?? [];
+                if (dp.length > 0) {
+                  toast.toastSuccess(`${UI_COPY.common.droppedParamsPrefix}${dp.join("、")}`, res.request_id);
+                }
                 return;
               }
               toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -243,14 +264,11 @@ export function useChapterGeneration(args: {
             toast.toastError("生成失败");
           }
         } else {
-          const res = await apiJson<{ content_md: string; summary: string; raw_output: string }>(
-            `/api/chapters/${activeChapter.id}/generate`,
-            {
-              method: "POST",
-              headers,
-              body: JSON.stringify(payload),
-            },
-          );
+          const res = await apiJson<GenerateResponse>(`/api/chapters/${activeChapter.id}/generate`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          });
 
           setForm((prev) => {
             if (!prev) return prev;
@@ -267,6 +285,10 @@ export function useChapterGeneration(args: {
           });
 
           toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
+          const dp = res.data.dropped_params ?? [];
+          if (dp.length > 0) {
+            toast.toastSuccess(`${UI_COPY.common.droppedParamsPrefix}${dp.join("、")}`, res.request_id);
+          }
         }
       } catch (e) {
         const err = e as ApiError;

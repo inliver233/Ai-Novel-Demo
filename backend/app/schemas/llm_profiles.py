@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -28,5 +30,5 @@ class LLMProfileOut(BaseModel):
     model: str
     has_api_key: bool
     masked_api_key: str | None = None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime

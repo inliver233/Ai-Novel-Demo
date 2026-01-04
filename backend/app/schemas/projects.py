@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import Field
 
 from app.schemas.base import ORMModel
@@ -27,5 +29,5 @@ class ProjectOut(ORMModel):
     name: str
     genre: str | None = None
     logline: str | None = None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime

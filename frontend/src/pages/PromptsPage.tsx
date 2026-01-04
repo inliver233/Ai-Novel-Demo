@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
@@ -9,9 +9,18 @@ import { useToast } from "../components/ui/toast";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
+import { createRequestSeqGuard } from "../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../services/apiClient";
 import { markWizardLlmTestOk } from "../services/wizard";
 import type { LLMPreset, LLMProfile, Project } from "../types";
+
+type LlmCapabilities = {
+  provider: string;
+  model: string;
+  max_tokens_limit: number | null;
+  max_tokens_recommended: number | null;
+  context_window_limit: number | null;
+};
 
 function parseNumber(value: string): number | null {
   const v = value.trim();
@@ -65,6 +74,8 @@ export function PromptsPage() {
   const [profileBusy, setProfileBusy] = useState(false);
 
   const [baselinePreset, setBaselinePreset] = useState<LLMPreset | null>(null);
+  const [capabilities, setCapabilities] = useState<LlmCapabilities | null>(null);
+  const capsGuardRef = useRef(createRequestSeqGuard());
 
   const [apiKey, setApiKey] = useState("");
 
@@ -74,7 +85,7 @@ export function PromptsPage() {
     model: "gpt-4o-mini",
     temperature: "0.7",
     top_p: "1",
-    max_tokens: "32000",
+    max_tokens: "8192",
     presence_penalty: "0",
     frequency_penalty: "0",
     top_k: "",
@@ -98,6 +109,13 @@ export function PromptsPage() {
       setProfileName("");
 
       setBaselinePreset(presetRes.data.llm_preset);
+      setCapabilities({
+        provider: presetRes.data.llm_preset.provider,
+        model: presetRes.data.llm_preset.model,
+        max_tokens_limit: presetRes.data.llm_preset.max_tokens_limit ?? null,
+        max_tokens_recommended: presetRes.data.llm_preset.max_tokens_recommended ?? null,
+        context_window_limit: presetRes.data.llm_preset.context_window_limit ?? null,
+      });
       setLlmForm({
         provider: presetRes.data.llm_preset.provider,
         base_url: presetRes.data.llm_preset.base_url ?? "",
@@ -125,6 +143,37 @@ export function PromptsPage() {
   useEffect(() => {
     void reloadAll();
   }, [reloadAll]);
+
+  useEffect(() => {
+    const guard = capsGuardRef.current;
+    return () => {
+      guard.invalidate();
+    };
+  }, []);
+
+  useEffect(() => {
+    const provider = llmForm.provider;
+    const model = llmForm.model.trim();
+    const guard = capsGuardRef.current;
+    if (!model) {
+      guard.invalidate();
+      setCapabilities(null);
+      return;
+    }
+    const seq = guard.next();
+    void (async () => {
+      try {
+        const res = await apiJson<{ capabilities: LlmCapabilities }>(
+          `/api/llm_capabilities?provider=${provider}&model=${encodeURIComponent(model)}`,
+        );
+        if (!guard.isLatest(seq)) return;
+        setCapabilities(res.data.capabilities);
+      } catch {
+        if (!guard.isLatest(seq)) return;
+        setCapabilities(null);
+      }
+    })();
+  }, [llmForm.model, llmForm.provider]);
 
   useEffect(() => {
     setApiKey("");
@@ -561,6 +610,7 @@ export function PromptsPage() {
         presetDirty={presetDirty}
         saving={savingPreset}
         testing={testing}
+        capabilities={capabilities}
         onTestConnection={() => void testConnection()}
         onSave={() => void saveAll()}
         profiles={profiles}

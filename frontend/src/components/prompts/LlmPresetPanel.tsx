@@ -9,6 +9,11 @@ type Props = {
   presetDirty: boolean;
   saving: boolean;
   testing: boolean;
+  capabilities: {
+    max_tokens_limit: number | null;
+    max_tokens_recommended: number | null;
+    context_window_limit: number | null;
+  } | null;
   onTestConnection: () => void;
   onSave: () => void;
 
@@ -34,6 +39,15 @@ export function LlmPresetPanel(props: Props) {
   const selectedProfile = props.selectedProfileId
     ? (props.profiles.find((p) => p.id === props.selectedProfileId) ?? null)
     : null;
+
+  const maxTokensHint = (() => {
+    if (!props.capabilities) return "";
+    const parts: string[] = [];
+    if (props.capabilities.max_tokens_recommended) parts.push(`推荐 ${props.capabilities.max_tokens_recommended}`);
+    if (props.capabilities.max_tokens_limit) parts.push(`上限 ${props.capabilities.max_tokens_limit}`);
+    if (props.capabilities.context_window_limit) parts.push(`上下文 ${props.capabilities.context_window_limit}`);
+    return parts.join(" · ");
+  })();
 
   return (
     <section className="panel p-6">
@@ -71,6 +85,7 @@ export function LlmPresetPanel(props: Props) {
               props.setLlmForm((v) => ({
                 ...v,
                 provider: e.target.value as LLMProvider,
+                max_tokens: "",
               }))
             }
           >
@@ -131,6 +146,7 @@ export function LlmPresetPanel(props: Props) {
             value={props.llmForm.max_tokens}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, max_tokens: e.target.value }))}
           />
+          {maxTokensHint ? <div className="text-[11px] text-subtext">{maxTokensHint}</div> : null}
         </label>
         {props.llmForm.provider === "openai" || props.llmForm.provider === "openai_compatible" ? (
           <>

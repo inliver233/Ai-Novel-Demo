@@ -23,6 +23,7 @@ def _is_abs_path(value: str) -> bool:
 
 AppEnv = Literal["dev", "prod"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
+TaskQueueBackend = Literal["rq", "inline"]
 
 
 class Settings(BaseSettings):
@@ -32,6 +33,10 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     app_version: str = "0.1.0"
     secret_encryption_key: str | None = None
+
+    task_queue_backend: TaskQueueBackend = "rq"
+    redis_url: str = "redis://localhost:6379/0"
+    rq_queue_name: str = "default"
 
     model_config = SettingsConfigDict(
         env_file=str(_backend_dir() / ".env"),
@@ -91,10 +96,38 @@ class Settings(BaseSettings):
         raw = str(value or "").strip()
         return raw or None
 
+    @field_validator("task_queue_backend", mode="before")
+    @classmethod
+    def _normalize_task_queue_backend(cls, value: object) -> str:
+        raw = str(value or "").strip().lower()
+        if not raw:
+            return "rq"
+        if raw in ("rq", "redis_rq"):
+            return "rq"
+        if raw in ("inline", "inprocess", "in_process"):
+            return "inline"
+        raise ValueError("TASK_QUEUE_BACKEND must be 'rq' or 'inline'")
+
+    @field_validator("redis_url", mode="before")
+    @classmethod
+    def _normalize_redis_url(cls, value: object) -> str:
+        raw = str(value or "").strip()
+        return raw or "redis://localhost:6379/0"
+
+    @field_validator("rq_queue_name", mode="before")
+    @classmethod
+    def _normalize_rq_queue_name(cls, value: object) -> str:
+        raw = str(value or "").strip()
+        return raw or "default"
+
     @model_validator(mode="after")
     def _validate_crypto_config(self) -> "Settings":
         if self.app_env == "prod" and not self.secret_encryption_key:
             raise ValueError("SECRET_ENCRYPTION_KEY must be set when APP_ENV=prod")
+        if self.app_env == "prod" and self.task_queue_backend != "rq":
+            raise ValueError("TASK_QUEUE_BACKEND must be set to 'rq' when APP_ENV=prod")
+        if self.task_queue_backend == "rq" and not self.redis_url:
+            raise ValueError("REDIS_URL must be set when TASK_QUEUE_BACKEND=rq")
         return self
 
     def cors_origins_list(self) -> list[str]:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from app.core.errors import AppError
+from app.llm.capabilities import recommended_max_tokens
 
 
 def normalize_base_url(value: str) -> str:
@@ -16,7 +17,19 @@ def normalize_base_url(value: str) -> str:
 
 
 def default_max_tokens_for_provider(provider: str) -> int:
-    provider = (provider or "").strip()
-    if provider in ("anthropic", "gemini"):
-        return 8192
-    return 32000
+    return recommended_max_tokens(provider, model=None)
+
+
+def default_max_tokens(provider: str, model: str | None = None) -> int:
+    return recommended_max_tokens(provider, model=model)
+
+
+def is_default_like_max_tokens(provider: str, value: int | None) -> bool:
+    if value is None:
+        return True
+    p = (provider or "").strip()
+    if p in ("openai", "openai_compatible"):
+        return value in (32000, 8192)
+    if p in ("anthropic", "gemini"):
+        return value == 8192
+    return False

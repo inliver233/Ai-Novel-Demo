@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, Request
 from sqlalchemy import select
 
 from app.api.deps import DbDep, UserIdDep, require_owned_chapter, require_owned_project
@@ -11,8 +11,8 @@ from app.db.utils import new_id
 from app.models.batch_generation_task import BatchGenerationTask, BatchGenerationTaskItem
 from app.models.chapter import Chapter
 from app.schemas.batch_generation import BatchGenerationCreateRequest, BatchGenerationTaskItemOut, BatchGenerationTaskOut
-from app.services.batch_generation_service import run_batch_generation_task
 from app.services.outline_store import ensure_active_outline
+from app.services.task_queue import get_task_queue
 
 router = APIRouter()
 
@@ -20,7 +20,6 @@ router = APIRouter()
 @router.post("/projects/{project_id}/batch_generation_tasks")
 def create_batch_generation_task(
     request: Request,
-    background_tasks: BackgroundTasks,
     db: DbDep,
     user_id: UserIdDep,
     project_id: str,
@@ -144,7 +143,19 @@ def create_batch_generation_task(
     db.add_all(items)
     db.commit()
 
-    background_tasks.add_task(run_batch_generation_task, task_id=task_id)
+    try:
+        get_task_queue().enqueue_batch_generation_task(task_id)
+    except AppError as exc:
+        task.status = "failed"
+        task.error_json = json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False)
+        for item in items:
+            if item.status == "queued":
+                item.status = "failed"
+                item.error_message = f"{exc.message} ({exc.code})"
+        db.commit()
+        raise
+
+    db.refresh(task)
 
     out_task = BatchGenerationTaskOut.model_validate(task).model_dump()
     out_items = [BatchGenerationTaskItemOut.model_validate(i).model_dump() for i in items]

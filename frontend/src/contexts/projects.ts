@@ -2,9 +2,16 @@ import { createContext, useContext } from "react";
 
 import type { Project } from "../types";
 
+export type ProjectsError = {
+  code: string;
+  message: string;
+  requestId: string;
+};
+
 export type ProjectsState = {
   projects: Project[];
   loading: boolean;
+  error: ProjectsError | null;
   refresh: () => Promise<void>;
 };
 

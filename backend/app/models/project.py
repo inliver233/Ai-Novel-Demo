@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Index, String
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.db.utils import utc_now_iso
+from app.db.utils import utc_now
 
 
 class Project(Base):
@@ -23,8 +25,8 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     genre: Mapped[str | None] = mapped_column(String(255), nullable=True)
     logline: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    created_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso)
-    updated_at: Mapped[str] = mapped_column(String(32), default=utc_now_iso, onupdate=utc_now_iso)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
 Index("ix_projects_owner_user_id", Project.owner_user_id)

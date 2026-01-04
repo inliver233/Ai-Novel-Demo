@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import Field
 
 from app.schemas.base import ORMModel
@@ -26,4 +28,4 @@ class CharacterOut(ORMModel):
     role: str | None = None
     profile: str | None = None
     notes: str | None = None
-    updated_at: str
+    updated_at: datetime

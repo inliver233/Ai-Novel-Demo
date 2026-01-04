@@ -18,7 +18,7 @@ type CreateProjectForm = {
 };
 
 export function DashboardPage() {
-  const { projects, loading, refresh } = useProjects();
+  const { projects, loading, error, refresh } = useProjects();
   const toast = useToast();
   const confirm = useConfirm();
   const navigate = useNavigate();
@@ -127,6 +127,17 @@ export function DashboardPage() {
             <div className="mt-4 h-2 w-full rounded-full bg-border/60">
               <div className="skeleton h-2 w-1/3 rounded-full" />
             </div>
+          </div>
+        ) : null}
+
+        {!loading && projects.length === 0 && error ? (
+          <div className="panel p-6">
+            <div className="font-content text-xl text-ink">项目加载失败</div>
+            <div className="mt-2 text-sm text-subtext">{error.message}</div>
+            <div className="mt-1 text-xs text-subtext">request_id: {error.requestId}</div>
+            <button className="btn btn-secondary mt-4" onClick={() => void refresh()} type="button">
+              重试
+            </button>
           </div>
         ) : null}
 

@@ -11,6 +11,7 @@ from app.api.routes import (
     generation_runs,
     health,
     llm,
+    llm_capabilities,
     llm_preset,
     llm_profiles,
     outline,
@@ -32,6 +33,7 @@ api_router.include_router(chapter_analysis.router, tags=["chapter_analysis"])
 api_router.include_router(batch_generation.router, tags=["batch_generation"])
 api_router.include_router(prompts.router, tags=["prompts"])
 api_router.include_router(llm_preset.router, tags=["llm_preset"])
+api_router.include_router(llm_capabilities.router, tags=["llm_capabilities"])
 api_router.include_router(llm.router, tags=["llm"])
 api_router.include_router(llm_profiles.router, tags=["llm_profiles"])
 api_router.include_router(outlines.router, tags=["outlines"])

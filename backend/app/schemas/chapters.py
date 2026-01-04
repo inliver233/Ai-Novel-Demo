@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -45,4 +46,4 @@ class ChapterOut(ORMModel):
     content_md: str | None = None
     summary: str | None = None
     status: ChapterStatus
-    updated_at: str
+    updated_at: datetime

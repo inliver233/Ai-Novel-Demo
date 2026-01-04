@@ -4,6 +4,7 @@ import type { ConfirmApi } from "../../components/ui/confirm";
 import type { ToastApi } from "../../components/ui/toast";
 import { useSaveHotkey } from "../../hooks/useSaveHotkey";
 import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
+import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../../services/apiClient";
 import { markWizardProjectChanged } from "../../services/wizard";
 import type { Chapter } from "../../types";
@@ -40,6 +41,17 @@ export function useChapterEditor(args: {
   const [form, setForm] = useState<ChapterForm | null>(null);
   const [loadingChapter, setLoadingChapter] = useState(false);
   const requestedChapterHandledRef = useRef(false);
+  const chapterListGuardRef = useRef(createRequestSeqGuard());
+  const chapterLoadGuardRef = useRef(createRequestSeqGuard());
+
+  useEffect(() => {
+    const listGuard = chapterListGuardRef.current;
+    const loadGuard = chapterLoadGuardRef.current;
+    return () => {
+      listGuard.invalidate();
+      loadGuard.invalidate();
+    };
+  }, []);
 
   const dirty = useMemo(() => {
     if (!baseline || !form) return false;
@@ -56,19 +68,24 @@ export function useChapterEditor(args: {
 
   const refreshChapters = useCallback(async () => {
     if (!projectId) return;
+    const seq = chapterListGuardRef.current.next();
     setLoading(true);
     try {
       const res = await apiJson<{ chapters: Chapter[] }>(`/api/projects/${projectId}/chapters`);
+      if (!chapterListGuardRef.current.isLatest(seq)) return;
       setChapters(res.data.chapters);
       setActiveId((prev) => {
         if (prev && res.data.chapters.some((c) => c.id === prev)) return prev;
         return res.data.chapters[0]?.id ?? null;
       });
     } catch (e) {
+      if (!chapterListGuardRef.current.isLatest(seq)) return;
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
-      setLoading(false);
+      if (chapterListGuardRef.current.isLatest(seq)) {
+        setLoading(false);
+      }
     }
   }, [projectId, toast]);
 
@@ -89,27 +106,34 @@ export function useChapterEditor(args: {
 
   useEffect(() => {
     if (!activeId) {
+      chapterLoadGuardRef.current.invalidate();
       setActiveChapter(null);
       setBaseline(null);
       setForm(null);
+      setLoadingChapter(false);
       return;
     }
+    const seq = chapterLoadGuardRef.current.next();
     setLoadingChapter(true);
     void (async () => {
       try {
         const res = await apiJson<{ chapter: Chapter }>(`/api/chapters/${activeId}`);
+        if (!chapterLoadGuardRef.current.isLatest(seq)) return;
         setActiveChapter(res.data.chapter);
         const next = chapterToForm(res.data.chapter);
         setBaseline(next);
         setForm(next);
       } catch (e) {
+        if (!chapterLoadGuardRef.current.isLatest(seq)) return;
         const err = e as ApiError;
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
         setActiveChapter(null);
         setBaseline(null);
         setForm(null);
       } finally {
-        setLoadingChapter(false);
+        if (chapterLoadGuardRef.current.isLatest(seq)) {
+          setLoadingChapter(false);
+        }
       }
     })();
   }, [activeId, toast]);

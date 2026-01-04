@@ -15,6 +15,9 @@ class LLMPresetOut(BaseModel):
     temperature: float | None = None
     top_p: float | None = None
     max_tokens: int | None = None
+    max_tokens_limit: int | None = None
+    max_tokens_recommended: int | None = None
+    context_window_limit: int | None = None
     presence_penalty: float | None = None
     frequency_penalty: float | None = None
     top_k: int | None = None

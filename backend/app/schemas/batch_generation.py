@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -31,8 +32,8 @@ class BatchGenerationTaskItemOut(ORMModel):
     status: BatchGenerationItemStatus
     generation_run_id: str | None = None
     error_message: str | None = None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class BatchGenerationTaskOut(ORMModel):
@@ -45,5 +46,5 @@ class BatchGenerationTaskOut(ORMModel):
     completed_count: int
     cancel_requested: bool
     error_json: str | None = None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime

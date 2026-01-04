@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "name": "默认·大纲生成 v3（推荐）",
+  "scope": "project",
+  "version": 3,
+  "activation_tasks": [
+    "outline_generate"
+  ],
+  "blocks": [
+    {
+      "identifier": "sys.outline.role",
+      "name": "大纲：角色与方法",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.outline.role.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 10,
+      "triggers": [
+        "outline_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "important"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.outline.contract.json",
+      "name": "大纲：输出契约（JSON）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.outline.contract.json.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 20,
+      "triggers": [
+        "outline_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "user.outline.material",
+      "name": "大纲：项目素材与要求",
+      "role": "user",
+      "enabled": true,
+      "template_file": "templates/user.outline.material.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 30,
+      "triggers": [
+        "outline_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must",
+        "maxTokens": 8000
+      },
+      "cache": null
+    },
+    {
+      "identifier": "doc.outline.notes",
+      "name": "DOC：如何改大纲预设（不发送）",
+      "role": "system",
+      "enabled": false,
+      "template_file": "templates/doc.outline.notes.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 999,
+      "triggers": [
+        "outline_generate"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional"
+      },
+      "cache": null
+    }
+  ]
+}

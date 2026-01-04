@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "name": "默认·章节分析 v1（推荐）",
+  "scope": "project",
+  "version": 1,
+  "activation_tasks": [
+    "chapter_analyze"
+  ],
+  "blocks": [
+    {
+      "identifier": "sys.chapter_analyze.role",
+      "name": "章节分析：角色与原则",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.chapter_analyze.role.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 10,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.chapter_analyze.contract.json",
+      "name": "章节分析：输出契约（JSON）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.chapter_analyze.contract.json.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 20,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.meta",
+      "name": "素材：项目元信息",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.meta.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 30,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "important"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.style_guide",
+      "name": "素材：风格指南（可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.style_guide.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 40,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 900
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.constraints",
+      "name": "素材：写作约束（可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.constraints.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 42,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 900
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.world_setting",
+      "name": "素材：世界观（可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.world_setting.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 45,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 1600
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.characters",
+      "name": "素材：角色卡（可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.characters.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 48,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 2200
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.outline",
+      "name": "素材：大纲（可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.outline.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 50,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 2600
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.smart_context.recent_summaries",
+      "name": "素材：智能上下文·最近摘要（可选，可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.smart_context.recent_summaries.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 60,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 1800
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.smart_context.story_skeleton",
+      "name": "素材：智能上下文·故事骨架（可选，可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.smart_context.story_skeleton.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 62,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 1600
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.story.smart_context.recent_full",
+      "name": "素材：智能上下文·最近全文节选（可选，可裁剪）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.story.smart_context.recent_full.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 64,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "optional",
+        "maxTokens": 2200
+      },
+      "cache": null
+    },
+    {
+      "identifier": "user.chapter_analyze.input",
+      "name": "用户：章节草稿与分析重点",
+      "role": "user",
+      "enabled": true,
+      "template_file": "templates/user.chapter_analyze.input.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 200,
+      "triggers": [
+        "chapter_analyze"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must",
+        "maxTokens": 9000
+      },
+      "cache": null
+    }
+  ]
+}

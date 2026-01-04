@@ -16,7 +16,7 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.core.errors import AppError, error_payload
 from app.core.logging import configure_logging, exception_log_fields, log_event
-from app.core.request_id import new_request_id, set_request_id
+from app.core.request_id import new_request_id, reset_request_id, set_request_id
 from app.db.migrations import ensure_db_schema
 from app.db.session import SessionLocal
 from app.llm.http_client import close_llm_http_client
@@ -90,23 +90,26 @@ app.add_middleware(
 async def request_id_and_logging_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
     rid = request.headers.get("X-Request-Id") or new_request_id()
     request.state.request_id = rid
-    set_request_id(rid)
+    token = set_request_id(rid)
 
-    start = time.perf_counter()
-    response = await call_next(request)
+    try:
+        start = time.perf_counter()
+        response = await call_next(request)
 
-    latency_ms = int((time.perf_counter() - start) * 1000)
-    if response.status_code < 400:
-        log_event(
-            logger,
-            "info",
-            path=request.url.path,
-            method=request.method,
-            status_code=response.status_code,
-            latency_ms=latency_ms,
-        )
-    response.headers["X-Request-Id"] = rid
-    return response
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        if response.status_code < 400:
+            log_event(
+                logger,
+                "info",
+                path=request.url.path,
+                method=request.method,
+                status_code=response.status_code,
+                latency_ms=latency_ms,
+            )
+        response.headers["X-Request-Id"] = rid
+        return response
+    finally:
+        reset_request_id(token)
 
 
 @app.exception_handler(AppError)

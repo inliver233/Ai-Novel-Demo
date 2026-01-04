@@ -27,6 +27,14 @@ copy .env.example .env  # Windows 可用；或手动创建
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --workers 1 --port 8000
 # macOS/Linux:
 ./.venv/bin/python -m uvicorn app.main:app --reload --workers 1 --port 8000
+
+# 批量生成（P1-04）：任务队列 worker（RQ + Redis）
+# 1) 先启动 Redis（任选其一）：
+#   - Docker: docker run --name ainovel-redis -p 6379:6379 redis:7-alpine
+#   - 或 WSL / 本机 Redis 服务
+# 2) 启动 worker（Windows / PowerShell）：
+.\.venv\Scripts\python.exe scripts\run_rq_worker.py
+# 或：.\.venv\Scripts\rq.exe worker --url $env:REDIS_URL default
 ```
 
 ### 2) 前端（Vite）
@@ -50,11 +58,14 @@ npm run dev
   - 变量：`{{var}}` / `{{a.b}}`（仅 dict/list 路径；拒绝 `__xxx__` 等危险段）
   - 条件：`{% if ... %}{% else %}{% endif %}`（表达式仅允许 `and/or/not/in/==/!=` + 字符串字面量 + 变量路径）
   - 宏：`{{date}}/{{time}}/{{isodate}}/{{random::...}}/{{pick::...}}/{{// comment}}`
+  - 默认内置模板资源：`backend/app/resources/prompt_presets/*`（每个目录：`preset.json` + `templates/*.md`；`backend/app/services/prompt_presets.py` 只做加载/ensure/渲染，不再内嵌超大模板常量）
+  - 升级策略：新增默认模板版本时，新建一个资源目录（例如 `chapter_generate_v4`）并更新默认 preset 名称；默认不会覆盖用户在 Prompt Studio 的自定义修改
 
 ## UI/UX 规范（必须）
 
 - 统一设计语言见 `ui设计规范.md`（含颜色/排版/组件/动效 Token）。
 - 新增页面/组件时，要求所有可交互元素具备 `Hover/Focus/Active/Disabled` 状态，并遵循统一的 `Cubic Bezier + 150/250/350ms` 动效窗口。
+- UI 文案新增规则：新增文案优先收口到 `frontend/src/lib/uiCopy.ts`（或按模块拆分的 `*Copy.ts`），避免散落在组件内导致混杂语言与回归困难。
 
 ## 验证清单（DoD）
 

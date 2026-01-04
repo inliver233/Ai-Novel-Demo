@@ -6,6 +6,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { ConfirmProvider } from "./components/ui/ConfirmProvider";
 import { ToastProvider } from "./components/ui/ToastProvider";
 import { ProjectsProvider } from "./contexts/ProjectsContext";
+import { UI_COPY } from "./lib/uiCopy";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
 const router = createBrowserRouter([
@@ -100,7 +101,7 @@ export default function App() {
     <ToastProvider>
       <ConfirmProvider>
         <ProjectsProvider>
-          <Suspense fallback={<div className="p-6 text-subtext">加载中...</div>}>
+          <Suspense fallback={<div className="p-6 text-subtext">{UI_COPY.common.loading}</div>}>
             <RouterProvider router={router} />
           </Suspense>
         </ProjectsProvider>

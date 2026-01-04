@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.api.deps import DbDep, UserIdDep, require_owned_project
 from app.core.errors import AppError, ok_payload
-from app.db.utils import new_id, utc_now_iso
+from app.db.utils import new_id, utc_now
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
 from app.models.llm_preset import LLMPreset
@@ -196,7 +196,7 @@ def create_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, preset_
         cache_json=json.dumps(body.cache or {}, ensure_ascii=False) if body.cache else None,
     )
     db.add(row)
-    preset.updated_at = utc_now_iso()
+    preset.updated_at = utc_now()
     db.commit()
     db.refresh(row)
     return ok_payload(request_id=request_id, data={"block": _block_to_out(row)})
@@ -240,7 +240,7 @@ def update_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, block_i
     if body.cache is not None:
         block.cache_json = json.dumps(body.cache or {}, ensure_ascii=False) if body.cache else None
 
-    preset.updated_at = utc_now_iso()
+    preset.updated_at = utc_now()
     db.commit()
     db.refresh(block)
     return ok_payload(request_id=request_id, data={"block": _block_to_out(block)})
@@ -258,7 +258,7 @@ def delete_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, block_i
     require_owned_project(db, project_id=preset.project_id, user_id=user_id)
 
     db.delete(block)
-    preset.updated_at = utc_now_iso()
+    preset.updated_at = utc_now()
     db.commit()
     return ok_payload(request_id=request_id, data={})
 
@@ -303,7 +303,7 @@ def reorder_prompt_blocks(
     for idx, block_id in enumerate(ordered_ids):
         by_id[block_id].injection_order = idx
 
-    preset.updated_at = utc_now_iso()
+    preset.updated_at = utc_now()
     db.commit()
     blocks = (
         db.execute(select(PromptBlock).where(PromptBlock.preset_id == preset_id).order_by(PromptBlock.injection_order.asc()))

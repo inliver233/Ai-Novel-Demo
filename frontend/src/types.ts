@@ -122,6 +122,9 @@ export interface LLMPreset {
   temperature?: number | null;
   top_p?: number | null;
   max_tokens?: number | null;
+  max_tokens_limit?: number | null;
+  max_tokens_recommended?: number | null;
+  context_window_limit?: number | null;
   presence_penalty?: number | null;
   frequency_penalty?: number | null;
   top_k?: number | null;

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -11,8 +12,8 @@ class OutlineOut(BaseModel):
     title: str
     content_md: str
     structure: Any | None = None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class OutlineUpdate(BaseModel):
@@ -30,6 +31,6 @@ class OutlineCreate(BaseModel):
 class OutlineListItem(BaseModel):
     id: str
     title: str
-    updated_at: str
-    created_at: str
+    updated_at: datetime
+    created_at: datetime
     has_chapters: bool = False

@@ -7,7 +7,7 @@ from app.api.deps import DbDep, UserIdDep, require_owned_llm_profile
 from app.core.errors import AppError, ok_payload
 from app.core.secrets import SecretCryptoError, encrypt_secret, mask_api_key
 from app.db.utils import new_id
-from app.llm.utils import default_max_tokens_for_provider, normalize_base_url
+from app.llm.utils import default_max_tokens, is_default_like_max_tokens, normalize_base_url
 from app.models.llm_preset import LLMPreset
 from app.models.llm_profile import LLMProfile
 from app.models.project import Project
@@ -61,7 +61,7 @@ def _sync_bound_project_presets(db: DbDep, profile: LLMProfile) -> None:
                 model=profile.model,
                 temperature=0.7,
                 top_p=1.0,
-                max_tokens=default_max_tokens_for_provider(profile.provider),
+                max_tokens=default_max_tokens(profile.provider, profile.model),
                 presence_penalty=0.0,
                 frequency_penalty=0.0,
                 top_k=None,
@@ -76,8 +76,8 @@ def _sync_bound_project_presets(db: DbDep, profile: LLMProfile) -> None:
         preset.provider = profile.provider
         preset.base_url = base_url
         preset.model = profile.model
-        if preset.max_tokens is None or preset.max_tokens == default_max_tokens_for_provider(old_provider):
-            preset.max_tokens = default_max_tokens_for_provider(profile.provider)
+        if is_default_like_max_tokens(old_provider, preset.max_tokens):
+            preset.max_tokens = default_max_tokens(profile.provider, profile.model)
 
 
 @router.get("/llm_profiles")

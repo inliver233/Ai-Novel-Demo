@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { GenerationRun } from "../../components/writing/types";
+import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../../services/apiClient";
 
 export function useGenerationHistory(args: {
@@ -13,19 +14,38 @@ export function useGenerationHistory(args: {
   const [runsLoading, setRunsLoading] = useState(false);
   const [runs, setRuns] = useState<GenerationRun[]>([]);
   const [selectedRun, setSelectedRun] = useState<GenerationRun | null>(null);
+  const runsGuardRef = useRef(createRequestSeqGuard());
+  const runDetailsGuardRef = useRef(createRequestSeqGuard());
+
+  useEffect(() => {
+    const runsGuard = runsGuardRef.current;
+    const runDetailsGuard = runDetailsGuardRef.current;
+    return () => {
+      runsGuard.invalidate();
+      runDetailsGuard.invalidate();
+    };
+  }, []);
 
   const refreshRuns = useCallback(async () => {
     if (!projectId) return;
+    const seq = runsGuardRef.current.next();
     setRunsLoading(true);
     try {
       const res = await apiJson<{ runs: GenerationRun[] }>(`/api/projects/${projectId}/generation_runs?limit=5`);
+      if (!runsGuardRef.current.isLatest(seq)) return;
       setRuns(res.data.runs);
-      setSelectedRun(res.data.runs[0] ?? null);
+      setSelectedRun((prev) => {
+        if (prev && res.data.runs.some((r) => r.id === prev.id)) return prev;
+        return res.data.runs[0] ?? null;
+      });
     } catch (e) {
+      if (!runsGuardRef.current.isLatest(seq)) return;
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
-      setRunsLoading(false);
+      if (runsGuardRef.current.isLatest(seq)) {
+        setRunsLoading(false);
+      }
     }
   }, [projectId, toast]);
 
@@ -38,11 +58,14 @@ export function useGenerationHistory(args: {
 
   const selectRun = useCallback(
     async (run: GenerationRun) => {
+      const seq = runDetailsGuardRef.current.next();
       setSelectedRun(run);
       try {
         const res = await apiJson<{ run: GenerationRun }>(`/api/generation_runs/${run.id}`);
+        if (!runDetailsGuardRef.current.isLatest(seq)) return;
         setSelectedRun(res.data.run);
       } catch (e) {
+        if (!runDetailsGuardRef.current.isLatest(seq)) return;
         const err = e as ApiError;
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       }
