@@ -316,7 +316,7 @@ export function WritingPage() {
                   </button>
                   <button
                     className="btn btn-primary"
-                    disabled={!dirty || loadingChapter || generating}
+                    disabled={!dirty || loadingChapter}
                     onClick={() => void saveChapter()}
                     type="button"
                   >
@@ -341,7 +341,6 @@ export function WritingPage() {
                   <span className="text-xs text-subtext">标题</span>
                   <input
                     className="input"
-                    disabled={generating}
                     name="title"
                     value={form.title}
                     onChange={(e) => setForm((v) => (v ? { ...v, title: e.target.value } : v))}
@@ -351,7 +350,6 @@ export function WritingPage() {
                   <span className="text-xs text-subtext">状态</span>
                   <select
                     className="select"
-                    disabled={generating}
                     name="status"
                     value={form.status}
                     onChange={(e) => setForm((v) => (v ? { ...v, status: e.target.value as ChapterStatus } : v))}
@@ -368,7 +366,6 @@ export function WritingPage() {
                   <span className="text-xs text-subtext">本章要点</span>
                   <textarea
                     className="textarea atelier-content"
-                    disabled={generating}
                     name="plan"
                     rows={4}
                     value={form.plan}
@@ -383,17 +380,17 @@ export function WritingPage() {
                     placeholder="开始写作..."
                     minRows={16}
                     name="content_md"
-                    readOnly={generating}
                     tab={contentEditorTab}
                     onTabChange={setContentEditorTab}
-                    textareaRef={contentTextareaRef}
+                    textareaRef={(el) => {
+                      contentTextareaRef.current = el;
+                    }}
                   />
                 </label>
                 <label className="grid gap-1">
                   <span className="text-xs text-subtext">摘要（可选）</span>
                   <textarea
                     className="textarea atelier-content"
-                    disabled={generating}
                     name="summary"
                     rows={3}
                     value={form.summary}

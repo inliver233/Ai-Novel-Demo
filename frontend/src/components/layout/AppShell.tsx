@@ -14,8 +14,8 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { NavLink, useLocation, useOutlet, useParams } from "react-router-dom";
 
 import { ProjectSwitcher } from "../atelier/ProjectSwitcher";
 import { ThemeToggle } from "../atelier/ThemeToggle";
@@ -88,6 +88,34 @@ function SidebarLink(props: {
         </>
       )}
     </NavLink>
+  );
+}
+
+function PersistentOutlet(props: { activeKey: string }) {
+  const outlet = useOutlet();
+  const [cache, setCache] = useState<Map<string, React.ReactNode>>(() => new Map([[props.activeKey, outlet]]));
+
+  const cacheWithActive = useMemo(() => {
+    if (cache.has(props.activeKey)) return cache;
+    const next = new Map(cache);
+    next.set(props.activeKey, outlet);
+    return next;
+  }, [cache, outlet, props.activeKey]);
+
+  useEffect(() => {
+    if (cacheWithActive === cache) return;
+    const id = window.setTimeout(() => setCache(cacheWithActive), 0);
+    return () => window.clearTimeout(id);
+  }, [cache, cacheWithActive]);
+
+  return (
+    <>
+      {Array.from(cacheWithActive.entries()).map(([key, element]) => (
+        <div key={key} style={{ display: key === props.activeKey ? "block" : "none" }}>
+          {element}
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -361,17 +389,7 @@ export function AppShell() {
             </div>
           </header>
           <div className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={location.pathname}
-                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
-                animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
-                transition={reduceMotion ? { duration: 0.01 } : transition.page}
-              >
-                <Outlet />
-              </motion.div>
-            </AnimatePresence>
+            <PersistentOutlet activeKey={location.pathname} />
           </div>
         </main>
       </div>

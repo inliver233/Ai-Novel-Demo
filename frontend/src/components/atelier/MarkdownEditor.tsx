@@ -1,5 +1,4 @@
-import { useId, useState } from "react";
-import type { Ref } from "react";
+import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { LayoutGroup, motion } from "framer-motion";
@@ -19,7 +18,7 @@ type MarkdownEditorProps = {
   readOnly?: boolean;
   tab?: EditorTab;
   onTabChange?: (next: EditorTab) => void;
-  textareaRef?: Ref<HTMLTextAreaElement>;
+  textareaRef?: (el: HTMLTextAreaElement | null) => void;
 };
 
 export function MarkdownEditor({
@@ -38,6 +37,34 @@ export function MarkdownEditor({
   const tab = controlledTab ?? internalTab;
   const motionGroupId = useId();
   const tabIndicatorLayoutId = `atelier-markdown-editor-tab-${motionGroupId}`;
+  const internalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const userChangeRef = useRef(false);
+  const followOutputRef = useRef(true);
+  const lastScrollTopRef = useRef(0);
+
+  const setTextareaRef = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      internalTextareaRef.current = el;
+      textareaRef?.(el);
+    },
+    [textareaRef],
+  );
+
+  useLayoutEffect(() => {
+    if (tab !== "edit") return;
+    const el = internalTextareaRef.current;
+    if (!el) return;
+    if (userChangeRef.current) {
+      userChangeRef.current = false;
+      return;
+    }
+    if (followOutputRef.current) {
+      el.scrollTop = el.scrollHeight;
+      lastScrollTopRef.current = el.scrollTop;
+      return;
+    }
+    el.scrollTop = Math.min(el.scrollHeight, lastScrollTopRef.current);
+  }, [tab, value]);
   const setTab = (next: EditorTab) => {
     if (onTabChange) onTabChange(next);
     else setInternalTab(next);
@@ -93,14 +120,21 @@ export function MarkdownEditor({
             mono ? "atelier-mono" : "atelier-content",
             "w-full resize-y bg-transparent px-3 py-3 text-ink outline-none placeholder:text-subtext/70",
           )}
-          ref={textareaRef}
+          ref={setTextareaRef}
           name={name}
           placeholder={placeholder}
           readOnly={isReadOnly}
           rows={minRows ?? 12}
           value={value}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            lastScrollTopRef.current = el.scrollTop;
+            const atBottom = el.scrollHeight - el.clientHeight - el.scrollTop <= 24;
+            followOutputRef.current = atBottom;
+          }}
           onChange={(e) => {
             if (isReadOnly) return;
+            userChangeRef.current = true;
             onChange(e.target.value);
           }}
         />

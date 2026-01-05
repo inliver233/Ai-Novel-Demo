@@ -7,7 +7,7 @@ import { getCurrentUserId } from "../../services/currentUser";
 import { wizardBarCollapsedStorageKey } from "../../services/uiState";
 import type { WizardProgress, WizardStepKey } from "../../services/wizard";
 
-type PrimaryAction = {
+export type WizardPrimaryAction = {
   label: string;
   disabled?: boolean;
   onClick: () => Promise<boolean> | boolean | Promise<void> | void;
@@ -21,7 +21,7 @@ export function WizardNextBar(props: {
   dirty?: boolean;
   saving?: boolean;
   onSave?: () => Promise<boolean>;
-  primaryAction?: PrimaryAction;
+  primaryAction?: WizardPrimaryAction;
 }) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
@@ -77,7 +77,7 @@ export function WizardNextBar(props: {
   const done = !progress.nextStep;
   const showBackToOverview = Boolean(progress.exportedAt && progress.nextStep);
 
-  const primary = useMemo((): PrimaryAction => {
+  const primary = useMemo((): WizardPrimaryAction => {
     if (primaryAction) return primaryAction;
 
     if (dirty && onSave) {

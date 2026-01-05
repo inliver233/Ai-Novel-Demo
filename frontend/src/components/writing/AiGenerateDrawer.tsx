@@ -281,7 +281,7 @@ export function AiGenerateDrawer(props: Props) {
         </div>
 
         <div className="panel p-3 text-xs text-subtext">
-          生成结果不会自动保存到数据库，请生成后点击“保存”（或 Ctrl/Cmd+S）。
+          生成与编辑内容会自动保存（有短暂延迟），也可随时点击“保存”或 Ctrl/Cmd+S 立即保存。
         </div>
       </div>
 

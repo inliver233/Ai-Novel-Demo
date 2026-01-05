@@ -6,6 +6,7 @@ import { LlmPresetPanel } from "../components/prompts/LlmPresetPanel";
 import type { LlmForm } from "../components/prompts/types";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
+import { useAutoSave } from "../hooks/useAutoSave";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
@@ -67,6 +68,9 @@ export function PromptsPage() {
   const [loading, setLoading] = useState(true);
   const [savingPreset, setSavingPreset] = useState(false);
   const [testing, setTesting] = useState(false);
+  const savingPresetRef = useRef(false);
+  const queuedPresetSaveRef = useRef<null | { silent: boolean; snapshot?: LlmForm }>(null);
+  const wizardRefreshTimerRef = useRef<number | null>(null);
 
   const [project, setProject] = useState<Project | null>(null);
   const [profiles, setProfiles] = useState<LLMProfile[]>([]);
@@ -145,6 +149,12 @@ export function PromptsPage() {
   }, [reloadAll]);
 
   useEffect(() => {
+    return () => {
+      if (wizardRefreshTimerRef.current !== null) window.clearTimeout(wizardRefreshTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     const guard = capsGuardRef.current;
     return () => {
       guard.invalidate();
@@ -212,58 +222,108 @@ export function PromptsPage() {
   const selectedProfile = selectedProfileId ? (profiles.find((p) => p.id === selectedProfileId) ?? null) : null;
   const lockConnectionFields = Boolean(selectedProfileId);
 
-  const saveAll = useCallback(async (): Promise<boolean> => {
-    if (!projectId) return false;
-    if (!dirty) return true;
+  const saveAll = useCallback(
+    async (opts?: { silent?: boolean; snapshot?: LlmForm }): Promise<boolean> => {
+      if (!projectId) return false;
+      const silent = Boolean(opts?.silent);
+      const snapshot = opts?.snapshot ?? llmForm;
+      if (!dirty && !opts?.snapshot) return true;
+      if (savingPresetRef.current) {
+        queuedPresetSaveRef.current = { silent, snapshot };
+        return false;
+      }
 
-    const extraObj = (() => {
+      const extraObj = (() => {
+        try {
+          return JSON.parse(snapshot.extra || "{}") as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      })();
+      if (!extraObj) {
+        if (!silent) toast.toastError("extra 不是合法 JSON");
+        return false;
+      }
+
+      const scheduleWizardRefresh = () => {
+        if (wizardRefreshTimerRef.current !== null) window.clearTimeout(wizardRefreshTimerRef.current);
+        wizardRefreshTimerRef.current = window.setTimeout(() => void refreshWizard(), 1200);
+      };
+
+      savingPresetRef.current = true;
+      setSavingPreset(true);
       try {
-        return JSON.parse(llmForm.extra || "{}") as Record<string, unknown>;
-      } catch {
-        return null;
-      }
-    })();
-    if (!extraObj) {
-      toast.toastError("extra 不是合法 JSON");
-      return false;
-    }
+        if (presetDirty) {
+          const res = await apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${projectId}/llm_preset`, {
+            method: "PUT",
+            body: JSON.stringify({
+              provider: snapshot.provider,
+              base_url: snapshot.base_url || null,
+              model: snapshot.model,
+              temperature: parseNumber(snapshot.temperature),
+              top_p: parseNumber(snapshot.top_p),
+              max_tokens: parseNumber(snapshot.max_tokens),
+              presence_penalty: parseNumber(snapshot.presence_penalty),
+              frequency_penalty: parseNumber(snapshot.frequency_penalty),
+              top_k: parseNumber(snapshot.top_k),
+              stop: parseStopList(snapshot.stop),
+              timeout_seconds: parseTimeoutSecondsForPreset(snapshot.timeout_seconds),
+              extra: extraObj,
+            }),
+          });
+          setBaselinePreset(res.data.llm_preset);
+        }
 
-    setSavingPreset(presetDirty);
-    try {
-      if (presetDirty) {
-        const res = await apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${projectId}/llm_preset`, {
-          method: "PUT",
-          body: JSON.stringify({
-            provider: llmForm.provider,
-            base_url: llmForm.base_url || null,
-            model: llmForm.model,
-            temperature: parseNumber(llmForm.temperature),
-            top_p: parseNumber(llmForm.top_p),
-            max_tokens: parseNumber(llmForm.max_tokens),
-            presence_penalty: parseNumber(llmForm.presence_penalty),
-            frequency_penalty: parseNumber(llmForm.frequency_penalty),
-            top_k: parseNumber(llmForm.top_k),
-            stop: parseStopList(llmForm.stop),
-            timeout_seconds: parseTimeoutSecondsForPreset(llmForm.timeout_seconds),
-            extra: extraObj,
-          }),
-        });
-        setBaselinePreset(res.data.llm_preset);
+        bumpWizardLocal();
+        if (silent) scheduleWizardRefresh();
+        else {
+          toast.toastSuccess("已保存");
+          await refreshWizard();
+        }
+        return true;
+      } catch (e) {
+        const err = e as ApiError;
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+        return false;
+      } finally {
+        setSavingPreset(false);
+        savingPresetRef.current = false;
+        if (queuedPresetSaveRef.current) {
+          const queued = queuedPresetSaveRef.current;
+          queuedPresetSaveRef.current = null;
+          void saveAll({ silent: queued.silent, snapshot: queued.snapshot });
+        }
       }
-
-      toast.toastSuccess("已保存");
-      await refreshWizard();
-      return true;
-    } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-      return false;
-    } finally {
-      setSavingPreset(false);
-    }
-  }, [dirty, llmForm, presetDirty, projectId, refreshWizard, toast]);
+    },
+    [bumpWizardLocal, dirty, llmForm, presetDirty, projectId, refreshWizard, toast],
+  );
 
   useSaveHotkey(() => void saveAll(), dirty);
+
+  useAutoSave({
+    enabled: Boolean(projectId),
+    dirty,
+    delayMs: 1200,
+    getSnapshot: () => ({ ...llmForm }),
+    onSave: async (snapshot) => {
+      await saveAll({ silent: true, snapshot });
+    },
+    deps: [
+      llmForm.provider,
+      llmForm.base_url,
+      llmForm.model,
+      llmForm.temperature,
+      llmForm.top_p,
+      llmForm.max_tokens,
+      llmForm.presence_penalty,
+      llmForm.frequency_penalty,
+      llmForm.top_k,
+      llmForm.stop,
+      llmForm.timeout_seconds,
+      llmForm.extra,
+      projectId ?? "",
+    ],
+  });
 
   const selectProfile = useCallback(
     async (profileId: string | null) => {

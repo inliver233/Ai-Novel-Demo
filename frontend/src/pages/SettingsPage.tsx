@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { useToast } from "../components/ui/toast";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { useProjects } from "../contexts/projects";
+import { useAutoSave } from "../hooks/useAutoSave";
 import { useProjectData } from "../hooks/useProjectData";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
@@ -15,6 +16,7 @@ import type { Project, ProjectSettings } from "../types";
 type ProjectForm = { name: string; genre: string; logline: string };
 type SettingsForm = { world_setting: string; style_guide: string; constraints: string };
 type SettingsLoaded = { project: Project; settings: ProjectSettings };
+type SaveSnapshot = { projectForm: ProjectForm; settingsForm: SettingsForm };
 
 export function SettingsPage() {
   const { projectId } = useParams();
@@ -25,6 +27,10 @@ export function SettingsPage() {
   const bumpWizardLocal = wizard.bumpLocal;
 
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const queuedSaveRef = useRef<null | { silent: boolean; snapshot?: SaveSnapshot }>(null);
+  const wizardRefreshTimerRef = useRef<number | null>(null);
+  const projectsRefreshTimerRef = useRef<number | null>(null);
   const [baselineProject, setBaselineProject] = useState<Project | null>(null);
   const [baselineSettings, setBaselineSettings] = useState<ProjectSettings | null>(null);
 
@@ -74,48 +80,130 @@ export function SettingsPage() {
 
   useUnsavedChangesGuard(dirty);
 
-  const save = useCallback(async (): Promise<boolean> => {
-    if (!projectId) return false;
-    if (!dirty) return true;
-    setSaving(true);
-    try {
-      const [pRes, sRes] = await Promise.all([
-        apiJson<{ project: Project }>(`/api/projects/${projectId}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            name: projectForm.name.trim(),
-            genre: projectForm.genre.trim() || null,
-            logline: projectForm.logline.trim() || null,
-          }),
-        }),
-        apiJson<{ settings: ProjectSettings }>(`/api/projects/${projectId}/settings`, {
-          method: "PUT",
-          body: JSON.stringify({
-            world_setting: settingsForm.world_setting,
-            style_guide: settingsForm.style_guide,
-            constraints: settingsForm.constraints,
-          }),
-        }),
-      ]);
+  useEffect(() => {
+    return () => {
+      if (wizardRefreshTimerRef.current !== null) window.clearTimeout(wizardRefreshTimerRef.current);
+      if (projectsRefreshTimerRef.current !== null) window.clearTimeout(projectsRefreshTimerRef.current);
+    };
+  }, []);
 
-      setBaselineProject(pRes.data.project);
-      setBaselineSettings(sRes.data.settings);
-      markWizardProjectChanged(projectId);
-      bumpWizardLocal();
-      await refresh();
-      await refreshWizard();
-      toast.toastSuccess("已保存");
-      return true;
-    } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }, [bumpWizardLocal, dirty, projectForm, projectId, refresh, refreshWizard, settingsForm, toast]);
+  const save = useCallback(
+    async (opts?: { silent?: boolean; snapshot?: SaveSnapshot }): Promise<boolean> => {
+      if (!projectId) return false;
+      if (savingRef.current) {
+        queuedSaveRef.current = { silent: Boolean(opts?.silent), snapshot: opts?.snapshot };
+        return false;
+      }
+      const silent = Boolean(opts?.silent);
+      const snapshot = opts?.snapshot;
+      const nextProjectForm = snapshot?.projectForm ?? projectForm;
+      const nextSettingsForm = snapshot?.settingsForm ?? settingsForm;
+
+      if (!baselineProject || !baselineSettings) return false;
+      const projectDirty =
+        nextProjectForm.name.trim() !== baselineProject.name ||
+        nextProjectForm.genre.trim() !== (baselineProject.genre ?? "") ||
+        nextProjectForm.logline.trim() !== (baselineProject.logline ?? "");
+      const settingsDirty =
+        nextSettingsForm.world_setting !== baselineSettings.world_setting ||
+        nextSettingsForm.style_guide !== baselineSettings.style_guide ||
+        nextSettingsForm.constraints !== baselineSettings.constraints;
+      if (!projectDirty && !settingsDirty) return true;
+
+      const scheduleWizardRefresh = () => {
+        if (wizardRefreshTimerRef.current !== null) window.clearTimeout(wizardRefreshTimerRef.current);
+        wizardRefreshTimerRef.current = window.setTimeout(() => void refreshWizard(), 1200);
+      };
+      const scheduleProjectsRefresh = () => {
+        if (projectsRefreshTimerRef.current !== null) window.clearTimeout(projectsRefreshTimerRef.current);
+        projectsRefreshTimerRef.current = window.setTimeout(() => void refresh(), 1200);
+      };
+
+      savingRef.current = true;
+      setSaving(true);
+      try {
+        const [pRes, sRes] = await Promise.all([
+          projectDirty
+            ? apiJson<{ project: Project }>(`/api/projects/${projectId}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  name: nextProjectForm.name.trim(),
+                  genre: nextProjectForm.genre.trim() || null,
+                  logline: nextProjectForm.logline.trim() || null,
+                }),
+              })
+            : null,
+          settingsDirty
+            ? apiJson<{ settings: ProjectSettings }>(`/api/projects/${projectId}/settings`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  world_setting: nextSettingsForm.world_setting,
+                  style_guide: nextSettingsForm.style_guide,
+                  constraints: nextSettingsForm.constraints,
+                }),
+              })
+            : null,
+        ]);
+
+        if (pRes) setBaselineProject(pRes.data.project);
+        if (sRes) setBaselineSettings(sRes.data.settings);
+        markWizardProjectChanged(projectId);
+        bumpWizardLocal();
+        if (silent) {
+          scheduleProjectsRefresh();
+          scheduleWizardRefresh();
+        } else {
+          await refresh();
+          await refreshWizard();
+          toast.toastSuccess("已保存");
+        }
+        return true;
+      } catch (e) {
+        const err = e as ApiError;
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+        return false;
+      } finally {
+        setSaving(false);
+        savingRef.current = false;
+        if (queuedSaveRef.current) {
+          const queued = queuedSaveRef.current;
+          queuedSaveRef.current = null;
+          void save({ silent: queued.silent, snapshot: queued.snapshot });
+        }
+      }
+    },
+    [
+      baselineProject,
+      baselineSettings,
+      bumpWizardLocal,
+      projectForm,
+      projectId,
+      refresh,
+      refreshWizard,
+      settingsForm,
+      toast,
+    ],
+  );
 
   useSaveHotkey(() => void save(), dirty);
+
+  useAutoSave({
+    enabled: Boolean(projectId && baselineProject && baselineSettings),
+    dirty,
+    delayMs: 1200,
+    getSnapshot: () => ({ projectForm: { ...projectForm }, settingsForm: { ...settingsForm } }),
+    onSave: async (snapshot) => {
+      await save({ silent: true, snapshot });
+    },
+    deps: [
+      projectForm.name,
+      projectForm.genre,
+      projectForm.logline,
+      settingsForm.world_setting,
+      settingsForm.style_guide,
+      settingsForm.constraints,
+    ],
+  });
 
   const loading = settingsQuery.loading;
   if (loading) return <div className="text-subtext">加载中...</div>;

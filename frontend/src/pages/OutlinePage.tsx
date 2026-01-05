@@ -7,6 +7,7 @@ import { Modal } from "../components/ui/Modal";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
+import { useAutoSave } from "../hooks/useAutoSave";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
@@ -78,6 +79,13 @@ export function OutlinePage() {
   const [genStreamText, setGenStreamText] = useState("");
   const genStreamClientRef = useRef<SSEPostClient | null>(null);
   const genStreamHasChunkRef = useRef(false);
+  const wizardRefreshTimerRef = useRef<number | null>(null);
+  const savingRef = useRef(false);
+  const queuedSaveRef = useRef<{
+    nextContent?: string;
+    nextStructure?: unknown;
+    opts?: { silent?: boolean; snapshotContent?: string };
+  } | null>(null);
   const [genForm, setGenForm] = useState<OutlineGenForm>({
     chapter_count: 12,
     tone: "偏现实，克制但有爆点",
@@ -116,27 +124,69 @@ export function OutlinePage() {
     setContent(next);
   }, [outlineQuery.data]);
 
+  useEffect(() => {
+    return () => {
+      if (wizardRefreshTimerRef.current !== null) {
+        window.clearTimeout(wizardRefreshTimerRef.current);
+        wizardRefreshTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const dirty = content !== baseline;
   useUnsavedChangesGuard(dirty);
 
   const save = useCallback(
-    async (nextContent?: string, nextStructure?: unknown): Promise<boolean> => {
+    async (
+      nextContent?: string,
+      nextStructure?: unknown,
+      opts?: { silent?: boolean; snapshotContent?: string },
+    ): Promise<boolean> => {
       if (!projectId) return false;
-      const toSave = nextContent ?? content;
-      if (nextContent === undefined && toSave === baseline) return true;
+      if (savingRef.current) {
+        queuedSaveRef.current = { nextContent, nextStructure, opts };
+        return false;
+      }
+      const silent = Boolean(opts?.silent);
+      const snapshotContent = opts?.snapshotContent;
+      const toSave = snapshotContent ?? nextContent ?? content;
+      if (
+        nextContent === undefined &&
+        snapshotContent === undefined &&
+        nextStructure === undefined &&
+        toSave === baseline
+      )
+        return true;
+
+      savingRef.current = true;
       setSaving(true);
       try {
+        const scheduleWizardRefresh = () => {
+          if (wizardRefreshTimerRef.current !== null) {
+            window.clearTimeout(wizardRefreshTimerRef.current);
+          }
+          wizardRefreshTimerRef.current = window.setTimeout(() => void refreshWizard(), 1200);
+        };
         const res = await apiJson<{ outline: Outline }>(`/api/projects/${projectId}/outline`, {
           method: "PUT",
           body: JSON.stringify({ content_md: toSave, structure: nextStructure }),
         });
-        setBaseline(res.data.outline.content_md ?? "");
-        setContent(res.data.outline.content_md ?? "");
+        const saved = res.data.outline.content_md ?? "";
+        setBaseline(saved);
+        setContent((prev) => {
+          if (nextContent !== undefined) return saved;
+          if (prev === toSave) return saved;
+          return prev;
+        });
         setActiveOutline(res.data.outline);
         markWizardProjectChanged(projectId);
         bumpWizardLocal();
-        await refreshWizard();
-        toast.toastSuccess("已保存");
+        if (silent) {
+          scheduleWizardRefresh();
+        } else {
+          await refreshWizard();
+          toast.toastSuccess("已保存");
+        }
         return true;
       } catch (e) {
         const err = e as ApiError;
@@ -144,12 +194,29 @@ export function OutlinePage() {
         return false;
       } finally {
         setSaving(false);
+        savingRef.current = false;
+        if (queuedSaveRef.current) {
+          const queued = queuedSaveRef.current;
+          queuedSaveRef.current = null;
+          void save(queued.nextContent, queued.nextStructure, queued.opts);
+        }
       }
     },
     [baseline, bumpWizardLocal, content, projectId, refreshWizard, toast],
   );
 
   useSaveHotkey(() => void save(), dirty);
+
+  useAutoSave({
+    enabled: Boolean(projectId),
+    dirty,
+    delayMs: 900,
+    getSnapshot: () => content,
+    onSave: async (snapshot) => {
+      await save(undefined, undefined, { silent: true, snapshotContent: snapshot });
+    },
+    deps: [content, projectId, activeOutline?.id ?? ""],
+  });
 
   const storedChapters = useMemo(() => extractOutlineChapters(activeOutline?.structure), [activeOutline?.structure]);
   const previewChapters = genPreview?.chapters;
@@ -791,7 +858,7 @@ export function OutlinePage() {
             <div className="mt-3">
               <MarkdownEditor
                 value={genPreview.outline_md}
-                onChange={() => {}}
+                onChange={(next) => setGenPreview((prev) => (prev ? { ...prev, outline_md: next } : prev))}
                 minRows={10}
                 name="generated_outline_preview"
               />

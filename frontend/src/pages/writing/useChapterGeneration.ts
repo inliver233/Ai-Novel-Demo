@@ -132,6 +132,13 @@ export function useChapterGeneration(args: {
           const parser = createChapterMarkerStreamParser();
           let parsedContent = "";
           let parsedSummary = "";
+          const startContent =
+            mode === "append"
+              ? (() => {
+                  const trimmed = (baseContent ?? "").trimEnd();
+                  return trimmed ? `${trimmed}\n\n` : "";
+                })()
+              : "";
           let requestId: string | undefined;
           let nonFatalNoticed = false;
           let droppedParams: string[] = [];
@@ -140,7 +147,13 @@ export function useChapterGeneration(args: {
             const out = parser.push(chunk);
             if (out.contentDelta) parsedContent += out.contentDelta;
             if (out.summaryDelta) parsedSummary += out.summaryDelta;
+            return out;
           };
+
+          setForm((prev) => {
+            if (!prev) return prev;
+            return { ...prev, content_md: startContent, status: "drafting" };
+          });
 
           const client = new SSEPostClient(`/api/chapters/${activeChapter.id}/generate-stream`, payload, {
             headers,
@@ -157,12 +170,13 @@ export function useChapterGeneration(args: {
             },
             onChunk: (chunk) => {
               genStreamHasChunkRef.current = true;
-              processChunk(chunk);
-              setForm((prev) => {
-                if (!prev) return prev;
-                const nextContent = mode === "append" ? appendMarkdown(baseContent, parsedContent) : parsedContent;
-                return { ...prev, content_md: nextContent, status: "drafting" };
-              });
+              const out = processChunk(chunk);
+              if (out.contentDelta) {
+                setForm((prev) => {
+                  if (!prev) return prev;
+                  return { ...prev, content_md: (prev.content_md ?? "") + out.contentDelta, status: "drafting" };
+                });
+              }
             },
             onResult: (data) => {
               const obj = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
@@ -183,9 +197,16 @@ export function useChapterGeneration(args: {
               }
               setForm((prev) => {
                 if (!prev) return prev;
+                const expectedContent = startContent + parsedContent;
                 const nextContent = mode === "append" ? appendMarkdown(baseContent, content) : content;
-                const nextSummary = summary || parsedSummary.trim() || prev.summary || baseSummary;
-                return { ...prev, content_md: nextContent, summary: nextSummary, status: "drafting" };
+                const nextSummaryRaw = summary || parsedSummary.trim();
+                const shouldOverrideSummary = prev.summary === baseSummary;
+                return {
+                  ...prev,
+                  content_md: prev.content_md === expectedContent ? nextContent : prev.content_md,
+                  summary: shouldOverrideSummary ? nextSummaryRaw || prev.summary || baseSummary : prev.summary,
+                  status: "drafting",
+                };
               });
             },
           });
@@ -200,7 +221,16 @@ export function useChapterGeneration(args: {
           } catch (e) {
             const err = e as unknown;
             if (err instanceof SSEError && err.code === "ABORTED") {
-              setForm((prev) => (prev ? { ...prev, content_md: baseContent, summary: baseSummary } : prev));
+              setForm((prev) => {
+                if (!prev) return prev;
+                const expectedContent = startContent + parsedContent;
+                const expectedSummary = prev.summary === baseSummary;
+                return {
+                  ...prev,
+                  content_md: prev.content_md === expectedContent ? baseContent : prev.content_md,
+                  summary: expectedSummary ? baseSummary : prev.summary,
+                };
+              });
               toast.toastSuccess("已取消生成", err.requestId ?? requestId);
               return;
             }
