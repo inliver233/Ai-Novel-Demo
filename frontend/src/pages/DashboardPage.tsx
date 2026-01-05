@@ -145,6 +145,8 @@ export function DashboardPage() {
           <motion.div
             key={p.id}
             className="panel-interactive p-6 text-left"
+            initial="hidden"
+            animate="show"
             variants={{
               hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
               show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },

@@ -293,6 +293,8 @@ export function ProjectWizardPage() {
               <motion.div
                 key={s.key}
                 className="surface p-4"
+                initial="hidden"
+                animate="show"
                 variants={{
                   hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
                   show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },

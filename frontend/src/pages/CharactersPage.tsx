@@ -228,6 +228,8 @@ export function CharactersPage() {
           <motion.div
             key={c.id}
             className="panel-interactive ui-focus-ring p-5 text-left"
+            initial="hidden"
+            animate="show"
             variants={{
               hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
               show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
