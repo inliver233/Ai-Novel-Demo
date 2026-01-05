@@ -6,6 +6,7 @@
   :root {
     --color-canvas: var(--theme-canvas);
     --color-surface: var(--theme-surface);
+    --color-surface-hover: var(--theme-surface-hover);
     --color-ink: var(--theme-ink);
     --color-accent: var(--theme-accent);
     --color-border: var(--theme-border);
@@ -25,11 +26,14 @@
     --motion-duration-stagger: 30ms;
     --motion-distance-fade-up: 10px;
     --motion-scale-press: 0.98;
+
+    --shadow-panel-hover: 0 12px 32px -12px rgb(44 41 38 / 0.12);
   }
 
   [data-theme="paper-ink"] {
     --theme-canvas: 251 249 246;
     --theme-surface: 242 239 233;
+    --theme-surface-hover: 236 233 227;
     --theme-ink: 44 41 38;
     --theme-subtext: 110 106 102;
     --theme-border: 230 226 220;
@@ -46,11 +50,13 @@
   [data-theme="paper-ink"].dark {
     --theme-canvas: 26 25 24;
     --theme-surface: 36 35 33;
+    --theme-surface-hover: 42 41 39;
     --theme-ink: 232 230 227;
     --theme-subtext: 185 182 178;
     --theme-border: 46 44 41;
     --theme-accent: 217 119 87;
     --theme-success: 94 138 124;
+    --shadow-panel-hover: 0 14px 40px -16px rgb(0 0 0 / 0.6);
   }
 
   html,
@@ -157,8 +163,10 @@
   }
 
   .panel-interactive {
-    @apply panel ui-transition cursor-pointer hover:bg-canvas;
-    @apply motion-safe:active:scale-[0.99];
+    @apply panel ui-transition-fast cursor-pointer hover:bg-surface-hover hover:border-accent/35;
+    @apply motion-safe:will-change-transform motion-safe:hover:-translate-y-[2px];
+    @apply motion-safe:hover:shadow-[var(--shadow-panel-hover)];
+    @apply motion-safe:active:translate-y-0 motion-safe:active:scale-[var(--motion-scale-press)];
   }
 
   .surface {

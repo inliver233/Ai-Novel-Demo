@@ -6,6 +6,7 @@ export default {
       colors: {
         canvas: "rgb(var(--color-canvas) / <alpha-value>)",
         surface: "rgb(var(--color-surface) / <alpha-value>)",
+        "surface-hover": "rgb(var(--color-surface-hover) / <alpha-value>)",
         ink: "rgb(var(--color-ink) / <alpha-value>)",
         subtext: "rgb(var(--color-subtext) / <alpha-value>)",
         accent: "rgb(var(--color-accent) / <alpha-value>)",

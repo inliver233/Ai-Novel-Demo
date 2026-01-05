@@ -109,7 +109,7 @@ export function DashboardPage() {
         }}
       >
         <button
-          className="ui-focus-ring ui-transition group rounded-atelier border border-border border-dashed bg-surface p-6 text-left hover:bg-canvas motion-safe:active:scale-[0.99]"
+          className="ui-focus-ring ui-transition-fast group rounded-atelier border border-border border-dashed bg-surface p-6 text-left hover:bg-surface-hover hover:border-accent/35 motion-safe:will-change-transform motion-safe:hover:-translate-y-[2px] motion-safe:hover:shadow-[var(--shadow-panel-hover)] motion-safe:active:translate-y-0 motion-safe:active:scale-[var(--motion-scale-press)]"
           onClick={() => setCreateOpen(true)}
           type="button"
         >
@@ -152,6 +152,8 @@ export function DashboardPage() {
               show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
             }}
             transition={reduceMotion ? { duration: 0.01 } : transition.base}
+            whileHover={reduceMotion ? undefined : { y: -2, transition: transition.fast }}
+            whileTap={reduceMotion ? undefined : { y: 0, scale: 0.98, transition: transition.fast }}
             onClick={() => enterProject(p)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {

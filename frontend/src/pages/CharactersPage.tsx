@@ -235,6 +235,8 @@ export function CharactersPage() {
               show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
             }}
             transition={reduceMotion ? { duration: 0.01 } : transition.base}
+            whileHover={reduceMotion ? undefined : { y: -2, transition: transition.fast }}
+            whileTap={reduceMotion ? undefined : { y: 0, scale: 0.98, transition: transition.fast }}
             onClick={() => openEdit(c)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
