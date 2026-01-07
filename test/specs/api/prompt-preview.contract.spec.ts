@@ -1,0 +1,150 @@
+import { test, expect } from "@playwright/test";
+
+import { bootstrapProject } from "../../lib/bootstrap";
+import { loadState } from "../../lib/state";
+
+type ApiOk<T> = { ok: true; data: T; request_id: string };
+
+test("api: prompt_preview contract", async ({ request }) => {
+  const state = loadState();
+  const { projectId } = await bootstrapProject(request);
+
+  const presets = await request.get(`${state.backendUrl}/api/projects/${projectId}/prompt_presets`);
+  expect(presets.ok()).toBeTruthy();
+  const presetsJson = (await presets.json()) as ApiOk<{ presets: Array<{ id: string; name: string }> }>;
+  const presetId =
+    presetsJson.data.presets.find((p) => p.name.includes("章节生成"))?.id ?? presetsJson.data.presets[0]?.id;
+  expect(typeof presetId).toBe("string");
+  expect((presetId ?? "").length).toBeGreaterThan(0);
+
+  const values = {
+    project_name: "E2E Project",
+    genre: "Test",
+    logline: "E2E automated test project",
+    world_setting: "E2E world_setting",
+    style_guide: "E2E style_guide",
+    constraints: "E2E constraints",
+    characters: "- Alice（Protagonist）",
+    outline: "# E2E outline",
+    chapter_number: "1",
+    chapter_title: "第一章",
+    chapter_plan: "（示例要点）",
+    chapter_summary: "（示例摘要）",
+    chapter_content_md: "（示例章节正文）",
+    analysis_json: JSON.stringify({ chapter_summary: "（示例分析摘要）" }),
+    requirements: JSON.stringify({ chapter_count: 12 }),
+    instruction: "（示例指令）",
+    previous_chapter: "（示例上一章摘要）",
+    target_word_count: "2500",
+    raw_content: "（示例已生成正文）",
+    story_plan: "（示例规划）",
+    smart_context_recent_summaries: "（示例 smart_context_recent_summaries）",
+    smart_context_recent_full: "（示例 smart_context_recent_full）",
+    smart_context_story_skeleton: "（示例 smart_context_story_skeleton）",
+    project: {
+      name: "E2E Project",
+      genre: "Test",
+      logline: "E2E automated test project",
+      world_setting: "E2E world_setting",
+      style_guide: "E2E style_guide",
+      constraints: "E2E constraints",
+      characters: "- Alice（Protagonist）",
+    },
+    story: {
+      outline: "# E2E outline",
+      chapter_number: 1,
+      chapter_title: "第一章",
+      chapter_plan: "（示例要点）",
+      chapter_summary: "（示例摘要）",
+      previous_chapter: "（示例上一章摘要）",
+      plan: "（示例规划）",
+      raw_content: "（示例已生成正文）",
+      chapter_content_md: "（示例章节正文）",
+      analysis_json: JSON.stringify({ chapter_summary: "（示例分析摘要）" }),
+      smart_context_recent_summaries: "（示例 smart_context_recent_summaries）",
+      smart_context_recent_full: "（示例 smart_context_recent_full）",
+      smart_context_story_skeleton: "（示例 smart_context_story_skeleton）",
+    },
+    user: { instruction: "（示例指令）", requirements: { chapter_count: 12 } },
+  };
+
+  const res = await request.post(`${state.backendUrl}/api/projects/${projectId}/prompt_preview`, {
+    data: { task: "chapter_generate", preset_id: presetId, values },
+  });
+  expect(res.ok()).toBeTruthy();
+
+  const json = (await res.json()) as ApiOk<{
+    preview: {
+      preset_id: string;
+      task: string;
+      system: string;
+      user: string;
+      prompt_tokens_estimate: number;
+      prompt_budget_tokens: number | null;
+      missing: string[];
+      blocks: Array<{
+        id: string;
+        identifier: string;
+        role: string;
+        enabled: boolean;
+        text: string;
+        missing: string[];
+        token_estimate: number;
+      }>;
+    };
+    render_log?: unknown;
+  }>;
+
+  expect(json.ok).toBe(true);
+  expect(typeof json.request_id).toBe("string");
+  expect(json.request_id.length).toBeGreaterThan(0);
+
+  const preview = json.data.preview;
+  expect(preview.task).toBe("chapter_generate");
+  expect(preview.preset_id).toBe(presetId);
+
+  expect(typeof preview.system).toBe("string");
+  expect(typeof preview.user).toBe("string");
+  expect(preview.system.trim().length + preview.user.trim().length).toBeGreaterThan(0);
+
+  expect(Number.isInteger(preview.prompt_tokens_estimate)).toBe(true);
+  expect(preview.prompt_tokens_estimate).toBeGreaterThanOrEqual(0);
+
+  expect(preview.prompt_budget_tokens === null || Number.isInteger(preview.prompt_budget_tokens)).toBe(true);
+  expect(Array.isArray(preview.missing)).toBe(true);
+  for (const m of preview.missing) expect(typeof m).toBe("string");
+
+  expect(Array.isArray(preview.blocks)).toBe(true);
+  expect(preview.blocks.length).toBeGreaterThan(0);
+  for (const b of preview.blocks) {
+    expect(typeof b.id).toBe("string");
+    expect(b.id.length).toBeGreaterThan(0);
+    expect(typeof b.identifier).toBe("string");
+    expect(b.identifier.length).toBeGreaterThan(0);
+    expect(typeof b.role).toBe("string");
+    expect(typeof b.enabled).toBe("boolean");
+    expect(typeof b.text).toBe("string");
+    expect(Array.isArray(b.missing)).toBe(true);
+    for (const m of b.missing) expect(typeof m).toBe("string");
+    expect(Number.isInteger(b.token_estimate)).toBe(true);
+    expect(b.token_estimate).toBeGreaterThanOrEqual(0);
+  }
+
+  // Must not leak api keys or secrets (bootstrapProject uses "test-key").
+  const raw = JSON.stringify(json);
+  expect(raw).not.toContain("test-key");
+  expect(raw).not.toMatch(/sk-[a-zA-Z0-9]{10,}/);
+});
+
+test("api: prompt_preview invalid task returns validation error", async ({ request }) => {
+  const state = loadState();
+  const { projectId } = await bootstrapProject(request);
+
+  const res = await request.post(`${state.backendUrl}/api/projects/${projectId}/prompt_preview`, {
+    data: { task: "not_a_task", values: {} },
+  });
+  expect(res.status()).toBe(400);
+  const json = (await res.json()) as { ok: boolean; error?: { code?: string } };
+  expect(json.ok).toBe(false);
+  expect(json.error?.code).toBe("VALIDATION_ERROR");
+});

@@ -1,0 +1,1484 @@
+{
+  "tables": {
+    "alembic_version": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "version_num",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(32)"
+        }
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "columns": [
+            "version_num"
+          ],
+          "name": "sqlite_autoindex_alembic_version_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "batch_generation_task_items": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "chapter_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "chapter_number",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "error_message",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "generation_run_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": "'queued'",
+          "name": "status",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(32)"
+        },
+        {
+          "dflt_value": null,
+          "name": "task_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "task_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "batch_generation_tasks",
+          "to": "id"
+        },
+        {
+          "from": "chapter_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "chapters",
+          "to": "id"
+        },
+        {
+          "from": "generation_run_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "generation_runs",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "task_id"
+          ],
+          "name": "ix_batch_generation_task_items_task_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_batch_generation_task_items_task_id ON batch_generation_task_items (task_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_batch_generation_task_items_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        },
+        {
+          "columns": [
+            "task_id",
+            "chapter_number"
+          ],
+          "name": "sqlite_autoindex_batch_generation_task_items_2",
+          "origin": "u",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "batch_generation_tasks": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "actor_user_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": "0",
+          "name": "cancel_requested",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": "'0'",
+          "name": "completed_count",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "error_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "outline_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "params_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": "'queued'",
+          "name": "status",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(32)"
+        },
+        {
+          "dflt_value": "'0'",
+          "name": "total_count",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "outline_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "outlines",
+          "to": "id"
+        },
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        },
+        {
+          "from": "actor_user_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "users",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_batch_generation_tasks_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_batch_generation_tasks_project_id ON batch_generation_tasks (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "status"
+          ],
+          "name": "ix_batch_generation_tasks_status",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_batch_generation_tasks_status ON batch_generation_tasks (status)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_batch_generation_tasks_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "chapters": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "content_md",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "number",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "outline_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "plan",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "status",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(32)"
+        },
+        {
+          "dflt_value": null,
+          "name": "summary",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "title",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "outline_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "outlines",
+          "to": "id"
+        },
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "outline_id"
+          ],
+          "name": "ix_chapters_outline_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_chapters_outline_id ON chapters (outline_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_chapters_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_chapters_project_id ON chapters (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_chapters_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        },
+        {
+          "columns": [
+            "outline_id",
+            "number"
+          ],
+          "name": "sqlite_autoindex_chapters_2",
+          "origin": "u",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "characters": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "name",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "notes",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "profile",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "role",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_characters_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_characters_project_id ON characters (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_characters_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "generation_runs": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "actor_user_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "chapter_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "error_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "model",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "output_text",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "params_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "prompt_render_log_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "prompt_system",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "prompt_user",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "provider",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(32)"
+        },
+        {
+          "dflt_value": null,
+          "name": "request_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "type",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(32)"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "chapter_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "chapters",
+          "to": "id"
+        },
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        },
+        {
+          "from": "actor_user_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "users",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_generation_runs_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_generation_runs_project_id ON generation_runs (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_generation_runs_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "llm_presets": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "base_url",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(2048)"
+        },
+        {
+          "dflt_value": null,
+          "name": "extra_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "frequency_penalty",
+          "notnull": 0,
+          "pk": 0,
+          "type": "FLOAT"
+        },
+        {
+          "dflt_value": null,
+          "name": "max_tokens",
+          "notnull": 0,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "model",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "presence_penalty",
+          "notnull": 0,
+          "pk": 0,
+          "type": "FLOAT"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "provider",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(32)"
+        },
+        {
+          "dflt_value": null,
+          "name": "stop_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "temperature",
+          "notnull": 0,
+          "pk": 0,
+          "type": "FLOAT"
+        },
+        {
+          "dflt_value": null,
+          "name": "timeout_seconds",
+          "notnull": 0,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "top_k",
+          "notnull": 0,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "top_p",
+          "notnull": 0,
+          "pk": 0,
+          "type": "FLOAT"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "sqlite_autoindex_llm_presets_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "llm_profiles": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "api_key_ciphertext",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "api_key_masked",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "base_url",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(2048)"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "model",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "name",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "owner_user_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "provider",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(32)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "owner_user_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "users",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "owner_user_id"
+          ],
+          "name": "ix_llm_profiles_owner_user_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_llm_profiles_owner_user_id ON llm_profiles (owner_user_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_llm_profiles_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "outlines": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "content_md",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "structure_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "title",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_outlines_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_outlines_project_id ON outlines (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_outlines_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "project_settings": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "constraints",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "style_guide",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "world_setting",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "sqlite_autoindex_project_settings_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "projects": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "active_outline_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "genre",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "llm_profile_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "logline",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(1024)"
+        },
+        {
+          "dflt_value": null,
+          "name": "name",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "owner_user_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "llm_profile_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "llm_profiles",
+          "to": "id"
+        },
+        {
+          "from": "active_outline_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "outlines",
+          "to": "id"
+        },
+        {
+          "from": "owner_user_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "users",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "active_outline_id"
+          ],
+          "name": "ix_projects_active_outline_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_projects_active_outline_id ON projects (active_outline_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "llm_profile_id"
+          ],
+          "name": "ix_projects_llm_profile_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_projects_llm_profile_id ON projects (llm_profile_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "owner_user_id"
+          ],
+          "name": "ix_projects_owner_user_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_projects_owner_user_id ON projects (owner_user_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_projects_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "prompt_blocks": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "budget_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "cache_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": null,
+          "name": "forbid_overrides",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "identifier",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(128)"
+        },
+        {
+          "dflt_value": null,
+          "name": "injection_depth",
+          "notnull": 0,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "injection_order",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "injection_position",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(16)"
+        },
+        {
+          "dflt_value": null,
+          "name": "marker_key",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "name",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "preset_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "role",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(16)"
+        },
+        {
+          "dflt_value": null,
+          "name": "template",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "triggers_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "preset_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "prompt_presets",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "preset_id"
+          ],
+          "name": "ix_prompt_blocks_preset_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_prompt_blocks_preset_id ON prompt_blocks (preset_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_prompt_blocks_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "prompt_presets": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "active_for_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "name",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "scope",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(32)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "version",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_prompt_presets_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_prompt_presets_project_id ON prompt_presets (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_prompt_presets_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "users": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "display_name",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "email",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "password_hash",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_users_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        },
+        {
+          "columns": [
+            "email"
+          ],
+          "name": "sqlite_autoindex_users_2",
+          "origin": "u",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    }
+  },
+  "triggers": []
+}

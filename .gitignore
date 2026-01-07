@@ -29,6 +29,9 @@ dist/
 backend/.env
 frontend/.env
 backend/.dev-backend.*.log
+backend/.tmp_test/
+test/.artifacts/
+test/.tmp/
 
 # OS / IDE
 .DS_Store

@@ -155,7 +155,19 @@ def create_batch_generation_task(
         db.commit()
         raise
 
-    db.refresh(task)
+    # In inline mode, the worker runs synchronously (separate session) and updates task/items.
+    # Ensure we return fresh statuses/generation_run_id for the UI to apply results.
+    db.expire_all()
+    task = db.get(BatchGenerationTask, task_id) or task
+    items = (
+        db.execute(
+            select(BatchGenerationTaskItem)
+            .where(BatchGenerationTaskItem.task_id == task_id)
+            .order_by(BatchGenerationTaskItem.chapter_number.asc())
+        )
+        .scalars()
+        .all()
+    )
 
     out_task = BatchGenerationTaskOut.model_validate(task).model_dump()
     out_items = [BatchGenerationTaskItemOut.model_validate(i).model_dump() for i in items]
