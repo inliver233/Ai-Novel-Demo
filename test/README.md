@@ -57,6 +57,15 @@ Playwright `globalSetup/globalTeardown` 会做这些事：
 
 端口占用会直接报错：`4010 / 8000 / 5173` 必须空闲。
 
+如需自定义端口（例如本机已占用 8000/5173），可在运行前设置环境变量：
+
+```powershell
+$env:E2E_BACKEND_URL="http://127.0.0.1:18000"
+$env:E2E_FRONTEND_URL="http://127.0.0.1:5174"
+$env:E2E_MOCK_PORT="4010"
+npm test
+```
+
 ## 回归截图（Visual Regression）
 
 首次或 UI 变更后，更新截图基线：

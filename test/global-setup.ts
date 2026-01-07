@@ -22,15 +22,28 @@ function killPid(pid: number): void {
   }
 }
 
+function parseUrlOrDefault(input: string | undefined, fallback: string): URL {
+  try {
+    return new URL(input ?? fallback);
+  } catch {
+    return new URL(fallback);
+  }
+}
+
 export default async function globalSetup(_config: FullConfig): Promise<void> {
   const spawnedPids: number[] = [];
   try {
     const testDir = process.cwd();
     const repoRoot = findRepoRoot(testDir);
 
-    const backendPort = 8000;
-    const frontendPort = 5173;
-    const mockPort = 4010;
+    const backendConfig = parseUrlOrDefault(process.env.E2E_BACKEND_URL, "http://127.0.0.1:8000");
+    const frontendConfig = parseUrlOrDefault(process.env.E2E_FRONTEND_URL, "http://127.0.0.1:5173");
+    const mockPort = Number(process.env.E2E_MOCK_PORT || 4010);
+
+    const backendPort = Number(backendConfig.port || 8000);
+    const frontendPort = Number(frontendConfig.port || 5173);
+    const backendUrl = `http://${backendConfig.hostname}:${backendPort}`;
+    const frontendUrl = `http://${frontendConfig.hostname}:${frontendPort}`;
 
     await assertPortFree(mockPort);
     await assertPortFree(backendPort);
@@ -88,7 +101,7 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       logFile: path.join(artifactsDir, "backend.log"),
     });
     spawnedPids.push(backend.pid ?? 0);
-    await waitForHttpOk(`http://127.0.0.1:${backendPort}/api/health`, { timeoutMs: 60_000 });
+    await waitForHttpOk(`${backendUrl}/api/health`, { timeoutMs: 60_000 });
 
     const frontendCommand = process.platform === "win32" ? "cmd.exe" : npmCommand();
     const frontendCommandArgs = process.platform === "win32" ? ["/c", npmCommand(), "run", "dev"] : ["run", "dev"];
@@ -99,17 +112,19 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       commandArgs: frontendCommandArgs,
       env: {
         // Make sure Vite uses a stable URL in tests.
-        HOST: "127.0.0.1",
+        HOST: frontendConfig.hostname,
+        VITE_DEV_PORT: String(frontendPort),
+        VITE_API_PROXY_TARGET: backendUrl,
       },
       logFile: path.join(artifactsDir, "frontend.log"),
     });
     spawnedPids.push(frontend.pid ?? 0);
-    await waitForHttpOk(`http://127.0.0.1:${frontendPort}/`, { timeoutMs: 60_000 });
+    await waitForHttpOk(`${frontendUrl}/`, { timeoutMs: 60_000 });
 
     const state: E2EState = {
       repoRoot,
-      frontendUrl: `http://127.0.0.1:${frontendPort}`,
-      backendUrl: `http://127.0.0.1:${backendPort}`,
+      frontendUrl,
+      backendUrl,
       mockLlmBaseUrl: `http://127.0.0.1:${mockPort}/v1`,
       dbPath,
       artifactsDir,

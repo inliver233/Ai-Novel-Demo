@@ -90,18 +90,21 @@ def create_batch_generation_task(
         )
 
     if body.context.require_sequential:
-        first_num = int(selected[0].number)
-        if first_num > 1:
+        selected_numbers = {int(ch.number) for ch in selected}
+        max_num = max(selected_numbers)
+        if max_num > 1:
             prev_rows = db.execute(
                 select(Chapter.number, Chapter.content_md, Chapter.summary).where(
                     Chapter.project_id == project_id,
                     Chapter.outline_id == outline_id,
-                    Chapter.number < first_num,
+                    Chapter.number < max_num,
                 )
             ).all()
             existing = {int(r[0]): (r[1], r[2]) for r in prev_rows}
             missing_numbers: list[int] = []
-            for n in range(1, first_num):
+            for n in range(1, max_num):
+                if n in selected_numbers:
+                    continue
                 content_md, summary = existing.get(n, (None, None))
                 if not ((content_md or "").strip() or (summary or "").strip()):
                     missing_numbers.append(n)

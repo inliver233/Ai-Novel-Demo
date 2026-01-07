@@ -319,6 +319,20 @@ def plan_chapter(
     try:
         chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
         project_id = chapter.project_id
+        if body.context.require_sequential:
+            missing_numbers = _find_missing_prereq_numbers(
+                db,
+                project_id=project_id,
+                outline_id=chapter.outline_id,
+                chapter_number=int(chapter.number),
+            )
+            if missing_numbers:
+                raise AppError(
+                    code="CHAPTER_PREREQ_MISSING",
+                    message=f"缺少前置章节内容：第 {', '.join(str(n) for n in missing_numbers)} 章",
+                    status_code=400,
+                    details={"missing_numbers": missing_numbers},
+                )
         project = db.get(Project, project_id)
         if project is None:
             raise AppError.not_found()
@@ -371,10 +385,6 @@ def plan_chapter(
             chapter_number=chapter.number,
             previous_chapter=body.context.previous_chapter,
         )
-
-        current_draft_tail = ""
-        if body.mode == "append":
-            current_draft_tail = _resolve_current_draft_tail(chapter=chapter, request_tail=body.context.current_draft_tail)
 
         values: dict[str, object] = {
             "project_name": project.name or "",

@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const frontendUrl = process.env.E2E_FRONTEND_URL ?? "http://127.0.0.1:5173";
+const backendUrl = process.env.E2E_BACKEND_URL ?? "http://127.0.0.1:8000";
+
 export default defineConfig({
   testDir: "./specs",
   fullyParallel: false,
@@ -25,7 +28,7 @@ export default defineConfig({
   globalSetup: "./global-setup",
   globalTeardown: "./global-teardown",
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: frontendUrl,
     viewport: { width: 1280, height: 720 },
     colorScheme: "light",
     reducedMotion: "reduce",
@@ -42,12 +45,12 @@ export default defineConfig({
     {
       name: "api",
       testDir: "specs/api",
-      use: { baseURL: "http://127.0.0.1:8000" },
+      use: { baseURL: backendUrl },
     },
     {
       name: "db",
       testDir: "specs/db",
-      use: { baseURL: "http://127.0.0.1:8000" },
+      use: { baseURL: backendUrl },
     },
   ],
 });
