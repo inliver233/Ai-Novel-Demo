@@ -40,14 +40,14 @@ def llm_test(
             db.close()
 
     base_url = body.base_url
-    if body.provider == "openai":
+    if body.provider in ("openai", "openai_responses"):
         base_url = base_url or "https://api.openai.com/v1"
     elif body.provider == "anthropic":
         base_url = base_url or "https://api.anthropic.com"
     elif body.provider == "gemini":
         base_url = base_url or "https://generativelanguage.googleapis.com"
-    elif body.provider == "openai_compatible" and not base_url:
-        raise AppError(code="LLM_CONFIG_ERROR", message="openai_compatible 必须填写 base_url", status_code=400)
+    elif body.provider in ("openai_compatible", "openai_responses_compatible") and not base_url:
+        raise AppError(code="LLM_CONFIG_ERROR", message=f"{body.provider} 必须填写 base_url", status_code=400)
 
     params = dict(body.params or {})
     # Some providers/models may emit "thinking" blocks before the final text output; keep this > tiny so we can

@@ -90,7 +90,9 @@ export function LlmPresetPanel(props: Props) {
             }
           >
             <option value="openai">openai（官方）</option>
+            <option value="openai_responses">openai_responses（官方 /v1/responses）</option>
             <option value="openai_compatible">openai_compatible（中转/本地）</option>
+            <option value="openai_responses_compatible">openai_responses_compatible（中转/本地 /v1/responses）</option>
             <option value="anthropic">anthropic（Claude）</option>
             <option value="gemini">gemini</option>
           </select>
@@ -110,7 +112,11 @@ export function LlmPresetPanel(props: Props) {
           <span className="text-xs text-subtext">Base URL</span>
           <input
             className="input"
-            placeholder={props.llmForm.provider === "openai_compatible" ? "https://your-proxy.com/v1" : undefined}
+            placeholder={
+              props.llmForm.provider === "openai_compatible" || props.llmForm.provider === "openai_responses_compatible"
+                ? "https://your-proxy.com/v1"
+                : undefined
+            }
             disabled={props.lockConnectionFields}
             name="base_url"
             value={props.llmForm.base_url}

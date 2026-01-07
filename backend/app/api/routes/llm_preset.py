@@ -94,11 +94,11 @@ def put_llm_preset(
     require_owned_project(db, project_id=project_id, user_id=user_id)
 
     base_url = body.base_url
-    if body.provider == "openai":
+    if body.provider in ("openai", "openai_responses"):
         base_url = normalize_base_url(base_url or "https://api.openai.com/v1")
-    elif body.provider == "openai_compatible":
+    elif body.provider in ("openai_compatible", "openai_responses_compatible"):
         if not base_url:
-            raise AppError(code="LLM_CONFIG_ERROR", message="openai_compatible 必须填写 base_url", status_code=400)
+            raise AppError(code="LLM_CONFIG_ERROR", message=f"{body.provider} 必须填写 base_url", status_code=400)
         base_url = normalize_base_url(base_url)
     elif body.provider == "anthropic":
         base_url = normalize_base_url(base_url or "https://api.anthropic.com")

@@ -282,7 +282,9 @@ def render_preset_for_task(
     priority_rank: dict[str, int] = {"drop_first": 0, "optional": 1, "important": 2, "must": 3}
     default_budget_by_provider: dict[str, int] = {
         "openai": 24000,
+        "openai_responses": 24000,
         "openai_compatible": 24000,
+        "openai_responses_compatible": 24000,
         "anthropic": 12000,
         "gemini": 12000,
     }

@@ -857,99 +857,78 @@ def generate_chapter_stream(
             yield sse_progress(message="调用模型...", progress=10)
             generation_started = True
 
-            if llm_call.provider in ("openai", "openai_compatible"):
-                stream_iter, state = call_llm_stream_messages(
-                    provider=llm_call.provider,
-                    base_url=llm_call.base_url,
-                    model=llm_call.model,
-                    api_key=str(resolved_api_key),
-                    messages=prompt_messages,
-                    params=llm_call.params,
-                    timeout_seconds=llm_call.timeout_seconds,
-                    extra=llm_call.extra,
-                )
+            stream_iter, state = call_llm_stream_messages(
+                provider=llm_call.provider,
+                base_url=llm_call.base_url,
+                model=llm_call.model,
+                api_key=str(resolved_api_key),
+                messages=prompt_messages,
+                params=llm_call.params,
+                timeout_seconds=llm_call.timeout_seconds,
+                extra=llm_call.extra,
+            )
 
-                last_progress = 10
-                last_progress_ts = 0.0
-                chunk_count = 0
-                target = body.target_word_count or 0
-                try:
-                    for delta in stream_iter:
-                        raw_output += delta
-                        yield sse_chunk(delta)
-                        chunk_count += 1
-                        if chunk_count % 12 == 0:
-                            yield sse_heartbeat()
-                        now = time.monotonic()
-                        if now - last_progress_ts >= 0.8:
-                            if target > 0:
-                                next_progress = 10 + int(min(1.0, len(raw_output) / float(target)) * 80)
-                            else:
-                                next_progress = 10 + int(min(1.0, len(raw_output) / 12000.0) * 80)
-                            next_progress = max(last_progress, min(90, next_progress))
-                            if next_progress != last_progress:
-                                last_progress = next_progress
-                                yield sse_progress(message="生成中...", progress=next_progress, char_count=len(raw_output))
-                            last_progress_ts = now
-                finally:
-                    close = getattr(stream_iter, "close", None)
-                    if callable(close):
-                        close()
+            last_progress = 10
+            last_progress_ts = 0.0
+            chunk_count = 0
+            target = body.target_word_count or 0
+            try:
+                for delta in stream_iter:
+                    raw_output += delta
+                    yield sse_chunk(delta)
+                    chunk_count += 1
+                    if chunk_count % 12 == 0:
+                        yield sse_heartbeat()
+                    now = time.monotonic()
+                    if now - last_progress_ts >= 0.8:
+                        if target > 0:
+                            next_progress = 10 + int(min(1.0, len(raw_output) / float(target)) * 80)
+                        else:
+                            next_progress = 10 + int(min(1.0, len(raw_output) / 12000.0) * 80)
+                        next_progress = max(last_progress, min(90, next_progress))
+                        if next_progress != last_progress:
+                            last_progress = next_progress
+                            yield sse_progress(message="生成中...", progress=next_progress, char_count=len(raw_output))
+                        last_progress_ts = now
+            finally:
+                close = getattr(stream_iter, "close", None)
+                if callable(close):
+                    close()
 
-                finish_reason = state.finish_reason
-                dropped_params = state.dropped_params
-                latency_ms = state.latency_ms
+            finish_reason = state.finish_reason
+            dropped_params = state.dropped_params
+            latency_ms = state.latency_ms
 
-                log_event(
-                    logger,
-                    "info",
-                    llm={
-                        "provider": llm_call.provider,
-                        "model": llm_call.model,
-                        "timeout_seconds": llm_call.timeout_seconds,
-                        "prompt_chars": len(prompt_system) + len(prompt_user),
-                        "output_chars": len(raw_output or ""),
-                        "dropped_params": dropped_params,
-                        "finish_reason": finish_reason,
-                        "stream": True,
-                    },
-                )
-                generation_run_id = write_generation_run(
-                    request_id=request_id,
-                    actor_user_id=user_id,
-                    project_id=project_id,
-                    chapter_id=chapter_id,
-                    run_type="chapter_stream",
-                    provider=llm_call.provider,
-                    model=llm_call.model,
-                    prompt_system=prompt_system,
-                    prompt_user=prompt_user,
-                    prompt_render_log_json=prompt_render_log_json,
-                    params_json=llm_call.params_json,
-                    output_text=raw_output,
-                    error_json=None,
-                )
-                stream_run_written = True
-            else:
-                fallback = call_llm_and_record(
-                    logger=logger,
-                    request_id=request_id,
-                    actor_user_id=user_id,
-                    project_id=project_id,
-                    chapter_id=chapter_id,
-                    run_type="chapter_stream",
-                    api_key=str(resolved_api_key),
-                    prompt_system=prompt_system,
-                    prompt_user=prompt_user,
-                    prompt_messages=prompt_messages,
-                    prompt_render_log_json=prompt_render_log_json,
-                    llm_call=llm_call,
-                )
-                raw_output = fallback.text
-                generation_run_id = fallback.run_id
-                finish_reason = fallback.finish_reason
-                dropped_params = fallback.dropped_params
-                latency_ms = fallback.latency_ms
+            log_event(
+                logger,
+                "info",
+                llm={
+                    "provider": llm_call.provider,
+                    "model": llm_call.model,
+                    "timeout_seconds": llm_call.timeout_seconds,
+                    "prompt_chars": len(prompt_system) + len(prompt_user),
+                    "output_chars": len(raw_output or ""),
+                    "dropped_params": dropped_params,
+                    "finish_reason": finish_reason,
+                    "stream": True,
+                },
+            )
+            generation_run_id = write_generation_run(
+                request_id=request_id,
+                actor_user_id=user_id,
+                project_id=project_id,
+                chapter_id=chapter_id,
+                run_type="chapter_stream",
+                provider=llm_call.provider,
+                model=llm_call.model,
+                prompt_system=prompt_system,
+                prompt_user=prompt_user,
+                prompt_render_log_json=prompt_render_log_json,
+                params_json=llm_call.params_json,
+                output_text=raw_output,
+                error_json=None,
+            )
+            stream_run_written = True
 
             yield sse_progress(message="解析输出...", progress=90)
             chapter_contract = contract_for_task("chapter_generate")
@@ -1018,7 +997,6 @@ def generate_chapter_stream(
             if (
                 generation_started
                 and llm_call is not None
-                and llm_call.provider in ("openai", "openai_compatible")
                 and not stream_run_written
             ):
                 write_generation_run(
@@ -1052,7 +1030,6 @@ def generate_chapter_stream(
             if (
                 generation_started
                 and llm_call is not None
-                and llm_call.provider in ("openai", "openai_compatible")
                 and not stream_run_written
             ):
                 err_fields = dict(exception_log_fields(exc))

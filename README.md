@@ -49,6 +49,14 @@ npm run dev
 - 前端：`http://localhost:5173`
 - 后端：`http://localhost:8000`（API base：`/api`）
 
+## LLM 流式输出与请求格式
+
+- 后端 SSE 流式输出已覆盖：`openai/openai_compatible/openai_responses/openai_responses_compatible/anthropic/gemini`
+- OpenAI Chat Completions：可在「模型配置」的 `extra（JSON）` 中传 `response_format` / `reasoning_effort` / `max_completion_tokens` 等（不需要的参数会自动丢弃/降级）
+- OpenAI Responses API：选择 provider `openai_responses`（或 `openai_responses_compatible`），结构化输出可通过 `extra.text` / `extra.text_format` 配置
+- Claude（Anthropic）思考预算：可在 `extra.thinking` 配置；如需 Beta 特性可在 `extra.anthropic_beta` 传 header 值
+- Gemini 思考预算：可在 `extra.thinkingConfig` 配置（透传到 `generationConfig.thinkingConfig`）
+
 ## 工程卫生（必须）
 
 - **不要提交运行/构建产物**：例如 `backend/.env`、`backend/*.db`、`frontend/dist`、`frontend/node_modules`、`demo/**/__pycache__` 等（已由根 `.gitignore` 统一忽略）。

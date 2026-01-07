@@ -1,4 +1,10 @@
-export type LLMProvider = "openai" | "openai_compatible" | "anthropic" | "gemini";
+export type LLMProvider =
+  | "openai"
+  | "openai_responses"
+  | "openai_compatible"
+  | "openai_responses_compatible"
+  | "anthropic"
+  | "gemini";
 
 export type ChapterStatus = "planned" | "drafting" | "done";
 

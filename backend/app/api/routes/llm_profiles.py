@@ -17,11 +17,11 @@ router = APIRouter()
 
 
 def _normalize_profile(provider: str, base_url: str | None) -> str | None:
-    if provider == "openai":
+    if provider in ("openai", "openai_responses"):
         return normalize_base_url(base_url or "https://api.openai.com/v1")
-    if provider == "openai_compatible":
+    if provider in ("openai_compatible", "openai_responses_compatible"):
         if not base_url:
-            raise AppError(code="LLM_CONFIG_ERROR", message="openai_compatible 必须填写 base_url", status_code=400)
+            raise AppError(code="LLM_CONFIG_ERROR", message=f"{provider} 必须填写 base_url", status_code=400)
         return normalize_base_url(base_url)
     if provider == "anthropic":
         return normalize_base_url(base_url or "https://api.anthropic.com")

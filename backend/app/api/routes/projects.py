@@ -236,11 +236,11 @@ def update_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
             preset.model = profile.model
             if is_default_like_max_tokens(old_provider, preset.max_tokens):
                 preset.max_tokens = default_max_tokens(profile.provider, profile.model)
-            if profile.provider == "openai":
+            if profile.provider in ("openai", "openai_responses"):
                 preset.base_url = normalize_base_url(profile.base_url or "https://api.openai.com/v1")
-            elif profile.provider == "openai_compatible":
+            elif profile.provider in ("openai_compatible", "openai_responses_compatible"):
                 if not profile.base_url:
-                    raise AppError(code="LLM_CONFIG_ERROR", message="openai_compatible 配置必须填写 base_url", status_code=400)
+                    raise AppError(code="LLM_CONFIG_ERROR", message=f"{profile.provider} 配置必须填写 base_url", status_code=400)
                 preset.base_url = normalize_base_url(profile.base_url)
             elif profile.provider == "anthropic":
                 preset.base_url = normalize_base_url(profile.base_url or "https://api.anthropic.com")

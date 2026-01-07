@@ -15,9 +15,9 @@ from app.llm.utils import normalize_base_url
 
 def _filter_params(provider: str, params: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     supported: set[str]
-    if provider == "openai":
+    if provider in ("openai", "openai_responses"):
         supported = {"temperature", "top_p", "max_tokens", "presence_penalty", "frequency_penalty", "stop"}
-    elif provider == "openai_compatible":
+    elif provider in ("openai_compatible", "openai_responses_compatible"):
         # Many OpenAI-compatible gateways only support a subset of OpenAI params. Keep this minimal to reduce 400s.
         supported = {"temperature", "top_p", "max_tokens", "stop"}
     elif provider == "anthropic":
@@ -81,11 +81,10 @@ def call_llm_stream_messages(
 ) -> tuple[Iterator[str], LLMStreamState]:
     if not api_key:
         raise AppError(code="LLM_KEY_MISSING", message="缺少 API Key（请在 Prompts 页填写）", status_code=401)
-    if provider not in ("openai", "openai_compatible"):
-        raise AppError(code="LLM_STREAM_UNSUPPORTED", message="该 provider 暂不支持流式输出", status_code=400)
 
     base_url = normalize_base_url(base_url)
     filtered_params, dropped = _filter_params(provider, params)
+    extra = extra or {}
 
     start = time.perf_counter()
     client = get_llm_http_client()
@@ -95,20 +94,73 @@ def call_llm_stream_messages(
     pool_timeout = min(10.0, read_timeout)
     timeout = httpx.Timeout(connect=connect_timeout, read=read_timeout, write=write_timeout, pool=pool_timeout)
 
-    from app.llm.providers.openai_chat import call_openai_chat_completions_stream
+    if provider in ("openai", "openai_compatible"):
+        from app.llm.providers.openai_chat import call_openai_chat_completions_stream
 
-    return call_openai_chat_completions_stream(
-        client=client,
-        provider=provider,
-        base_url=base_url,
-        model=model,
-        api_key=api_key,
-        messages=messages,
-        filtered_params=filtered_params,
-        dropped_params=dropped,
-        timeout=timeout,
-        start=start,
-    )
+        return call_openai_chat_completions_stream(
+            client=client,
+            provider=provider,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            messages=messages,
+            filtered_params=filtered_params,
+            dropped_params=dropped,
+            timeout=timeout,
+            start=start,
+            extra=extra,
+        )
+
+    if provider in ("openai_responses", "openai_responses_compatible"):
+        from app.llm.providers.openai_responses import call_openai_responses_stream
+
+        return call_openai_responses_stream(
+            client=client,
+            provider=provider,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            messages=messages,
+            filtered_params=filtered_params,
+            dropped_params=dropped,
+            timeout=timeout,
+            start=start,
+            extra=extra,
+        )
+
+    if provider == "anthropic":
+        from app.llm.providers.anthropic_messages import call_anthropic_messages_stream
+
+        return call_anthropic_messages_stream(
+            client=client,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            messages=messages,
+            filtered_params=filtered_params,
+            dropped_params=dropped,
+            timeout=timeout,
+            start=start,
+            extra=extra,
+        )
+
+    if provider == "gemini":
+        from app.llm.providers.gemini_generate_content import call_gemini_generate_content_stream
+
+        return call_gemini_generate_content_stream(
+            client=client,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            messages=messages,
+            filtered_params=filtered_params,
+            dropped_params=dropped,
+            timeout=timeout,
+            start=start,
+            extra=extra,
+        )
+
+    raise AppError(code="LLM_CONFIG_ERROR", message="不支持的 provider", status_code=400)
 
 
 def call_llm(
@@ -180,6 +232,24 @@ def call_llm_messages(
                 dropped_params=dropped,
                 timeout=timeout,
                 start=start,
+                extra=extra,
+            )
+
+        if provider in ("openai_responses", "openai_responses_compatible"):
+            from app.llm.providers.openai_responses import call_openai_responses
+
+            return call_openai_responses(
+                client=client,
+                provider=provider,
+                base_url=base_url,
+                model=model,
+                api_key=api_key,
+                messages=messages,
+                filtered_params=filtered_params,
+                dropped_params=dropped,
+                timeout=timeout,
+                start=start,
+                extra=extra,
             )
 
         if provider == "anthropic":

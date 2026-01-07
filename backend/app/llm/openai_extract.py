@@ -49,6 +49,9 @@ def extract_openai_like_text(data: Any) -> str | None:
         if parts:
             return "".join(parts)
 
+    if isinstance(data.get("output_text"), str):
+        return data["output_text"]
+
     if isinstance(data.get("content"), str):
         return data["content"]
 
@@ -71,6 +74,8 @@ def extract_openai_finish_reason(data: Any) -> str | None:
 def extract_openai_stream_delta_text(data: Any) -> str | None:
     if not isinstance(data, dict):
         return None
+    if isinstance(data.get("type"), str) and data.get("type") == "response.output_text.delta" and isinstance(data.get("delta"), str):
+        return data["delta"]
     choices = data.get("choices")
     if isinstance(choices, list) and choices:
         first = choices[0]
@@ -92,4 +97,3 @@ def extract_openai_stream_delta_text(data: Any) -> str | None:
             if isinstance(first.get("text"), str):
                 return first["text"]
     return None
-

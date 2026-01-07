@@ -30,7 +30,7 @@ def get_model_token_caps(provider: str, model: str | None) -> ModelTokenCaps | N
     if not m:
         return None
 
-    if p == "openai":
+    if p in ("openai", "openai_responses"):
         for prefix, caps in _OPENAI_PREFIX_CAPS:
             if m == prefix or m.startswith(prefix + "-"):
                 return caps
@@ -57,4 +57,3 @@ def recommended_max_tokens(provider: str, model: str | None) -> int:
     if _normalize_provider(provider) in ("anthropic", "gemini"):
         return 8192
     return 8192
-

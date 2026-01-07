@@ -129,7 +129,6 @@ export function useChapterGeneration(args: {
         const baseSummary = form.summary;
 
         if (genForm.stream) {
-          const expectsRealStreaming = preset.provider === "openai" || preset.provider === "openai_compatible";
           const parser = createChapterMarkerStreamParser();
           let parsedContent = "";
           let parsedSummary = "";
@@ -216,8 +215,8 @@ export function useChapterGeneration(args: {
           try {
             await client.connect();
             toast.toastSuccess("生成完成（别忘了保存）", requestId);
-            if (!expectsRealStreaming && !genStreamHasChunkRef.current) {
-              toast.toastSuccess("该 provider 暂不支持流式输出，已自动降级为非流式", requestId);
+            if (!genStreamHasChunkRef.current) {
+              toast.toastSuccess("未收到流式分片（可能上游未返回分片或输出为空）", requestId);
             }
             if (droppedParams.length > 0) {
               toast.toastSuccess(`${UI_COPY.common.droppedParamsPrefix}${droppedParams.join("、")}`, requestId);

@@ -193,7 +193,12 @@ def generate_outline(
     parsed = contract.parse(raw_output, finish_reason=finish_reason)
     data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
 
-    if parse_error is not None and llm_call.provider in ("openai", "openai_compatible"):
+    if parse_error is not None and llm_call.provider in (
+        "openai",
+        "openai_responses",
+        "openai_compatible",
+        "openai_responses_compatible",
+    ):
         try:
             repair = build_repair_prompt_for_task("outline_generate", raw_output=raw_output)
             if repair is None:
@@ -336,102 +341,86 @@ def generate_outline_stream(
         stream_run_written = False
 
         try:
-            if llm_call.provider in ("openai", "openai_compatible"):
-                stream_iter, state = call_llm_stream_messages(
-                    provider=llm_call.provider,
-                    base_url=llm_call.base_url,
-                    model=llm_call.model,
-                    api_key=str(resolved_api_key),
-                    messages=prompt_messages,
-                    params=llm_call.params,
-                    timeout_seconds=llm_call.timeout_seconds,
-                    extra=llm_call.extra,
-                )
+            stream_iter, state = call_llm_stream_messages(
+                provider=llm_call.provider,
+                base_url=llm_call.base_url,
+                model=llm_call.model,
+                api_key=str(resolved_api_key),
+                messages=prompt_messages,
+                params=llm_call.params,
+                timeout_seconds=llm_call.timeout_seconds,
+                extra=llm_call.extra,
+            )
 
-                last_progress = 10
-                last_progress_ts = 0.0
-                chunk_count = 0
-                try:
-                    for delta in stream_iter:
-                        raw_output += delta
-                        yield sse_chunk(delta)
-                        chunk_count += 1
-                        if chunk_count % 12 == 0:
-                            yield sse_heartbeat()
-                        now = time.monotonic()
-                        if now - last_progress_ts >= 0.8:
-                            next_progress = 10 + int(min(1.0, len(raw_output) / 6000.0) * 80)
-                            next_progress = max(last_progress, min(90, next_progress))
-                            if next_progress != last_progress:
-                                last_progress = next_progress
-                                yield sse_progress(message="生成中...", progress=next_progress)
-                            last_progress_ts = now
-                finally:
-                    close = getattr(stream_iter, "close", None)
-                    if callable(close):
-                        close()
+            last_progress = 10
+            last_progress_ts = 0.0
+            chunk_count = 0
+            try:
+                for delta in stream_iter:
+                    raw_output += delta
+                    yield sse_chunk(delta)
+                    chunk_count += 1
+                    if chunk_count % 12 == 0:
+                        yield sse_heartbeat()
+                    now = time.monotonic()
+                    if now - last_progress_ts >= 0.8:
+                        next_progress = 10 + int(min(1.0, len(raw_output) / 6000.0) * 80)
+                        next_progress = max(last_progress, min(90, next_progress))
+                        if next_progress != last_progress:
+                            last_progress = next_progress
+                            yield sse_progress(message="生成中...", progress=next_progress)
+                        last_progress_ts = now
+            finally:
+                close = getattr(stream_iter, "close", None)
+                if callable(close):
+                    close()
 
-                finish_reason = state.finish_reason
-                dropped_params = state.dropped_params
-                latency_ms = state.latency_ms
+            finish_reason = state.finish_reason
+            dropped_params = state.dropped_params
+            latency_ms = state.latency_ms
 
-                log_event(
-                    logger,
-                    "info",
-                    llm={
-                        "provider": llm_call.provider,
-                        "model": llm_call.model,
-                        "timeout_seconds": llm_call.timeout_seconds,
-                        "prompt_chars": len(prompt_system) + len(prompt_user),
-                        "output_chars": len(raw_output or ""),
-                        "dropped_params": dropped_params,
-                        "finish_reason": finish_reason,
-                        "stream": True,
-                    },
-                )
-                generation_run_id = write_generation_run(
-                    request_id=request_id,
-                    actor_user_id=user_id,
-                    project_id=project_id,
-                    chapter_id=None,
-                    run_type="outline_stream",
-                    provider=llm_call.provider,
-                    model=llm_call.model,
-                    prompt_system=prompt_system,
-                    prompt_user=prompt_user,
-                    prompt_render_log_json=prompt_render_log_json,
-                    params_json=llm_call.params_json,
-                    output_text=raw_output,
-                    error_json=None,
-                )
-                stream_run_written = True
-            else:
-                fallback = call_llm_and_record(
-                    logger=logger,
-                    request_id=request_id,
-                    actor_user_id=user_id,
-                    project_id=project_id,
-                    chapter_id=None,
-                    run_type="outline_stream",
-                    api_key=str(resolved_api_key),
-                    prompt_system=prompt_system,
-                    prompt_user=prompt_user,
-                    prompt_messages=prompt_messages,
-                    prompt_render_log_json=prompt_render_log_json,
-                    llm_call=llm_call,
-                )
-                raw_output = fallback.text
-                generation_run_id = fallback.run_id
-                finish_reason = fallback.finish_reason
-                dropped_params = fallback.dropped_params
-                latency_ms = fallback.latency_ms
+            log_event(
+                logger,
+                "info",
+                llm={
+                    "provider": llm_call.provider,
+                    "model": llm_call.model,
+                    "timeout_seconds": llm_call.timeout_seconds,
+                    "prompt_chars": len(prompt_system) + len(prompt_user),
+                    "output_chars": len(raw_output or ""),
+                    "dropped_params": dropped_params,
+                    "finish_reason": finish_reason,
+                    "stream": True,
+                },
+            )
+            generation_run_id = write_generation_run(
+                request_id=request_id,
+                actor_user_id=user_id,
+                project_id=project_id,
+                chapter_id=None,
+                run_type="outline_stream",
+                provider=llm_call.provider,
+                model=llm_call.model,
+                prompt_system=prompt_system,
+                prompt_user=prompt_user,
+                prompt_render_log_json=prompt_render_log_json,
+                params_json=llm_call.params_json,
+                output_text=raw_output,
+                error_json=None,
+            )
+            stream_run_written = True
 
             yield sse_progress(message="解析输出...", progress=90)
             contract = contract_for_task("outline_generate")
             parsed = contract.parse(raw_output, finish_reason=finish_reason)
             data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
 
-            if parse_error is not None and llm_call.provider in ("openai", "openai_compatible"):
+            if parse_error is not None and llm_call.provider in (
+                "openai",
+                "openai_responses",
+                "openai_compatible",
+                "openai_responses_compatible",
+            ):
                 yield sse_progress(message="尝试修复 JSON...", progress=92)
                 repair = build_repair_prompt_for_task("outline_generate", raw_output=raw_output)
                 if repair is None:
@@ -486,7 +475,6 @@ def generate_outline_stream(
         except AppError as exc:
             if (
                 llm_call is not None
-                and llm_call.provider in ("openai", "openai_compatible")
                 and not stream_run_written
             ):
                 write_generation_run(
@@ -504,9 +492,27 @@ def generate_outline_stream(
                     output_text=raw_output or None,
                     error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),
                 )
+                stream_run_written = True
             yield sse_error(error=f"{exc.message} ({exc.code})", code=exc.status_code)
             yield sse_done()
         except Exception:
+            if llm_call is not None and not stream_run_written:
+                write_generation_run(
+                    request_id=request_id,
+                    actor_user_id=user_id,
+                    project_id=project_id,
+                    chapter_id=None,
+                    run_type="outline_stream",
+                    provider=llm_call.provider,
+                    model=llm_call.model,
+                    prompt_system=prompt_system,
+                    prompt_user=prompt_user,
+                    prompt_render_log_json=prompt_render_log_json,
+                    params_json=llm_call.params_json,
+                    output_text=raw_output or None,
+                    error_json=json.dumps({"code": "INTERNAL_ERROR", "message": "服务器内部错误"}, ensure_ascii=False),
+                )
+                stream_run_written = True
             yield sse_error(error="服务器内部错误", code=500)
             yield sse_done()
 

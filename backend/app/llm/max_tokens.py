@@ -7,6 +7,11 @@ from typing import Any
 _MAX_TOKENS_UPPER_BOUND_RE_LIST = [
     re.compile(r"(?i)max(?:_tokens?|\s+tokens?)\s*>\s*(\d{3,})"),
     re.compile(r"(?i)max(?:_tokens?|\s+tokens?)\s*(?:must\s*be\s*)?<=\s*(\d{3,})"),
+    re.compile(r"(?i)max(?:_completion_tokens|\s+completion\s+tokens?)\s*>\s*(\d{3,})"),
+    re.compile(r"(?i)max(?:_completion_tokens|\s+completion\s+tokens?)\s*(?:must\s*be\s*)?<=\s*(\d{3,})"),
+    re.compile(r"(?i)max(?:CompletionTokens)\s*(?:must\s*be\s*)?<=\s*(\d{3,})"),
+    re.compile(r"(?i)max(?:_output_tokens|\s+output\s+tokens?)\s*>\s*(\d{3,})"),
+    re.compile(r"(?i)max(?:_output_tokens|\s+output\s+tokens?)\s*(?:must\s*be\s*)?<=\s*(\d{3,})"),
     re.compile(r"(?i)max(?:OutputTokens|\s+output\s+tokens?)\s*(?:must\s*be\s*)?<=\s*(\d{3,})"),
 ]
 
@@ -50,4 +55,3 @@ def extract_max_tokens_upper_bound(text: str) -> int | None:
             if value > 0:
                 return value
     return None
-

@@ -28,7 +28,7 @@ def is_default_like_max_tokens(provider: str, value: int | None) -> bool:
     if value is None:
         return True
     p = (provider or "").strip()
-    if p in ("openai", "openai_compatible"):
+    if p in ("openai", "openai_responses", "openai_compatible", "openai_responses_compatible"):
         return value in (32000, 8192)
     if p in ("anthropic", "gemini"):
         return value == 8192

@@ -5,7 +5,9 @@ _PROVIDER_MAX_TOKENS: dict[str, int] = {
     "anthropic": 8192,
     "gemini": 8192,
     "openai": 8192,
+    "openai_responses": 8192,
     "openai_compatible": 8192,
+    "openai_responses_compatible": 8192,
 }
 
 
