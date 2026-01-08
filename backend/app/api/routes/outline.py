@@ -118,7 +118,7 @@ def generate_outline(
         preset = db.get(LLMPreset, project_id)
         if preset is None:
             raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-        if x_llm_provider and preset.provider != x_llm_provider:
+        if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
             raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
         resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
 
@@ -267,7 +267,7 @@ def generate_outline_stream(
             preset = db.get(LLMPreset, project_id)
             if preset is None:
                 raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-            if x_llm_provider and preset.provider != x_llm_provider:
+            if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
                 raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
             resolved_api_key = resolve_api_key_for_project(
                 db, project=project, user_id=user_id, header_api_key=x_llm_api_key

@@ -20,6 +20,13 @@ from app.llm.types import LLMCallResult, LLMStreamState
 from app.llm.upstream_errors import map_upstream_error
 
 
+def _looks_like_messages_unsupported(upstream_text: str | None) -> bool:
+    if not upstream_text:
+        return False
+    normalized = upstream_text.lower()
+    return "unsupported parameter: messages" in normalized
+
+
 def _clamp_payload_max_tokens(payload: dict[str, Any], *, limit: int, compat_adjustments: list[str]) -> bool:
     for key in ("max_tokens", "max_completion_tokens"):
         current = payload.get(key)
@@ -101,7 +108,11 @@ def call_openai_chat_completions(
     start: float,
     extra: dict[str, Any] | None = None,
 ) -> LLMCallResult:
-    endpoint = f"{base_url}/chat/completions"
+    normalized_base_url = (base_url or "").strip().rstrip("/")
+    endpoints = [f"{normalized_base_url}/chat/completions"]
+    if not normalized_base_url.endswith("/v1"):
+        endpoints.append(f"{normalized_base_url}/v1/chat/completions")
+    endpoint_idx = 0
     compat_dropped_params: list[str] = []
     compat_adjustments: list[str] = []
     payload: dict[str, Any] = {
@@ -128,14 +139,21 @@ def call_openai_chat_completions(
             payload.pop("max_tokens", None)
 
     def post_openai(payload_obj: dict[str, Any]) -> httpx.Response:
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "application/json"}
+        if provider.endswith("_compatible"):
+            headers["x-api-key"] = api_key
         return client.post(
-            endpoint,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "application/json"},
+            endpoints[endpoint_idx],
+            headers=headers,
             json=payload_obj,
             timeout=timeout,
         )
 
     resp = post_openai(payload)
+    if resp.status_code == 404 and endpoint_idx == 0 and len(endpoints) > 1:
+        endpoint_idx = 1
+        compat_adjustments.append("append_v1_base_url")
+        resp = post_openai(payload)
     if provider in ("openai", "openai_compatible") and resp.status_code in (400, 422):
         upper = extract_max_tokens_upper_bound(redact_text(resp.text))
         if upper is not None and _clamp_payload_max_tokens(payload, limit=upper, compat_adjustments=compat_adjustments):
@@ -161,6 +179,32 @@ def call_openai_chat_completions(
 
     latency_ms = int((time.perf_counter() - start) * 1000)
     if resp.status_code // 100 != 2:
+        if (
+            provider in ("openai", "openai_compatible")
+            and resp.status_code in (400, 422)
+            and _looks_like_messages_unsupported(resp.text)
+            and not (extra or {}).get("_internal_from_responses_fallback")
+        ):
+            from app.llm.providers.openai_responses import call_openai_responses
+
+            merged_dropped = dropped_params + [p for p in compat_dropped_params if p not in dropped_params]
+            fallback_provider = "openai_responses_compatible" if provider == "openai_compatible" else "openai_responses"
+            fallback_extra = dict(extra or {})
+            fallback_extra["_internal_from_chat_fallback"] = True
+            return call_openai_responses(
+                client=client,
+                provider=fallback_provider,
+                base_url=base_url,
+                model=model,
+                api_key=api_key,
+                messages=messages,
+                filtered_params=filtered_params,
+                dropped_params=merged_dropped,
+                timeout=timeout,
+                start=start,
+                extra=fallback_extra,
+            )
+
         extra_details = None
         if compat_adjustments:
             extra_details = {
@@ -194,7 +238,11 @@ def call_openai_chat_completions_stream(
     start: float,
     extra: dict[str, Any] | None = None,
 ) -> tuple[Iterator[str], LLMStreamState]:
-    endpoint = f"{base_url}/chat/completions"
+    normalized_base_url = (base_url or "").strip().rstrip("/")
+    endpoints = [f"{normalized_base_url}/chat/completions"]
+    if not normalized_base_url.endswith("/v1"):
+        endpoints.append(f"{normalized_base_url}/v1/chat/completions")
+    endpoint_idx = 0
     state = LLMStreamState(dropped_params=dropped_params)
     compat_dropped_params: list[str] = []
     compat_adjustments: list[str] = []
@@ -223,14 +271,17 @@ def call_openai_chat_completions_stream(
             payload.pop("max_tokens", None)
 
     def _open_stream(payload_obj: dict[str, Any]) -> httpx._client.StreamContextManager[httpx.Response]:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
+        if provider.endswith("_compatible"):
+            headers["x-api-key"] = api_key
         return client.stream(
             "POST",
-            endpoint,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "Accept": "text/event-stream",
-            },
+            endpoints[endpoint_idx],
+            headers=headers,
             json=payload_obj,
             timeout=timeout,
         )
@@ -244,9 +295,11 @@ def call_openai_chat_completions_stream(
     )
 
     def generator() -> Iterator[str]:
+        nonlocal endpoint_idx
         cm: httpx._client.StreamContextManager[httpx.Response] | None = None
         resp: httpx.Response | None = None
         upstream_text: str | None = None
+        used_responses_fallback = False
         try:
             attempts = 0
             while True:
@@ -270,6 +323,11 @@ def call_openai_chat_completions_stream(
                 cm = None
                 resp = None
 
+                if status_code == 404 and endpoint_idx == 0 and len(endpoints) > 1:
+                    endpoint_idx = 1
+                    compat_adjustments.append("append_v1_base_url")
+                    continue
+
                 if provider in ("openai", "openai_compatible") and status_code in (400, 422) and attempts <= (len(downgrade_steps) + 1):
                     upper = extract_max_tokens_upper_bound(redact_text(upstream_text or ""))
                     if upper is not None and _clamp_payload_max_tokens(payload, limit=upper, compat_adjustments=compat_adjustments):
@@ -282,6 +340,39 @@ def call_openai_chat_completions_stream(
                             break
                     if changed:
                         continue
+
+                if (
+                    provider in ("openai", "openai_compatible")
+                    and status_code in (400, 422)
+                    and _looks_like_messages_unsupported(upstream_text or "")
+                    and not (extra or {}).get("_internal_from_responses_fallback")
+                ):
+                    from app.llm.providers.openai_responses import call_openai_responses_stream
+
+                    used_responses_fallback = True
+                    merged_dropped = dropped_params + [p for p in compat_dropped_params if p not in dropped_params]
+                    fallback_provider = "openai_responses_compatible" if provider == "openai_compatible" else "openai_responses"
+                    fallback_extra = dict(extra or {})
+                    fallback_extra["_internal_from_chat_fallback"] = True
+                    fallback_iter, fallback_state = call_openai_responses_stream(
+                        client=client,
+                        provider=fallback_provider,
+                        base_url=base_url,
+                        model=model,
+                        api_key=api_key,
+                        messages=messages,
+                        filtered_params=filtered_params,
+                        dropped_params=merged_dropped,
+                        timeout=timeout,
+                        start=start,
+                        extra=fallback_extra,
+                    )
+                    for chunk in fallback_iter:
+                        yield chunk
+                    state.finish_reason = fallback_state.finish_reason
+                    state.latency_ms = fallback_state.latency_ms
+                    state.dropped_params = fallback_state.dropped_params
+                    return
 
                 extra_details = None
                 if compat_adjustments:
@@ -324,9 +415,10 @@ def call_openai_chat_completions_stream(
         except httpx.HTTPError as exc:
             raise AppError(code="LLM_UPSTREAM_ERROR", message="连接失败，请检查网络或 base_url 是否正确", status_code=502) from exc
         finally:
-            state.latency_ms = int((time.perf_counter() - start) * 1000)
-            merged_dropped = dropped_params + [p for p in compat_dropped_params if p not in dropped_params]
-            state.dropped_params = merged_dropped
+            if not used_responses_fallback:
+                state.latency_ms = int((time.perf_counter() - start) * 1000)
+                merged_dropped = dropped_params + [p for p in compat_dropped_params if p not in dropped_params]
+                state.dropped_params = merged_dropped
             if cm is not None:
                 cm.__exit__(None, None, None)
 

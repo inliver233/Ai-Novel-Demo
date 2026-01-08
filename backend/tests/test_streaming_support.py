@@ -40,6 +40,48 @@ class TestStreamingSupport(unittest.TestCase):
         self.assertEqual(text, "pong")
         self.assertIsNotNone(state.latency_ms)
 
+    def test_openai_chat_stream_falls_back_to_responses_when_messages_unsupported(self) -> None:
+        seen_paths: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen_paths.append(request.url.path)
+            if request.url.path.endswith("/chat/completions"):
+                return httpx.Response(400, json={"detail": "Unsupported parameter: messages"})
+            if request.url.path.endswith("/responses"):
+                sse = "\n".join(
+                    [
+                        "event: response.output_text.delta",
+                        'data: {"type":"response.output_text.delta","delta":"pong"}',
+                        "event: response.completed",
+                        'data: {"type":"response.completed","response":{"status":"completed"}}',
+                        "data: [DONE]",
+                        "",
+                    ]
+                ).encode("utf-8")
+                return httpx.Response(200, content=sse, headers={"Content-Type": "text/event-stream"})
+            return httpx.Response(404, json={"error": {"message": "not found"}})
+
+        transport = httpx.MockTransport(handler)
+        with httpx.Client(transport=transport) as client:
+            with patch("app.llm.client.get_llm_http_client", return_value=client):
+                stream_iter, state = call_llm_stream_messages(
+                    provider="openai_compatible",
+                    base_url="http://stubbed-openai.local/v1",
+                    model="gpt-test",
+                    api_key="sk-test-SECRET1234",
+                    messages=[ChatMessage(role="user", content="hi")],
+                    params={},
+                    timeout_seconds=30,
+                    extra={},
+                )
+                text = "".join(list(stream_iter))
+
+        self.assertEqual(text, "pong")
+        self.assertEqual(state.finish_reason, "completed")
+        self.assertIsNotNone(state.latency_ms)
+        self.assertTrue(any(path.endswith("/chat/completions") for path in seen_paths))
+        self.assertTrue(any(path.endswith("/responses") for path in seen_paths))
+
     def test_openai_responses_stream_parses_delta_and_finish_reason(self) -> None:
         seen_payloads: list[dict] = []
 
@@ -83,6 +125,46 @@ class TestStreamingSupport(unittest.TestCase):
         self.assertEqual(state.finish_reason, "completed")
         self.assertIsNotNone(state.latency_ms)
         self.assertGreaterEqual(len(seen_payloads), 1)
+
+    def test_openai_responses_compatible_stream_falls_back_to_chat_completions(self) -> None:
+        seen_paths: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen_paths.append(request.url.path)
+            if request.url.path.endswith("/responses"):
+                return httpx.Response(400, json={"error": {"message": "responses unsupported"}})
+            if request.url.path.endswith("/chat/completions"):
+                sse = "\n".join(
+                    [
+                        'data: {"choices":[{"delta":{"content":"pong"}}]}',
+                        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+                        "data: [DONE]",
+                        "",
+                    ]
+                ).encode("utf-8")
+                return httpx.Response(200, content=sse, headers={"Content-Type": "text/event-stream"})
+            return httpx.Response(404, json={"error": {"message": "not found"}})
+
+        transport = httpx.MockTransport(handler)
+        with httpx.Client(transport=transport) as client:
+            with patch("app.llm.client.get_llm_http_client", return_value=client):
+                stream_iter, state = call_llm_stream_messages(
+                    provider="openai_responses_compatible",
+                    base_url="http://stubbed-openai.local/openai",
+                    model="gpt-test",
+                    api_key="sk-test-SECRET1234",
+                    messages=[ChatMessage(role="user", content="hi")],
+                    params={},
+                    timeout_seconds=30,
+                    extra={},
+                )
+                text = "".join(list(stream_iter))
+
+        self.assertEqual(text, "pong")
+        self.assertEqual(state.finish_reason, "stop")
+        self.assertIsNotNone(state.latency_ms)
+        self.assertTrue(any(path.endswith("/responses") for path in seen_paths))
+        self.assertTrue(any(path.endswith("/chat/completions") for path in seen_paths))
 
     def test_anthropic_stream_parses_text_and_finish_reason(self) -> None:
         api_key = "anthropic-test-SECRET1234"
@@ -179,4 +261,3 @@ class TestStreamingSupport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

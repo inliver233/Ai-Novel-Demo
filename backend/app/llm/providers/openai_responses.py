@@ -8,6 +8,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.errors import AppError
+from app.llm.messages import coalesce_system, flatten_messages, merge_consecutive
 from app.llm.max_tokens import extract_max_tokens_upper_bound
 from app.llm.openai_extract import extract_openai_like_text
 from app.llm.openai_messages import openai_messages_from_list
@@ -16,9 +17,36 @@ from app.llm.types import LLMCallResult, LLMStreamState
 from app.llm.upstream_errors import map_upstream_error
 
 
+def _looks_like_stream_required_error(upstream_text: str | None) -> bool:
+    if not upstream_text:
+        return False
+    normalized = upstream_text.lower()
+    return "stream must be set to true" in normalized
+
+
+def _looks_like_input_list_required_error(upstream_text: str | None) -> bool:
+    if not upstream_text:
+        return False
+    normalized = upstream_text.lower()
+    return "input must be a list" in normalized
+
+
+def _candidate_responses_endpoints(base_url: str) -> list[str]:
+    normalized = (base_url or "").strip().rstrip("/")
+    endpoints = [f"{normalized}/responses"]
+    if not normalized.endswith("/v1"):
+        endpoints.append(f"{normalized}/v1/responses")
+    return endpoints
+
+
 def _responses_input_from_messages(*, messages: list, merge_system_into_user: bool) -> list[dict[str, Any]]:
-    # Start from the existing OpenAI ChatCompletions shape, then convert to Responses message content blocks.
-    openai_messages = openai_messages_from_list(messages=messages, merge_system_into_user=merge_system_into_user)
+    # Convert to Responses message content blocks.
+    #
+    # IMPORTANT: Many OpenAI-compatible gateways are picky about "system" role. We already send system content via
+    # `instructions`, so build message items from non-system messages only.
+    normalized = merge_consecutive(messages)
+    _, non_system = coalesce_system(normalized)
+    openai_messages = openai_messages_from_list(messages=non_system, merge_system_into_user=merge_system_into_user)
     out: list[dict[str, Any]] = []
     for msg in openai_messages:
         if not isinstance(msg, dict):
@@ -30,14 +58,22 @@ def _responses_input_from_messages(*, messages: list, merge_system_into_user: bo
         if not isinstance(content, str):
             content = "" if content is None else str(content)
         block_type = "output_text" if role == "assistant" else "input_text"
-        payload: dict[str, Any] = {"role": role, "content": [{"type": block_type, "text": content}]}
+        payload: dict[str, Any] = {"type": "message", "role": role, "content": [{"type": block_type, "text": content}]}
         name = msg.get("name")
         if isinstance(name, str) and name.strip():
             payload["name"] = name.strip()
         out.append(payload)
     if not out:
-        out = [{"role": "user", "content": [{"type": "input_text", "text": ""}]}]
+        out = [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": ""}]}]
     return out
+
+
+def _responses_input_text_from_messages(*, messages: list) -> tuple[str | None, str]:
+    normalized = merge_consecutive(messages)
+    system, non_system = coalesce_system(normalized)
+    instructions = system.strip() or None
+    input_text = flatten_messages(non_system).strip()
+    return instructions, input_text
 
 
 def _coerce_text_config(extra: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -84,14 +120,16 @@ def _coerce_reasoning_config(extra: dict[str, Any] | None) -> dict[str, Any] | N
 
 
 def _clamp_payload_max_output_tokens(payload: dict[str, Any], *, limit: int, compat_adjustments: list[str]) -> bool:
-    current = payload.get("max_output_tokens")
-    if not isinstance(current, int):
-        return False
-    if current <= limit:
-        return False
-    payload["max_output_tokens"] = limit
-    compat_adjustments.append(f"clamp_max_output_tokens_{limit}")
-    return True
+    for key in ("max_output_tokens", "max_tokens"):
+        current = payload.get(key)
+        if not isinstance(current, int):
+            continue
+        if current <= limit:
+            continue
+        payload[key] = limit
+        compat_adjustments.append(f"clamp_{key}_{limit}")
+        return True
+    return False
 
 
 def _build_openai_responses_compat_steps(
@@ -118,15 +156,80 @@ def _build_openai_responses_compat_steps(
         compat_adjustments.append("drop_text")
         return True
 
-    def merge_system_into_user() -> bool:
-        payload["input"] = _responses_input_from_messages(messages=messages, merge_system_into_user=True)
-        compat_adjustments.append("merge_system_into_user")
+    def merge_instructions_into_input() -> bool:
+        if "instructions" not in payload:
+            return False
+        instructions = payload.get("instructions")
+        if not isinstance(instructions, str) or not instructions.strip():
+            payload.pop("instructions", None)
+            compat_dropped_params.append("instructions")
+            compat_adjustments.append("drop_instructions")
+            return True
+        input_value = payload.get("input")
+        if isinstance(input_value, str):
+            payload["input"] = f"{instructions}\n\n{input_value}" if input_value.strip() else instructions
+        elif isinstance(input_value, list):
+            merged = False
+            for item in input_value:
+                if not isinstance(item, dict):
+                    continue
+                role = item.get("role")
+                if role != "user":
+                    continue
+                content = item.get("content")
+                if isinstance(content, str):
+                    item["content"] = f"{instructions}\n\n{content}" if content.strip() else instructions
+                    merged = True
+                    break
+                if isinstance(content, list) and content:
+                    first = content[0]
+                    if isinstance(first, dict) and isinstance(first.get("text"), str):
+                        existing = first.get("text") or ""
+                        first["text"] = f"{instructions}\n\n{existing}" if str(existing).strip() else instructions
+                        merged = True
+                        break
+            if not merged:
+                input_value.insert(
+                    0,
+                    {"type": "message", "role": "user", "content": [{"type": "input_text", "text": instructions}]},
+                )
+                merged = True
+            payload["input"] = input_value
+        else:
+            return False
+        payload.pop("instructions", None)
+        compat_dropped_params.append("instructions")
+        compat_adjustments.append("merge_instructions_into_input")
+        return True
+
+    def switch_to_message_input() -> bool:
+        if not isinstance(payload.get("input"), str):
+            return False
+        instructions, _ = _responses_input_text_from_messages(messages=messages)
+        if instructions:
+            payload["instructions"] = instructions
+            compat_adjustments.append("restore_instructions")
+        payload["input"] = _responses_input_from_messages(messages=messages, merge_system_into_user=False)
+        compat_adjustments.append("switch_input_to_messages")
+        return True
+
+    def use_max_tokens_param() -> bool:
+        # Some OpenAI-compatible gateways implement `/responses` but only accept `max_tokens`.
+        if not provider.endswith("_compatible"):
+            return False
+        if "max_output_tokens" not in payload:
+            return False
+        if "max_tokens" in payload:
+            return False
+        payload["max_tokens"] = payload.pop("max_output_tokens")
+        compat_adjustments.append("use_max_tokens_param")
         return True
 
     def clamp_max_tokens(limit: int) -> bool:
         return _clamp_payload_max_output_tokens(payload, limit=limit, compat_adjustments=compat_adjustments)
 
     return [
+        switch_to_message_input,
         lambda: drop_param("stop"),
         lambda: drop_param("top_p"),
         lambda: drop_param("temperature"),
@@ -135,12 +238,14 @@ def _build_openai_responses_compat_steps(
         lambda: drop_param("seed"),
         lambda: drop_param("reasoning"),
         drop_text_format,
+        merge_instructions_into_input,
         lambda: clamp_max_tokens(16384),
         lambda: clamp_max_tokens(8192),
         lambda: clamp_max_tokens(4096),
         lambda: clamp_max_tokens(1024),
+        use_max_tokens_param,
         lambda: drop_param("max_output_tokens"),
-        merge_system_into_user,
+        lambda: drop_param("max_tokens"),
     ]
 
 
@@ -158,13 +263,16 @@ def call_openai_responses(
     start: float,
     extra: dict[str, Any] | None = None,
 ) -> LLMCallResult:
-    endpoint = f"{base_url}/responses"
+    endpoints = _candidate_responses_endpoints(base_url)
+    endpoint_idx = 0
     compat_dropped_params: list[str] = []
     compat_adjustments: list[str] = []
 
+    instructions, input_text = _responses_input_text_from_messages(messages=messages)
     payload: dict[str, Any] = {
         "model": model,
-        "input": _responses_input_from_messages(messages=messages, merge_system_into_user=False),
+        "input": input_text,
+        "instructions": instructions,
         "max_output_tokens": filtered_params.get("max_tokens"),
         "temperature": filtered_params.get("temperature"),
         "top_p": filtered_params.get("top_p"),
@@ -177,6 +285,9 @@ def call_openai_responses(
         seed = extra.get("seed")
         if isinstance(seed, int):
             payload["seed"] = seed
+        verbosity = extra.get("verbosity")
+        if isinstance(verbosity, str) and verbosity.strip():
+            payload["verbosity"] = verbosity.strip()
         reasoning = _coerce_reasoning_config(extra)
         if reasoning is not None:
             payload["reasoning"] = reasoning
@@ -187,18 +298,27 @@ def call_openai_responses(
     payload = {k: v for k, v in payload.items() if v is not None}
 
     def post_openai(payload_obj: dict[str, Any]) -> httpx.Response:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if provider.endswith("_compatible"):
+            headers["x-api-key"] = api_key
         return client.post(
-            endpoint,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
+            endpoints[endpoint_idx],
+            headers=headers,
             json=payload_obj,
             timeout=timeout,
         )
 
     resp = post_openai(payload)
+    if endpoint_idx == 0 and len(endpoints) > 1 and (
+        resp.status_code == 404 or (provider.endswith("_compatible") and resp.status_code in (400, 405, 422))
+    ):
+        endpoint_idx = 1
+        compat_adjustments.append("append_v1_base_url")
+        resp = post_openai(payload)
     if provider in ("openai_responses", "openai_responses_compatible") and resp.status_code in (400, 422):
         upper = extract_max_tokens_upper_bound(redact_text(resp.text))
         if upper is not None and _clamp_payload_max_output_tokens(payload, limit=upper, compat_adjustments=compat_adjustments):
@@ -214,6 +334,8 @@ def call_openai_responses(
         for apply in downgrade_steps:
             if resp.status_code not in (400, 422):
                 break
+            if _looks_like_stream_required_error(resp.text):
+                break
             changed = apply()
             if not changed:
                 continue
@@ -221,6 +343,51 @@ def call_openai_responses(
 
     latency_ms = int((time.perf_counter() - start) * 1000)
     if resp.status_code // 100 != 2:
+        if resp.status_code in (400, 404, 405, 422) and (
+            _looks_like_stream_required_error(resp.text) or _looks_like_input_list_required_error(resp.text)
+        ):
+            stream_iter, stream_state = call_openai_responses_stream(
+                client=client,
+                provider=provider,
+                base_url=base_url,
+                model=model,
+                api_key=api_key,
+                messages=messages,
+                filtered_params=filtered_params,
+                dropped_params=dropped_params,
+                timeout=timeout,
+                start=start,
+                extra=extra,
+            )
+            text = "".join(list(stream_iter))
+            stream_latency = stream_state.latency_ms if stream_state.latency_ms is not None else latency_ms
+            return LLMCallResult(
+                text=text,
+                latency_ms=stream_latency,
+                dropped_params=stream_state.dropped_params,
+                finish_reason=stream_state.finish_reason,
+            )
+
+        if provider.endswith("_compatible") and resp.status_code in (400, 404, 405, 422):
+            from app.llm.providers.openai_chat import call_openai_chat_completions
+
+            merged_dropped = dropped_params + [p for p in compat_dropped_params if p not in dropped_params]
+            fallback_extra = dict(extra or {})
+            fallback_extra["_internal_from_responses_fallback"] = True
+            return call_openai_chat_completions(
+                client=client,
+                provider="openai_compatible",
+                base_url=base_url,
+                model=model,
+                api_key=api_key,
+                messages=messages,
+                filtered_params=filtered_params,
+                dropped_params=merged_dropped,
+                timeout=timeout,
+                start=start,
+                extra=fallback_extra,
+            )
+
         extra_details = None
         if compat_adjustments:
             extra_details = {
@@ -258,14 +425,17 @@ def call_openai_responses_stream(
     start: float,
     extra: dict[str, Any] | None = None,
 ) -> tuple[Iterator[str], LLMStreamState]:
-    endpoint = f"{base_url}/responses"
+    endpoints = _candidate_responses_endpoints(base_url)
+    endpoint_idx = 0
     state = LLMStreamState(dropped_params=dropped_params)
     compat_dropped_params: list[str] = []
     compat_adjustments: list[str] = []
 
+    instructions, input_text = _responses_input_text_from_messages(messages=messages)
     payload: dict[str, Any] = {
         "model": model,
-        "input": _responses_input_from_messages(messages=messages, merge_system_into_user=False),
+        "input": input_text,
+        "instructions": instructions,
         "max_output_tokens": filtered_params.get("max_tokens"),
         "temperature": filtered_params.get("temperature"),
         "top_p": filtered_params.get("top_p"),
@@ -278,6 +448,9 @@ def call_openai_responses_stream(
         seed = extra.get("seed")
         if isinstance(seed, int):
             payload["seed"] = seed
+        verbosity = extra.get("verbosity")
+        if isinstance(verbosity, str) and verbosity.strip():
+            payload["verbosity"] = verbosity.strip()
         reasoning = _coerce_reasoning_config(extra)
         if reasoning is not None:
             payload["reasoning"] = reasoning
@@ -287,14 +460,17 @@ def call_openai_responses_stream(
     payload = {k: v for k, v in payload.items() if v is not None}
 
     def _open_stream(payload_obj: dict[str, Any]) -> httpx._client.StreamContextManager[httpx.Response]:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
+        if provider.endswith("_compatible"):
+            headers["x-api-key"] = api_key
         return client.stream(
             "POST",
-            endpoint,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "Accept": "text/event-stream",
-            },
+            endpoints[endpoint_idx],
+            headers=headers,
             json=payload_obj,
             timeout=timeout,
         )
@@ -308,9 +484,11 @@ def call_openai_responses_stream(
     )
 
     def generator() -> Iterator[str]:
+        nonlocal endpoint_idx
         cm: httpx._client.StreamContextManager[httpx.Response] | None = None
         resp: httpx.Response | None = None
         upstream_text: str | None = None
+        used_chat_fallback = False
         try:
             attempts = 0
             while True:
@@ -334,6 +512,13 @@ def call_openai_responses_stream(
                 cm = None
                 resp = None
 
+                if endpoint_idx == 0 and len(endpoints) > 1 and (
+                    status_code == 404 or (provider.endswith("_compatible") and status_code in (400, 405, 422))
+                ):
+                    endpoint_idx = 1
+                    compat_adjustments.append("append_v1_base_url")
+                    continue
+
                 if provider in ("openai_responses", "openai_responses_compatible") and status_code in (400, 422) and attempts <= (
                     len(downgrade_steps) + 1
                 ):
@@ -348,6 +533,33 @@ def call_openai_responses_stream(
                             break
                     if changed:
                         continue
+
+                if provider.endswith("_compatible") and status_code in (400, 404, 405, 422):
+                    from app.llm.providers.openai_chat import call_openai_chat_completions_stream
+
+                    used_chat_fallback = True
+                    merged_dropped = dropped_params + [p for p in compat_dropped_params if p not in dropped_params]
+                    fallback_extra = dict(extra or {})
+                    fallback_extra["_internal_from_responses_fallback"] = True
+                    fallback_iter, fallback_state = call_openai_chat_completions_stream(
+                        client=client,
+                        provider="openai_compatible",
+                        base_url=base_url,
+                        model=model,
+                        api_key=api_key,
+                        messages=messages,
+                        filtered_params=filtered_params,
+                        dropped_params=merged_dropped,
+                        timeout=timeout,
+                        start=start,
+                        extra=fallback_extra,
+                    )
+                    for chunk in fallback_iter:
+                        yield chunk
+                    state.finish_reason = fallback_state.finish_reason
+                    state.latency_ms = fallback_state.latency_ms
+                    state.dropped_params = fallback_state.dropped_params
+                    return
 
                 extra_details = None
                 if compat_adjustments:
@@ -419,11 +631,11 @@ def call_openai_responses_stream(
         except httpx.HTTPError as exc:
             raise AppError(code="LLM_UPSTREAM_ERROR", message="连接失败，请检查网络或 base_url 是否正确", status_code=502) from exc
         finally:
-            state.latency_ms = int((time.perf_counter() - start) * 1000)
-            merged_dropped = dropped_params + [p for p in compat_dropped_params if p not in dropped_params]
-            state.dropped_params = merged_dropped
+            if not used_chat_fallback:
+                state.latency_ms = int((time.perf_counter() - start) * 1000)
+                merged_dropped = dropped_params + [p for p in compat_dropped_params if p not in dropped_params]
+                state.dropped_params = merged_dropped
             if cm is not None:
                 cm.__exit__(None, None, None)
 
     return generator(), state
-
