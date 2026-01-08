@@ -220,7 +220,6 @@ export function PromptsPage() {
 
   const selectedProfileId = project?.llm_profile_id ?? null;
   const selectedProfile = selectedProfileId ? (profiles.find((p) => p.id === selectedProfileId) ?? null) : null;
-  const lockConnectionFields = Boolean(selectedProfileId);
 
   const saveAll = useCallback(
     async (opts?: { silent?: boolean; snapshot?: LlmForm }): Promise<boolean> => {
@@ -233,6 +232,9 @@ export function PromptsPage() {
         return false;
       }
 
+      const snapshotProvider = snapshot.provider;
+      const snapshotModel = snapshot.model.trim();
+      const snapshotBaseUrl = snapshot.base_url.trim();
       const extraObj = (() => {
         try {
           return JSON.parse(snapshot.extra || "{}") as Record<string, unknown>;
@@ -253,13 +255,34 @@ export function PromptsPage() {
       savingPresetRef.current = true;
       setSavingPreset(true);
       try {
+        if (selectedProfileId) {
+          const currentProvider = selectedProfile?.provider ?? null;
+          const currentModel = selectedProfile?.model ?? null;
+          const currentBaseUrl = (selectedProfile?.base_url ?? "").trim();
+          const needsProfileSync =
+            currentProvider !== snapshotProvider ||
+            currentModel !== snapshotModel ||
+            currentBaseUrl !== snapshotBaseUrl;
+          if (needsProfileSync) {
+            const res = await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles/${selectedProfileId}`, {
+              method: "PUT",
+              body: JSON.stringify({
+                provider: snapshotProvider,
+                base_url: snapshotBaseUrl ? snapshotBaseUrl : null,
+                model: snapshotModel,
+              }),
+            });
+            setProfiles((prev) => prev.map((p) => (p.id === res.data.profile.id ? res.data.profile : p)));
+          }
+        }
+
         if (presetDirty) {
           const res = await apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${projectId}/llm_preset`, {
             method: "PUT",
             body: JSON.stringify({
-              provider: snapshot.provider,
-              base_url: snapshot.base_url || null,
-              model: snapshot.model,
+              provider: snapshotProvider,
+              base_url: snapshotBaseUrl ? snapshotBaseUrl : null,
+              model: snapshotModel,
               temperature: parseNumber(snapshot.temperature),
               top_p: parseNumber(snapshot.top_p),
               max_tokens: parseNumber(snapshot.max_tokens),
@@ -272,6 +295,28 @@ export function PromptsPage() {
             }),
           });
           setBaselinePreset(res.data.llm_preset);
+
+          setLlmForm((current) => {
+            if (current.provider !== snapshot.provider) return current;
+            if (current.base_url !== snapshot.base_url) return current;
+            if (current.model !== snapshot.model) return current;
+            if (current.temperature !== snapshot.temperature) return current;
+            if (current.top_p !== snapshot.top_p) return current;
+            if (current.max_tokens !== snapshot.max_tokens) return current;
+            if (current.presence_penalty !== snapshot.presence_penalty) return current;
+            if (current.frequency_penalty !== snapshot.frequency_penalty) return current;
+            if (current.top_k !== snapshot.top_k) return current;
+            if (current.stop !== snapshot.stop) return current;
+            if (current.timeout_seconds !== snapshot.timeout_seconds) return current;
+            if (current.extra !== snapshot.extra) return current;
+            return {
+              ...current,
+              provider: res.data.llm_preset.provider,
+              base_url: res.data.llm_preset.base_url ?? "",
+              model: res.data.llm_preset.model ?? "",
+              max_tokens: res.data.llm_preset.max_tokens?.toString() ?? "",
+            };
+          });
         }
 
         bumpWizardLocal();
@@ -295,7 +340,7 @@ export function PromptsPage() {
         }
       }
     },
-    [bumpWizardLocal, dirty, llmForm, presetDirty, projectId, refreshWizard, toast],
+    [bumpWizardLocal, dirty, llmForm, presetDirty, projectId, refreshWizard, selectedProfile, selectedProfileId, toast],
   );
 
   useSaveHotkey(() => void saveAll(), dirty);
@@ -377,13 +422,15 @@ export function PromptsPage() {
     setProfileBusy(true);
     try {
       const apiKeyInput = apiKey.trim();
+      const model = llmForm.model.trim();
+      const baseUrl = llmForm.base_url.trim();
       const res = await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles`, {
         method: "POST",
         body: JSON.stringify({
           name,
           provider: llmForm.provider,
-          base_url: llmForm.base_url || null,
-          model: llmForm.model,
+          base_url: baseUrl ? baseUrl : null,
+          model,
           api_key: apiKeyInput ? apiKeyInput : undefined,
         }),
       });
@@ -424,13 +471,15 @@ export function PromptsPage() {
     const name = profileName.trim();
     setProfileBusy(true);
     try {
+      const model = llmForm.model.trim();
+      const baseUrl = llmForm.base_url.trim();
       await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles/${selectedProfileId}`, {
         method: "PUT",
         body: JSON.stringify({
           name: name ? name : undefined,
           provider: llmForm.provider,
-          base_url: llmForm.base_url || null,
-          model: llmForm.model,
+          base_url: baseUrl ? baseUrl : null,
+          model,
         }),
       });
       await reloadAll();
@@ -568,6 +617,8 @@ export function PromptsPage() {
       return false;
     }
 
+    const model = llmForm.model.trim();
+    const baseUrl = llmForm.base_url.trim();
     if (!selectedProfile?.has_api_key) {
       const okSave = await saveApiKeyToProfile();
       if (!okSave) return false;
@@ -583,8 +634,8 @@ export function PromptsPage() {
         body: JSON.stringify({
           project_id: projectId,
           provider: llmForm.provider,
-          base_url: llmForm.base_url || null,
-          model: llmForm.model,
+          base_url: baseUrl ? baseUrl : null,
+          model,
           timeout_seconds: parseTimeoutSecondsForTest(llmForm.timeout_seconds),
           extra: extraObj,
           params: {
@@ -597,7 +648,7 @@ export function PromptsPage() {
       const preview = (res.data.text ?? "").trim();
       toast.toastSuccess(`连接成功（延迟 ${res.data.latency_ms}ms${preview ? `，输出：${preview}` : ""}）`);
       if (projectId) {
-        markWizardLlmTestOk(projectId, llmForm.provider, llmForm.model);
+        markWizardLlmTestOk(projectId, llmForm.provider, model);
         bumpWizardLocal();
       }
       return true;
@@ -643,16 +694,16 @@ export function PromptsPage() {
           ? "请先保存 API Key"
           : err.code === "LLM_AUTH_ERROR"
             ? "API Key 无效或已过期，请检查后重试"
-          : err.code === "LLM_TIMEOUT"
-            ? "连接超时，请检查网络或 base_url 是否正确"
-          : err.code === "LLM_BAD_REQUEST"
-            ? `请求参数有误，可能是模型名称或参数不支持${upstreamError ? `（上游：${upstreamError}）` : ""}${
-                compatAdjustments ? `（兼容：${compatAdjustments}）` : ""
-              }`
-            : err.code === "LLM_UPSTREAM_ERROR"
-              ? `服务暂时不可用，请稍后重试（${
-                  typeof upstreamStatusCode === "number" ? upstreamStatusCode : err.status
-                }）`
+            : err.code === "LLM_TIMEOUT"
+              ? "连接超时，请检查网络或 base_url 是否正确"
+              : err.code === "LLM_BAD_REQUEST"
+                ? `请求参数有误，可能是模型名称或参数不支持${upstreamError ? `（上游：${upstreamError}）` : ""}${
+                    compatAdjustments ? `（兼容：${compatAdjustments}）` : ""
+                  }`
+                : err.code === "LLM_UPSTREAM_ERROR"
+                  ? `服务暂时不可用，请稍后重试（${
+                      typeof upstreamStatusCode === "number" ? upstreamStatusCode : err.status
+                    }）`
                   : err.message;
       toast.toastError(msg, err.requestId);
       return false;
@@ -715,7 +766,6 @@ export function PromptsPage() {
         onCreateProfile={() => void createProfile()}
         onUpdateProfile={() => void updateProfile()}
         onDeleteProfile={() => void deleteProfile()}
-        lockConnectionFields={lockConnectionFields}
         apiKey={apiKey}
         onChangeApiKey={setApiKey}
         onSaveApiKey={() => void saveApiKeyToProfile()}

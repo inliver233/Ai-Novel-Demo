@@ -27,8 +27,6 @@ type Props = {
   onUpdateProfile: () => void;
   onDeleteProfile: () => void;
 
-  lockConnectionFields: boolean;
-
   apiKey: string;
   onChangeApiKey: (value: string) => void;
   onSaveApiKey: () => void;
@@ -80,7 +78,7 @@ export function LlmPresetPanel(props: Props) {
             className="select"
             name="provider"
             value={props.llmForm.provider}
-            disabled={props.lockConnectionFields}
+            disabled={props.profileBusy}
             onChange={(e) =>
               props.setLlmForm((v) => ({
                 ...v,
@@ -101,7 +99,7 @@ export function LlmPresetPanel(props: Props) {
           <span className="text-xs text-subtext">Model</span>
           <input
             className="input"
-            disabled={props.lockConnectionFields}
+            disabled={props.profileBusy}
             name="model"
             value={props.llmForm.model}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, model: e.target.value }))}
@@ -117,7 +115,7 @@ export function LlmPresetPanel(props: Props) {
                 ? "https://your-proxy.com/v1"
                 : undefined
             }
-            disabled={props.lockConnectionFields}
+            disabled={props.profileBusy}
             name="base_url"
             value={props.llmForm.base_url}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, base_url: e.target.value }))}
