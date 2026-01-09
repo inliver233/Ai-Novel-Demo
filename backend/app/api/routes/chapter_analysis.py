@@ -5,16 +5,17 @@ import logging
 
 from fastapi import APIRouter, Header, Request
 
-from app.api.deps import UserIdDep, require_owned_chapter
+from app.api.deps import DbDep, UserIdDep, require_owned_chapter
 from app.core.errors import AppError, ok_payload
 from app.db.session import SessionLocal
 from app.models.llm_preset import LLMPreset
 from app.models.project import Project
-from app.schemas.chapter_analysis import ChapterAnalyzeRequest, ChapterRewriteRequest
+from app.schemas.chapter_analysis import ChapterAnalyzeRequest, ChapterAnalysisApplyRequest, ChapterRewriteRequest
 from app.services.chapter_context_service import build_chapter_analyze_render_values, build_chapter_rewrite_render_values
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.output_contracts import contract_for_task
+from app.services.plot_analysis_service import apply_chapter_analysis as apply_plot_analysis
 from app.services.prompt_presets import (
     ensure_default_chapter_analyze_preset,
     ensure_default_chapter_rewrite_preset,
@@ -211,3 +212,28 @@ def rewrite_chapter(
     if llm_result.finish_reason is not None:
         data["finish_reason"] = llm_result.finish_reason
     return ok_payload(request_id=request_id, data=data)
+
+
+@router.post("/chapters/{chapter_id}/analysis/apply")
+def apply_chapter_analysis_route(
+    request: Request,
+    db: DbDep,
+    chapter_id: str,
+    body: ChapterAnalysisApplyRequest,
+    user_id: UserIdDep,
+) -> dict:
+    request_id = request.state.request_id
+    chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+    content_md = body.draft_content_md if body.draft_content_md is not None else (chapter.content_md or "")
+
+    out = apply_plot_analysis(
+        db=db,
+        request_id=request_id,
+        actor_user_id=user_id,
+        project_id=chapter.project_id,
+        chapter_id=chapter_id,
+        chapter_number=int(chapter.number),
+        analysis=body.analysis,
+        draft_content_md=content_md,
+    )
+    return ok_payload(request_id=request_id, data=out)

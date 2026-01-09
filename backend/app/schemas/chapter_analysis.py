@@ -24,3 +24,8 @@ class ChapterRewriteRequest(BaseModel):
 
     analysis: dict[str, Any] = Field(default_factory=dict)
     draft_content_md: str | None = None
+
+
+class ChapterAnalysisApplyRequest(BaseModel):
+    analysis: dict[str, Any] = Field(default_factory=dict)
+    draft_content_md: str | None = None
