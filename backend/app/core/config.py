@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     auth_cookie_user_id_name: str = "user_id"
     auth_cookie_expire_at_name: str = "session_expire_at"
     auth_cookie_samesite: CookieSameSite = "lax"
+    auth_admin_user_id: str | None = None
+    auth_admin_password: str | None = None
+    auth_admin_email: str | None = None
+    auth_admin_display_name: str | None = "管理员"
+    auth_bcrypt_rounds: int = 12
 
     task_queue_backend: TaskQueueBackend = "rq"
     redis_url: str = "redis://localhost:6379/0"
@@ -158,6 +163,45 @@ class Settings(BaseSettings):
         if raw in ("lax", "strict", "none"):
             return raw
         return "lax"
+
+    @field_validator("auth_admin_user_id", mode="before")
+    @classmethod
+    def _normalize_auth_admin_user_id(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("auth_admin_password", mode="before")
+    @classmethod
+    def _normalize_auth_admin_password(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("auth_admin_email", mode="before")
+    @classmethod
+    def _normalize_auth_admin_email(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("auth_admin_display_name", mode="before")
+    @classmethod
+    def _normalize_auth_admin_display_name(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("auth_bcrypt_rounds", mode="before")
+    @classmethod
+    def _normalize_auth_bcrypt_rounds(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 12
+        if raw < 10:
+            return 10
+        if raw > 15:
+            return 15
+        return raw
 
     @field_validator("task_queue_backend", mode="before")
     @classmethod

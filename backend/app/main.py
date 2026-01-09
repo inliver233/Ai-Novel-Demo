@@ -21,6 +21,7 @@ from app.db.migrations import ensure_db_schema
 from app.db.session import SessionLocal
 from app.llm.http_client import close_llm_http_client
 from app.models.user import User
+from app.services.auth_service import ensure_admin_user
 
 logger = logging.getLogger("ainovel")
 
@@ -69,12 +70,21 @@ def _ensure_local_user() -> None:
         db.close()
 
 
+def _ensure_admin_user() -> None:
+    db = SessionLocal()
+    try:
+        ensure_admin_user(db)
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     ensure_db_schema()
     _warn_sqlite_single_worker()
     _ensure_local_user()
+    _ensure_admin_user()
     yield
     close_llm_http_client()
 
