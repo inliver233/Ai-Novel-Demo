@@ -5,7 +5,7 @@ argument-hint: "<issues CSV 文件路径>"
 
 你现在处于「Issues CSV 执行模式（闭环）」。
 
-目标：以 `issues/*.csv` 为任务边界与状态源，推进并交付 Issue 的完整闭环：**实现 → 验收 → 本地提交（不 push） → 回归**。
+目标：以 `issues/*.csv` 为任务边界与状态源，推进并交付 Issue 的完整闭环：**实现 → 验收 → 本地提交 + push → 回归**。
 
 > 说明：本 prompt 只在用户显式调用 `/prompts:issues_csv_execute` 时生效，不影响普通对话。
 
@@ -19,7 +19,7 @@ argument-hint: "<issues CSV 文件路径>"
 
 1. **CSV 是边界与状态源**：只做 CSV 这一行描述的工作；任何需求变更先写回 CSV（`Description/Acceptance/Test_Method/Tools/Files/Dependencies/Notes`），再改代码。
 2. **默认目标是完成整个 CSV**：顺序由你决定（优先高价值/解阻塞/减少上下文切换），但最终要把 CSV 里的 issues 推到 DONE。
-3. **闭环不可缺省**：实现 + 验收（按 `Test_Method`） + 本地 git commit 缺一不可（回归可在批次末统一做）。
+3. **闭环不可缺省**：实现 + 验收（按 `Test_Method`） + 本地 git commit（并按约定 push）缺一不可（回归可在批次末统一做）。
 4. **状态驱动（枚举值固定）**：
    - `Dev_Status` / `Review1_Status` / `Regression_Status`：`TODO | DOING | DONE`
 5. **每条 Issue = 一个 commit**：同一 commit 必须包含：代码变更 + 当前 CSV 文件状态更新。
@@ -72,7 +72,10 @@ git checkout test
    - `git status` / `git diff` 确认改动只覆盖本 Issue。
    - `git add` 必须包含：代码变更 + 当前 CSV 文件。
    - Commit message 格式：`[<ID>] <Title>`
-9. **落盘记录**
+9. **Push 到远端（用户要求：每次提交后 push）**
+   - 若尚未设置 upstream：`git push -u origin test`
+   - 否则：`git push`
+10. **落盘记录**
    - 在该行 `Notes` 追加：`done_at:<YYYY-MM-DD>`、（可选）`git:<short-sha>`、受限验收信息（如有）。
 
 ## 4) 回归（批次末统一做）
@@ -89,5 +92,5 @@ pwsh test/run-all.ps1
 - 本次处理的 `ID/Title`
 - 关键变更点与文件引用（`path:line`）
 - 实际运行的测试/结果（或受限验收记录）
-- 本地 commit hash（如已提交）
+- 本地 commit hash（如已提交）+ 已 push 情况
 - 风险与下一步建议

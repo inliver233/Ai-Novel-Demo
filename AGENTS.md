@@ -61,6 +61,7 @@ git checkout test
 - Commit message：`[<ID>] <Title>`
 - 提交前自检：`git status` / `git diff` 只包含本 Issue 的改动
 - 必须 `git add`：代码改动 + 当前 CSV 文件（同一 commit）
+- 用户要求：每次提交后 push 到 GitHub 的 `test` 分支（首次：`git push -u origin test`；后续：`git push`）
 
 ## Testing strategy
 按变更选择**最小但可靠**的验证集；每条 Issue 必须在 CSV 里写清 `Test_Method`。
