@@ -10,6 +10,7 @@ from app.core.logging import exception_log_fields, log_event
 from app.llm.client import call_llm, call_llm_messages
 from app.llm.messages import ChatMessage
 from app.models.llm_preset import LLMPreset
+from app.services.memory_retrieval_service import placeholder_memory_retrieval_log
 from app.services.run_store import write_generation_run
 
 
@@ -55,6 +56,12 @@ def _parse_json_dict(value: str | None) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         return {}
     return parsed
+
+
+def _params_json_with_memory_retrieval_log(*, params_json: str, memory_retrieval_log_json: dict[str, Any]) -> str:
+    params = _parse_json_dict(params_json)
+    params["memory_retrieval_log_json"] = memory_retrieval_log_json
+    return json.dumps(params, ensure_ascii=False)
 
 
 def prepare_llm_call(preset: LLMPreset) -> PreparedLlmCall:
@@ -117,7 +124,12 @@ def call_llm_and_record(
     prompt_messages: list[ChatMessage] | None = None,
     prompt_render_log_json: str | None = None,
     llm_call: PreparedLlmCall,
+    memory_retrieval_log_json: dict[str, Any] | None = None,
 ) -> RecordedLlmResult:
+    run_params_json = _params_json_with_memory_retrieval_log(
+        params_json=llm_call.params_json,
+        memory_retrieval_log_json=memory_retrieval_log_json or placeholder_memory_retrieval_log(enabled=False),
+    )
     try:
         if prompt_messages is None:
             result = call_llm(
@@ -172,7 +184,7 @@ def call_llm_and_record(
             prompt_system=prompt_system,
             prompt_user=prompt_user,
             prompt_render_log_json=prompt_render_log_json,
-            params_json=llm_call.params_json,
+            params_json=run_params_json,
             output_text=raw_output,
             error_json=None,
         )
@@ -211,7 +223,7 @@ def call_llm_and_record(
             prompt_system=prompt_system,
             prompt_user=prompt_user,
             prompt_render_log_json=prompt_render_log_json,
-            params_json=llm_call.params_json,
+            params_json=run_params_json,
             output_text=None,
             error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),
         )
@@ -248,7 +260,7 @@ def call_llm_and_record(
             prompt_system=prompt_system,
             prompt_user=prompt_user,
             prompt_render_log_json=prompt_render_log_json,
-            params_json=llm_call.params_json,
+            params_json=run_params_json,
             output_text=None,
             error_json=json.dumps(
                 {"code": "INTERNAL_ERROR", "message": "服务器内部错误", "details": err_fields},
