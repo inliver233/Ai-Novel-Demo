@@ -24,7 +24,7 @@ test("ui: core pages navigate and render", async ({ page, request }) => {
   await expect(page.getByText("Provider", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "Prompt Studio" }).click();
-  await expect(page.getByText("Prompt Studio（beta）")).toBeVisible();
+  await expect(page.getByRole("button", { name: "一键启用推荐预设（大纲/章节）", exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "预览" }).click();
   await expect(page.getByRole("button", { name: "上一章", exact: true })).toBeVisible();
