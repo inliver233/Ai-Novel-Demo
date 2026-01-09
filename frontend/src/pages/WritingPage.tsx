@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
 import { MarkdownEditor } from "../components/atelier/MarkdownEditor";
@@ -35,6 +35,7 @@ export function WritingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedChapterId = searchParams.get("chapterId");
   const applyRunId = searchParams.get("applyRunId");
+  const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
   const wizard = useWizardProgress(projectId);
@@ -309,6 +310,17 @@ export function WritingPage() {
                     type="button"
                   >
                     分析
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={!projectId || loadingChapter || generating}
+                    onClick={() => {
+                      if (!projectId || !activeChapter) return;
+                      navigate(`/projects/${projectId}/chapter-analysis?chapterId=${activeChapter.id}`);
+                    }}
+                    type="button"
+                  >
+                    标注回溯
                   </button>
                   <button
                     className="btn btn-ghost text-accent hover:bg-accent/10"

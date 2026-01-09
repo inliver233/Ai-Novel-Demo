@@ -30,6 +30,7 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
   ["/outline", "大纲"],
   ["/wizard", "开工向导"],
   ["/writing", "写作"],
+  ["/chapter-analysis", "标注回溯"],
   ["/worldbook", "世界书"],
   ["/prompts", "模型配置"],
   ["/prompt-studio", "Prompt Studio"],

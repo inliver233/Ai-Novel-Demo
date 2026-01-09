@@ -1,32 +1,197 @@
-import { useParams, useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+
+import { AnnotatedText } from "../components/chapterAnalysis/AnnotatedText";
+import { MemorySidebar } from "../components/chapterAnalysis/MemorySidebar";
+import type { MemoryAnnotation } from "../components/chapterAnalysis/types";
+import { UI_COPY } from "../lib/uiCopy";
+import { createRequestSeqGuard } from "../lib/requestSeqGuard";
+import type { ApiError } from "../services/apiClient";
+import { apiJson } from "../services/apiClient";
+import type { Chapter } from "../types";
+import { useToast } from "../components/ui/toast";
 
 export function ChapterAnalysisPage() {
   const { projectId } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const chapterId = searchParams.get("chapterId");
+  const toast = useToast();
+  const navigate = useNavigate();
+
+  const [loading, setLoading] = useState(false);
+  const [chapter, setChapter] = useState<Chapter | null>(null);
+  const [annotations, setAnnotations] = useState<MemoryAnnotation[]>([]);
+  const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
+  const [scrollToAnnotationId, setScrollToAnnotationId] = useState<string | null>(null);
+  const loadGuardRef = useRef(createRequestSeqGuard());
+
+  useEffect(() => {
+    const guard = loadGuardRef.current;
+    return () => guard.invalidate();
+  }, []);
+
+  useEffect(() => {
+    loadGuardRef.current.invalidate();
+    setLoading(false);
+    setChapter(null);
+    setAnnotations([]);
+    setActiveAnnotationId(null);
+    setScrollToAnnotationId(null);
+  }, [chapterId]);
+
+  const refresh = useCallback(async () => {
+    if (!chapterId) return;
+
+    const seq = loadGuardRef.current.next();
+    setLoading(true);
+    try {
+      const [chapterRes, annotationsRes] = await Promise.all([
+        apiJson<{ chapter: Chapter }>(`/api/chapters/${chapterId}`),
+        apiJson<{ annotations: MemoryAnnotation[] }>(`/api/chapters/${chapterId}/annotations`),
+      ]);
+      if (!loadGuardRef.current.isLatest(seq)) return;
+
+      setChapter(chapterRes.data.chapter);
+      setAnnotations(annotationsRes.data.annotations ?? []);
+    } catch (e) {
+      if (!loadGuardRef.current.isLatest(seq)) return;
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      setChapter(null);
+      setAnnotations([]);
+    } finally {
+      if (loadGuardRef.current.isLatest(seq)) {
+        setLoading(false);
+      }
+    }
+  }, [chapterId, toast]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const content = chapter?.content_md ?? "";
+  const { validAnnotations, validIds, invalidCount } = useMemo(() => {
+    const valid: MemoryAnnotation[] = [];
+    const validIds = new Set<string>();
+    let invalid = 0;
+    const textLen = content.length;
+    for (const ann of annotations) {
+      const position = ann.position;
+      const length = ann.length;
+      const ok = position >= 0 && length > 0 && position + length <= textLen;
+      if (ok) {
+        valid.push(ann);
+        validIds.add(ann.id);
+      } else {
+        invalid += 1;
+      }
+    }
+    return { validAnnotations: valid, validIds, invalidCount: invalid };
+  }, [annotations, content]);
+
+  const selectAnnotation = useCallback(
+    (ann: MemoryAnnotation, opts?: { scroll?: boolean }) => {
+      setActiveAnnotationId(ann.id);
+      if (!opts?.scroll) return;
+      if (!validIds.has(ann.id)) return;
+      setScrollToAnnotationId(null);
+      window.requestAnimationFrame(() => setScrollToAnnotationId(ann.id));
+    },
+    [validIds],
+  );
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <div className="font-content text-2xl text-ink">章节标注回溯</div>
-      <div className="mt-2 text-sm text-subtext">
-        {projectId ? (
-          <>
-            project: <span className="font-mono">{projectId}</span>
-          </>
-        ) : (
-          "缺少 projectId"
-        )}
-        {chapterId ? (
-          <>
-            {" "}
-            / chapter: <span className="font-mono">{chapterId}</span>
-          </>
-        ) : null}
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-content text-2xl text-ink">章节标注回溯</div>
+          <div className="mt-1 text-xs text-subtext">
+            {chapter ? (
+              <>
+                第 {chapter.number} 章 · {(chapter.title ?? "").trim() || "（无标题）"}
+              </>
+            ) : chapterId ? (
+              <span className="font-mono">{chapterId}</span>
+            ) : (
+              "请从写作页进入（需要 chapterId）"
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={() => {
+              if (!projectId) return;
+              const next = new URLSearchParams();
+              if (chapterId) next.set("chapterId", chapterId);
+              const qs = next.toString();
+              navigate(qs ? `/projects/${projectId}/writing?${qs}` : `/projects/${projectId}/writing`);
+            }}
+          >
+            返回写作页
+          </button>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={() => void refresh()}
+            disabled={!chapterId || loading}
+          >
+            {loading ? UI_COPY.common.loading : "刷新"}
+          </button>
+          {chapterId ? (
+            <button
+              className="btn btn-ghost px-2 py-1 text-xs"
+              type="button"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams);
+                next.delete("chapterId");
+                setSearchParams(next, { replace: true });
+              }}
+            >
+              清除章节
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      <div className="mt-6 rounded-atelier border border-border bg-surface p-4 text-sm text-subtext">
-        此页面将在 Phase 2.5 完成：AnnotatedText 高亮 +
-        侧栏筛选。请从写作页的“章节分析”弹窗完成分析后，点击“保存到记忆库” → “打开标注页”进入。
+      {invalidCount > 0 ? (
+        <div className="rounded-atelier border border-accent/60 bg-surface p-3 text-sm text-ink">
+          有 {invalidCount} 条记忆未定位到正文，已从高亮中过滤（侧栏仍可查看）。
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+        <section className="min-h-0 rounded-atelier border border-border bg-surface p-3">
+          {loading ? (
+            <div className="p-3 text-sm text-subtext">{UI_COPY.common.loading}</div>
+          ) : !chapterId ? (
+            <div className="p-3 text-sm text-subtext">请从写作页进入：需要在 URL 上带 `?chapterId=...`。</div>
+          ) : !chapter ? (
+            <div className="p-3 text-sm text-subtext">未加载到章节。</div>
+          ) : !(chapter.content_md ?? "").trim() ? (
+            <div className="p-3 text-sm text-subtext">章节正文为空。</div>
+          ) : (
+            <div className="max-h-[calc(100vh-320px)] overflow-auto rounded-atelier border border-border bg-canvas p-4">
+              <AnnotatedText
+                content={content}
+                annotations={validAnnotations}
+                activeAnnotationId={activeAnnotationId}
+                scrollToAnnotationId={scrollToAnnotationId}
+                onAnnotationClick={(a) => selectAnnotation(a)}
+              />
+            </div>
+          )}
+        </section>
+
+        <MemorySidebar
+          annotations={annotations}
+          validIds={validIds}
+          activeAnnotationId={activeAnnotationId}
+          onSelect={(a) => selectAnnotation(a, { scroll: true })}
+        />
       </div>
     </div>
   );
