@@ -24,6 +24,7 @@ def _is_abs_path(value: str) -> bool:
 AppEnv = Literal["dev", "prod"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 TaskQueueBackend = Literal["rq", "inline"]
+CookieSameSite = Literal["lax", "strict", "none"]
 
 
 class Settings(BaseSettings):
@@ -33,6 +34,14 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     app_version: str = "0.1.0"
     secret_encryption_key: str | None = None
+
+    auth_session_signing_key: str | None = None
+    auth_dev_fallback_user_id: str | None = "local-user"
+    auth_session_ttl_seconds: int = 60 * 60 * 24 * 7
+    auth_refresh_threshold_seconds: int = 60 * 15
+    auth_cookie_user_id_name: str = "user_id"
+    auth_cookie_expire_at_name: str = "session_expire_at"
+    auth_cookie_samesite: CookieSameSite = "lax"
 
     task_queue_backend: TaskQueueBackend = "rq"
     redis_url: str = "redis://localhost:6379/0"
@@ -95,6 +104,60 @@ class Settings(BaseSettings):
     def _normalize_secret_encryption_key(cls, value: object) -> str | None:
         raw = str(value or "").strip()
         return raw or None
+
+    @field_validator("auth_session_signing_key", mode="before")
+    @classmethod
+    def _normalize_auth_session_signing_key(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("auth_dev_fallback_user_id", mode="before")
+    @classmethod
+    def _normalize_auth_dev_fallback_user_id(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("auth_session_ttl_seconds", mode="before")
+    @classmethod
+    def _normalize_auth_session_ttl_seconds(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 60 * 60 * 24 * 7
+        return raw
+
+    @field_validator("auth_refresh_threshold_seconds", mode="before")
+    @classmethod
+    def _normalize_auth_refresh_threshold_seconds(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 60 * 15
+        return raw
+
+    @field_validator("auth_cookie_user_id_name", mode="before")
+    @classmethod
+    def _normalize_auth_cookie_user_id_name(cls, value: object) -> str:
+        raw = str(value or "").strip()
+        return raw or "user_id"
+
+    @field_validator("auth_cookie_expire_at_name", mode="before")
+    @classmethod
+    def _normalize_auth_cookie_expire_at_name(cls, value: object) -> str:
+        raw = str(value or "").strip()
+        return raw or "session_expire_at"
+
+    @field_validator("auth_cookie_samesite", mode="before")
+    @classmethod
+    def _normalize_auth_cookie_samesite(cls, value: object) -> str:
+        raw = str(value or "").strip().lower()
+        if raw in ("lax", "strict", "none"):
+            return raw
+        return "lax"
 
     @field_validator("task_queue_backend", mode="before")
     @classmethod

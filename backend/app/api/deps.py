@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
@@ -18,12 +18,23 @@ from app.models.worldbook_entry import WorldBookEntry
 LOCAL_USER_ID = "local-user"
 
 
-def get_current_user_id() -> str:
-    return LOCAL_USER_ID
+def get_current_user_id(request: Request) -> str:
+    user_id = getattr(request.state, "user_id", None)
+    if isinstance(user_id, str) and user_id:
+        return user_id
+    raise AppError.unauthorized()
+
+
+def get_authenticated_user_id(request: Request) -> str:
+    user_id = getattr(request.state, "authenticated_user_id", None)
+    if isinstance(user_id, str) and user_id:
+        return user_id
+    raise AppError.unauthorized()
 
 
 DbDep = Annotated[Session, Depends(get_db)]
 UserIdDep = Annotated[str, Depends(get_current_user_id)]
+AuthenticatedUserIdDep = Annotated[str, Depends(get_authenticated_user_id)]
 
 
 def require_owned_project(db: Session, *, project_id: str, user_id: str) -> Project:

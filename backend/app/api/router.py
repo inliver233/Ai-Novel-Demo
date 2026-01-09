@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.routes import (
+    auth,
     batch_generation,
     chapter_analysis,
     chapters,
@@ -26,6 +27,7 @@ from app.api.routes import (
 api_router = APIRouter(prefix="/api")
 
 api_router.include_router(health.router, tags=["health"])
+api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(projects.router, tags=["projects"])
 api_router.include_router(memory.router, tags=["memory"])
 api_router.include_router(settings.router, tags=["settings"])

@@ -11,9 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.deps import LOCAL_USER_ID
 from app.api.router import api_router
 from app.core.config import settings
+from app.core.auth_session import decode_session_cookie
 from app.core.errors import AppError, error_payload
 from app.core.logging import configure_logging, exception_log_fields, log_event
 from app.core.request_id import new_request_id, reset_request_id, set_request_id
@@ -54,11 +54,16 @@ def _safe_error_details(details: object | None) -> dict | None:
 
 
 def _ensure_local_user() -> None:
+    if settings.app_env != "dev":
+        return
+    fallback_user_id = settings.auth_dev_fallback_user_id
+    if not fallback_user_id:
+        return
     db = SessionLocal()
     try:
-        user = db.get(User, LOCAL_USER_ID)
+        user = db.get(User, fallback_user_id)
         if user is None:
-            db.add(User(id=LOCAL_USER_ID, display_name="本地用户"))
+            db.add(User(id=fallback_user_id, display_name="本地用户"))
             db.commit()
     finally:
         db.close()
@@ -84,6 +89,30 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-LLM-Provider", "X-LLM-API-Key"],
     expose_headers=["X-Request-Id"],
 )
+
+
+@app.middleware("http")
+async def auth_session_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
+    request.state.user_id = None
+    request.state.authenticated_user_id = None
+    request.state.session_expire_at = None
+    request.state.auth_source = None
+
+    cookie_value = request.cookies.get(settings.auth_cookie_user_id_name)
+    session = decode_session_cookie(cookie_value) if cookie_value else None
+
+    if session is not None:
+        request.state.user_id = session.user_id
+        request.state.authenticated_user_id = session.user_id
+        request.state.session_expire_at = session.expires_at
+        request.state.auth_source = "session"
+    else:
+        fallback_user_id = settings.auth_dev_fallback_user_id if settings.app_env == "dev" else None
+        if fallback_user_id:
+            request.state.user_id = fallback_user_id
+            request.state.auth_source = "dev_fallback"
+
+    return await call_next(request)
 
 
 @app.middleware("http")

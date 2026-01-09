@@ -12,6 +12,14 @@ class AppError(Exception):
     details: dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
+    def unauthorized(message: str = "未登录", *, details: dict[str, Any] | None = None) -> "AppError":
+        return AppError(code="UNAUTHORIZED", message=message, status_code=401, details=details or {})
+
+    @staticmethod
+    def forbidden(message: str = "无权限", *, details: dict[str, Any] | None = None) -> "AppError":
+        return AppError(code="FORBIDDEN", message=message, status_code=403, details=details or {})
+
+    @staticmethod
     def not_found(message: str = "资源不存在", *, details: dict[str, Any] | None = None) -> "AppError":
         return AppError(code="NOT_FOUND", message=message, status_code=404, details=details or {})
 
@@ -34,4 +42,3 @@ def error_payload(*, request_id: str, code: str, message: str, details: dict[str
 
 def ok_payload(*, request_id: str, data: Any) -> dict[str, Any]:
     return {"ok": True, "data": data, "request_id": request_id}
-
