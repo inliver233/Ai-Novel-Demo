@@ -6,6 +6,7 @@ export function ChapterAnalysisModal(props: {
   open: boolean;
   analysisLoading: boolean;
   rewriteLoading: boolean;
+  applyLoading: boolean;
   analysisFocus: string;
   setAnalysisFocus: (value: string) => void;
   analysisResult: ChapterAnalyzeResult | null;
@@ -13,10 +14,11 @@ export function ChapterAnalysisModal(props: {
   setRewriteInstruction: (value: string) => void;
   onClose: () => void;
   onAnalyze: () => void;
+  onApplyAnalysisToMemory: () => void;
   onLocateInEditor: (excerpt: string) => void;
   onRewriteFromAnalysis: () => void;
 }) {
-  const busy = props.analysisLoading || props.rewriteLoading;
+  const busy = props.analysisLoading || props.rewriteLoading || props.applyLoading;
   return (
     <Modal
       open={props.open}
@@ -27,7 +29,9 @@ export function ChapterAnalysisModal(props: {
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="font-content text-xl text-ink">章节分析 / 建议</div>
-          <div className="mt-1 text-xs text-subtext">分析与重写只会写入“生成记录”，不会自动保存到章节。</div>
+          <div className="mt-1 text-xs text-subtext">
+            分析与重写只会写入“生成记录”；保存到记忆库会写入长期记忆（不影响章节正文）。
+          </div>
         </div>
         <button className="btn btn-secondary" onClick={props.onClose} disabled={busy} type="button">
           关闭
@@ -49,6 +53,14 @@ export function ChapterAnalysisModal(props: {
         <div className="flex flex-wrap items-center gap-2">
           <button className="btn btn-primary" disabled={busy} onClick={props.onAnalyze} type="button">
             {props.analysisLoading ? "分析中..." : props.analysisResult ? "重新分析" : "开始分析"}
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={!props.analysisResult || busy}
+            onClick={props.onApplyAnalysisToMemory}
+            type="button"
+          >
+            {props.applyLoading ? "保存中..." : "保存到记忆库"}
           </button>
           {props.analysisResult?.generation_run_id ? (
             <button

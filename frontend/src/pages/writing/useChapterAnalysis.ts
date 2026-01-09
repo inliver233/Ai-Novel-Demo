@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import type { ChapterAnalyzeResult, ChapterRewriteResult, GenerateForm } from "../../components/writing/types";
+import type { ToastApi } from "../../components/ui/toast";
 import { UI_COPY } from "../../lib/uiCopy";
 import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../../services/apiClient";
@@ -13,10 +15,7 @@ export function useChapterAnalysis(args: {
   genForm: GenerateForm;
   form: ChapterForm | null;
   setForm: React.Dispatch<React.SetStateAction<ChapterForm | null>>;
-  toast: {
-    toastError: (message: string, requestId?: string) => void;
-    toastSuccess: (message: string, requestId?: string) => void;
-  };
+  toast: ToastApi;
 }) {
   const { activeChapter, preset, genForm, form, setForm, toast } = args;
 
@@ -26,25 +25,32 @@ export function useChapterAnalysis(args: {
   const [analysisFocus, setAnalysisFocus] = useState("");
   const [rewriteInstruction, setRewriteInstruction] = useState("按分析建议重写，减少重复，保持叙事连续。");
   const [rewriteLoading, setRewriteLoading] = useState(false);
+  const [applyLoading, setApplyLoading] = useState(false);
   const analyzeGuardRef = useRef(createRequestSeqGuard());
   const rewriteGuardRef = useRef(createRequestSeqGuard());
+  const applyGuardRef = useRef(createRequestSeqGuard());
+  const navigate = useNavigate();
 
   useEffect(() => {
     const analyzeGuard = analyzeGuardRef.current;
     const rewriteGuard = rewriteGuardRef.current;
+    const applyGuard = applyGuardRef.current;
     return () => {
       analyzeGuard.invalidate();
       rewriteGuard.invalidate();
+      applyGuard.invalidate();
     };
   }, []);
 
   useEffect(() => {
     analyzeGuardRef.current.invalidate();
     rewriteGuardRef.current.invalidate();
+    applyGuardRef.current.invalidate();
     setOpen(false);
     setAnalysisResult(null);
     setAnalysisLoading(false);
     setRewriteLoading(false);
+    setApplyLoading(false);
   }, [activeChapter?.id]);
 
   const openModal = useCallback(() => setOpen(true), []);
@@ -176,6 +182,48 @@ export function useChapterAnalysis(args: {
     }
   }, [activeChapter, analysisResult?.analysis, form, genForm, preset, rewriteInstruction, setForm, toast]);
 
+  const applyAnalysisToMemory = useCallback(async () => {
+    if (!activeChapter || !form) return;
+    if (!analysisResult?.analysis) {
+      toast.toastError("请先完成章节分析");
+      return;
+    }
+
+    const seq = applyGuardRef.current.next();
+    setApplyLoading(true);
+    try {
+      const res = await apiJson<{
+        idempotent: boolean;
+        analysis_hash: string;
+        plot_analysis_id: string;
+        memories: unknown[];
+      }>(`/api/chapters/${activeChapter.id}/analysis/apply`, {
+        method: "POST",
+        body: JSON.stringify({
+          analysis: analysisResult.analysis,
+          draft_content_md: form.content_md,
+        }),
+      });
+      if (!applyGuardRef.current.isLatest(seq)) return;
+
+      const count = (res.data.memories ?? []).length;
+      toast.toastSuccess(`已生成 ${count} 条记忆（标注可用）`, res.request_id, {
+        label: "打开标注页",
+        onClick: () => {
+          navigate(`/projects/${activeChapter.project_id}/chapter-analysis?chapterId=${activeChapter.id}`);
+        },
+      });
+    } catch (e) {
+      if (!applyGuardRef.current.isLatest(seq)) return;
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      if (applyGuardRef.current.isLatest(seq)) {
+        setApplyLoading(false);
+      }
+    }
+  }, [activeChapter, analysisResult?.analysis, form, navigate, toast]);
+
   return {
     open,
     openModal,
@@ -189,5 +237,7 @@ export function useChapterAnalysis(args: {
     setRewriteInstruction,
     rewriteLoading,
     rewriteFromAnalysis,
+    applyLoading,
+    applyAnalysisToMemory,
   };
 }

@@ -438,6 +438,7 @@ export function WritingPage() {
         open={analysis.open}
         analysisLoading={analysis.analysisLoading}
         rewriteLoading={analysis.rewriteLoading}
+        applyLoading={analysis.applyLoading}
         analysisFocus={analysis.analysisFocus}
         setAnalysisFocus={analysis.setAnalysisFocus}
         analysisResult={analysis.analysisResult}
@@ -445,6 +446,7 @@ export function WritingPage() {
         setRewriteInstruction={analysis.setRewriteInstruction}
         onClose={analysis.closeModal}
         onAnalyze={() => void analysis.analyzeChapter()}
+        onApplyAnalysisToMemory={() => void analysis.applyAnalysisToMemory()}
         onLocateInEditor={locateInEditor}
         onRewriteFromAnalysis={() => void analysis.rewriteFromAnalysis()}
       />

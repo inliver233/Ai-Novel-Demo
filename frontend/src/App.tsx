@@ -11,6 +11,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { CharactersPage } from "./pages/CharactersPage";
 import { OutlinePage } from "./pages/OutlinePage";
 import { WritingPage } from "./pages/WritingPage";
+import { ChapterAnalysisPage } from "./pages/ChapterAnalysisPage";
 import { PreviewPage } from "./pages/PreviewPage";
 import { PromptsPage } from "./pages/PromptsPage";
 import { PromptStudioPage } from "./pages/PromptStudioPage";
@@ -51,6 +52,10 @@ const router = createBrowserRouter([
           {
             path: "writing",
             element: <WritingPage />,
+          },
+          {
+            path: "chapter-analysis",
+            element: <ChapterAnalysisPage />,
           },
           {
             path: "preview",
