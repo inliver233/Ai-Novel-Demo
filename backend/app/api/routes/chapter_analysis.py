@@ -4,13 +4,17 @@ import json
 import logging
 
 from fastapi import APIRouter, Header, Request
+from sqlalchemy import select
 
 from app.api.deps import DbDep, UserIdDep, require_owned_chapter
+from app.core.logging import log_event
 from app.core.errors import AppError, ok_payload
 from app.db.session import SessionLocal
 from app.models.llm_preset import LLMPreset
 from app.models.project import Project
+from app.models.story_memory import StoryMemory
 from app.schemas.chapter_analysis import ChapterAnalyzeRequest, ChapterAnalysisApplyRequest, ChapterRewriteRequest
+from app.services.annotations_service import build_annotations_from_story_memories
 from app.services.chapter_context_service import build_chapter_analyze_render_values, build_chapter_rewrite_render_values
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.llm_key_resolver import resolve_api_key_for_project
@@ -237,3 +241,40 @@ def apply_chapter_analysis_route(
         draft_content_md=content_md,
     )
     return ok_payload(request_id=request_id, data=out)
+
+
+@router.get("/chapters/{chapter_id}/annotations")
+def get_chapter_annotations(
+    request: Request,
+    db: DbDep,
+    chapter_id: str,
+    user_id: UserIdDep,
+) -> dict:
+    request_id = request.state.request_id
+    chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+
+    memories = (
+        db.execute(
+            select(StoryMemory)
+            .where(StoryMemory.project_id == chapter.project_id, StoryMemory.chapter_id == chapter_id)
+            .order_by(StoryMemory.importance_score.desc(), StoryMemory.created_at.asc())
+        )
+        .scalars()
+        .all()
+    )
+
+    annotations, stats = build_annotations_from_story_memories(memories, content_md=chapter.content_md or "")
+    if stats.get("need_fallback") or stats.get("clamped"):
+        log_event(
+            logger,
+            "info",
+            annotations={
+                "chapter_id": chapter_id,
+                "need_fallback": stats.get("need_fallback", 0),
+                "attempted": stats.get("attempted", 0),
+                "found": stats.get("found", 0),
+                "clamped": stats.get("clamped", 0),
+            },
+        )
+
+    return ok_payload(request_id=request_id, data={"annotations": annotations})
