@@ -9,6 +9,8 @@ from app.models.project import Project
 from app.models.project_settings import ProjectSettings
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
+from app.models.plot_analysis import PlotAnalysis
+from app.models.story_memory import StoryMemory
 from app.models.user import User
 from app.models.worldbook_entry import WorldBookEntry
 
@@ -25,6 +27,8 @@ __all__ = [
     "ProjectSettings",
     "PromptBlock",
     "PromptPreset",
+    "PlotAnalysis",
+    "StoryMemory",
     "User",
     "WorldBookEntry",
 ]

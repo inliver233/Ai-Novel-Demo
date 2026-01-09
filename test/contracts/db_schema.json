@@ -975,6 +975,141 @@
         }
       ]
     },
+    "plot_analysis": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "analysis_json",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "analysis_report_md",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "chapter_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "coherence_score",
+          "notnull": 0,
+          "pk": 0,
+          "type": "FLOAT"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "engagement_score",
+          "notnull": 0,
+          "pk": 0,
+          "type": "FLOAT"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "overall_quality_score",
+          "notnull": 0,
+          "pk": 0,
+          "type": "FLOAT"
+        },
+        {
+          "dflt_value": null,
+          "name": "pacing_score",
+          "notnull": 0,
+          "pk": 0,
+          "type": "FLOAT"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "chapter_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "chapters",
+          "to": "id"
+        },
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id",
+            "chapter_id"
+          ],
+          "name": "ix_plot_analysis_project_id_chapter_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_plot_analysis_project_id_chapter_id ON plot_analysis (project_id, chapter_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "created_at"
+          ],
+          "name": "ix_plot_analysis_project_id_created_at",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_plot_analysis_project_id_created_at ON plot_analysis (project_id, created_at)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_plot_analysis_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        },
+        {
+          "columns": [
+            "chapter_id"
+          ],
+          "name": "sqlite_autoindex_plot_analysis_2",
+          "origin": "u",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
     "project_settings": {
       "checks": [],
       "columns": [
@@ -1402,6 +1537,199 @@
             "id"
           ],
           "name": "sqlite_autoindex_prompt_presets_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "story_memories": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "chapter_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "content",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "foreshadow_resolved_at_chapter_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "full_context_md",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "importance_score",
+          "notnull": 1,
+          "pk": 0,
+          "type": "FLOAT"
+        },
+        {
+          "dflt_value": null,
+          "name": "is_foreshadow",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "memory_type",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "metadata_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "story_timeline",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "tags_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "text_length",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "text_position",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "title",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "chapter_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "chapters",
+          "to": "id"
+        },
+        {
+          "from": "foreshadow_resolved_at_chapter_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "chapters",
+          "to": "id"
+        },
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id",
+            "chapter_id"
+          ],
+          "name": "ix_story_memories_project_id_chapter_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_story_memories_project_id_chapter_id ON story_memories (project_id, chapter_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "memory_type",
+            "importance_score"
+          ],
+          "name": "ix_story_memories_project_id_memory_type_importance",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_story_memories_project_id_memory_type_importance ON story_memories (project_id, memory_type, importance_score)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "story_timeline"
+          ],
+          "name": "ix_story_memories_project_id_story_timeline",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_story_memories_project_id_story_timeline ON story_memories (project_id, story_timeline)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_story_memories_1",
           "origin": "pk",
           "partial": 0,
           "sql": null,
