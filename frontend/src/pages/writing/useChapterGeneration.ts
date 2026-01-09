@@ -33,6 +33,7 @@ const DEFAULT_GEN_FORM: GenerateForm = {
   stream: false,
   plan_first: false,
   post_edit: false,
+  memory_injection_enabled: false,
   context: {
     include_world_setting: true,
     include_style_guide: true,

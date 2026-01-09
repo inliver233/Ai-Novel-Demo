@@ -10,6 +10,7 @@ import { BatchGenerationModal } from "../components/writing/BatchGenerationModal
 import { ChapterListPanel } from "../components/writing/ChapterListPanel";
 import { CreateChapterDialog } from "../components/writing/CreateChapterDialog";
 import { ChapterAnalysisModal } from "../components/writing/ChapterAnalysisModal";
+import { ContextPreviewDrawer } from "../components/writing/ContextPreviewDrawer";
 import { GenerationHistoryDrawer } from "../components/writing/GenerationHistoryDrawer";
 import { WritingToolbar } from "../components/writing/WritingToolbar";
 import { useConfirm } from "../components/ui/confirm";
@@ -90,6 +91,7 @@ export function WritingPage() {
   const [contentEditorTab, setContentEditorTab] = useState<"edit" | "preview">("edit");
 
   const [aiOpen, setAiOpen] = useState(false);
+  const [contextPreviewOpen, setContextPreviewOpen] = useState(false);
   const autoGenerateNextRef = useRef<{ chapterId: string; mode: "replace" | "append" } | null>(null);
 
   useEffect(() => {
@@ -265,6 +267,7 @@ export function WritingPage() {
         onOpenChapterList={() => setChapterListOpen(true)}
         onOpenBatch={batch.openModal}
         onOpenHistory={history.openDrawer}
+        onOpenContextPreview={() => setContextPreviewOpen(true)}
         onCreateChapter={chapterCrud.openCreate}
       />
 
@@ -490,6 +493,12 @@ export function WritingPage() {
         onGenerateAppend={() => void generate("append")}
         onGenerateReplace={() => void generate("replace")}
         onCancelGenerate={abortGenerate}
+      />
+
+      <ContextPreviewDrawer
+        open={contextPreviewOpen}
+        onClose={() => setContextPreviewOpen(false)}
+        projectId={projectId}
       />
 
       {generating && genForm.stream && !aiOpen ? (

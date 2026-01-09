@@ -1,5 +1,6 @@
 import { List } from "lucide-react";
 
+import { UI_COPY } from "../../lib/uiCopy";
 import type { OutlineListItem } from "../../types";
 
 export function WritingToolbar(props: {
@@ -11,6 +12,7 @@ export function WritingToolbar(props: {
   onOpenChapterList: () => void;
   onOpenBatch: () => void;
   onOpenHistory: () => void;
+  onOpenContextPreview: () => void;
   onCreateChapter: () => void;
 }) {
   return (
@@ -44,6 +46,9 @@ export function WritingToolbar(props: {
           </button>
           <button className="btn btn-secondary" onClick={props.onOpenHistory} type="button">
             生成记录
+          </button>
+          <button className="btn btn-secondary" onClick={props.onOpenContextPreview} type="button">
+            {UI_COPY.writing.contextPreview}
           </button>
           <button className="btn btn-primary" onClick={props.onCreateChapter} type="button">
             新增章节

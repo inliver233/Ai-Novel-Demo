@@ -10,6 +10,7 @@ export type GenerateForm = {
   stream: boolean;
   plan_first: boolean;
   post_edit: boolean;
+  memory_injection_enabled: boolean;
   context: {
     include_world_setting: boolean;
     include_style_guide: boolean;
@@ -20,6 +21,16 @@ export type GenerateForm = {
     character_ids: string[];
     previous_chapter: "none" | "summary" | "content" | "tail";
   };
+};
+
+export type MemoryContextPack = {
+  worldbook: Record<string, unknown>;
+  story_memory: Record<string, unknown>;
+  structured: Record<string, unknown>;
+  vector_rag: Record<string, unknown>;
+  graph: Record<string, unknown>;
+  fractal: Record<string, unknown>;
+  logs: unknown[];
 };
 
 export type GenerationRun = {

@@ -1,6 +1,7 @@
 import { useEffect, type Dispatch, type SetStateAction } from "react";
 
 import { Drawer } from "../ui/Drawer";
+import { UI_COPY } from "../../lib/uiCopy";
 import type { Character, LLMPreset } from "../../types";
 import type { GenerateForm } from "./types";
 
@@ -94,6 +95,21 @@ export function AiGenerateDrawer(props: Props) {
               type="checkbox"
             />
           </label>
+
+          <div className="mt-2">
+            <label className="flex items-center justify-between gap-3 text-sm text-ink">
+              <span>{UI_COPY.writing.memoryInjectionToggle}</span>
+              <input
+                className="checkbox"
+                checked={props.genForm.memory_injection_enabled}
+                disabled={props.generating}
+                name="memory_injection_enabled"
+                onChange={(e) => props.setGenForm((v) => ({ ...v, memory_injection_enabled: e.target.checked }))}
+                type="checkbox"
+              />
+            </label>
+            <div className="mt-1 text-[11px] text-subtext">{UI_COPY.writing.memoryInjectionHint}</div>
+          </div>
 
           <label className="grid gap-1">
             <span className="text-xs text-subtext">目标字数（中文按字数=字符数）</span>
