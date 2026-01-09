@@ -7,7 +7,7 @@ import time
 from fastapi import APIRouter, Header, Request
 from sqlalchemy import select
 
-from app.api.deps import DbDep, UserIdDep, require_owned_project
+from app.api.deps import DbDep, UserIdDep, require_project_editor, require_project_viewer
 from app.core.errors import AppError, ok_payload
 from app.core.logging import log_event
 from app.db.session import SessionLocal
@@ -42,8 +42,16 @@ logger = logging.getLogger("ainovel")
 @router.get("/projects/{project_id}/outline")
 def get_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
     request_id = request.state.request_id
-    project = require_owned_project(db, project_id=project_id, user_id=user_id)
-    row = ensure_active_outline(db, project=project)
+    project = require_project_viewer(db, project_id=project_id, user_id=user_id)
+    row = db.get(Outline, project.active_outline_id) if project.active_outline_id else None
+    if row is None:
+        row = (
+            db.execute(select(Outline).where(Outline.project_id == project_id).order_by(Outline.updated_at.desc()).limit(1))
+            .scalars()
+            .first()
+        )
+    if row is None:
+        raise AppError.not_found()
     structure = None
     if row.structure_json:
         try:
@@ -65,7 +73,7 @@ def get_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str
 @router.put("/projects/{project_id}/outline")
 def put_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: OutlineUpdate) -> dict:
     request_id = request.state.request_id
-    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    project = require_project_editor(db, project_id=project_id, user_id=user_id)
     row = ensure_active_outline(db, project=project)
 
     if body.title is not None:
@@ -114,7 +122,7 @@ def generate_outline(
 
     db = SessionLocal()
     try:
-        project = require_owned_project(db, project_id=project_id, user_id=user_id)
+        project = require_project_editor(db, project_id=project_id, user_id=user_id)
         preset = db.get(LLMPreset, project_id)
         if preset is None:
             raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
@@ -263,15 +271,13 @@ def generate_outline_stream(
 
         db = SessionLocal()
         try:
-            project = require_owned_project(db, project_id=project_id, user_id=user_id)
+            project = require_project_editor(db, project_id=project_id, user_id=user_id)
             preset = db.get(LLMPreset, project_id)
             if preset is None:
                 raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
             if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
                 raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
-            resolved_api_key = resolve_api_key_for_project(
-                db, project=project, user_id=user_id, header_api_key=x_llm_api_key
-            )
+            resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
 
             settings_row = db.get(ProjectSettings, project_id)
             world_setting = (settings_row.world_setting if settings_row else "") or ""
@@ -288,7 +294,6 @@ def generate_outline_stream(
             characters_text = format_characters(chars)
 
             requirements_text = json.dumps(body.requirements or {}, ensure_ascii=False, indent=2)
-
             values = {
                 "project_name": project.name or "",
                 "genre": project.genre or "",
@@ -315,7 +320,6 @@ def generate_outline_stream(
                 provider=preset.provider,
             )
             prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
-
             llm_call = prepare_llm_call(preset)
         except GeneratorExit:
             return

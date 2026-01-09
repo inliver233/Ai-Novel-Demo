@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, Header, Request
 from sqlalchemy import select
 
-from app.api.deps import DbDep, UserIdDep, require_owned_chapter
+from app.api.deps import DbDep, UserIdDep, require_chapter_editor, require_chapter_viewer
 from app.core.logging import log_event
 from app.core.errors import AppError, ok_payload
 from app.db.session import SessionLocal
@@ -50,7 +50,7 @@ def analyze_chapter(
 
     db = SessionLocal()
     try:
-        chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+        chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
         project_id = chapter.project_id
         project = db.get(Project, project_id)
         if project is None:
@@ -141,7 +141,7 @@ def rewrite_chapter(
 
     db = SessionLocal()
     try:
-        chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+        chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
         project_id = chapter.project_id
         project = db.get(Project, project_id)
         if project is None:
@@ -227,7 +227,7 @@ def apply_chapter_analysis_route(
     user_id: UserIdDep,
 ) -> dict:
     request_id = request.state.request_id
-    chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+    chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
     content_md = body.draft_content_md if body.draft_content_md is not None else (chapter.content_md or "")
 
     out = apply_plot_analysis(
@@ -251,7 +251,7 @@ def get_chapter_annotations(
     user_id: UserIdDep,
 ) -> dict:
     request_id = request.state.request_id
-    chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+    chapter = require_chapter_viewer(db, chapter_id=chapter_id, user_id=user_id)
 
     memories = (
         db.execute(

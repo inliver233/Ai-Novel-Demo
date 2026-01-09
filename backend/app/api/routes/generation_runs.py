@@ -5,7 +5,7 @@ import json
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import select
 
-from app.api.deps import DbDep, UserIdDep, require_owned_generation_run, require_owned_project
+from app.api.deps import DbDep, UserIdDep, require_generation_run_viewer, require_project_viewer
 from app.core.errors import ok_payload
 from app.models.generation_run import GenerationRun
 from app.schemas.generation_runs import GenerationRunOut
@@ -22,7 +22,7 @@ def list_runs(
     limit: int = Query(default=5, ge=1, le=50),
 ) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_viewer(db, project_id=project_id, user_id=user_id)
     rows = (
         db.execute(
             select(GenerationRun)
@@ -77,7 +77,7 @@ def list_runs(
 @router.get("/generation_runs/{run_id}")
 def get_run(request: Request, db: DbDep, user_id: UserIdDep, run_id: str) -> dict:
     request_id = request.state.request_id
-    row = require_owned_generation_run(db, run_id=run_id, user_id=user_id)
+    row = require_generation_run_viewer(db, run_id=run_id, user_id=user_id)
     params = {}
     if row.params_json:
         try:

@@ -9,7 +9,15 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import DbDep, UserIdDep, require_owned_chapter, require_owned_outline, require_owned_project
+from app.api.deps import (
+    DbDep,
+    UserIdDep,
+    require_chapter_editor,
+    require_chapter_viewer,
+    require_outline_viewer,
+    require_project_editor,
+    require_project_viewer,
+)
 from app.core.errors import AppError, ok_payload
 from app.core.logging import exception_log_fields, log_event
 from app.db.session import SessionLocal
@@ -141,14 +149,16 @@ def list_chapters(
     outline_id: str | None = Query(default=None),
 ) -> dict:
     request_id = request.state.request_id
-    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    project = require_project_viewer(db, project_id=project_id, user_id=user_id)
     if outline_id:
-        outline = require_owned_outline(db, outline_id=outline_id, user_id=user_id)
+        outline = require_outline_viewer(db, outline_id=outline_id, user_id=user_id)
         if outline.project_id != project_id:
             raise AppError.validation("outline_id 不属于当前项目")
         target_outline_id = outline.id
+    elif project.active_outline_id:
+        target_outline_id = project.active_outline_id
     else:
-        target_outline_id = ensure_active_outline(db, project=project).id
+        return ok_payload(request_id=request_id, data={"chapters": []})
 
     rows = (
         db.execute(
@@ -172,9 +182,9 @@ def create_chapter(
     outline_id: str | None = Query(default=None),
 ) -> dict:
     request_id = request.state.request_id
-    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    project = require_project_editor(db, project_id=project_id, user_id=user_id)
     if outline_id:
-        outline = require_owned_outline(db, outline_id=outline_id, user_id=user_id)
+        outline = require_outline_viewer(db, outline_id=outline_id, user_id=user_id)
         if outline.project_id != project_id:
             raise AppError.validation("outline_id 不属于当前项目")
         target_outline_id = outline.id
@@ -210,9 +220,9 @@ def bulk_create(
     outline_id: str | None = Query(default=None),
 ) -> dict:
     request_id = request.state.request_id
-    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    project = require_project_editor(db, project_id=project_id, user_id=user_id)
     if outline_id:
-        outline = require_owned_outline(db, outline_id=outline_id, user_id=user_id)
+        outline = require_outline_viewer(db, outline_id=outline_id, user_id=user_id)
         if outline.project_id != project_id:
             raise AppError.validation("outline_id 不属于当前项目")
         target_outline_id = outline.id
@@ -263,14 +273,14 @@ def bulk_create(
 @router.get("/chapters/{chapter_id}")
 def get_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: str) -> dict:
     request_id = request.state.request_id
-    row = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+    row = require_chapter_viewer(db, chapter_id=chapter_id, user_id=user_id)
     return ok_payload(request_id=request_id, data={"chapter": ChapterOut.model_validate(row).model_dump()})
 
 
 @router.put("/chapters/{chapter_id}")
 def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: str, body: ChapterUpdate) -> dict:
     request_id = request.state.request_id
-    row = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+    row = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
 
     if body.title is not None:
         row.title = body.title
@@ -291,7 +301,7 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
 @router.delete("/chapters/{chapter_id}")
 def delete_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: str) -> dict:
     request_id = request.state.request_id
-    row = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+    row = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
     db.delete(row)
     db.commit()
     return ok_payload(request_id=request_id, data={})
@@ -317,7 +327,7 @@ def plan_chapter(
 
     db = SessionLocal()
     try:
-        chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+        chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
         project_id = chapter.project_id
         if body.context.require_sequential:
             missing_numbers = _find_missing_prereq_numbers(
@@ -491,7 +501,7 @@ def generate_chapter(
 
     db = SessionLocal()
     try:
-        chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+        chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
         project_id = chapter.project_id
         if body.context.require_sequential:
             missing_numbers = _find_missing_prereq_numbers(
@@ -688,7 +698,7 @@ def generate_chapter_stream(
 
     if body.context.require_sequential:
         with SessionLocal() as db:
-            chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+            chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
             missing_numbers = _find_missing_prereq_numbers(
                 db,
                 project_id=chapter.project_id,
@@ -726,7 +736,7 @@ def generate_chapter_stream(
 
         db = SessionLocal()
         try:
-            chapter = require_owned_chapter(db, chapter_id=chapter_id, user_id=user_id)
+            chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
             project_id = chapter.project_id
             project = db.get(Project, project_id)
             if project is None:

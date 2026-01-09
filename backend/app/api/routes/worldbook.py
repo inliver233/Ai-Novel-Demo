@@ -5,7 +5,13 @@ import json
 from fastapi import APIRouter, Request
 from sqlalchemy import select
 
-from app.api.deps import DbDep, UserIdDep, require_owned_project, require_owned_worldbook_entry
+from app.api.deps import (
+    DbDep,
+    UserIdDep,
+    require_project_editor,
+    require_project_viewer,
+    require_worldbook_entry_editor,
+)
 from app.core.errors import ok_payload
 from app.db.utils import new_id
 from app.models.worldbook_entry import WorldBookEntry
@@ -57,7 +63,7 @@ def _to_out(row: WorldBookEntry) -> dict:
 @router.get("/projects/{project_id}/worldbook_entries")
 def list_worldbook_entries(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_viewer(db, project_id=project_id, user_id=user_id)
 
     rows = (
         db.execute(select(WorldBookEntry).where(WorldBookEntry.project_id == project_id).order_by(WorldBookEntry.updated_at.desc()))
@@ -72,7 +78,7 @@ def create_worldbook_entry(
     request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: WorldBookEntryCreate
 ) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_editor(db, project_id=project_id, user_id=user_id)
 
     keywords = [k.strip() for k in (body.keywords or []) if isinstance(k, str) and k.strip()]
     keywords_json = json.dumps(keywords, ensure_ascii=False) if keywords else "[]"
@@ -100,7 +106,7 @@ def update_worldbook_entry(
     request: Request, db: DbDep, user_id: UserIdDep, entry_id: str, body: WorldBookEntryUpdate
 ) -> dict:
     request_id = request.state.request_id
-    row = require_owned_worldbook_entry(db, entry_id=entry_id, user_id=user_id)
+    row = require_worldbook_entry_editor(db, entry_id=entry_id, user_id=user_id)
 
     if body.title is not None:
         row.title = body.title
@@ -130,7 +136,7 @@ def update_worldbook_entry(
 @router.delete("/worldbook_entries/{entry_id}")
 def delete_worldbook_entry(request: Request, db: DbDep, user_id: UserIdDep, entry_id: str) -> dict:
     request_id = request.state.request_id
-    row = require_owned_worldbook_entry(db, entry_id=entry_id, user_id=user_id)
+    row = require_worldbook_entry_editor(db, entry_id=entry_id, user_id=user_id)
     db.delete(row)
     db.commit()
     return ok_payload(request_id=request_id, data={})
@@ -139,7 +145,7 @@ def delete_worldbook_entry(request: Request, db: DbDep, user_id: UserIdDep, entr
 @router.post("/projects/{project_id}/worldbook_entries/preview_trigger")
 def preview_trigger(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: WorldBookPreviewTriggerRequest) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_viewer(db, project_id=project_id, user_id=user_id)
 
     result = preview_worldbook_trigger(
         db=db,

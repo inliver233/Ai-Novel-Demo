@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Header, Request
 
-from app.api.deps import UserIdDep, require_owned_llm_profile, require_owned_project
+from app.api.deps import UserIdDep, require_owned_llm_profile, require_project_editor
 from app.core.errors import AppError, ok_payload
 from app.db.session import SessionLocal
 from app.llm.client import call_llm
@@ -30,7 +30,7 @@ def llm_test(
     else:
         db = SessionLocal()
         try:
-            project = require_owned_project(db, project_id=body.project_id, user_id=user_id) if body.project_id else None
+            project = require_project_editor(db, project_id=body.project_id, user_id=user_id) if body.project_id else None
             profile_id = (body.profile_id or "").strip() or (project.llm_profile_id if project is not None else None)
             profile = require_owned_llm_profile(db, profile_id=profile_id, user_id=user_id) if profile_id else None
             if profile is not None and profile.provider != body.provider:

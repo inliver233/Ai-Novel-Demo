@@ -4,7 +4,7 @@ import json
 
 from fastapi import APIRouter, Request
 
-from app.api.deps import DbDep, UserIdDep, require_owned_project
+from app.api.deps import DbDep, UserIdDep, require_project_editor
 from app.core.errors import AppError, ok_payload
 from app.llm.capabilities import max_context_tokens_limit, max_output_tokens_limit, recommended_max_tokens
 from app.llm.utils import default_max_tokens, normalize_base_url
@@ -72,7 +72,7 @@ def _to_out(row: LLMPreset) -> dict:
 @router.get("/projects/{project_id}/llm_preset")
 def get_llm_preset(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_editor(db, project_id=project_id, user_id=user_id)
     row = db.get(LLMPreset, project_id)
     if row is None:
         row = _default_preset(project_id)
@@ -91,7 +91,7 @@ def put_llm_preset(
     body: LLMPresetPutRequest,
 ) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_editor(db, project_id=project_id, user_id=user_id)
 
     base_url = body.base_url
     if body.provider in ("openai", "openai_responses"):

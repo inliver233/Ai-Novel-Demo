@@ -5,7 +5,7 @@ import json
 from fastapi import APIRouter, Request
 from sqlalchemy import select
 
-from app.api.deps import DbDep, UserIdDep, require_owned_project
+from app.api.deps import DbDep, UserIdDep, require_project_editor
 from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id, utc_now
 from app.models.prompt_block import PromptBlock
@@ -79,7 +79,7 @@ def _block_to_out(row: PromptBlock) -> dict:
 @router.get("/projects/{project_id}/prompt_presets")
 def list_prompt_presets(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_editor(db, project_id=project_id, user_id=user_id)
 
     # Ensure baseline presets exist (idempotent).
     ensure_default_plan_preset(db, project_id=project_id)
@@ -102,7 +102,7 @@ def list_prompt_presets(request: Request, db: DbDep, user_id: UserIdDep, project
 @router.post("/projects/{project_id}/prompt_presets")
 def create_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: PromptPresetCreate) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_editor(db, project_id=project_id, user_id=user_id)
 
     row = PromptPreset(
         id=new_id(),
@@ -124,7 +124,7 @@ def get_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, preset_id
     preset = db.get(PromptPreset, preset_id)
     if preset is None:
         raise AppError.not_found()
-    require_owned_project(db, project_id=preset.project_id, user_id=user_id)
+    require_project_editor(db, project_id=preset.project_id, user_id=user_id)
 
     blocks = (
         db.execute(select(PromptBlock).where(PromptBlock.preset_id == preset_id).order_by(PromptBlock.injection_order.asc()))
@@ -143,7 +143,7 @@ def update_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, preset
     preset = db.get(PromptPreset, preset_id)
     if preset is None:
         raise AppError.not_found()
-    require_owned_project(db, project_id=preset.project_id, user_id=user_id)
+    require_project_editor(db, project_id=preset.project_id, user_id=user_id)
 
     if body.name is not None:
         preset.name = body.name
@@ -165,7 +165,7 @@ def delete_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, preset
     preset = db.get(PromptPreset, preset_id)
     if preset is None:
         raise AppError.not_found()
-    require_owned_project(db, project_id=preset.project_id, user_id=user_id)
+    require_project_editor(db, project_id=preset.project_id, user_id=user_id)
     db.delete(preset)
     db.commit()
     return ok_payload(request_id=request_id, data={})
@@ -177,7 +177,7 @@ def create_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, preset_
     preset = db.get(PromptPreset, preset_id)
     if preset is None:
         raise AppError.not_found()
-    require_owned_project(db, project_id=preset.project_id, user_id=user_id)
+    require_project_editor(db, project_id=preset.project_id, user_id=user_id)
     row = PromptBlock(
         id=new_id(),
         preset_id=preset_id,
@@ -211,7 +211,7 @@ def update_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, block_i
     preset = db.get(PromptPreset, block.preset_id)
     if preset is None:
         raise AppError.not_found()
-    require_owned_project(db, project_id=preset.project_id, user_id=user_id)
+    require_project_editor(db, project_id=preset.project_id, user_id=user_id)
 
     if body.identifier is not None:
         block.identifier = body.identifier
@@ -255,7 +255,7 @@ def delete_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, block_i
     preset = db.get(PromptPreset, block.preset_id)
     if preset is None:
         raise AppError.not_found()
-    require_owned_project(db, project_id=preset.project_id, user_id=user_id)
+    require_project_editor(db, project_id=preset.project_id, user_id=user_id)
 
     db.delete(block)
     preset.updated_at = utc_now()
@@ -275,7 +275,7 @@ def reorder_prompt_blocks(
     preset = db.get(PromptPreset, preset_id)
     if preset is None:
         raise AppError.not_found()
-    require_owned_project(db, project_id=preset.project_id, user_id=user_id)
+    require_project_editor(db, project_id=preset.project_id, user_id=user_id)
 
     blocks = (
         db.execute(select(PromptBlock).where(PromptBlock.preset_id == preset_id).order_by(PromptBlock.injection_order.asc()))
@@ -319,7 +319,7 @@ def export_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, preset
     preset = db.get(PromptPreset, preset_id)
     if preset is None:
         raise AppError.not_found()
-    require_owned_project(db, project_id=preset.project_id, user_id=user_id)
+    require_project_editor(db, project_id=preset.project_id, user_id=user_id)
 
     blocks = (
         db.execute(select(PromptBlock).where(PromptBlock.preset_id == preset_id).order_by(PromptBlock.injection_order.asc()))
@@ -360,7 +360,7 @@ def export_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, preset
 @router.post("/projects/{project_id}/prompt_presets/import")
 def import_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: PromptPresetImportRequest) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_editor(db, project_id=project_id, user_id=user_id)
 
     preset = PromptPreset(
         id=new_id(),
@@ -400,7 +400,7 @@ def import_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, projec
 @router.post("/projects/{project_id}/prompt_preview")
 def preview_prompt(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: PromptPreviewRequest) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_editor(db, project_id=project_id, user_id=user_id)
 
     allowed_tasks = {"outline_generate", "chapter_generate", "plan_chapter", "post_edit", "chapter_analyze", "chapter_rewrite"}
     if body.task not in allowed_tasks:

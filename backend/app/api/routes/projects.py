@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from sqlalchemy import case, func, select
 
-from app.api.deps import DbDep, UserIdDep, require_owned_llm_profile, require_owned_outline, require_owned_project
+from app.api.deps import DbDep, UserIdDep, require_outline_viewer, require_owned_llm_profile, require_project_owner, require_project_viewer
 from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id
 from app.llm.utils import default_max_tokens, is_default_like_max_tokens, normalize_base_url
@@ -13,6 +13,7 @@ from app.models.llm_profile import LLMProfile
 from app.models.llm_preset import LLMPreset
 from app.models.outline import Outline
 from app.models.project import Project
+from app.models.project_membership import ProjectMembership
 from app.models.project_settings import ProjectSettings
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
 from app.services.prompt_presets import ensure_default_chapter_preset, ensure_default_outline_preset
@@ -25,22 +26,25 @@ PROJECTS_SUMMARY_OUTLINE_MAX_CHARS = 2048
 @router.get("/projects")
 def list_projects(request: Request, db: DbDep, user_id: UserIdDep) -> dict:
     request_id = request.state.request_id
-    projects = (
-        db.execute(select(Project).where(Project.owner_user_id == user_id).order_by(Project.created_at.desc()))
-        .scalars()
-        .all()
-    )
+
+    owned = select(Project.id).where(Project.owner_user_id == user_id)
+    member = select(ProjectMembership.project_id).where(ProjectMembership.user_id == user_id)
+    project_ids = db.execute(owned.union(member)).scalars().all()
+    projects: list[Project] = []
+    if project_ids:
+        projects = db.execute(select(Project).where(Project.id.in_(project_ids)).order_by(Project.created_at.desc())).scalars().all()
     return ok_payload(request_id=request_id, data={"projects": [ProjectOut.model_validate(p).model_dump() for p in projects]})
 
 
 @router.get("/projects/summary")
 def list_projects_summary(request: Request, db: DbDep, user_id: UserIdDep) -> dict:
     request_id = request.state.request_id
-    projects = (
-        db.execute(select(Project).where(Project.owner_user_id == user_id).order_by(Project.created_at.desc()))
-        .scalars()
-        .all()
-    )
+    owned = select(Project.id).where(Project.owner_user_id == user_id)
+    member = select(ProjectMembership.project_id).where(ProjectMembership.user_id == user_id)
+    project_ids = db.execute(owned.union(member)).scalars().all()
+    projects: list[Project] = []
+    if project_ids:
+        projects = db.execute(select(Project).where(Project.id.in_(project_ids)).order_by(Project.created_at.desc())).scalars().all()
     if not projects:
         return ok_payload(request_id=request_id, data={"items": []})
 
@@ -168,6 +172,9 @@ def create_project(request: Request, db: DbDep, user_id: UserIdDep, body: Projec
     db.commit()
     db.refresh(project)
 
+    db.add(ProjectMembership(project_id=project.id, user_id=user_id, role="owner"))
+    db.commit()
+
     # New projects should default to the recommended Prompt Engine presets.
     ensure_default_outline_preset(db, project_id=project.id, activate=True)
     ensure_default_chapter_preset(db, project_id=project.id, activate=True)
@@ -178,16 +185,14 @@ def create_project(request: Request, db: DbDep, user_id: UserIdDep, body: Projec
 @router.get("/projects/{project_id}")
 def get_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
     request_id = request.state.request_id
-    project = db.get(Project, project_id)
-    if project is None or project.owner_user_id != user_id:
-        raise AppError.not_found()
+    project = require_project_viewer(db, project_id=project_id, user_id=user_id)
     return ok_payload(request_id=request_id, data={"project": ProjectOut.model_validate(project).model_dump()})
 
 
 @router.put("/projects/{project_id}")
 def update_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: ProjectUpdate) -> dict:
     request_id = request.state.request_id
-    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    project = require_project_owner(db, project_id=project_id, user_id=user_id)
 
     if body.name is not None:
         project.name = body.name
@@ -200,7 +205,7 @@ def update_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
         if body.active_outline_id is None:
             project.active_outline_id = None
         else:
-            outline = require_owned_outline(db, outline_id=body.active_outline_id, user_id=user_id)
+            outline = require_outline_viewer(db, outline_id=body.active_outline_id, user_id=user_id)
             if outline.project_id != project_id:
                 raise AppError.validation("active_outline_id 不属于当前项目")
             project.active_outline_id = outline.id
@@ -255,9 +260,7 @@ def update_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
 @router.delete("/projects/{project_id}")
 def delete_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
     request_id = request.state.request_id
-    project = db.get(Project, project_id)
-    if project is None or project.owner_user_id != user_id:
-        raise AppError.not_found()
+    project = require_project_owner(db, project_id=project_id, user_id=user_id)
     db.delete(project)
     db.commit()
     return ok_payload(request_id=request_id, data={})

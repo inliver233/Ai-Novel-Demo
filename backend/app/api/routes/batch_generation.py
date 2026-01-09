@@ -5,7 +5,7 @@ import json
 from fastapi import APIRouter, Request
 from sqlalchemy import select
 
-from app.api.deps import DbDep, UserIdDep, require_owned_chapter, require_owned_project
+from app.api.deps import DbDep, UserIdDep, require_chapter_editor, require_project_editor, require_project_viewer
 from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id
 from app.models.batch_generation_task import BatchGenerationTask, BatchGenerationTaskItem
@@ -26,7 +26,7 @@ def create_batch_generation_task(
     body: BatchGenerationCreateRequest,
 ) -> dict:
     request_id = request.state.request_id
-    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    project = require_project_editor(db, project_id=project_id, user_id=user_id)
 
     existing = (
         db.execute(
@@ -45,7 +45,7 @@ def create_batch_generation_task(
         raise AppError.conflict(message="已有进行中的批量生成任务，请先取消或等待完成", details={"task_id": existing.id})
 
     if body.after_chapter_id:
-        after = require_owned_chapter(db, chapter_id=body.after_chapter_id, user_id=user_id)
+        after = require_chapter_editor(db, chapter_id=body.after_chapter_id, user_id=user_id)
         if after.project_id != project_id:
             raise AppError.validation(message="after_chapter_id 不属于当前项目")
         outline_id = after.outline_id
@@ -185,7 +185,7 @@ def get_active_batch_generation_task(
     project_id: str,
 ) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_viewer(db, project_id=project_id, user_id=user_id)
 
     task = (
         db.execute(
@@ -224,7 +224,7 @@ def get_batch_generation_task(
     task = db.get(BatchGenerationTask, task_id)
     if task is None:
         raise AppError.not_found()
-    require_owned_project(db, project_id=task.project_id, user_id=user_id)
+    require_project_viewer(db, project_id=task.project_id, user_id=user_id)
     items = (
         db.execute(select(BatchGenerationTaskItem).where(BatchGenerationTaskItem.task_id == task_id).order_by(BatchGenerationTaskItem.chapter_number.asc()))
         .scalars()
@@ -246,7 +246,7 @@ def cancel_batch_generation_task(
     task = db.get(BatchGenerationTask, task_id)
     if task is None:
         raise AppError.not_found()
-    require_owned_project(db, project_id=task.project_id, user_id=user_id)
+    require_project_editor(db, project_id=task.project_id, user_id=user_id)
 
     if task.status not in ("queued", "running"):
         return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "canceled": False})

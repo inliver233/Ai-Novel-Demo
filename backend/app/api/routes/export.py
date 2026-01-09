@@ -6,11 +6,11 @@ from urllib.parse import quote
 from fastapi import APIRouter, Query, Request, Response
 from sqlalchemy import select
 
-from app.api.deps import DbDep, UserIdDep, require_owned_project
+from app.api.deps import DbDep, UserIdDep, require_project_viewer
 from app.models.chapter import Chapter
 from app.models.character import Character
+from app.models.outline import Outline
 from app.models.project_settings import ProjectSettings
-from app.services.outline_store import ensure_active_outline
 
 router = APIRouter()
 
@@ -38,8 +38,14 @@ def export_markdown(
     include_outline: str | None = Query(default="1"),
     chapters: str = Query(default="all"),
 ) -> Response:
-    project = require_owned_project(db, project_id=project_id, user_id=user_id)
-    active_outline = ensure_active_outline(db, project=project)
+    project = require_project_viewer(db, project_id=project_id, user_id=user_id)
+    active_outline = db.get(Outline, project.active_outline_id) if project.active_outline_id else None
+    if active_outline is None:
+        active_outline = (
+            db.execute(select(Outline).where(Outline.project_id == project_id).order_by(Outline.updated_at.desc()).limit(1))
+            .scalars()
+            .first()
+        )
 
     parts: list[str] = [f"# {project.name}", ""]
     if project.genre or project.logline:
@@ -95,14 +101,16 @@ def export_markdown(
 
     parts.append("## 正文")
     parts.append("")
-    q = (
-        select(Chapter)
-        .where(Chapter.project_id == project_id, Chapter.outline_id == active_outline.id)
-        .order_by(Chapter.number.asc())
-    )
-    if chapters == "done":
-        q = q.where(Chapter.status == "done")
-    chapter_rows = db.execute(q).scalars().all()
+    chapter_rows: list[Chapter] = []
+    if active_outline is not None:
+        q = (
+            select(Chapter)
+            .where(Chapter.project_id == project_id, Chapter.outline_id == active_outline.id)
+            .order_by(Chapter.number.asc())
+        )
+        if chapters == "done":
+            q = q.where(Chapter.status == "done")
+        chapter_rows = db.execute(q).scalars().all()
     if not chapter_rows:
         parts.append("_（无章节）_")
         parts.append("")

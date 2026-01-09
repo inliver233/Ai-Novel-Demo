@@ -5,7 +5,14 @@ import json
 from fastapi import APIRouter, Request
 from sqlalchemy import delete, func, select
 
-from app.api.deps import DbDep, UserIdDep, require_owned_outline, require_owned_project
+from app.api.deps import (
+    DbDep,
+    UserIdDep,
+    require_outline_editor,
+    require_outline_viewer,
+    require_project_editor,
+    require_project_viewer,
+)
 from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id
 from app.models.chapter import Chapter
@@ -39,7 +46,7 @@ def _outline_out(row: Outline) -> dict:
 @router.get("/projects/{project_id}/outlines")
 def list_outlines(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
     request_id = request.state.request_id
-    require_owned_project(db, project_id=project_id, user_id=user_id)
+    require_project_viewer(db, project_id=project_id, user_id=user_id)
 
     rows = (
         db.execute(select(Outline).where(Outline.project_id == project_id).order_by(Outline.updated_at.desc()))
@@ -67,7 +74,7 @@ def list_outlines(request: Request, db: DbDep, user_id: UserIdDep, project_id: s
 @router.post("/projects/{project_id}/outlines")
 def create_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: OutlineCreate) -> dict:
     request_id = request.state.request_id
-    project = require_owned_project(db, project_id=project_id, user_id=user_id)
+    project = require_project_editor(db, project_id=project_id, user_id=user_id)
 
     row = Outline(
         id=new_id(),
@@ -86,7 +93,7 @@ def create_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
 @router.get("/projects/{project_id}/outlines/{outline_id}")
 def get_outline_item(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, outline_id: str) -> dict:
     request_id = request.state.request_id
-    row = require_owned_outline(db, outline_id=outline_id, user_id=user_id)
+    row = require_outline_viewer(db, outline_id=outline_id, user_id=user_id)
     if row.project_id != project_id:
         raise AppError.not_found()
     return ok_payload(request_id=request_id, data={"outline": _outline_out(row)})
@@ -102,7 +109,7 @@ def update_outline_item(
     body: OutlineUpdate,
 ) -> dict:
     request_id = request.state.request_id
-    row = require_owned_outline(db, outline_id=outline_id, user_id=user_id)
+    row = require_outline_editor(db, outline_id=outline_id, user_id=user_id)
     if row.project_id != project_id:
         raise AppError.not_found()
 
@@ -121,8 +128,8 @@ def update_outline_item(
 @router.delete("/projects/{project_id}/outlines/{outline_id}")
 def delete_outline_item(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, outline_id: str) -> dict:
     request_id = request.state.request_id
-    project = require_owned_project(db, project_id=project_id, user_id=user_id)
-    row = require_owned_outline(db, outline_id=outline_id, user_id=user_id)
+    project = require_project_editor(db, project_id=project_id, user_id=user_id)
+    row = require_outline_editor(db, outline_id=outline_id, user_id=user_id)
     if row.project_id != project_id:
         raise AppError.not_found()
 
