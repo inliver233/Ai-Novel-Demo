@@ -1478,6 +1478,139 @@
           "unique": 1
         }
       ]
+    },
+    "worldbook_entries": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "char_limit",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "constant",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": null,
+          "name": "content_md",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": null,
+          "name": "exclude_recursion",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "keywords_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "prevent_recursion",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": null,
+          "name": "priority",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(32)"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "title",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id",
+            "constant",
+            "enabled"
+          ],
+          "name": "ix_worldbook_entries_project_id_constant_enabled",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_worldbook_entries_project_id_constant_enabled ON worldbook_entries (project_id, constant, enabled)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "enabled"
+          ],
+          "name": "ix_worldbook_entries_project_id_enabled",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_worldbook_entries_project_id_enabled ON worldbook_entries (project_id, enabled)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_worldbook_entries_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
     }
   },
   "triggers": []

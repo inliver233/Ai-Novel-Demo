@@ -13,6 +13,7 @@ from app.models.generation_run import GenerationRun
 from app.models.llm_profile import LLMProfile
 from app.models.outline import Outline
 from app.models.project import Project
+from app.models.worldbook_entry import WorldBookEntry
 
 LOCAL_USER_ID = "local-user"
 
@@ -69,3 +70,11 @@ def require_owned_generation_run(db: Session, *, run_id: str, user_id: str) -> G
         raise AppError.not_found()
     require_owned_project(db, project_id=run.project_id, user_id=user_id)
     return run
+
+
+def require_owned_worldbook_entry(db: Session, *, entry_id: str, user_id: str) -> WorldBookEntry:
+    entry = db.get(WorldBookEntry, entry_id)
+    if entry is None:
+        raise AppError.not_found()
+    require_owned_project(db, project_id=entry.project_id, user_id=user_id)
+    return entry

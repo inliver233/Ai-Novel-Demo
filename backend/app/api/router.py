@@ -20,6 +20,7 @@ from app.api.routes import (
     projects,
     prompts,
     settings,
+    worldbook,
 )
 
 api_router = APIRouter(prefix="/api")
@@ -41,3 +42,4 @@ api_router.include_router(llm_profiles.router, tags=["llm_profiles"])
 api_router.include_router(outlines.router, tags=["outlines"])
 api_router.include_router(export.router, tags=["export"])
 api_router.include_router(generation_runs.router, tags=["generation_runs"])
+api_router.include_router(worldbook.router, tags=["worldbook"])

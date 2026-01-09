@@ -10,6 +10,7 @@ from app.models.project_settings import ProjectSettings
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
 from app.models.user import User
+from app.models.worldbook_entry import WorldBookEntry
 
 __all__ = [
     "BatchGenerationTask",
@@ -25,4 +26,5 @@ __all__ = [
     "PromptBlock",
     "PromptPreset",
     "User",
+    "WorldBookEntry",
 ]

@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.schemas.memory_pack import MemoryContextPackOut
+from app.services.worldbook_service import preview_worldbook_trigger
 
 
 def retrieve_memory_context_pack(*, db: Session, project_id: str) -> MemoryContextPackOut:
@@ -13,9 +14,18 @@ def retrieve_memory_context_pack(*, db: Session, project_id: str) -> MemoryConte
 
     Must be safe when memory dependencies (vector DB / embeddings / etc.) are missing.
     """
-    _ = db
-    _ = project_id
-    return MemoryContextPackOut()
+    pack = MemoryContextPackOut()
+
+    worldbook_preview = preview_worldbook_trigger(
+        db=db,
+        project_id=project_id,
+        query_text="",
+        include_constant=True,
+        enable_recursion=True,
+        char_limit=12000,
+    )
+    pack.worldbook = {"enabled": True, **worldbook_preview.model_dump()}
+    return pack
 
 
 def placeholder_memory_retrieval_log(*, enabled: bool) -> dict[str, Any]:
@@ -33,4 +43,3 @@ def placeholder_memory_retrieval_log(*, enabled: bool) -> dict[str, Any]:
         "overfilter": {},
         "errors": [],
     }
-

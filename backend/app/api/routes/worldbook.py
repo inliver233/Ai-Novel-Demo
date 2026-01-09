@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+import json
+
+from fastapi import APIRouter, Request
+from sqlalchemy import select
+
+from app.api.deps import DbDep, UserIdDep, require_owned_project, require_owned_worldbook_entry
+from app.core.errors import ok_payload
+from app.db.utils import new_id
+from app.models.worldbook_entry import WorldBookEntry
+from app.schemas.worldbook import (
+    WorldBookEntryCreate,
+    WorldBookEntryOut,
+    WorldBookEntryUpdate,
+    WorldBookPreviewTriggerRequest,
+)
+from app.services.worldbook_service import preview_worldbook_trigger
+
+router = APIRouter()
+
+
+def _parse_json_list(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            out.append(item.strip())
+    return out
+
+
+def _to_out(row: WorldBookEntry) -> dict:
+    keywords = _parse_json_list(row.keywords_json)
+    return WorldBookEntryOut(
+        id=row.id,
+        project_id=row.project_id,
+        title=row.title,
+        content_md=row.content_md or "",
+        enabled=bool(row.enabled),
+        constant=bool(row.constant),
+        keywords=keywords,
+        exclude_recursion=bool(row.exclude_recursion),
+        prevent_recursion=bool(row.prevent_recursion),
+        char_limit=int(row.char_limit or 0),
+        priority=str(row.priority or "important"),  # type: ignore[arg-type]
+        updated_at=row.updated_at,
+    ).model_dump()
+
+
+@router.get("/projects/{project_id}/worldbook_entries")
+def list_worldbook_entries(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
+    request_id = request.state.request_id
+    require_owned_project(db, project_id=project_id, user_id=user_id)
+
+    rows = (
+        db.execute(select(WorldBookEntry).where(WorldBookEntry.project_id == project_id).order_by(WorldBookEntry.updated_at.desc()))
+        .scalars()
+        .all()
+    )
+    return ok_payload(request_id=request_id, data={"worldbook_entries": [_to_out(r) for r in rows]})
+
+
+@router.post("/projects/{project_id}/worldbook_entries")
+def create_worldbook_entry(
+    request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: WorldBookEntryCreate
+) -> dict:
+    request_id = request.state.request_id
+    require_owned_project(db, project_id=project_id, user_id=user_id)
+
+    keywords = [k.strip() for k in (body.keywords or []) if isinstance(k, str) and k.strip()]
+    keywords_json = json.dumps(keywords, ensure_ascii=False) if keywords else "[]"
+    row = WorldBookEntry(
+        id=new_id(),
+        project_id=project_id,
+        title=body.title,
+        content_md=body.content_md or "",
+        enabled=bool(body.enabled),
+        constant=bool(body.constant),
+        keywords_json=keywords_json,
+        exclude_recursion=bool(body.exclude_recursion),
+        prevent_recursion=bool(body.prevent_recursion),
+        char_limit=int(body.char_limit),
+        priority=str(body.priority),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return ok_payload(request_id=request_id, data={"worldbook_entry": _to_out(row)})
+
+
+@router.put("/worldbook_entries/{entry_id}")
+def update_worldbook_entry(
+    request: Request, db: DbDep, user_id: UserIdDep, entry_id: str, body: WorldBookEntryUpdate
+) -> dict:
+    request_id = request.state.request_id
+    row = require_owned_worldbook_entry(db, entry_id=entry_id, user_id=user_id)
+
+    if body.title is not None:
+        row.title = body.title
+    if body.content_md is not None:
+        row.content_md = body.content_md
+    if body.enabled is not None:
+        row.enabled = bool(body.enabled)
+    if body.constant is not None:
+        row.constant = bool(body.constant)
+    if body.keywords is not None:
+        keywords = [k.strip() for k in (body.keywords or []) if isinstance(k, str) and k.strip()]
+        row.keywords_json = json.dumps(keywords, ensure_ascii=False) if keywords else "[]"
+    if body.exclude_recursion is not None:
+        row.exclude_recursion = bool(body.exclude_recursion)
+    if body.prevent_recursion is not None:
+        row.prevent_recursion = bool(body.prevent_recursion)
+    if body.char_limit is not None:
+        row.char_limit = int(body.char_limit)
+    if body.priority is not None:
+        row.priority = str(body.priority)
+
+    db.commit()
+    db.refresh(row)
+    return ok_payload(request_id=request_id, data={"worldbook_entry": _to_out(row)})
+
+
+@router.delete("/worldbook_entries/{entry_id}")
+def delete_worldbook_entry(request: Request, db: DbDep, user_id: UserIdDep, entry_id: str) -> dict:
+    request_id = request.state.request_id
+    row = require_owned_worldbook_entry(db, entry_id=entry_id, user_id=user_id)
+    db.delete(row)
+    db.commit()
+    return ok_payload(request_id=request_id, data={})
+
+
+@router.post("/projects/{project_id}/worldbook_entries/preview_trigger")
+def preview_trigger(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: WorldBookPreviewTriggerRequest) -> dict:
+    request_id = request.state.request_id
+    require_owned_project(db, project_id=project_id, user_id=user_id)
+
+    result = preview_worldbook_trigger(
+        db=db,
+        project_id=project_id,
+        query_text=body.query_text,
+        include_constant=body.include_constant,
+        enable_recursion=body.enable_recursion,
+        char_limit=body.char_limit,
+    )
+    return ok_payload(request_id=request_id, data=result.model_dump())
