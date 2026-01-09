@@ -9,6 +9,8 @@ type Props = {
   open: boolean;
   onClose: () => void;
   projectId?: string;
+  memoryInjectionEnabled: boolean;
+  onChangeMemoryInjectionEnabled?: (enabled: boolean) => void;
 };
 
 const EMPTY_PACK: MemoryContextPack = {
@@ -22,23 +24,33 @@ const EMPTY_PACK: MemoryContextPack = {
 };
 
 export function ContextPreviewDrawer(props: Props) {
-  const { onClose, open, projectId } = props;
+  const { onClose, open, projectId, memoryInjectionEnabled, onChangeMemoryInjectionEnabled } = props;
   const [loading, setLoading] = useState(false);
   const [pack, setPack] = useState<MemoryContextPack>(EMPTY_PACK);
   const [error, setError] = useState<{ code: string; message: string; requestId?: string } | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
 
+  const effectivePack = useMemo(() => (memoryInjectionEnabled ? pack : EMPTY_PACK), [memoryInjectionEnabled, pack]);
+
   const isEmptyPack = useMemo(() => {
     return (
-      Object.keys(pack.worldbook ?? {}).length === 0 &&
-      Object.keys(pack.story_memory ?? {}).length === 0 &&
-      Object.keys(pack.structured ?? {}).length === 0 &&
-      Object.keys(pack.vector_rag ?? {}).length === 0 &&
-      Object.keys(pack.graph ?? {}).length === 0 &&
-      Object.keys(pack.fractal ?? {}).length === 0 &&
-      (pack.logs ?? []).length === 0
+      Object.keys(effectivePack.worldbook ?? {}).length === 0 &&
+      Object.keys(effectivePack.story_memory ?? {}).length === 0 &&
+      Object.keys(effectivePack.structured ?? {}).length === 0 &&
+      Object.keys(effectivePack.vector_rag ?? {}).length === 0 &&
+      Object.keys(effectivePack.graph ?? {}).length === 0 &&
+      Object.keys(effectivePack.fractal ?? {}).length === 0 &&
+      (effectivePack.logs ?? []).length === 0
     );
-  }, [pack]);
+  }, [effectivePack]);
+
+  const worldbookPreview = useMemo(() => {
+    const raw = (effectivePack.worldbook ?? {}) as Record<string, unknown>;
+    const triggered = Array.isArray(raw.triggered) ? raw.triggered : [];
+    const textMd = typeof raw.text_md === "string" ? raw.text_md : "";
+    const truncated = Boolean(raw.truncated);
+    return { triggered, textMd, truncated, raw };
+  }, [effectivePack.worldbook]);
 
   const load = useCallback(async () => {
     if (!projectId) {
@@ -64,8 +76,18 @@ export function ContextPreviewDrawer(props: Props) {
 
   useEffect(() => {
     if (!open) return;
+    if (!memoryInjectionEnabled) return;
     void load();
-  }, [load, open]);
+  }, [load, memoryInjectionEnabled, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (memoryInjectionEnabled) return;
+    setLoading(false);
+    setError(null);
+    setPack(EMPTY_PACK);
+    setRequestId(null);
+  }, [memoryInjectionEnabled, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -94,7 +116,12 @@ export function ContextPreviewDrawer(props: Props) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="btn btn-secondary" onClick={() => void load()} type="button">
+          <button
+            className="btn btn-secondary"
+            disabled={loading || !memoryInjectionEnabled}
+            onClick={() => void load()}
+            type="button"
+          >
             {UI_COPY.writing.contextPreviewRefresh}
           </button>
           <button className="btn btn-secondary" onClick={onClose} type="button">
@@ -104,6 +131,24 @@ export function ContextPreviewDrawer(props: Props) {
       </div>
 
       <div className="mt-5 grid gap-4">
+        <div className="panel p-3">
+          <label className="flex items-center justify-between gap-3 text-sm text-ink">
+            <span>{UI_COPY.writing.memoryInjectionToggle}</span>
+            <input
+              className="checkbox"
+              checked={memoryInjectionEnabled}
+              disabled={!onChangeMemoryInjectionEnabled}
+              onChange={(e) => onChangeMemoryInjectionEnabled?.(e.target.checked)}
+              type="checkbox"
+            />
+          </label>
+          <div className="mt-1 text-[11px] text-subtext">
+            {memoryInjectionEnabled
+              ? UI_COPY.writing.memoryInjectionHint
+              : UI_COPY.writing.memoryInjectionDisabledPreview}
+          </div>
+        </div>
+
         {loading ? <div className="text-sm text-subtext">{UI_COPY.common.loading}</div> : null}
         {error ? (
           <div className="rounded-atelier border border-border bg-surface p-3 text-sm text-subtext">
@@ -115,28 +160,72 @@ export function ContextPreviewDrawer(props: Props) {
           </div>
         ) : null}
 
-        {isEmptyPack ? <div className="text-sm text-subtext">{UI_COPY.writing.memoryPackEmpty}</div> : null}
+        {memoryInjectionEnabled && isEmptyPack ? (
+          <div className="text-sm text-subtext">{UI_COPY.writing.memoryPackEmpty}</div>
+        ) : null}
 
-        <div className="grid gap-3">
-          {(
-            [
-              ["worldbook", pack.worldbook],
-              ["story_memory", pack.story_memory],
-              ["structured", pack.structured],
-              ["vector_rag", pack.vector_rag],
-              ["graph", pack.graph],
-              ["fractal", pack.fractal],
-              ["logs", pack.logs],
-            ] as const
-          ).map(([key, value]) => (
-            <details key={key} open>
-              <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">{key}</summary>
-              <pre className="mt-2 max-h-56 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
-                {JSON.stringify(value ?? (key === "logs" ? [] : {}), null, 2)}
+        {memoryInjectionEnabled ? (
+          <div className="panel p-4">
+            <div className="text-sm text-ink">{UI_COPY.writing.worldbookSectionTitle}</div>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-subtext">
+              <span>
+                {UI_COPY.worldbook.previewTriggeredPrefix}
+                {worldbookPreview.triggered.length}
+                {UI_COPY.worldbook.previewTriggeredSuffix}
+              </span>
+              {worldbookPreview.truncated ? (
+                <span className="text-amber-600 dark:text-amber-400">{UI_COPY.worldbook.previewTruncated}</span>
+              ) : null}
+            </div>
+
+            <details open className="mt-3">
+              <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                {UI_COPY.worldbook.previewTriggeredList}
+              </summary>
+              <div className="mt-2 grid gap-2">
+                {worldbookPreview.triggered.length === 0 ? (
+                  <div className="text-sm text-subtext">{UI_COPY.worldbook.previewNoTriggered}</div>
+                ) : (
+                  worldbookPreview.triggered.map((t) => {
+                    if (!t || typeof t !== "object") return null;
+                    const o = t as Record<string, unknown>;
+                    const id = String(o.id ?? "");
+                    const title = String(o.title ?? "");
+                    const reason = String(o.reason ?? "");
+                    const priority = String(o.priority ?? "");
+                    return (
+                      <div key={id || title} className="rounded-atelier border border-border bg-surface p-2 text-xs">
+                        <div className="truncate text-ink">{title || id}</div>
+                        <div className="mt-1 text-subtext">
+                          {reason}
+                          {priority ? ` | priority:${priority}` : ""}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </details>
+
+            <details className="mt-3">
+              <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                {UI_COPY.worldbook.previewText}
+              </summary>
+              <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                {worldbookPreview.textMd || UI_COPY.worldbook.previewTextEmpty}
               </pre>
             </details>
-          ))}
-        </div>
+
+            <details className="mt-3">
+              <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                {UI_COPY.writing.contextPreviewRawPack}
+              </summary>
+              <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                {JSON.stringify(effectivePack ?? EMPTY_PACK, null, 2)}
+              </pre>
+            </details>
+          </div>
+        ) : null}
       </div>
     </Drawer>
   );

@@ -134,6 +134,7 @@ export function WritingPage() {
   });
 
   const generation = useChapterGeneration({
+    projectId,
     activeChapter,
     chapters,
     form,
@@ -499,6 +500,10 @@ export function WritingPage() {
         open={contextPreviewOpen}
         onClose={() => setContextPreviewOpen(false)}
         projectId={projectId}
+        memoryInjectionEnabled={genForm.memory_injection_enabled}
+        onChangeMemoryInjectionEnabled={(enabled) =>
+          setGenForm((v) => ({ ...v, memory_injection_enabled: Boolean(enabled) }))
+        }
       />
 
       {generating && genForm.stream && !aiOpen ? (

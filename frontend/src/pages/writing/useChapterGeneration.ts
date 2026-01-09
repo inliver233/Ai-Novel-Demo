@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
 import type { GenerateForm } from "../../components/writing/types";
@@ -7,7 +7,9 @@ import type { ToastApi } from "../../components/ui/toast";
 import { UI_COPY } from "../../lib/uiCopy";
 import { ApiError, apiJson } from "../../services/apiClient";
 import { createChapterMarkerStreamParser } from "../../services/chapterMarkerStreamParser";
+import { getCurrentUserId } from "../../services/currentUser";
 import { SSEError, SSEPostClient } from "../../services/sseClient";
+import { writingMemoryInjectionEnabledStorageKey } from "../../services/uiState";
 import type { Chapter, LLMPreset } from "../../types";
 import { extractMissingNumbers } from "./writingErrorUtils";
 import { appendMarkdown } from "./writingUtils";
@@ -46,7 +48,16 @@ const DEFAULT_GEN_FORM: GenerateForm = {
   },
 };
 
+function loadMemoryInjectionEnabled(projectId: string | undefined): boolean {
+  if (!projectId) return DEFAULT_GEN_FORM.memory_injection_enabled;
+  const key = writingMemoryInjectionEnabledStorageKey(getCurrentUserId(), projectId);
+  const raw = localStorage.getItem(key);
+  if (raw === null) return DEFAULT_GEN_FORM.memory_injection_enabled;
+  return raw === "1";
+}
+
 export function useChapterGeneration(args: {
+  projectId?: string;
   activeChapter: Chapter | null;
   chapters: Chapter[];
   form: ChapterForm | null;
@@ -58,8 +69,19 @@ export function useChapterGeneration(args: {
   toast: ToastApi;
   confirm: ConfirmApi;
 }) {
-  const { activeChapter, chapters, form, setForm, preset, dirty, saveChapter, requestSelectChapter, toast, confirm } =
-    args;
+  const {
+    projectId,
+    activeChapter,
+    chapters,
+    form,
+    setForm,
+    preset,
+    dirty,
+    saveChapter,
+    requestSelectChapter,
+    toast,
+    confirm,
+  } = args;
 
   const [generating, setGenerating] = useState(false);
   const [genRequestId, setGenRequestId] = useState<string | null>(null);
@@ -67,7 +89,23 @@ export function useChapterGeneration(args: {
   const genStreamClientRef = useRef<SSEPostClient | null>(null);
   const genStreamHasChunkRef = useRef(false);
 
-  const [genForm, setGenForm] = useState<GenerateForm>(DEFAULT_GEN_FORM);
+  const [genForm, setGenForm] = useState<GenerateForm>(() => ({
+    ...DEFAULT_GEN_FORM,
+    memory_injection_enabled: loadMemoryInjectionEnabled(projectId),
+  }));
+
+  useEffect(() => {
+    const enabled = loadMemoryInjectionEnabled(projectId);
+    setGenForm((prev) =>
+      prev.memory_injection_enabled === enabled ? prev : { ...prev, memory_injection_enabled: enabled },
+    );
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const key = writingMemoryInjectionEnabledStorageKey(getCurrentUserId(), projectId);
+    localStorage.setItem(key, genForm.memory_injection_enabled ? "1" : "0");
+  }, [genForm.memory_injection_enabled, projectId]);
 
   const abortGenerate = useCallback(() => genStreamClientRef.current?.abort(), []);
 

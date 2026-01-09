@@ -2,6 +2,7 @@ import clsx from "clsx";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import {
   Bot,
+  Book,
   BookOpen,
   BookOpenText,
   FileDown,
@@ -29,6 +30,7 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
   ["/outline", "大纲"],
   ["/wizard", "开工向导"],
   ["/writing", "写作"],
+  ["/worldbook", "世界书"],
   ["/prompts", "模型配置"],
   ["/prompt-studio", "Prompt Studio"],
   ["/preview", "预览"],
@@ -205,6 +207,13 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={false}
+                          icon={<Book size={18} />}
+                          label="世界书"
+                          to={`/projects/${projectId}/worldbook`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
                           icon={<Users size={18} />}
                           label="角色卡"
                           to={`/projects/${projectId}/characters`}
@@ -308,6 +317,12 @@ export function AppShell() {
                     icon={<Settings size={18} />}
                     label="设定"
                     to={`/projects/${projectId}/settings`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Book size={18} />}
+                    label="世界书"
+                    to={`/projects/${projectId}/worldbook`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
