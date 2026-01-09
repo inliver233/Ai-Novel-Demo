@@ -15,6 +15,7 @@ dist/
 # Local DB / env
 *.db
 *.db.bak*
+*.bak.*
 *.db-journal
 *.db-wal
 *.db-shm
