@@ -79,6 +79,7 @@ export function useChapterGeneration(args: {
         return;
       }
       const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
+      const streamProviderSupported = preset.provider.startsWith("openai");
 
       if (dirty) {
         const choice = await confirm.choose({
@@ -129,7 +130,12 @@ export function useChapterGeneration(args: {
         const baseContent = form.content_md;
         const baseSummary = form.summary;
 
-        if (genForm.stream) {
+        const shouldStream = genForm.stream && streamProviderSupported;
+        if (genForm.stream && !streamProviderSupported) {
+          toast.toastError("不支持流式，已回退非流式生成");
+        }
+
+        if (shouldStream) {
           const parser = createChapterMarkerStreamParser();
           let parsedContent = "";
           let parsedSummary = "";
