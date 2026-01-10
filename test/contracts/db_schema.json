@@ -512,6 +512,494 @@
         }
       ]
     },
+    "entities": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "attributes_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "deleted_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "entity_type",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "name",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "summary_md",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_entities_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_entities_project_id ON entities (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "entity_type"
+          ],
+          "name": "ix_entities_project_id_entity_type",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_entities_project_id_entity_type ON entities (project_id, entity_type)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_entities_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        },
+        {
+          "columns": [
+            "project_id",
+            "entity_type",
+            "name"
+          ],
+          "name": "sqlite_autoindex_entities_2",
+          "origin": "u",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "events": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "attributes_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "chapter_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "content_md",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "deleted_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "event_type",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "title",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "chapter_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "chapters",
+          "to": "id"
+        },
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_events_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_events_project_id ON events (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "chapter_id"
+          ],
+          "name": "ix_events_project_id_chapter_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_events_project_id_chapter_id ON events (project_id, chapter_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_events_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "evidence": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "attributes_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "deleted_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "quote_md",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "source_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "source_type",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(32)"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_evidence_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_evidence_project_id ON evidence (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "source_type",
+            "source_id"
+          ],
+          "name": "ix_evidence_project_id_source",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_evidence_project_id_source ON evidence (project_id, source_type, source_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_evidence_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "foreshadows": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "attributes_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "chapter_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "content_md",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "deleted_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "resolved",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "resolved_at_chapter_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "title",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "chapter_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "chapters",
+          "to": "id"
+        },
+        {
+          "from": "resolved_at_chapter_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "chapters",
+          "to": "id"
+        },
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_foreshadows_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_foreshadows_project_id ON foreshadows (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "resolved"
+          ],
+          "name": "ix_foreshadows_project_id_resolved",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_foreshadows_project_id_resolved ON foreshadows (project_id, resolved)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_foreshadows_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
     "generation_runs": {
       "checks": [],
       "columns": [
@@ -884,6 +1372,319 @@
           ],
           "name": "sqlite_autoindex_llm_profiles_1",
           "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "memory_change_set_items": {
+      "checks": [
+        "op IN ('upsert','delete')",
+        "target_table IN ('entities','relations','events','foreshadows','evidence')"
+      ],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "after_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "before_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "change_set_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "evidence_ids_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "item_index",
+          "notnull": 1,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "op",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(16)"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "target_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "target_table",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(32)"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "change_set_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "memory_change_sets",
+          "to": "id"
+        },
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "change_set_id"
+          ],
+          "name": "ix_memory_change_set_items_change_set_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_memory_change_set_items_change_set_id ON memory_change_set_items (change_set_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_memory_change_set_items_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_memory_change_set_items_project_id ON memory_change_set_items (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "target_table"
+          ],
+          "name": "ix_memory_change_set_items_project_target",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_memory_change_set_items_project_target ON memory_change_set_items (project_id, target_table)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_memory_change_set_items_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        },
+        {
+          "columns": [
+            "change_set_id",
+            "item_index"
+          ],
+          "name": "sqlite_autoindex_memory_change_set_items_2",
+          "origin": "u",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "memory_change_sets": {
+      "checks": [
+        "status IN ('proposed','applied','rolled_back','failed')"
+      ],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "actor_user_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "applied_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "generation_run_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "idempotency_key",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "request_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "rolled_back_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "status",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(16)"
+        },
+        {
+          "dflt_value": null,
+          "name": "summary_md",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "title",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "generation_run_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "generation_runs",
+          "to": "id"
+        },
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        },
+        {
+          "from": "actor_user_id",
+          "on_delete": "SET NULL",
+          "on_update": "NO ACTION",
+          "table": "users",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_memory_change_sets_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_memory_change_sets_project_id ON memory_change_sets (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "status"
+          ],
+          "name": "ix_memory_change_sets_project_id_status",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_memory_change_sets_project_id_status ON memory_change_sets (project_id, status)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_memory_change_sets_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        },
+        {
+          "columns": [
+            "project_id",
+            "idempotency_key"
+          ],
+          "name": "sqlite_autoindex_memory_change_sets_2",
+          "origin": "u",
           "partial": 0,
           "sql": null,
           "unique": 1
@@ -1629,6 +2430,161 @@
           ],
           "name": "sqlite_autoindex_prompt_presets_1",
           "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "relations": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "attributes_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "deleted_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "description_md",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "from_entity_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "relation_type",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "to_entity_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "from_entity_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "entities",
+          "to": "id"
+        },
+        {
+          "from": "to_entity_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "entities",
+          "to": "id"
+        },
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_relations_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_relations_project_id ON relations (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "from_entity_id"
+          ],
+          "name": "ix_relations_project_id_from_entity_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_relations_project_id_from_entity_id ON relations (project_id, from_entity_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "to_entity_id"
+          ],
+          "name": "ix_relations_project_id_to_entity_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_relations_project_id_to_entity_id ON relations (project_id, to_entity_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "id"
+          ],
+          "name": "sqlite_autoindex_relations_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        },
+        {
+          "columns": [
+            "project_id",
+            "from_entity_id",
+            "to_entity_id",
+            "relation_type"
+          ],
+          "name": "sqlite_autoindex_relations_2",
+          "origin": "u",
           "partial": 0,
           "sql": null,
           "unique": 1

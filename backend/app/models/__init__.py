@@ -12,6 +12,15 @@ from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
 from app.models.plot_analysis import PlotAnalysis
 from app.models.story_memory import StoryMemory
+from app.models.structured_memory import (
+    MemoryChangeSet,
+    MemoryChangeSetItem,
+    MemoryEntity,
+    MemoryEvidence,
+    MemoryEvent,
+    MemoryForeshadow,
+    MemoryRelation,
+)
 from app.models.user import User
 from app.models.user_password import UserPassword
 from app.models.worldbook_entry import WorldBookEntry
@@ -31,6 +40,13 @@ __all__ = [
     "PromptBlock",
     "PromptPreset",
     "PlotAnalysis",
+    "MemoryChangeSet",
+    "MemoryChangeSetItem",
+    "MemoryEntity",
+    "MemoryEvidence",
+    "MemoryEvent",
+    "MemoryForeshadow",
+    "MemoryRelation",
     "StoryMemory",
     "User",
     "UserPassword",
