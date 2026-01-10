@@ -72,3 +72,29 @@ test("ui: writing ContextPreviewDrawer supports worldbook injection toggle", asy
   await expect(textDetails).toContainText("<WORLD_BOOK>");
   await expect(dialog.getByRole("button", { name: "关闭", exact: true })).toBeVisible();
 });
+
+test("ui: writing ContextPreviewDrawer supports Vector RAG debug query preview", async ({ page, request }) => {
+  const { projectId } = await bootstrapProject(request);
+
+  await page.goto(`/projects/${projectId}/writing`);
+  await page.getByRole("button", { name: "上下文预览", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "上下文预览" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Vector RAG 调试", { exact: true })).toBeVisible();
+
+  const queryInput = dialog.getByLabel("query_text", { exact: true });
+  await expect(queryInput).toBeVisible();
+  await queryInput.fill("dragon");
+
+  await dialog.getByRole("button", { name: "查询", exact: true }).click();
+
+  await expect(dialog.getByText(/candidates:/)).toBeVisible();
+  await expect(dialog.getByText("注入预览（prompt_block.text_md）", { exact: true })).toBeVisible();
+
+  const rawSummary = dialog.locator("summary", { hasText: "raw vector query result" });
+  await rawSummary.click();
+  const rawDetails = rawSummary.locator("..");
+  await expect(rawDetails).toHaveAttribute("open", "");
+  await expect(rawDetails).toContainText('"query_text": "dragon"');
+});
