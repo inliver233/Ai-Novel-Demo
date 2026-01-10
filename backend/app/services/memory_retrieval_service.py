@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.schemas.memory_pack import MemoryContextPackOut
+from app.services.vector_rag_service import vector_rag_status
 from app.services.worldbook_service import preview_worldbook_trigger
 
 
@@ -25,6 +26,16 @@ def retrieve_memory_context_pack(*, db: Session, project_id: str) -> MemoryConte
         char_limit=12000,
     )
     pack.worldbook = {"enabled": True, **worldbook_preview.model_dump()}
+
+    pack.vector_rag = vector_rag_status(project_id=project_id)
+    pack.logs.append(
+        {
+            "section": "vector_rag",
+            "enabled": bool(pack.vector_rag.get("enabled")),
+            "disabled_reason": pack.vector_rag.get("disabled_reason"),
+            "note": "Phase 4A.1: use /api/projects/{project_id}/vector/query to run retrieval",
+        }
+    )
     return pack
 
 

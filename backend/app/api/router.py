@@ -21,6 +21,7 @@ from app.api.routes import (
     projects,
     prompts,
     settings,
+    vector,
     worldbook,
 )
 
@@ -30,6 +31,7 @@ api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(projects.router, tags=["projects"])
 api_router.include_router(memory.router, tags=["memory"])
+api_router.include_router(vector.router, tags=["vector"])
 api_router.include_router(settings.router, tags=["settings"])
 api_router.include_router(characters.router, tags=["characters"])
 api_router.include_router(outline.router, tags=["outline"])
