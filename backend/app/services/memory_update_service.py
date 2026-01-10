@@ -1,0 +1,670 @@
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core.errors import AppError
+from app.core.logging import exception_log_fields, log_event
+from app.db.utils import new_id, utc_now
+from app.models.chapter import Chapter
+from app.models.generation_run import GenerationRun
+from app.models.structured_memory import (
+    MemoryChangeSet,
+    MemoryChangeSetItem,
+    MemoryEntity,
+    MemoryEvidence,
+    MemoryEvent,
+    MemoryForeshadow,
+    MemoryRelation,
+)
+from app.schemas.memory_update import AFTER_MODEL_BY_TABLE, MemoryUpdateV1Request
+
+logger = logging.getLogger("ainovel")
+
+
+_MODEL_BY_TABLE: dict[str, type] = {
+    "entities": MemoryEntity,
+    "relations": MemoryRelation,
+    "events": MemoryEvent,
+    "foreshadows": MemoryForeshadow,
+    "evidence": MemoryEvidence,
+}
+
+
+def _compact_json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _compact_json_loads(value: str | None) -> Any | None:
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except Exception:
+        return None
+
+
+def _iso(dt: datetime | None) -> str | None:
+    if dt is None:
+        return None
+    s = dt.isoformat()
+    return s.replace("+00:00", "Z")
+
+
+def _parse_dt(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    s = str(value).strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+
+def _parse_attributes_json(raw: str | None) -> dict[str, Any] | str | None:
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except Exception:
+        return raw
+    if isinstance(value, dict):
+        return value
+    return raw
+
+
+def _row_payload(target_table: str, row: Any) -> dict[str, Any]:
+    if target_table == "entities":
+        return {
+            "id": str(row.id),
+            "entity_type": str(row.entity_type or "generic"),
+            "name": str(row.name or ""),
+            "summary_md": row.summary_md,
+            "attributes": _parse_attributes_json(row.attributes_json),
+            "deleted_at": _iso(row.deleted_at),
+        }
+    if target_table == "relations":
+        return {
+            "id": str(row.id),
+            "from_entity_id": str(row.from_entity_id),
+            "to_entity_id": str(row.to_entity_id),
+            "relation_type": str(row.relation_type or "related_to"),
+            "description_md": row.description_md,
+            "attributes": _parse_attributes_json(row.attributes_json),
+            "deleted_at": _iso(row.deleted_at),
+        }
+    if target_table == "events":
+        return {
+            "id": str(row.id),
+            "chapter_id": row.chapter_id,
+            "event_type": str(row.event_type or "event"),
+            "title": row.title,
+            "content_md": str(row.content_md or ""),
+            "attributes": _parse_attributes_json(row.attributes_json),
+            "deleted_at": _iso(row.deleted_at),
+        }
+    if target_table == "foreshadows":
+        return {
+            "id": str(row.id),
+            "chapter_id": row.chapter_id,
+            "resolved_at_chapter_id": row.resolved_at_chapter_id,
+            "title": row.title,
+            "content_md": str(row.content_md or ""),
+            "resolved": int(row.resolved or 0),
+            "attributes": _parse_attributes_json(row.attributes_json),
+            "deleted_at": _iso(row.deleted_at),
+        }
+    if target_table == "evidence":
+        return {
+            "id": str(row.id),
+            "source_type": str(row.source_type or "unknown"),
+            "source_id": row.source_id,
+            "quote_md": str(row.quote_md or ""),
+            "attributes": _parse_attributes_json(row.attributes_json),
+            "deleted_at": _iso(row.deleted_at),
+        }
+    raise AppError.validation(details={"target_table": target_table})
+
+
+def _load_target_row(db: Session, *, target_table: str, project_id: str, target_id: str) -> Any | None:
+    model = _MODEL_BY_TABLE.get(target_table)
+    if model is None:
+        raise AppError.validation(details={"target_table": target_table})
+    return (
+        db.execute(
+            select(model).where(  # type: ignore[arg-type]
+                model.id == target_id,  # type: ignore[attr-defined]
+                model.project_id == project_id,  # type: ignore[attr-defined]
+            )
+        )
+        .scalars()
+        .first()
+    )
+
+
+def _change_set_to_dict(change_set: MemoryChangeSet) -> dict[str, Any]:
+    return {
+        "id": str(change_set.id),
+        "project_id": str(change_set.project_id),
+        "actor_user_id": change_set.actor_user_id,
+        "generation_run_id": change_set.generation_run_id,
+        "request_id": change_set.request_id,
+        "idempotency_key": str(change_set.idempotency_key),
+        "title": change_set.title,
+        "summary_md": change_set.summary_md,
+        "status": str(change_set.status),
+        "created_at": _iso(change_set.created_at),
+        "applied_at": _iso(change_set.applied_at),
+        "rolled_back_at": _iso(change_set.rolled_back_at),
+    }
+
+
+def _item_to_dict(item: MemoryChangeSetItem) -> dict[str, Any]:
+    return {
+        "id": str(item.id),
+        "project_id": str(item.project_id),
+        "change_set_id": str(item.change_set_id),
+        "item_index": int(item.item_index),
+        "target_table": str(item.target_table),
+        "target_id": item.target_id,
+        "op": str(item.op),
+        "before_json": item.before_json,
+        "after_json": item.after_json,
+        "evidence_ids_json": item.evidence_ids_json,
+        "created_at": _iso(item.created_at),
+    }
+
+
+def propose_chapter_memory_change_set(
+    *,
+    db: Session,
+    request_id: str,
+    actor_user_id: str,
+    chapter: Chapter,
+    payload: MemoryUpdateV1Request,
+) -> dict[str, Any]:
+    project_id = str(chapter.project_id)
+    chapter_id = str(chapter.id)
+
+    existing = (
+        db.execute(
+            select(MemoryChangeSet).where(
+                MemoryChangeSet.project_id == project_id,
+                MemoryChangeSet.idempotency_key == payload.idempotency_key,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if existing is not None:
+        items = (
+            db.execute(
+                select(MemoryChangeSetItem)
+                .where(MemoryChangeSetItem.change_set_id == existing.id)
+                .order_by(MemoryChangeSetItem.item_index.asc())
+            )
+            .scalars()
+            .all()
+        )
+        return {
+            "idempotent": True,
+            "change_set": _change_set_to_dict(existing),
+            "items": [_item_to_dict(i) for i in items],
+        }
+
+    generation_run_id = new_id()
+    db.add(
+        GenerationRun(
+            id=generation_run_id,
+            project_id=project_id,
+            actor_user_id=actor_user_id,
+            chapter_id=chapter_id,
+            type="memory_update_propose",
+            provider=None,
+            model=None,
+            request_id=request_id,
+            prompt_system="",
+            prompt_user="",
+            prompt_render_log_json=None,
+            params_json=_compact_json_dumps(
+                {
+                    "schema_version": payload.schema_version,
+                    "idempotency_key": payload.idempotency_key,
+                    "ops_count": len(payload.ops),
+                }
+            ),
+            output_text=_compact_json_dumps(payload.model_dump()),
+            error_json=None,
+        )
+    )
+
+    change_set = MemoryChangeSet(
+        id=new_id(),
+        project_id=project_id,
+        actor_user_id=actor_user_id,
+        generation_run_id=generation_run_id,
+        request_id=request_id,
+        idempotency_key=payload.idempotency_key,
+        title=payload.title,
+        summary_md=payload.summary_md,
+        status="proposed",
+    )
+    db.add(change_set)
+
+    items: list[MemoryChangeSetItem] = []
+    for idx, op in enumerate(payload.ops):
+        target_table = str(op.target_table)
+        target_id = str(op.target_id or "").strip()
+        if op.op == "upsert" and not target_id:
+            target_id = new_id()
+
+        if not target_id:
+            raise AppError.validation(details={"item_index": idx, "reason": "target_id_missing"})
+
+        before_row = _load_target_row(db, target_table=target_table, project_id=project_id, target_id=target_id)
+        if op.op == "delete" and before_row is None:
+            raise AppError.validation(details={"item_index": idx, "reason": "target_not_found"})
+
+        before_dict = _row_payload(target_table, before_row) if before_row is not None else None
+
+        after_dict: dict[str, Any] | None = None
+        if op.op == "upsert":
+            model_cls = AFTER_MODEL_BY_TABLE.get(target_table)
+            if model_cls is None:
+                raise AppError.validation(details={"item_index": idx, "reason": "unsupported_target_table"})
+            after_obj = model_cls.model_validate(op.after or {})
+            after_dict = dict(after_obj.model_dump())
+            if target_table in {"events", "foreshadows"} and not (after_dict.get("chapter_id") or "").strip():
+                after_dict["chapter_id"] = chapter_id
+            after_dict["id"] = target_id
+
+        evidence_ids_json = _compact_json_dumps(op.evidence_ids) if op.evidence_ids else None
+
+        item = MemoryChangeSetItem(
+            id=new_id(),
+            project_id=project_id,
+            change_set_id=str(change_set.id),
+            item_index=idx,
+            target_table=target_table,
+            target_id=target_id,
+            op=str(op.op),
+            before_json=_compact_json_dumps(before_dict) if before_dict is not None else None,
+            after_json=_compact_json_dumps(after_dict) if after_dict is not None else None,
+            evidence_ids_json=evidence_ids_json,
+        )
+        items.append(item)
+        db.add(item)
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        log_event(
+            logger,
+            "warning",
+            event="MEMORY_CHANGESET_PROPOSE_CONFLICT",
+            project_id=project_id,
+            idempotency_key=payload.idempotency_key,
+            **exception_log_fields(exc),
+        )
+        existing = (
+            db.execute(
+                select(MemoryChangeSet).where(
+                    MemoryChangeSet.project_id == project_id,
+                    MemoryChangeSet.idempotency_key == payload.idempotency_key,
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if existing is not None:
+            items2 = (
+                db.execute(
+                    select(MemoryChangeSetItem)
+                    .where(MemoryChangeSetItem.change_set_id == existing.id)
+                    .order_by(MemoryChangeSetItem.item_index.asc())
+                )
+                .scalars()
+                .all()
+            )
+            return {
+                "idempotent": True,
+                "change_set": _change_set_to_dict(existing),
+                "items": [_item_to_dict(i) for i in items2],
+            }
+        raise
+
+    log_event(
+        logger,
+        "info",
+        event="MEMORY_CHANGESET_PROPOSED",
+        change_set_id=str(change_set.id),
+        project_id=project_id,
+        items_count=len(items),
+    )
+    return {
+        "idempotent": False,
+        "change_set": _change_set_to_dict(change_set),
+        "items": [_item_to_dict(i) for i in items],
+    }
+
+
+def _apply_upsert(
+    db: Session, *, target_table: str, project_id: str, target_id: str, after: dict[str, Any]
+) -> Any:
+    model = _MODEL_BY_TABLE.get(target_table)
+    if model is None:
+        raise AppError.validation(details={"target_table": target_table})
+
+    row = _load_target_row(db, target_table=target_table, project_id=project_id, target_id=target_id)
+    if row is None:
+        row = model(id=target_id, project_id=project_id)  # type: ignore[call-arg]
+        db.add(row)
+
+    if target_table == "entities":
+        row.entity_type = str(after.get("entity_type") or "generic")  # type: ignore[attr-defined]
+        row.name = str(after.get("name") or "")  # type: ignore[attr-defined]
+        row.summary_md = after.get("summary_md")  # type: ignore[attr-defined]
+        attrs = after.get("attributes")
+        if isinstance(attrs, dict):
+            row.attributes_json = _compact_json_dumps(attrs)  # type: ignore[attr-defined]
+        elif isinstance(attrs, str):
+            row.attributes_json = attrs  # type: ignore[attr-defined]
+        else:
+            row.attributes_json = None  # type: ignore[attr-defined]
+        row.deleted_at = None  # type: ignore[attr-defined]
+        return row
+
+    if target_table == "relations":
+        row.from_entity_id = str(after.get("from_entity_id") or "")  # type: ignore[attr-defined]
+        row.to_entity_id = str(after.get("to_entity_id") or "")  # type: ignore[attr-defined]
+        row.relation_type = str(after.get("relation_type") or "related_to")  # type: ignore[attr-defined]
+        row.description_md = after.get("description_md")  # type: ignore[attr-defined]
+        attrs = after.get("attributes")
+        if isinstance(attrs, dict):
+            row.attributes_json = _compact_json_dumps(attrs)  # type: ignore[attr-defined]
+        elif isinstance(attrs, str):
+            row.attributes_json = attrs  # type: ignore[attr-defined]
+        else:
+            row.attributes_json = None  # type: ignore[attr-defined]
+        row.deleted_at = None  # type: ignore[attr-defined]
+        return row
+
+    if target_table == "events":
+        row.chapter_id = after.get("chapter_id")  # type: ignore[attr-defined]
+        row.event_type = str(after.get("event_type") or "event")  # type: ignore[attr-defined]
+        row.title = after.get("title")  # type: ignore[attr-defined]
+        row.content_md = str(after.get("content_md") or "")  # type: ignore[attr-defined]
+        attrs = after.get("attributes")
+        if isinstance(attrs, dict):
+            row.attributes_json = _compact_json_dumps(attrs)  # type: ignore[attr-defined]
+        elif isinstance(attrs, str):
+            row.attributes_json = attrs  # type: ignore[attr-defined]
+        else:
+            row.attributes_json = None  # type: ignore[attr-defined]
+        row.deleted_at = None  # type: ignore[attr-defined]
+        return row
+
+    if target_table == "foreshadows":
+        row.chapter_id = after.get("chapter_id")  # type: ignore[attr-defined]
+        row.resolved_at_chapter_id = after.get("resolved_at_chapter_id")  # type: ignore[attr-defined]
+        row.title = after.get("title")  # type: ignore[attr-defined]
+        row.content_md = str(after.get("content_md") or "")  # type: ignore[attr-defined]
+        row.resolved = int(after.get("resolved") or 0)  # type: ignore[attr-defined]
+        attrs = after.get("attributes")
+        if isinstance(attrs, dict):
+            row.attributes_json = _compact_json_dumps(attrs)  # type: ignore[attr-defined]
+        elif isinstance(attrs, str):
+            row.attributes_json = attrs  # type: ignore[attr-defined]
+        else:
+            row.attributes_json = None  # type: ignore[attr-defined]
+        row.deleted_at = None  # type: ignore[attr-defined]
+        return row
+
+    if target_table == "evidence":
+        row.source_type = str(after.get("source_type") or "unknown")  # type: ignore[attr-defined]
+        row.source_id = after.get("source_id")  # type: ignore[attr-defined]
+        row.quote_md = str(after.get("quote_md") or "")  # type: ignore[attr-defined]
+        attrs = after.get("attributes")
+        if isinstance(attrs, dict):
+            row.attributes_json = _compact_json_dumps(attrs)  # type: ignore[attr-defined]
+        elif isinstance(attrs, str):
+            row.attributes_json = attrs  # type: ignore[attr-defined]
+        else:
+            row.attributes_json = None  # type: ignore[attr-defined]
+        row.deleted_at = None  # type: ignore[attr-defined]
+        return row
+
+    raise AppError.validation(details={"target_table": target_table})
+
+
+def apply_memory_change_set(
+    *,
+    db: Session,
+    request_id: str,
+    actor_user_id: str,
+    change_set: MemoryChangeSet,
+) -> dict[str, Any]:
+    project_id = str(change_set.project_id)
+    if change_set.status == "applied":
+        return {"idempotent": True, "change_set": _change_set_to_dict(change_set), "warnings": []}
+    if change_set.status != "proposed":
+        raise AppError.conflict(details={"status": change_set.status})
+
+    items = (
+        db.execute(
+            select(MemoryChangeSetItem)
+            .where(MemoryChangeSetItem.change_set_id == change_set.id)
+            .order_by(MemoryChangeSetItem.item_index.asc())
+        )
+        .scalars()
+        .all()
+    )
+    if not items:
+        raise AppError.validation(details={"reason": "no_items"})
+
+    warnings: list[dict[str, Any]] = []
+
+    try:
+        for item in items:
+            target_table = str(item.target_table)
+            target_id = str(item.target_id or "")
+            if not target_id:
+                raise AppError.validation(details={"item_id": str(item.id), "reason": "target_id_missing"})
+
+            before_expected = _compact_json_loads(item.before_json)
+            current_row = _load_target_row(db, target_table=target_table, project_id=project_id, target_id=target_id)
+            if isinstance(before_expected, dict):
+                current_dict = _row_payload(target_table, current_row) if current_row is not None else None
+                if current_dict != before_expected:
+                    warnings.append(
+                        {
+                            "code": "MEMORY_CONFLICT",
+                            "message": "Target changed since propose; applied anyway",
+                            "item_id": str(item.id),
+                            "target_table": target_table,
+                            "target_id": target_id,
+                        }
+                    )
+
+            if item.op == "delete":
+                if current_row is None:
+                    warnings.append(
+                        {
+                            "code": "MISSING_TARGET",
+                            "message": "Target not found during apply delete; skipped",
+                            "item_id": str(item.id),
+                            "target_table": target_table,
+                            "target_id": target_id,
+                        }
+                    )
+                    continue
+                current_row.deleted_at = utc_now()  # type: ignore[attr-defined]
+                continue
+
+            after_value = _compact_json_loads(item.after_json)
+            if not isinstance(after_value, dict):
+                raise AppError.validation(details={"item_id": str(item.id), "reason": "after_json_invalid"})
+            _apply_upsert(db, target_table=target_table, project_id=project_id, target_id=target_id, after=after_value)
+
+        change_set.status = "applied"
+        change_set.applied_at = utc_now()
+
+        db.commit()
+
+        log_event(
+            logger,
+            "info",
+            event="MEMORY_CHANGESET_APPLIED",
+            change_set_id=str(change_set.id),
+            project_id=project_id,
+            actor_user_id=actor_user_id,
+            warnings_count=len(warnings),
+        )
+        return {"idempotent": False, "change_set": _change_set_to_dict(change_set), "warnings": warnings}
+    except IntegrityError as exc:
+        db.rollback()
+        log_event(
+            logger,
+            "warning",
+            event="MEMORY_CHANGESET_APPLY_INTEGRITY_ERROR",
+            change_set_id=str(change_set.id),
+            project_id=project_id,
+            **exception_log_fields(exc),
+        )
+        change_set.status = "failed"
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+        raise AppError.conflict(message="Memory change set apply failed", details={"reason": "integrity_error"}) from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
+def rollback_memory_change_set(
+    *,
+    db: Session,
+    request_id: str,
+    actor_user_id: str,
+    change_set: MemoryChangeSet,
+) -> dict[str, Any]:
+    project_id = str(change_set.project_id)
+    if change_set.status == "rolled_back":
+        return {"idempotent": True, "change_set": _change_set_to_dict(change_set), "warnings": []}
+    if change_set.status != "applied":
+        raise AppError.conflict(details={"status": change_set.status})
+
+    items = (
+        db.execute(
+            select(MemoryChangeSetItem)
+            .where(MemoryChangeSetItem.change_set_id == change_set.id)
+            .order_by(MemoryChangeSetItem.item_index.desc())
+        )
+        .scalars()
+        .all()
+    )
+    if not items:
+        raise AppError.validation(details={"reason": "no_items"})
+
+    warnings: list[dict[str, Any]] = []
+    try:
+        for item in items:
+            target_table = str(item.target_table)
+            target_id = str(item.target_id or "")
+            if not target_id:
+                continue
+
+            before_value = _compact_json_loads(item.before_json)
+            current_row = _load_target_row(db, target_table=target_table, project_id=project_id, target_id=target_id)
+
+            if item.op == "delete":
+                if current_row is None:
+                    warnings.append(
+                        {
+                            "code": "MISSING_TARGET",
+                            "message": "Target not found during rollback delete; skipped",
+                            "item_id": str(item.id),
+                            "target_table": target_table,
+                            "target_id": target_id,
+                        }
+                    )
+                    continue
+                if isinstance(before_value, dict):
+                    current_row.deleted_at = _parse_dt(before_value.get("deleted_at"))  # type: ignore[attr-defined]
+                else:
+                    current_row.deleted_at = None  # type: ignore[attr-defined]
+                continue
+
+            # upsert rollback
+            if current_row is None:
+                warnings.append(
+                    {
+                        "code": "MISSING_TARGET",
+                        "message": "Target not found during rollback upsert; skipped",
+                        "item_id": str(item.id),
+                        "target_table": target_table,
+                        "target_id": target_id,
+                    }
+                )
+                continue
+
+            if not isinstance(before_value, dict):
+                # Created during apply: soft-delete it.
+                current_row.deleted_at = utc_now()  # type: ignore[attr-defined]
+                continue
+
+            # Restore fields.
+            after_restore = dict(before_value)
+            after_restore.pop("id", None)
+            after_restore["deleted_at"] = before_value.get("deleted_at")
+            _apply_upsert(
+                db,
+                target_table=target_table,
+                project_id=project_id,
+                target_id=target_id,
+                after=after_restore,
+            )
+            current_row.deleted_at = _parse_dt(before_value.get("deleted_at"))  # type: ignore[attr-defined]
+
+        change_set.status = "rolled_back"
+        change_set.rolled_back_at = utc_now()
+
+        db.commit()
+
+        log_event(
+            logger,
+            "info",
+            event="MEMORY_CHANGESET_ROLLED_BACK",
+            change_set_id=str(change_set.id),
+            project_id=project_id,
+            actor_user_id=actor_user_id,
+            warnings_count=len(warnings),
+        )
+        return {"idempotent": False, "change_set": _change_set_to_dict(change_set), "warnings": warnings}
+    except AppError:
+        raise
+    except Exception as exc:
+        db.rollback()
+        log_event(
+            logger,
+            "error",
+            event="MEMORY_CHANGESET_ROLLBACK_ERROR",
+            change_set_id=str(change_set.id),
+            project_id=project_id,
+            **exception_log_fields(exc),
+        )
+        raise
