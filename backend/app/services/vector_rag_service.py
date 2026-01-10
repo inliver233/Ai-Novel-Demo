@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -7,11 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.logging import log_event
+from app.db.session import SessionLocal, engine
 from app.llm.http_client import get_llm_http_client
 from app.llm.utils import normalize_base_url
 from app.models.chapter import Chapter
@@ -28,6 +30,47 @@ class VectorChunk:
     id: str
     text: str
     metadata: dict[str, Any]
+
+
+_ALL_SOURCES: list[VectorSource] = ["worldbook", "outline", "chapter"]
+_PGVECTOR_TABLE = "vector_chunks"
+
+
+def _is_postgres() -> bool:
+    return getattr(getattr(engine, "dialect", None), "name", "") == "postgresql"
+
+
+def _prefer_pgvector() -> bool:
+    backend = str(getattr(settings, "vector_backend", "auto") or "auto").strip().lower()
+    if backend == "chroma":
+        return False
+    if backend == "pgvector":
+        return _is_postgres()
+    return _is_postgres()
+
+
+def _safe_json_loads(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        out = json.loads(raw)
+        return out if isinstance(out, dict) else {}
+    except Exception:
+        return {}
+
+
+def _pgvector_literal(vec: list[float]) -> str:
+    return "[" + ",".join(f"{float(x):.8f}" for x in vec) + "]"
+
+
+def _rrf_contrib(rank: int | None, *, k: int) -> float:
+    if rank is None or rank <= 0:
+        return 0.0
+    return 1.0 / (k + rank)
+
+
+def _rrf_score(*, vector_rank: int | None, fts_rank: int | None, k: int) -> float:
+    return _rrf_contrib(vector_rank, k=k) + _rrf_contrib(fts_rank, k=k)
 
 
 def _backend_dir() -> Path:
@@ -49,7 +92,7 @@ def _vector_enabled_reason() -> tuple[bool, str | None]:
 
 
 def vector_rag_status(*, project_id: str, sources: list[VectorSource] | None = None) -> dict[str, Any]:
-    sources = sources or ["worldbook", "outline", "chapter"]
+    sources = sources or list(_ALL_SOURCES)
     enabled, disabled_reason = _vector_enabled_reason()
     if not enabled:
         return {
@@ -62,6 +105,8 @@ def vector_rag_status(*, project_id: str, sources: list[VectorSource] | None = N
             "final": {"chunks": [], "text_md": "", "truncated": False},
             "dropped": [],
             "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
+            "backend_preferred": "pgvector" if _prefer_pgvector() else "chroma",
+            "hybrid_enabled": bool(getattr(settings, "vector_hybrid_enabled", True)),
         }
     return {
         "enabled": True,
@@ -73,6 +118,8 @@ def vector_rag_status(*, project_id: str, sources: list[VectorSource] | None = N
         "final": {"chunks": [], "text_md": "", "truncated": False},
         "dropped": [],
         "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
+        "backend_preferred": "pgvector" if _prefer_pgvector() else "chroma",
+        "hybrid_enabled": bool(getattr(settings, "vector_hybrid_enabled", True)),
     }
 
 
@@ -250,15 +297,283 @@ def _embed_texts(texts: list[str]) -> list[list[float]]:
     return vectors
 
 
+def _pgvector_upsert_chunks(*, project_id: str, chunks: list[VectorChunk], embeddings: list[list[float]]) -> dict[str, Any]:
+    sql = text(
+        """
+        INSERT INTO vector_chunks (
+            id,
+            project_id,
+            source,
+            source_id,
+            chunk_index,
+            title,
+            chapter_number,
+            text_md,
+            metadata_json,
+            embedding,
+            updated_at
+        ) VALUES (
+            :id,
+            :project_id,
+            :source,
+            :source_id,
+            :chunk_index,
+            :title,
+            :chapter_number,
+            :text_md,
+            :metadata_json,
+            (:embedding)::vector,
+            NOW()
+        )
+        ON CONFLICT (id) DO UPDATE SET
+            project_id = EXCLUDED.project_id,
+            source = EXCLUDED.source,
+            source_id = EXCLUDED.source_id,
+            chunk_index = EXCLUDED.chunk_index,
+            title = EXCLUDED.title,
+            chapter_number = EXCLUDED.chapter_number,
+            text_md = EXCLUDED.text_md,
+            metadata_json = EXCLUDED.metadata_json,
+            embedding = EXCLUDED.embedding,
+            updated_at = NOW()
+        """.strip()
+    )
+
+    params: list[dict[str, Any]] = []
+    for c, emb in zip(chunks, embeddings):
+        meta = c.metadata if isinstance(c.metadata, dict) else {}
+        source = str(meta.get("source") or "")
+        source_id = str(meta.get("source_id") or "")
+        try:
+            chunk_index = int(meta.get("chunk_index") or 0)
+        except Exception:
+            chunk_index = 0
+        title = str(meta.get("title") or "").strip() or None
+        chapter_number = meta.get("chapter_number")
+        try:
+            chapter_number_int = int(chapter_number) if chapter_number is not None else None
+        except Exception:
+            chapter_number_int = None
+
+        params.append(
+            {
+                "id": c.id,
+                "project_id": project_id,
+                "source": source,
+                "source_id": source_id,
+                "chunk_index": chunk_index,
+                "title": title,
+                "chapter_number": chapter_number_int,
+                "text_md": c.text,
+                "metadata_json": json.dumps(meta, ensure_ascii=False),
+                "embedding": _pgvector_literal([float(x) for x in emb]),
+            }
+        )
+
+    if not params:
+        return {"enabled": True, "skipped": False, "ingested": 0}
+
+    db = SessionLocal()
+    try:
+        db.execute(sql, params)
+        db.commit()
+    finally:
+        db.close()
+    return {"enabled": True, "skipped": False, "ingested": len(params)}
+
+
+def _pgvector_delete_project(*, project_id: str) -> None:
+    db = SessionLocal()
+    try:
+        db.execute(text("DELETE FROM vector_chunks WHERE project_id = :project_id"), {"project_id": project_id})
+        db.commit()
+    finally:
+        db.close()
+
+
+def _pgvector_hybrid_fetch(
+    *,
+    project_id: str,
+    query_text: str,
+    query_vec: list[float],
+    sources: list[VectorSource],
+    vector_k: int,
+    fts_k: int,
+    rrf_k: int,
+) -> dict[str, Any]:
+    qvec = _pgvector_literal(query_vec)
+    qtext = (query_text or "").strip() or " "
+
+    where_sql = "project_id = :project_id"
+    base_params: dict[str, Any] = {"project_id": project_id, "qvec": qvec, "qtext": qtext}
+    if len(sources) == 1:
+        where_sql += " AND source = :source"
+        base_params["source"] = sources[0]
+    elif sources:
+        where_sql += " AND source = ANY(:sources)"
+        base_params["sources"] = sources
+
+    vec_sql = text(
+        f"""
+        SELECT id, (embedding <=> (:qvec)::vector) AS distance
+        FROM {_PGVECTOR_TABLE}
+        WHERE {where_sql}
+        ORDER BY embedding <=> (:qvec)::vector ASC
+        LIMIT :limit
+        """.strip()
+    )
+    fts_sql = text(
+        f"""
+        SELECT id, ts_rank_cd(content_tsv, plainto_tsquery('simple', :qtext)) AS score
+        FROM {_PGVECTOR_TABLE}
+        WHERE {where_sql} AND content_tsv @@ plainto_tsquery('simple', :qtext)
+        ORDER BY score DESC
+        LIMIT :limit
+        """.strip()
+    )
+
+    db = SessionLocal()
+    try:
+        vec_rows = db.execute(vec_sql, {**base_params, "limit": int(vector_k)}).all()
+        fts_rows = db.execute(fts_sql, {**base_params, "limit": int(fts_k)}).all()
+
+        vec_ids = [str(r[0]) for r in vec_rows]
+        fts_ids = [str(r[0]) for r in fts_rows]
+        ids = list(dict.fromkeys([*vec_ids, *fts_ids]).keys())
+        if not ids:
+            return {
+                "candidates": [],
+                "ranks": {"vector": {}, "fts": {}, "rrf_k": int(rrf_k)},
+                "counts": {"vector": 0, "fts": 0, "union": 0},
+            }
+
+        vec_ranks = {cid: i + 1 for i, cid in enumerate(vec_ids)}
+        fts_ranks = {cid: i + 1 for i, cid in enumerate(fts_ids)}
+
+        details_sql = text(
+            f"""
+            SELECT
+                id,
+                text_md,
+                metadata_json,
+                (embedding <=> (:qvec)::vector) AS distance,
+                ts_rank_cd(content_tsv, plainto_tsquery('simple', :qtext)) AS fts_score
+            FROM {_PGVECTOR_TABLE}
+            WHERE id = ANY(:ids)
+            """.strip()
+        )
+        rows = db.execute(details_sql, {**base_params, "ids": ids}).all()
+    finally:
+        db.close()
+
+    candidates: list[dict[str, Any]] = []
+    for r in rows:
+        cid = str(r[0])
+        text_md = str(r[1] or "")
+        meta = _safe_json_loads(str(r[2] or ""))
+        try:
+            distance = float(r[3])
+        except Exception:
+            distance = 0.0
+        try:
+            fts_score = float(r[4]) if r[4] is not None else 0.0
+        except Exception:
+            fts_score = 0.0
+
+        vrank = vec_ranks.get(cid)
+        frank = fts_ranks.get(cid)
+        rrf_score = _rrf_score(vector_rank=vrank, fts_rank=frank, k=int(rrf_k))
+
+        hybrid_meta = {
+            "vector_rank": vrank,
+            "fts_rank": frank,
+            "rrf_k": int(rrf_k),
+            "rrf_score": rrf_score,
+            "fts_score": fts_score,
+        }
+        if isinstance(meta.get("hybrid"), dict):
+            meta["hybrid"] = {**(meta.get("hybrid") or {}), **hybrid_meta}
+        else:
+            meta["hybrid"] = hybrid_meta
+
+        candidates.append(
+            {
+                "id": cid,
+                "distance": distance,
+                "text": text_md,
+                "metadata": meta,
+                "hybrid": hybrid_meta,
+                "_rrf_score": rrf_score,
+            }
+        )
+
+    candidates.sort(key=lambda c: (-float(c.get("_rrf_score") or 0.0), float(c.get("distance") or 0.0)))
+
+    return {
+        "candidates": candidates,
+        "ranks": {"vector": vec_ranks, "fts": fts_ranks, "rrf_k": int(rrf_k)},
+        "counts": {"vector": len(vec_rows), "fts": len(fts_rows), "union": len(ids)},
+    }
+
+
+def _pgvector_hybrid_query(*, project_id: str, query_text: str, query_vec: list[float], sources: list[VectorSource]) -> dict[str, Any]:
+    if not _is_postgres():
+        raise RuntimeError("not_postgres")
+
+    top_k = int(settings.vector_max_candidates or 20)
+    rrf_k = int(settings.vector_hybrid_rrf_k or 60)
+    vec_k = top_k
+    fts_k = top_k
+
+    overfilter_actions: list[str] = []
+    requested_sources = list(sources or _ALL_SOURCES)
+    used_sources = list(requested_sources)
+
+    min_needed = max(1, min(3, int(settings.vector_final_max_chunks or 6)))
+    for _attempt in range(3):
+        out = _pgvector_hybrid_fetch(
+            project_id=project_id,
+            query_text=query_text,
+            query_vec=query_vec,
+            sources=used_sources,
+            vector_k=vec_k,
+            fts_k=fts_k,
+            rrf_k=rrf_k,
+        )
+        union_count = int(out.get("counts", {}).get("union") or 0)
+        if not settings.vector_overfiltering_enabled:
+            break
+        if union_count >= min_needed:
+            break
+        if used_sources != _ALL_SOURCES:
+            used_sources = list(_ALL_SOURCES)
+            overfilter_actions.append("relax_sources")
+            continue
+        if vec_k <= top_k:
+            vec_k = min(200, max(top_k * 3, top_k))
+            fts_k = min(200, max(top_k * 3, top_k))
+            overfilter_actions.append("expand_candidates")
+            continue
+        break
+
+    return {
+        **out,
+        "overfilter": {
+            "enabled": bool(settings.vector_overfiltering_enabled),
+            "min_needed": min_needed,
+            "requested_sources": requested_sources,
+            "used_sources": used_sources,
+            "actions": overfilter_actions,
+            "vector_k": vec_k,
+            "fts_k": fts_k,
+        },
+    }
+
+
 def ingest_chunks(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, Any]:
     enabled, disabled_reason = _vector_enabled_reason()
     if not enabled:
         return {"enabled": False, "skipped": True, "disabled_reason": disabled_reason, "ingested": 0}
-
-    try:
-        collection = _get_collection(project_id=project_id)
-    except Exception as exc:  # pragma: no cover - env dependent
-        return {"enabled": False, "skipped": True, "disabled_reason": "chroma_unavailable", "error": str(exc), "ingested": 0}
 
     start = time.perf_counter()
     texts = [c.text for c in chunks]
@@ -270,6 +585,40 @@ def ingest_chunks(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, An
         embeddings = _embed_texts(texts)
 
     embed_ms = int((time.perf_counter() - start) * 1000)
+
+    if _prefer_pgvector():
+        try:
+            write_start = time.perf_counter()
+            out = _pgvector_upsert_chunks(project_id=project_id, chunks=chunks, embeddings=embeddings)
+            write_ms = int((time.perf_counter() - write_start) * 1000)
+            log_event(
+                logger,
+                "info",
+                event="VECTOR_RAG",
+                action="ingest",
+                project_id=project_id,
+                chunks=len(chunks),
+                timings_ms={"embed": embed_ms, "upsert": write_ms},
+                backend="pgvector",
+            )
+            return {**out, "timings_ms": {"embed": embed_ms, "upsert": write_ms}, "backend": "pgvector"}
+        except Exception as exc:  # pragma: no cover - env dependent
+            log_event(
+                logger,
+                "warning",
+                event="VECTOR_RAG",
+                action="ingest",
+                project_id=project_id,
+                backend="pgvector",
+                fallback="chroma",
+                error=str(exc),
+            )
+
+    try:
+        collection = _get_collection(project_id=project_id)
+    except Exception as exc:  # pragma: no cover - env dependent
+        return {"enabled": False, "skipped": True, "disabled_reason": "chroma_unavailable", "error": str(exc), "ingested": 0}
+
     write_start = time.perf_counter()
     collection.upsert(ids=ids, documents=texts, metadatas=metadatas, embeddings=embeddings)
     write_ms = int((time.perf_counter() - write_start) * 1000)
@@ -282,14 +631,31 @@ def ingest_chunks(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, An
         project_id=project_id,
         chunks=len(chunks),
         timings_ms={"embed": embed_ms, "upsert": write_ms},
+        backend="chroma",
     )
-    return {"enabled": True, "skipped": False, "ingested": len(chunks), "timings_ms": {"embed": embed_ms, "upsert": write_ms}}
+    return {"enabled": True, "skipped": False, "ingested": len(chunks), "timings_ms": {"embed": embed_ms, "upsert": write_ms}, "backend": "chroma"}
 
 
 def rebuild_project(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, Any]:
     enabled, disabled_reason = _vector_enabled_reason()
     if not enabled:
         return {"enabled": False, "skipped": True, "disabled_reason": disabled_reason, "rebuilt": 0}
+
+    if _prefer_pgvector():
+        try:
+            _pgvector_delete_project(project_id=project_id)
+        except Exception as exc:  # pragma: no cover - env dependent
+            log_event(
+                logger,
+                "warning",
+                event="VECTOR_RAG",
+                action="rebuild",
+                project_id=project_id,
+                backend="pgvector",
+                error=str(exc),
+            )
+        out = ingest_chunks(project_id=project_id, chunks=chunks)
+        return {"enabled": bool(out.get("enabled")), "skipped": bool(out.get("skipped")), "rebuilt": int(out.get("ingested") or 0), **out}
 
     try:
         chromadb = _import_chromadb()
@@ -343,7 +709,7 @@ def query_project(
     query_text: str,
     sources: list[VectorSource] | None = None,
 ) -> dict[str, Any]:
-    sources = sources or ["worldbook", "outline", "chapter"]
+    sources = sources or list(_ALL_SOURCES)
     enabled, disabled_reason = _vector_enabled_reason()
     if not enabled:
         return {
@@ -358,28 +724,109 @@ def query_project(
             "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
         }
 
+    start = time.perf_counter()
+    qvec = _embed_texts([query_text.strip() or " "])[0]
+    embed_ms = int((time.perf_counter() - start) * 1000)
+
+    top_k = int(settings.vector_max_candidates or 20)
+    pgvector_error: str | None = None
+    if _prefer_pgvector() and bool(getattr(settings, "vector_hybrid_enabled", True)):
+        query_start = time.perf_counter()
+        try:
+            hybrid_out = _pgvector_hybrid_query(project_id=project_id, query_text=query_text, query_vec=qvec, sources=sources)
+            query_ms = int((time.perf_counter() - query_start) * 1000)
+
+            raw_candidates = hybrid_out.get("candidates") if isinstance(hybrid_out.get("candidates"), list) else []
+            candidates: list[dict[str, Any]] = []
+            for c in raw_candidates:
+                if not isinstance(c, dict):
+                    continue
+                cc = dict(c)
+                cc.pop("_rrf_score", None)
+                candidates.append(cc)
+
+            trimmed_candidates = candidates[:top_k]
+            dropped: list[dict[str, Any]] = []
+            final_chunks: list[dict[str, Any]] = []
+            seen_keys: set[tuple[str, str]] = set()
+            for c in trimmed_candidates:
+                meta = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+                key = (str(meta.get("source") or ""), str(meta.get("source_id") or ""))
+                if key in seen_keys:
+                    dropped.append({"id": c.get("id"), "reason": "duplicate_source"})
+                    continue
+                seen_keys.add(key)
+                final_chunks.append(c)
+                if len(final_chunks) >= int(settings.vector_final_max_chunks or 6):
+                    break
+
+            for c in trimmed_candidates[len(final_chunks) :]:
+                if len(final_chunks) >= int(settings.vector_final_max_chunks or 6):
+                    dropped.append({"id": c.get("id"), "reason": "budget"})
+
+            post_start = time.perf_counter()
+            text_md, truncated = _format_final_text(final_chunks, char_limit=int(settings.vector_final_char_limit or 6000))
+            post_ms = int((time.perf_counter() - post_start) * 1000)
+
+            timings_ms = {"embed": embed_ms, "query": query_ms, "post": post_ms}
+            log_event(
+                logger,
+                "info",
+                event="VECTOR_RAG",
+                action="query",
+                project_id=project_id,
+                backend="pgvector",
+                hybrid_enabled=True,
+                query_chars=len(query_text or ""),
+                candidates=[c.get("id") for c in trimmed_candidates[: min(5, len(trimmed_candidates))]],
+                dropped=dropped[:5],
+                timings_ms=timings_ms,
+                filters={"sources": sources},
+                overfilter=hybrid_out.get("overfilter"),
+                counts=hybrid_out.get("counts"),
+            )
+
+            return {
+                "enabled": True,
+                "disabled_reason": None,
+                "query_text": query_text,
+                "filters": {"project_id": project_id, "sources": sources},
+                "timings_ms": timings_ms,
+                "candidates": trimmed_candidates,
+                "final": {"chunks": final_chunks, "text_md": text_md, "truncated": truncated},
+                "dropped": dropped,
+                "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},
+                "backend": "pgvector",
+                "hybrid": {
+                    "enabled": True,
+                    "ranks": hybrid_out.get("ranks"),
+                    "counts": hybrid_out.get("counts"),
+                    "overfilter": hybrid_out.get("overfilter"),
+                },
+            }
+        except Exception as exc:  # pragma: no cover - env dependent
+            pgvector_error = str(exc)
+
     try:
         collection = _get_collection(project_id=project_id)
     except Exception as exc:  # pragma: no cover - env dependent
-        return {
+        out: dict[str, Any] = {
             "enabled": False,
             "disabled_reason": "chroma_unavailable",
             "error": str(exc),
             "query_text": query_text,
             "filters": {"project_id": project_id, "sources": sources},
-            "timings_ms": {},
+            "timings_ms": {"embed": embed_ms},
             "candidates": [],
             "final": {"chunks": [], "text_md": "", "truncated": False},
             "dropped": [],
             "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
         }
-
-    start = time.perf_counter()
-    qvec = _embed_texts([query_text.strip() or " "])[0]
-    embed_ms = int((time.perf_counter() - start) * 1000)
+        if pgvector_error:
+            out["fallback"] = {"from": "pgvector", "to": "chroma", "error": pgvector_error}
+        return out
 
     query_start = time.perf_counter()
-    top_k = int(settings.vector_max_candidates or 20)
     where: dict[str, Any] | None = None
     if len(sources) == 1:
         where = {"source": sources[0]}
@@ -433,27 +880,33 @@ def query_project(
     text_md, truncated = _format_final_text(final_chunks, char_limit=int(settings.vector_final_char_limit or 6000))
     post_ms = int((time.perf_counter() - post_start) * 1000)
 
+    timings_ms = {"embed": embed_ms, "query": query_ms, "post": post_ms}
     log_event(
         logger,
         "info",
         event="VECTOR_RAG",
         action="query",
         project_id=project_id,
+        backend="chroma",
         query_chars=len(query_text or ""),
         candidates=[c.get("id") for c in trimmed_candidates[: min(5, len(trimmed_candidates))]],
         dropped=dropped[:5],
-        timings_ms={"embed": embed_ms, "query": query_ms, "post": post_ms},
+        timings_ms=timings_ms,
         filters={"sources": sources},
     )
 
-    return {
+    out: dict[str, Any] = {
         "enabled": True,
         "disabled_reason": None,
         "query_text": query_text,
         "filters": {"project_id": project_id, "sources": sources},
-        "timings_ms": {"embed": embed_ms, "query": query_ms, "post": post_ms},
+        "timings_ms": timings_ms,
         "candidates": trimmed_candidates,
         "final": {"chunks": final_chunks, "text_md": text_md, "truncated": truncated},
         "dropped": dropped,
         "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},
+        "backend": "chroma",
     }
+    if pgvector_error:
+        out["fallback"] = {"from": "pgvector", "to": "chroma", "error": pgvector_error}
+    return out

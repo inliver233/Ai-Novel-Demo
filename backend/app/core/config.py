@@ -25,6 +25,7 @@ AppEnv = Literal["dev", "prod"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 TaskQueueBackend = Literal["rq", "inline"]
 CookieSameSite = Literal["lax", "strict", "none"]
+VectorBackend = Literal["auto", "chroma", "pgvector"]
 
 
 class Settings(BaseSettings):
@@ -56,6 +57,10 @@ class Settings(BaseSettings):
     vector_embedding_base_url: str | None = None
     vector_embedding_model: str | None = None
     vector_embedding_api_key: str | None = None
+    vector_backend: VectorBackend = "auto"
+    vector_hybrid_enabled: bool = True
+    vector_hybrid_rrf_k: int = 60
+    vector_overfiltering_enabled: bool = True
     vector_max_candidates: int = 20
     vector_final_max_chunks: int = 6
     vector_final_char_limit: int = 6000
