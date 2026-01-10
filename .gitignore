@@ -29,6 +29,7 @@ dist/
 *.sqlite3-shm
 backend/.env
 frontend/.env
+.env.docker
 backend/.dev-backend.*.log
 backend/.tmp_test/
 test/.artifacts/

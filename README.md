@@ -49,6 +49,49 @@ npm run dev
 - 前端：`http://localhost:5173`
 - 后端：`http://localhost:8000`（API base：`/api`）
 
+## Docker Compose（部署/一键启动）
+
+> 目标：给出一个“可启动、可观测、可回滚”的最小部署形态（frontend/backend/postgres/redis/worker）。
+
+### 1) 准备环境变量（必做）
+
+```bash
+copy .env.docker.example .env.docker  # Windows
+```
+
+编辑 `.env.docker`（**不要提交到 git**）：
+- `POSTGRES_PASSWORD`：Postgres 密码（必填）
+- `DATABASE_URL`：数据库连接串（必填，需与 `POSTGRES_*` 保持一致）
+- `SECRET_ENCRYPTION_KEY`：Fernet key（容器内是 Linux，dev 模式也需要；必填）
+  - 生成方式：`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+
+### 2) 启动
+
+```bash
+docker compose up --build
+```
+
+访问：
+- 前端：`http://localhost:5173`
+- 后端：`http://localhost:8000`（也可通过前端同域代理：`/api`）
+
+### 3) 日志与排障（含 request_id）
+
+```bash
+docker compose logs -f backend
+docker compose logs -f rq_worker
+```
+
+后端日志为 JSON 行，包含 `request_id`，可用于前后端/网关联动定位。
+
+### 4) 回滚/重置策略（明确）
+
+- 回滚代码：切回旧 commit 后执行 `docker compose up --build -d`（默认保留 `postgres_data` 卷，不丢数据）。
+- 重置数据：`docker compose down -v`（会删除 `postgres_data`/`chroma_data` 卷，**不可恢复**）。
+- 数据卷：
+  - Postgres：`postgres_data`
+  - （可选）向量库（Phase 4A 预留）：`chroma_data`（挂载到 `/data/chroma`）
+
 ## LLM 流式输出与请求格式
 
 - 后端 SSE 流式输出已覆盖：`openai/openai_compatible/openai_responses/openai_responses_compatible/anthropic/gemini`

@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - .env.docker
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "${PG_PORT:-5432}:5432"
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env.docker
+    environment:
+      TASK_QUEUE_BACKEND: rq
+      REDIS_URL: redis://redis:6379/0
+      RQ_QUEUE_NAME: default
+      CORS_ORIGINS: http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - chroma_data:/data/chroma
+    restart: unless-stopped
+
+  rq_worker:
+    build:
+      context: ./backend
+    command: ["python", "scripts/run_rq_worker.py"]
+    env_file:
+      - .env.docker
+    environment:
+      TASK_QUEUE_BACKEND: rq
+      REDIS_URL: redis://redis:6379/0
+      RQ_QUEUE_NAME: default
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - chroma_data:/data/chroma
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  chroma_data:
