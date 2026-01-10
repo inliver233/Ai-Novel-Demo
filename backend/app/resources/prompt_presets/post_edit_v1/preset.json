@@ -6,6 +6,10 @@
   "activation_tasks": [
     "post_edit"
   ],
+  "upgrade_add_identifiers": [
+    "sys.post_edit.sanitize",
+    "sys.project.style_guide"
+  ],
   "blocks": [
     {
       "identifier": "sys.post_edit.role",
@@ -23,6 +27,44 @@
       "forbid_overrides": false,
       "budget": {
         "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.post_edit.sanitize",
+      "name": "post_edit sanitize (optional)",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.post_edit.sanitize.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 12,
+      "triggers": [
+        "post_edit"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "important"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.style_guide",
+      "name": "project style_guide",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.style_guide.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 15,
+      "triggers": [
+        "post_edit"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "medium"
       },
       "cache": null
     },

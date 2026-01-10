@@ -32,7 +32,7 @@ from app.models.project_settings import ProjectSettings
 from app.schemas.chapters import BulkCreateRequest, ChapterCreate, ChapterOut, ChapterUpdate
 from app.schemas.chapter_generate import ChapterGenerateRequest
 from app.schemas.chapter_plan import ChapterPlanRequest
-from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.generation_service import build_run_params_json, call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.generation_pipeline import run_chapter_generate_llm_step, run_plan_llm_step, run_post_edit_step
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.length_control import estimate_max_tokens
@@ -506,6 +506,7 @@ def generate_chapter(
     prompt_user = ""
     prompt_render_log_json: str | None = None
     render_values: dict[str, object] | None = None
+    run_params_extra_json: dict[str, object] | None = None
 
     plan_prompt_system = ""
     plan_prompt_user = ""
@@ -545,13 +546,15 @@ def generate_chapter(
             raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
         resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
 
-        values, base_instruction, requirements_obj = build_chapter_generate_render_values(
+        values, base_instruction, requirements_obj, style_resolution = build_chapter_generate_render_values(
             db,
             project=project,
             chapter=chapter,
             body=body,
+            user_id=user_id,
         )
         render_values = values
+        run_params_extra_json = {"style_resolution": style_resolution}
 
         if body.plan_first:
             ensure_default_plan_preset(db, project_id=project_id)
@@ -607,6 +610,7 @@ def generate_chapter(
             prompt_user=plan_prompt_user,
             prompt_messages=plan_prompt_messages,
             prompt_render_log_json=plan_prompt_render_log_json,
+            run_params_extra_json=run_params_extra_json,
         )
         plan_out, plan_warnings, plan_parse_error = plan_step.plan_out, plan_step.warnings, plan_step.parse_error
         if plan_step.finish_reason is not None:
@@ -647,6 +651,7 @@ def generate_chapter(
         prompt_user=prompt_user,
         prompt_messages=prompt_messages,
         prompt_render_log_json=prompt_render_log_json,
+        run_params_extra_json=run_params_extra_json,
     )
     data, warnings, parse_error = gen_step.data, gen_step.warnings, gen_step.parse_error
 
@@ -668,6 +673,8 @@ def generate_chapter(
                 render_values=render_values or {},
                 raw_content=raw_content,
                 macro_seed=f"{request_id}:post_edit",
+                post_edit_sanitize=bool(body.post_edit_sanitize),
+                run_params_extra_json={**(run_params_extra_json or {}), "post_edit_sanitize": bool(body.post_edit_sanitize)},
             )
             post_edit_warnings = step.warnings
             post_edit_parse_error = step.parse_error
@@ -738,6 +745,8 @@ def generate_chapter_stream(
         prompt_messages = []
         prompt_render_log_json: str | None = None
         render_values: dict[str, object] | None = None
+        run_params_extra_json: dict[str, object] | None = None
+        run_params_json: str | None = None
 
         plan_prompt_system = ""
         plan_prompt_user = ""
@@ -768,13 +777,15 @@ def generate_chapter_stream(
                 db, project=project, user_id=user_id, header_api_key=x_llm_api_key
             )
 
-            values, base_instruction, requirements_obj = build_chapter_generate_render_values(
+            values, base_instruction, requirements_obj, style_resolution = build_chapter_generate_render_values(
                 db,
                 project=project,
                 chapter=chapter,
                 body=body,
+                user_id=user_id,
             )
             render_values = values
+            run_params_extra_json = {"style_resolution": style_resolution}
 
             if body.plan_first:
                 ensure_default_plan_preset(db, project_id=project_id)
@@ -802,6 +813,11 @@ def generate_chapter_stream(
                 prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
             llm_call = prepare_llm_call(preset)
+            run_params_json = build_run_params_json(
+                params_json=llm_call.params_json,
+                memory_retrieval_log_json=None,
+                extra_json=run_params_extra_json,
+            )
         except GeneratorExit:
             return
         except AppError as exc:
@@ -815,6 +831,12 @@ def generate_chapter_stream(
             yield sse_error(error="LLM 调用准备失败", code=500)
             yield sse_done()
             return
+        if run_params_json is None:
+            run_params_json = build_run_params_json(
+                params_json=llm_call.params_json,
+                memory_retrieval_log_json=None,
+                extra_json=run_params_extra_json,
+            )
 
         if render_values is None:
             yield sse_error(error="提示词变量准备失败", code=500)
@@ -848,6 +870,7 @@ def generate_chapter_stream(
                     prompt_user=plan_prompt_user,
                     prompt_messages=plan_prompt_messages,
                     prompt_render_log_json=plan_prompt_render_log_json,
+                    run_params_extra_json=run_params_extra_json,
                 )
                 plan_out, plan_warnings, plan_parse_error = plan_step.plan_out, plan_step.warnings, plan_step.parse_error
                 if plan_parse_error is not None:
@@ -951,7 +974,7 @@ def generate_chapter_stream(
                 prompt_system=prompt_system,
                 prompt_user=prompt_user,
                 prompt_render_log_json=prompt_render_log_json,
-                params_json=llm_call.params_json,
+                params_json=run_params_json,
                 output_text=raw_output,
                 error_json=None,
             )
@@ -981,6 +1004,8 @@ def generate_chapter_stream(
                         render_values=render_values or {},
                         raw_content=raw_content,
                         macro_seed=f"{request_id}:post_edit",
+                        post_edit_sanitize=bool(body.post_edit_sanitize),
+                        run_params_extra_json={**(run_params_extra_json or {}), "post_edit_sanitize": bool(body.post_edit_sanitize)},
                     )
                     post_edit_warnings = step.warnings
                     post_edit_parse_error = step.parse_error
@@ -1037,7 +1062,7 @@ def generate_chapter_stream(
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
                     prompt_render_log_json=prompt_render_log_json,
-                    params_json=llm_call.params_json,
+                    params_json=run_params_json,
                     output_text=raw_output or None,
                     error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),
                 )
@@ -1072,7 +1097,7 @@ def generate_chapter_stream(
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
                     prompt_render_log_json=prompt_render_log_json,
-                    params_json=llm_call.params_json,
+                    params_json=run_params_json,
                     output_text=raw_output or None,
                     error_json=json.dumps(
                         {

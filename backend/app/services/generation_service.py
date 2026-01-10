@@ -58,9 +58,16 @@ def _parse_json_dict(value: str | None) -> dict[str, Any]:
     return parsed
 
 
-def _params_json_with_memory_retrieval_log(*, params_json: str, memory_retrieval_log_json: dict[str, Any]) -> str:
+def build_run_params_json(
+    *,
+    params_json: str,
+    memory_retrieval_log_json: dict[str, Any] | None,
+    extra_json: dict[str, Any] | None = None,
+) -> str:
     params = _parse_json_dict(params_json)
-    params["memory_retrieval_log_json"] = memory_retrieval_log_json
+    params["memory_retrieval_log_json"] = memory_retrieval_log_json or placeholder_memory_retrieval_log(enabled=False)
+    if extra_json:
+        params.update(extra_json)
     return json.dumps(params, ensure_ascii=False)
 
 
@@ -125,10 +132,12 @@ def call_llm_and_record(
     prompt_render_log_json: str | None = None,
     llm_call: PreparedLlmCall,
     memory_retrieval_log_json: dict[str, Any] | None = None,
+    run_params_extra_json: dict[str, Any] | None = None,
 ) -> RecordedLlmResult:
-    run_params_json = _params_json_with_memory_retrieval_log(
+    run_params_json = build_run_params_json(
         params_json=llm_call.params_json,
-        memory_retrieval_log_json=memory_retrieval_log_json or placeholder_memory_retrieval_log(enabled=False),
+        memory_retrieval_log_json=memory_retrieval_log_json,
+        extra_json=run_params_extra_json,
     )
     try:
         if prompt_messages is None:

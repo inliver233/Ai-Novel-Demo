@@ -14,6 +14,7 @@ from app.models.project_settings import ProjectSettings
 from app.schemas.chapter_analysis import ChapterAnalyzeRequest, ChapterRewriteRequest
 from app.schemas.chapter_generate import ChapterGenerateContext, ChapterGenerateRequest
 from app.services.prompt_store import format_characters
+from app.services.style_resolution_service import resolve_style_guide
 
 PREVIOUS_CHAPTER_ENDING_CHARS = 1000
 CURRENT_DRAFT_TAIL_CHARS = 1200
@@ -300,12 +301,21 @@ def build_chapter_generate_render_values(
     project: Project,
     chapter: Chapter,
     body: ChapterGenerateRequest,
-) -> tuple[dict[str, object], str, dict[str, object]]:
+    user_id: str,
+) -> tuple[dict[str, object], str, dict[str, object], dict[str, object]]:
     world_setting, style_guide, constraints, outline_text, characters_text = _load_project_story_text_context(
         db,
         project_id=chapter.project_id,
         outline_id=chapter.outline_id,
         ctx=body.context,
+    )
+    resolved_style_guide, style_resolution = resolve_style_guide(
+        db,
+        project_id=chapter.project_id,
+        user_id=user_id,
+        requested_style_id=body.style_id,
+        include_style_guide=bool(body.context.include_style_guide),
+        settings_style_guide=style_guide,
     )
 
     prev_text, prev_ending = load_previous_chapter_context(
@@ -341,7 +351,7 @@ def build_chapter_generate_render_values(
         chapter_title=(chapter.title or ""),
         chapter_plan=(chapter.plan or ""),
         world_setting=world_setting,
-        style_guide=style_guide,
+        style_guide=resolved_style_guide,
         constraints=constraints,
         characters_text=characters_text,
         outline_text=outline_text,
@@ -355,7 +365,7 @@ def build_chapter_generate_render_values(
         smart_context_story_skeleton=smart_story_skeleton,
     )
 
-    return values, base_instruction, requirements_obj
+    return values, base_instruction, requirements_obj, style_resolution
 
 
 def build_chapter_analyze_render_values(

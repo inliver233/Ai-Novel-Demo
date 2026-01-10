@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from app.services.chapter_context_service import build_post_edit_render_values
 from app.services.generation_service import PreparedLlmCall, call_llm_and_record, with_param_overrides
+from app.services.post_edit_validation import validate_post_edit_output
 from app.services.output_contracts import contract_for_task
 from app.services.prompt_presets import ensure_default_post_edit_preset, render_preset_for_task
 from app.db.session import SessionLocal
@@ -50,10 +51,13 @@ def run_post_edit_step(
     render_values: dict[str, object],
     raw_content: str,
     macro_seed: str,
+    post_edit_sanitize: bool = False,
+    run_params_extra_json: dict[str, object] | None = None,
 ) -> PostEditStepResult:
     with SessionLocal() as db:
         ensure_default_post_edit_preset(db, project_id=project_id)
         post_values = build_post_edit_render_values(render_values, raw_content=raw_content)
+        post_values["post_edit_sanitize"] = bool(post_edit_sanitize)
 
         post_system, post_user, post_messages, _, _, _, post_render_log = render_preset_for_task(
             db,
@@ -72,13 +76,14 @@ def run_post_edit_step(
         actor_user_id=actor_user_id,
         project_id=project_id,
         chapter_id=chapter_id,
-        run_type="post_edit",
+        run_type="post_edit_sanitize" if post_edit_sanitize else "post_edit",
         api_key=api_key,
         prompt_system=post_system,
         prompt_user=post_user,
         prompt_messages=post_messages,
         prompt_render_log_json=post_render_log_json,
         llm_call=post_call,
+        run_params_extra_json=run_params_extra_json,
     )
 
     post_contract = contract_for_task("post_edit")
@@ -87,6 +92,11 @@ def run_post_edit_step(
     parse_error = post_parsed.parse_error
     edited = str(post_parsed.data.get("content_md") or "").strip()
     applied = parse_error is None and bool(edited)
+    if applied:
+        extra_warnings = validate_post_edit_output(raw_content=raw_content, edited_content=edited)
+        if extra_warnings:
+            warnings.extend(extra_warnings)
+            applied = False
     if not applied:
         warnings.append("post_edit_failed")
 
@@ -111,6 +121,7 @@ def run_plan_llm_step(
     prompt_user: str,
     prompt_messages: list,
     prompt_render_log_json: str | None,
+    run_params_extra_json: dict[str, object] | None = None,
 ) -> PlanStepResult:
     plan_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 1024})
     plan_result = call_llm_and_record(
@@ -126,6 +137,7 @@ def run_plan_llm_step(
         prompt_messages=prompt_messages,
         prompt_render_log_json=prompt_render_log_json,
         llm_call=plan_call,
+        run_params_extra_json=run_params_extra_json,
     )
 
     plan_contract = contract_for_task("plan_chapter")
@@ -152,6 +164,7 @@ def run_chapter_generate_llm_step(
     prompt_user: str,
     prompt_messages: list,
     prompt_render_log_json: str | None,
+    run_params_extra_json: dict[str, object] | None = None,
 ) -> ChapterGenerateStepResult:
     llm_result = call_llm_and_record(
         logger=logger,
@@ -166,6 +179,7 @@ def run_chapter_generate_llm_step(
         prompt_messages=prompt_messages,
         prompt_render_log_json=prompt_render_log_json,
         llm_call=llm_call,
+        run_params_extra_json=run_params_extra_json,
     )
 
     chapter_contract = contract_for_task("chapter_generate")

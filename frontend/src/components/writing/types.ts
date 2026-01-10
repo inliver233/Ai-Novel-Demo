@@ -10,6 +10,8 @@ export type GenerateForm = {
   stream: boolean;
   plan_first: boolean;
   post_edit: boolean;
+  post_edit_sanitize: boolean;
+  style_id: string | null;
   memory_injection_enabled: boolean;
   context: {
     include_world_setting: boolean;

@@ -498,6 +498,7 @@ export function WritingPage() {
         open={aiOpen}
         generating={generating}
         preset={preset}
+        projectId={projectId}
         activeChapter={Boolean(activeChapter)}
         dirty={dirty}
         saving={loadingChapter}

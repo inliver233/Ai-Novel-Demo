@@ -21,6 +21,8 @@ class BatchGenerationCreateRequest(BaseModel):
     target_word_count: int | None = Field(default=None, ge=100, le=50000)
     plan_first: bool = False
     post_edit: bool = False
+    post_edit_sanitize: bool = False
+    style_id: str | None = Field(default=None, max_length=36)
     context: ChapterGenerateContext = Field(default_factory=ChapterGenerateContext)
 
 

@@ -12,5 +12,5 @@ class OutlineGenerateContext(BaseModel):
 
 class OutlineGenerateRequest(BaseModel):
     requirements: dict[str, Any] = Field(default_factory=dict)
+    style_id: str | None = Field(default=None, max_length=36)
     context: OutlineGenerateContext = Field(default_factory=OutlineGenerateContext)
-

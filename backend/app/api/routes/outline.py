@@ -16,13 +16,14 @@ from app.models.character import Character
 from app.models.llm_preset import LLMPreset
 from app.models.project_settings import ProjectSettings
 from app.schemas.outline_generate import OutlineGenerateRequest
-from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.generation_service import build_run_params_json, call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.outline_store import ensure_active_outline
 from app.services.output_contracts import build_repair_prompt_for_task, contract_for_task
 from app.services.prompt_presets import render_preset_for_task
 from app.services.prompt_store import format_characters
 from app.services.run_store import write_generation_run
+from app.services.style_resolution_service import resolve_style_guide
 from app.utils.sse_response import (
     create_sse_response,
     sse_chunk,
@@ -132,12 +133,26 @@ def generate_outline(
 
         settings_row = db.get(ProjectSettings, project_id)
         world_setting = (settings_row.world_setting if settings_row else "") or ""
-        style_guide = (settings_row.style_guide if settings_row else "") or ""
+        settings_style_guide = (settings_row.style_guide if settings_row else "") or ""
         constraints = (settings_row.constraints if settings_row else "") or ""
+
+        style_resolution: dict[str, object] = {"style_id": None, "source": "disabled"}
         if not body.context.include_world_setting:
             world_setting = ""
-            style_guide = ""
+            settings_style_guide = ""
             constraints = ""
+        else:
+            resolved_style_guide, style_resolution = resolve_style_guide(
+                db,
+                project_id=project_id,
+                user_id=user_id,
+                requested_style_id=body.style_id,
+                include_style_guide=True,
+                settings_style_guide=settings_style_guide,
+            )
+            settings_style_guide = resolved_style_guide
+
+        run_params_extra_json: dict[str, object] = {"style_resolution": style_resolution}
 
         chars: list[Character] = []
         if body.context.include_characters:
@@ -151,7 +166,7 @@ def generate_outline(
             "genre": project.genre or "",
             "logline": project.logline or "",
             "world_setting": world_setting,
-            "style_guide": style_guide,
+            "style_guide": settings_style_guide,
             "constraints": constraints,
             "characters": characters_text,
             "outline": "",
@@ -193,6 +208,7 @@ def generate_outline(
         prompt_messages=prompt_messages,
         prompt_render_log_json=prompt_render_log_json,
         llm_call=llm_call,
+        run_params_extra_json=run_params_extra_json,
     )
 
     raw_output = llm_result.text
@@ -224,6 +240,7 @@ def generate_outline(
                 prompt_system=fix_system,
                 prompt_user=fix_user,
                 llm_call=fix_call,
+                run_params_extra_json=run_params_extra_json,
             )
             fixed_parsed = contract.parse(fixed.text)
             fixed_data, fixed_warnings, fixed_error = fixed_parsed.data, fixed_parsed.warnings, fixed_parsed.parse_error
@@ -266,6 +283,8 @@ def generate_outline_stream(
         prompt_system = ""
         prompt_user = ""
         prompt_render_log_json: str | None = None
+        run_params_extra_json: dict[str, object] | None = None
+        run_params_json: str | None = None
         llm_call = None
         resolved_api_key = ""
 
@@ -281,12 +300,26 @@ def generate_outline_stream(
 
             settings_row = db.get(ProjectSettings, project_id)
             world_setting = (settings_row.world_setting if settings_row else "") or ""
-            style_guide = (settings_row.style_guide if settings_row else "") or ""
+            settings_style_guide = (settings_row.style_guide if settings_row else "") or ""
             constraints = (settings_row.constraints if settings_row else "") or ""
+
+            style_resolution: dict[str, object] = {"style_id": None, "source": "disabled"}
             if not body.context.include_world_setting:
                 world_setting = ""
-                style_guide = ""
+                settings_style_guide = ""
                 constraints = ""
+            else:
+                resolved_style_guide, style_resolution = resolve_style_guide(
+                    db,
+                    project_id=project_id,
+                    user_id=user_id,
+                    requested_style_id=body.style_id,
+                    include_style_guide=True,
+                    settings_style_guide=settings_style_guide,
+                )
+                settings_style_guide = resolved_style_guide
+
+            run_params_extra_json = {"style_resolution": style_resolution}
 
             chars: list[Character] = []
             if body.context.include_characters:
@@ -299,7 +332,7 @@ def generate_outline_stream(
                 "genre": project.genre or "",
                 "logline": project.logline or "",
                 "world_setting": world_setting,
-                "style_guide": style_guide,
+                "style_guide": settings_style_guide,
                 "constraints": constraints,
                 "characters": characters_text,
                 "outline": "",
@@ -321,6 +354,11 @@ def generate_outline_stream(
             )
             prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
             llm_call = prepare_llm_call(preset)
+            run_params_json = build_run_params_json(
+                params_json=llm_call.params_json,
+                memory_retrieval_log_json=None,
+                extra_json=run_params_extra_json,
+            )
         except GeneratorExit:
             return
         except AppError as exc:
@@ -334,6 +372,12 @@ def generate_outline_stream(
             yield sse_error(error="LLM 调用准备失败", code=500)
             yield sse_done()
             return
+        if run_params_json is None:
+            run_params_json = build_run_params_json(
+                params_json=llm_call.params_json,
+                memory_retrieval_log_json=None,
+                extra_json=run_params_extra_json,
+            )
 
         yield sse_progress(message="调用模型...", progress=10)
 
@@ -408,7 +452,7 @@ def generate_outline_stream(
                 prompt_system=prompt_system,
                 prompt_user=prompt_user,
                 prompt_render_log_json=prompt_render_log_json,
-                params_json=llm_call.params_json,
+                params_json=run_params_json,
                 output_text=raw_output,
                 error_json=None,
             )
@@ -446,6 +490,7 @@ def generate_outline_stream(
                         prompt_system=fix_system,
                         prompt_user=fix_user,
                         llm_call=fix_call,
+                        run_params_extra_json=run_params_extra_json,
                     )
                     fixed_parsed = contract.parse(fixed.text)
                     fixed_data, fixed_warnings, fixed_error = fixed_parsed.data, fixed_parsed.warnings, fixed_parsed.parse_error
@@ -492,7 +537,7 @@ def generate_outline_stream(
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
                     prompt_render_log_json=prompt_render_log_json,
-                    params_json=llm_call.params_json,
+                    params_json=run_params_json,
                     output_text=raw_output or None,
                     error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),
                 )
@@ -512,7 +557,7 @@ def generate_outline_stream(
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
                     prompt_render_log_json=prompt_render_log_json,
-                    params_json=llm_call.params_json,
+                    params_json=run_params_json,
                     output_text=raw_output or None,
                     error_json=json.dumps({"code": "INTERNAL_ERROR", "message": "服务器内部错误"}, ensure_ascii=False),
                 )

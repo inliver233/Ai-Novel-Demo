@@ -29,6 +29,7 @@ from app.services.generation_service import PreparedLlmCall, prepare_llm_call, w
 from app.services.generation_pipeline import run_chapter_generate_llm_step, run_plan_llm_step, run_post_edit_step
 from app.services.length_control import estimate_max_tokens
 from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.style_resolution_service import resolve_style_guide
 from app.services.prompt_presets import ensure_default_plan_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
 
@@ -41,6 +42,8 @@ class BatchGenerateParams:
     target_word_count: int | None
     plan_first: bool
     post_edit: bool
+    post_edit_sanitize: bool
+    style_id: str | None
     include_world_setting: bool
     include_style_guide: bool
     include_constraints: bool
@@ -73,6 +76,8 @@ def _parse_params(task: BatchGenerationTask) -> BatchGenerateParams:
         target_word_count=(int(raw["target_word_count"]) if isinstance(raw.get("target_word_count"), int) else None),
         plan_first=bool(raw.get("plan_first")),
         post_edit=bool(raw.get("post_edit")),
+        post_edit_sanitize=bool(raw.get("post_edit_sanitize")),
+        style_id=(str(raw.get("style_id")) if raw.get("style_id") is not None else None),
         include_world_setting=bool(ctx_obj.get("include_world_setting", True)),
         include_style_guide=bool(ctx_obj.get("include_style_guide", True)),
         include_constraints=bool(ctx_obj.get("include_constraints", True)),
@@ -109,7 +114,7 @@ def _prepare_project_context(
     outline_id: str,
     actor_user_id: str,
     params: BatchGenerateParams,
-) -> tuple[Project, PreparedLlmCall, str, str, str, str, str, str]:
+) -> tuple[Project, PreparedLlmCall, str, str, str, str, str, str, dict[str, object]]:
     with SessionLocal() as db:
         project = db.get(Project, project_id)
         if project is None:
@@ -153,8 +158,27 @@ def _prepare_project_context(
             )
         characters_text = format_characters(chars)
 
+        resolved_style_guide, style_resolution = resolve_style_guide(
+            db,
+            project_id=project_id,
+            user_id=actor_user_id,
+            requested_style_id=params.style_id,
+            include_style_guide=bool(params.include_style_guide),
+            settings_style_guide=style_guide,
+        )
+
         llm_call = prepare_llm_call(preset)
-        return project, llm_call, resolved_api_key, world_setting, style_guide, constraints, characters_text, outline_text
+        return (
+            project,
+            llm_call,
+            resolved_api_key,
+            world_setting,
+            resolved_style_guide,
+            constraints,
+            characters_text,
+            outline_text,
+            style_resolution,
+        )
 
 
 def run_batch_generation_task(*, task_id: str) -> None:
@@ -191,12 +215,23 @@ def run_batch_generation_task(*, task_id: str) -> None:
             db.commit()
 
     try:
-        project, llm_call_base, resolved_api_key, world_setting, style_guide, constraints, characters_text, outline_text = _prepare_project_context(
+        (
+            project,
+            llm_call_base,
+            resolved_api_key,
+            world_setting,
+            style_guide,
+            constraints,
+            characters_text,
+            outline_text,
+            style_resolution,
+        ) = _prepare_project_context(
             project_id=task.project_id,
             outline_id=task.outline_id,
             actor_user_id=actor_user_id,
             params=params,
         )
+        run_params_extra_json = {"style_resolution": style_resolution}
     except AppError as exc:
         with SessionLocal() as db:
             task = db.get(BatchGenerationTask, task_id)
@@ -334,6 +369,7 @@ def run_batch_generation_task(*, task_id: str) -> None:
                     prompt_user=plan_user,
                     prompt_messages=plan_messages,
                     prompt_render_log_json=plan_render_log_json,
+                    run_params_extra_json=run_params_extra_json,
                 )
                 plan_text = str((plan_step.plan_out or {}).get("plan") or "").strip()
                 if plan_text:
@@ -369,6 +405,7 @@ def run_batch_generation_task(*, task_id: str) -> None:
                 prompt_user=prompt_user,
                 prompt_messages=prompt_messages,
                 prompt_render_log_json=prompt_render_log_json,
+                run_params_extra_json=run_params_extra_json,
             )
             data = gen_step.data
 
@@ -386,6 +423,8 @@ def run_batch_generation_task(*, task_id: str) -> None:
                         render_values=render_values,
                         raw_content=raw_content,
                         macro_seed=f"{chapter_request_id}:post_edit",
+                        post_edit_sanitize=bool(params.post_edit_sanitize),
+                        run_params_extra_json={**run_params_extra_json, "post_edit_sanitize": bool(params.post_edit_sanitize)},
                     )
                     if step.applied:
                         data["content_md"] = step.edited_content_md

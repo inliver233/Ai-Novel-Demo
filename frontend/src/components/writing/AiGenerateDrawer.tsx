@@ -1,14 +1,16 @@
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
 import { Drawer } from "../ui/Drawer";
 import { UI_COPY } from "../../lib/uiCopy";
 import type { Character, LLMPreset } from "../../types";
 import type { GenerateForm } from "./types";
+import { ApiError, apiJson } from "../../services/apiClient";
 
 type Props = {
   open: boolean;
   generating: boolean;
   preset: LLMPreset | null;
+  projectId?: string;
   activeChapter: boolean;
   dirty: boolean;
   saving?: boolean;
@@ -24,8 +26,26 @@ type Props = {
   onCancelGenerate?: () => void;
 };
 
+type WritingStyle = {
+  id: string;
+  name: string;
+  is_preset: boolean;
+};
+
 export function AiGenerateDrawer(props: Props) {
   const { generating, onClose, open } = props;
+
+  const [stylesLoading, setStylesLoading] = useState(false);
+  const [presets, setPresets] = useState<WritingStyle[]>([]);
+  const [userStyles, setUserStyles] = useState<WritingStyle[]>([]);
+  const [projectDefaultStyleId, setProjectDefaultStyleId] = useState<string | null>(null);
+  const [stylesError, setStylesError] = useState<ApiError | null>(null);
+
+  const allStyles = useMemo(() => [...presets, ...userStyles], [presets, userStyles]);
+  const projectDefaultStyle = useMemo(
+    () => allStyles.find((s) => s.id === projectDefaultStyleId) ?? null,
+    [allStyles, projectDefaultStyleId],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -37,6 +57,39 @@ export function AiGenerateDrawer(props: Props) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [generating, onClose, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!props.projectId) return;
+    let cancelled = false;
+    setStylesLoading(true);
+    setStylesError(null);
+    Promise.all([
+      apiJson<{ styles: WritingStyle[] }>("/api/writing_styles/presets"),
+      apiJson<{ styles: WritingStyle[] }>("/api/writing_styles"),
+      apiJson<{ default: { style_id?: string | null } }>(`/api/projects/${props.projectId}/writing_style_default`),
+    ])
+      .then(([presetRes, userRes, defRes]) => {
+        if (cancelled) return;
+        setPresets(presetRes.data.styles ?? []);
+        setUserStyles(userRes.data.styles ?? []);
+        setProjectDefaultStyleId(defRes.data.default?.style_id ?? null);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        const err =
+          e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        setStylesError(err);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setStylesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, props.projectId]);
 
   return (
     <Drawer
@@ -91,10 +144,29 @@ export function AiGenerateDrawer(props: Props) {
               checked={props.genForm.post_edit}
               disabled={props.generating}
               name="post_edit"
-              onChange={(e) => props.setGenForm((v) => ({ ...v, post_edit: e.target.checked }))}
+              onChange={(e) =>
+                props.setGenForm((v) => ({
+                  ...v,
+                  post_edit: e.target.checked,
+                  post_edit_sanitize: e.target.checked ? v.post_edit_sanitize : false,
+                }))
+              }
               type="checkbox"
             />
           </label>
+
+          <label className="mt-2 flex items-center justify-between gap-3 text-sm text-ink">
+            <span>去味/一致性修复（post_edit_sanitize）</span>
+            <input
+              className="checkbox"
+              checked={props.genForm.post_edit_sanitize}
+              disabled={props.generating || !props.genForm.post_edit}
+              name="post_edit_sanitize"
+              onChange={(e) => props.setGenForm((v) => ({ ...v, post_edit_sanitize: e.target.checked }))}
+              type="checkbox"
+            />
+          </label>
+          <div className="mt-1 text-[11px] text-subtext">失败会降级保留原文，并记录原因。</div>
 
           <div className="mt-2">
             <label className="flex items-center justify-between gap-3 text-sm text-ink">
@@ -125,6 +197,38 @@ export function AiGenerateDrawer(props: Props) {
                 props.setGenForm((v) => ({ ...v, target_word_count: Number.isNaN(next) ? null : next }));
               }}
             />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">风格（style_id）</span>
+            <select
+              className="select"
+              disabled={props.generating || stylesLoading}
+              name="style_id"
+              value={props.genForm.style_id ?? ""}
+              onChange={(e) => props.setGenForm((v) => ({ ...v, style_id: e.target.value ? e.target.value : null }))}
+              aria-label="gen_style_id"
+            >
+              <option value="">自动（项目默认 → settings fallback）</option>
+              <optgroup label="系统预设">
+                {presets.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="我的风格">
+                {userStyles.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <div className="text-[11px] text-subtext">
+              项目默认：{projectDefaultStyle ? projectDefaultStyle.name : "（未设置）"}
+              {stylesError ? ` | 加载失败：${stylesError.code}` : ""}
+            </div>
           </label>
         </div>
 

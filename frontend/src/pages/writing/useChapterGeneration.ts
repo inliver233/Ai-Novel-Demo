@@ -35,6 +35,8 @@ const DEFAULT_GEN_FORM: GenerateForm = {
   stream: false,
   plan_first: false,
   post_edit: false,
+  post_edit_sanitize: false,
+  style_id: null,
   memory_injection_enabled: false,
   context: {
     include_world_setting: true,
@@ -152,6 +154,8 @@ export function useChapterGeneration(args: {
           target_word_count: safeTargetWordCount,
           plan_first: genForm.plan_first,
           post_edit: genForm.post_edit,
+          post_edit_sanitize: genForm.post_edit_sanitize,
+          style_id: genForm.style_id,
           context: {
             include_world_setting: genForm.context.include_world_setting,
             include_style_guide: genForm.context.include_style_guide,
