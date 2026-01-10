@@ -49,18 +49,47 @@ test("ui: batch generation -> apply to editor -> history visible", async ({ page
   // Applying a batch item closes the modal and may prompt if the chapter is dirty.
   await expect(modal).toBeHidden({ timeout: 60_000 });
   const applyConfirm = page.getByRole("dialog", { name: "章节有未保存修改，是否应用生成记录？" });
+  const leaveConfirm = page.getByRole("dialog", { name: "有未保存修改，确定离开？" });
+  const dismissApplyConfirmIfPresent = async () => {
+    try {
+      if (await applyConfirm.isVisible()) {
+        await applyConfirm.getByRole("button", { name: "直接应用（不保存）", exact: true }).click();
+        await expect(applyConfirm).toBeHidden({ timeout: 60_000 });
+      }
+    } catch {
+      // Noop: confirm may not exist.
+    }
+  };
+  const dismissLeaveConfirmIfPresent = async () => {
+    try {
+      if (await leaveConfirm.isVisible()) {
+        await leaveConfirm.getByRole("button", { name: "离开", exact: true }).click();
+        await expect(leaveConfirm).toBeHidden({ timeout: 60_000 });
+      }
+    } catch {
+      // Noop: confirm may not exist.
+    }
+  };
   try {
-    await applyConfirm.waitFor({ state: "visible", timeout: 1500 });
+    await applyConfirm.waitFor({ state: "visible", timeout: 10_000 });
     await applyConfirm.getByRole("button", { name: "直接应用（不保存）", exact: true }).click();
     await expect(applyConfirm).toBeHidden({ timeout: 60_000 });
   } catch {
     // Noop: confirm may not appear.
   }
+  await dismissLeaveConfirmIfPresent();
 
-  const content = page.locator('textarea[name="content_md"]');
-  await expect(content).toContainText("E2E", { timeout: 60_000 });
+  const content = page.locator('textarea[name="content_md"]:visible');
+  await expect(content).toHaveValue(/E2E/, { timeout: 60_000 });
 
-  await page.getByRole("button", { name: "生成记录", exact: true }).click();
+  const openHistory = page.getByRole("button", { name: "生成记录", exact: true });
+  try {
+    await openHistory.click({ timeout: 5_000 });
+  } catch {
+    await dismissApplyConfirmIfPresent();
+    await dismissLeaveConfirmIfPresent();
+    await openHistory.click({ timeout: 60_000 });
+  }
   const drawer = page.getByRole("dialog", { name: "生成记录" });
   await expect(drawer).toBeVisible();
 
