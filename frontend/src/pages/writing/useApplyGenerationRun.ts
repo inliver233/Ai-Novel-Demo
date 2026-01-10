@@ -39,6 +39,7 @@ export function useApplyGenerationRun(args: {
     if (!activeChapter || !form) return;
 
     let canceled = false;
+    let shouldClearApplyRunId = true;
     void (async () => {
       try {
         if (dirty) {
@@ -61,7 +62,8 @@ export function useApplyGenerationRun(args: {
 
         const run = res.data.run;
         if (run.chapter_id && run.chapter_id !== activeChapter.id) {
-          toast.toastError("生成记录不属于当前章节，请先切换到对应章节再应用", res.request_id);
+          // Batch apply can set applyRunId before the chapter switch finishes; keep the param and retry on chapter change.
+          shouldClearApplyRunId = false;
           return;
         }
         const raw = typeof run.output_text === "string" ? run.output_text : "";
@@ -90,6 +92,8 @@ export function useApplyGenerationRun(args: {
         const err = e as ApiError;
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       } finally {
+        if (canceled) return;
+        if (!shouldClearApplyRunId) return;
         const next = new URLSearchParams(searchParams);
         next.delete("applyRunId");
         setSearchParams(next, { replace: true });
