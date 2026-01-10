@@ -42,6 +42,7 @@ from app.services.chapter_context_service import (
     build_chapter_generate_render_values,
     inject_plan_into_render_values,
 )
+from app.services.fractal_memory_service import rebuild_fractal_memory
 from app.services.prompt_presets import ensure_default_plan_preset, ensure_default_post_edit_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
 from app.services.run_store import write_generation_run
@@ -281,6 +282,7 @@ def get_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: str
 def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: str, body: ChapterUpdate) -> dict:
     request_id = request.state.request_id
     row = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
+    prev_status = str(row.status or "")
 
     if body.title is not None:
         row.title = body.title
@@ -295,6 +297,21 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
 
     db.commit()
     db.refresh(row)
+
+    next_status = str(row.status or "")
+    if prev_status != "done" and next_status == "done":
+        try:
+            rebuild_fractal_memory(db=db, project_id=str(row.project_id), reason="chapter_done")
+        except Exception as exc:
+            log_event(
+                logger,
+                "warning",
+                event="FRACTAL_MEMORY",
+                action="trigger_failed",
+                project_id=str(row.project_id),
+                chapter_id=str(row.id),
+                error=str(exc),
+            )
     return ok_payload(request_id=request_id, data={"chapter": ChapterOut.model_validate(row).model_dump()})
 
 

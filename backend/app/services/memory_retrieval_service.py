@@ -4,7 +4,9 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.schemas.memory_pack import MemoryContextPackOut
+from app.services.fractal_memory_service import get_fractal_context
 from app.services.vector_rag_service import vector_rag_status
 from app.services.worldbook_service import preview_worldbook_trigger
 
@@ -34,6 +36,16 @@ def retrieve_memory_context_pack(*, db: Session, project_id: str) -> MemoryConte
             "enabled": bool(pack.vector_rag.get("enabled")),
             "disabled_reason": pack.vector_rag.get("disabled_reason"),
             "note": "Phase 4A.1: use /api/projects/{project_id}/vector/query to run retrieval",
+        }
+    )
+
+    pack.fractal = get_fractal_context(db=db, project_id=project_id, enabled=bool(getattr(settings, "fractal_enabled", True)))
+    pack.logs.append(
+        {
+            "section": "fractal",
+            "enabled": bool(pack.fractal.get("enabled")),
+            "disabled_reason": pack.fractal.get("disabled_reason"),
+            "note": "Phase 6.2: use /api/projects/{project_id}/fractal/rebuild to rebuild deterministically",
         }
     )
     return pack

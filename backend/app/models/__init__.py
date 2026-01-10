@@ -2,6 +2,7 @@ from app.models.batch_generation_task import BatchGenerationTask, BatchGeneratio
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.generation_run import GenerationRun
+from app.models.fractal_memory import FractalMemory
 from app.models.llm_profile import LLMProfile
 from app.models.llm_preset import LLMPreset
 from app.models.outline import Outline
@@ -30,6 +31,7 @@ __all__ = [
     "BatchGenerationTaskItem",
     "Chapter",
     "Character",
+    "FractalMemory",
     "GenerationRun",
     "LLMProfile",
     "LLMPreset",

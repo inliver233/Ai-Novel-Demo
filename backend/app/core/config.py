@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     vector_chunk_size: int = 800
     vector_chunk_overlap: int = 120
 
+    fractal_enabled: bool = True
+    fractal_scene_window: int = 5
+    fractal_arc_window: int = 5
+    fractal_char_limit: int = 6000
+
     model_config = SettingsConfigDict(
         env_file=str(_backend_dir() / ".env"),
         env_prefix="",
