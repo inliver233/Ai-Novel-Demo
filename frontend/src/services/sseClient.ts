@@ -55,6 +55,15 @@ function isAbortError(e: unknown): boolean {
   return typeof e === "object" && e !== null && "name" in e && (e as { name?: unknown }).name === "AbortError";
 }
 
+function notifyUnauthorized(requestId?: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new CustomEvent("ainovel:unauthorized", { detail: { requestId } }));
+  } catch {
+    // ignore
+  }
+}
+
 export class SSEPostClient {
   private url: string;
   private data: unknown;
@@ -80,6 +89,7 @@ export class SSEPostClient {
     try {
       response = await fetch(this.url, {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...(this.options.headers ?? {}),
@@ -100,6 +110,7 @@ export class SSEPostClient {
     if (!response.ok) {
       const payload = await parseJsonSafe(response);
       if (isApiErrorPayload(payload)) {
+        if (response.status === 401) notifyUnauthorized(payload.request_id ?? this.requestId);
         throw new ApiError({
           code: payload.error.code,
           message: payload.error.message,
@@ -108,6 +119,7 @@ export class SSEPostClient {
           status: response.status,
         });
       }
+      if (response.status === 401) notifyUnauthorized(this.requestId);
       throw new SSEError({ code: "SSE_BAD_RESPONSE", message: `HTTP ${response.status}`, requestId: this.requestId });
     }
 

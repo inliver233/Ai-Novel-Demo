@@ -62,7 +62,7 @@ async function fetchWithTimeout(path: string, init?: ApiRequestInit): Promise<Re
     : null;
 
   try {
-    return await fetch(path, { ...rest, signal: controller.signal });
+    return await fetch(path, { ...rest, credentials: rest.credentials ?? "include", signal: controller.signal });
   } catch (e) {
     if (timedOut) {
       throw new ApiError({
@@ -97,6 +97,15 @@ async function fetchWithTimeout(path: string, init?: ApiRequestInit): Promise<Re
   }
 }
 
+function notifyUnauthorized(requestId?: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new CustomEvent("ainovel:unauthorized", { detail: { requestId } }));
+  } catch {
+    // ignore
+  }
+}
+
 export async function apiJson<T>(path: string, init?: ApiRequestInit): Promise<ApiOkPayload<T>> {
   const res = await fetchWithTimeout(path, {
     ...init,
@@ -112,6 +121,7 @@ export async function apiJson<T>(path: string, init?: ApiRequestInit): Promise<A
   if (typeof payload === "object" && payload && "ok" in payload) {
     const typed = payload as ApiOkPayload<T> | ApiErrorPayload;
     if (typed.ok) return typed as ApiOkPayload<T>;
+    if (res.status === 401) notifyUnauthorized(typed.request_id ?? requestIdHeader ?? "unknown");
     throw new ApiError({
       code: typed.error.code,
       message: typed.error.message,
@@ -121,6 +131,7 @@ export async function apiJson<T>(path: string, init?: ApiRequestInit): Promise<A
     });
   }
 
+  if (res.status === 401) notifyUnauthorized(requestIdHeader ?? "unknown");
   throw new ApiError({
     code: "BAD_RESPONSE",
     message: "响应格式错误",
@@ -145,6 +156,7 @@ export async function apiDownloadMarkdown(path: string): Promise<{ filename: str
   const payload = (await parseJsonSafe(res)) as ApiErrorPayload | unknown;
   if (typeof payload === "object" && payload && "ok" in payload && (payload as ApiErrorPayload).ok === false) {
     const typed = payload as ApiErrorPayload;
+    if (res.status === 401) notifyUnauthorized(typed.request_id ?? requestIdHeader);
     throw new ApiError({
       code: typed.error.code,
       message: typed.error.message,
@@ -154,6 +166,7 @@ export async function apiDownloadMarkdown(path: string): Promise<{ filename: str
     });
   }
 
+  if (res.status === 401) notifyUnauthorized(requestIdHeader);
   throw new ApiError({
     code: "BAD_RESPONSE",
     message: "导出失败",

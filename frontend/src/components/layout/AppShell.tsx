@@ -16,10 +16,12 @@ import {
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, useLocation, useOutlet, useParams } from "react-router-dom";
+import { NavLink, useLocation, useNavigate, useOutlet, useParams } from "react-router-dom";
 
 import { ProjectSwitcher } from "../atelier/ProjectSwitcher";
 import { ThemeToggle } from "../atelier/ThemeToggle";
+import { useAuth } from "../../contexts/auth";
+import { UI_COPY } from "../../lib/uiCopy";
 import { transition } from "../../lib/motion";
 import { getCurrentUserId } from "../../services/currentUser";
 import { sidebarCollapsedStorageKey } from "../../services/uiState";
@@ -123,6 +125,8 @@ function PersistentOutlet(props: { activeKey: string }) {
 }
 
 export function AppShell() {
+  const auth = useAuth();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useSidebarCollapsed();
   const [mobileNavOpenForPath, setMobileNavOpenForPath] = useState<string | null>(null);
   const { projectId } = useParams();
@@ -130,6 +134,7 @@ export function AppShell() {
   const reduceMotion = useReducedMotion();
 
   const title = useMemo(() => resolveTitle(location.pathname), [location.pathname]);
+  const sessionExpireAtText = auth.session?.expireAt ? new Date(auth.session.expireAt * 1000).toLocaleString() : null;
   const mobileNavOpen = mobileNavOpenForPath === location.pathname;
 
   const CollapseIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
@@ -398,8 +403,41 @@ export function AppShell() {
                   </button>
                   <h1 className="min-w-0 truncate font-content text-2xl sm:text-3xl">{title}</h1>
                 </div>
-                <div className="flex items-center gap-2 lg:hidden">
-                  <ThemeToggle />
+                <div className="flex items-center gap-2">
+                  <div className="hidden text-right text-xs text-subtext sm:block">
+                    <div className="truncate">
+                      {auth.status === "authenticated"
+                        ? `${auth.user?.displayName ?? auth.user?.id ?? "user"} (${auth.user?.id ?? "unknown"})`
+                        : UI_COPY.auth.devFallbackTag}
+                    </div>
+                    {auth.status === "authenticated" && sessionExpireAtText ? (
+                      <div className="truncate">
+                        {UI_COPY.auth.sessionExpireAtPrefix}
+                        {sessionExpireAtText}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {auth.status === "authenticated" ? (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={async () => {
+                        await auth.logout();
+                        navigate("/login", { replace: true });
+                      }}
+                      type="button"
+                    >
+                      {UI_COPY.auth.logout}
+                    </button>
+                  ) : (
+                    <NavLink className="btn btn-secondary" to="/login">
+                      {UI_COPY.auth.login}
+                    </NavLink>
+                  )}
+
+                  <div className="lg:hidden">
+                    <ThemeToggle />
+                  </div>
                 </div>
               </div>
             </div>

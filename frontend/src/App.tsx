@@ -1,11 +1,14 @@
 import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
 
+import { AuthGuard } from "./components/layout/AuthGuard";
 import { ProjectProviderGuard } from "./components/layout/ProjectProviderGuard";
 import { AppShell } from "./components/layout/AppShell";
 import { ConfirmProvider } from "./components/ui/ConfirmProvider";
 import { ToastProvider } from "./components/ui/ToastProvider";
+import { AuthProvider } from "./contexts/AuthContext";
 import { ProjectsProvider } from "./contexts/ProjectsContext";
 import { DashboardPage } from "./pages/DashboardPage";
+import { LoginPage } from "./pages/LoginPage";
 import { ProjectWizardPage } from "./pages/ProjectWizardPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { CharactersPage } from "./pages/CharactersPage";
@@ -21,65 +24,78 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 
 const router = createBrowserRouter([
   {
-    path: "/",
-    element: <AppShell />,
+    path: "/login",
+    element: <LoginPage />,
+  },
+  {
+    element: <AuthGuard />,
     children: [
       {
-        index: true,
-        element: <DashboardPage />,
-      },
-      {
-        path: "projects/:projectId",
-        element: <ProjectProviderGuard />,
+        path: "/",
+        element: (
+          <ProjectsProvider>
+            <AppShell />
+          </ProjectsProvider>
+        ),
         children: [
-          { index: true, element: <Navigate to="writing" replace /> },
           {
-            path: "wizard",
-            element: <ProjectWizardPage />,
+            index: true,
+            element: <DashboardPage />,
           },
           {
-            path: "settings",
-            element: <SettingsPage />,
+            path: "projects/:projectId",
+            element: <ProjectProviderGuard />,
+            children: [
+              { index: true, element: <Navigate to="writing" replace /> },
+              {
+                path: "wizard",
+                element: <ProjectWizardPage />,
+              },
+              {
+                path: "settings",
+                element: <SettingsPage />,
+              },
+              {
+                path: "characters",
+                element: <CharactersPage />,
+              },
+              {
+                path: "outline",
+                element: <OutlinePage />,
+              },
+              {
+                path: "writing",
+                element: <WritingPage />,
+              },
+              {
+                path: "chapter-analysis",
+                element: <ChapterAnalysisPage />,
+              },
+              {
+                path: "preview",
+                element: <PreviewPage />,
+              },
+              {
+                path: "prompts",
+                element: <PromptsPage />,
+              },
+              {
+                path: "prompt-studio",
+                element: <PromptStudioPage />,
+              },
+              {
+                path: "export",
+                element: <ExportPage />,
+              },
+              {
+                path: "worldbook",
+                element: <WorldBookPage />,
+              },
+            ],
           },
-          {
-            path: "characters",
-            element: <CharactersPage />,
-          },
-          {
-            path: "outline",
-            element: <OutlinePage />,
-          },
-          {
-            path: "writing",
-            element: <WritingPage />,
-          },
-          {
-            path: "chapter-analysis",
-            element: <ChapterAnalysisPage />,
-          },
-          {
-            path: "preview",
-            element: <PreviewPage />,
-          },
-          {
-            path: "prompts",
-            element: <PromptsPage />,
-          },
-          {
-            path: "prompt-studio",
-            element: <PromptStudioPage />,
-          },
-          {
-            path: "export",
-            element: <ExportPage />,
-          },
-          {
-            path: "worldbook",
-            element: <WorldBookPage />,
-          },
+          { path: "*", element: <NotFoundPage /> },
         ],
       },
-      { path: "*", element: <NotFoundPage /> },
     ],
   },
 ]);
@@ -88,9 +104,9 @@ export default function App() {
   return (
     <ToastProvider>
       <ConfirmProvider>
-        <ProjectsProvider>
+        <AuthProvider>
           <RouterProvider router={router} />
-        </ProjectsProvider>
+        </AuthProvider>
       </ConfirmProvider>
     </ToastProvider>
   );
