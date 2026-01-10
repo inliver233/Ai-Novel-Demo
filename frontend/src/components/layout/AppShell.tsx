@@ -11,6 +11,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PenLine,
+  Share2,
   Settings,
   Sparkles,
   Users,
@@ -32,6 +33,7 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
   ["/outline", "大纲"],
   ["/wizard", "开工向导"],
   ["/writing", "写作"],
+  ["/graph", "图谱"],
   ["/chapter-analysis", "标注回溯"],
   ["/worldbook", "世界书"],
   ["/prompts", "模型配置"],
@@ -241,6 +243,13 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={false}
+                          icon={<Share2 size={18} />}
+                          label="图谱"
+                          to={`/projects/${projectId}/graph`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
                           icon={<Bot size={18} />}
                           label="模型配置"
                           to={`/projects/${projectId}/prompts`}
@@ -347,6 +356,12 @@ export function AppShell() {
                     icon={<PenLine size={18} />}
                     label="写作"
                     to={`/projects/${projectId}/writing`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Share2 size={18} />}
+                    label="图谱"
+                    to={`/projects/${projectId}/graph`}
                   />
                   <SidebarLink
                     collapsed={collapsed}

@@ -9,6 +9,7 @@ from app.api.routes import (
     chapters,
     characters,
     export,
+    graph,
     generation_runs,
     health,
     llm,
@@ -32,6 +33,7 @@ api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(projects.router, tags=["projects"])
 api_router.include_router(memory.router, tags=["memory"])
 api_router.include_router(vector.router, tags=["vector"])
+api_router.include_router(graph.router, tags=["graph"])
 api_router.include_router(settings.router, tags=["settings"])
 api_router.include_router(characters.router, tags=["characters"])
 api_router.include_router(outline.router, tags=["outline"])
