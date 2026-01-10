@@ -20,6 +20,7 @@ import { PromptsPage } from "./pages/PromptsPage";
 import { PromptStudioPage } from "./pages/PromptStudioPage";
 import { ExportPage } from "./pages/ExportPage";
 import { GraphPage } from "./pages/GraphPage";
+import { StylesPage } from "./pages/StylesPage";
 import { WorldBookPage } from "./pages/WorldBookPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
@@ -95,6 +96,10 @@ const router = createBrowserRouter([
               {
                 path: "graph",
                 element: <GraphPage />,
+              },
+              {
+                path: "styles",
+                element: <StylesPage />,
               },
             ],
           },

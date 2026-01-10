@@ -9,6 +9,7 @@ from app.models.outline import Outline
 from app.models.project import Project
 from app.models.project_membership import ProjectMembership
 from app.models.project_settings import ProjectSettings
+from app.models.project_default_style import ProjectDefaultStyle
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
 from app.models.plot_analysis import PlotAnalysis
@@ -24,6 +25,7 @@ from app.models.structured_memory import (
 )
 from app.models.user import User
 from app.models.user_password import UserPassword
+from app.models.writing_style import WritingStyle
 from app.models.worldbook_entry import WorldBookEntry
 
 __all__ = [
@@ -38,6 +40,7 @@ __all__ = [
     "Outline",
     "Project",
     "ProjectMembership",
+    "ProjectDefaultStyle",
     "ProjectSettings",
     "PromptBlock",
     "PromptPreset",
@@ -52,5 +55,6 @@ __all__ = [
     "StoryMemory",
     "User",
     "UserPassword",
+    "WritingStyle",
     "WorldBookEntry",
 ]

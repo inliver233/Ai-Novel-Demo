@@ -25,6 +25,7 @@ from app.api.routes import (
     settings,
     vector,
     worldbook,
+    writing_styles,
 )
 
 api_router = APIRouter(prefix="/api")
@@ -51,3 +52,4 @@ api_router.include_router(outlines.router, tags=["outlines"])
 api_router.include_router(export.router, tags=["export"])
 api_router.include_router(generation_runs.router, tags=["generation_runs"])
 api_router.include_router(worldbook.router, tags=["worldbook"])
+api_router.include_router(writing_styles.router, tags=["writing_styles"])

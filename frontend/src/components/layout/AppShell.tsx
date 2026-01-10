@@ -8,6 +8,7 @@ import {
   FileDown,
   LayoutDashboard,
   ListChecks,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   PenLine,
@@ -34,6 +35,7 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
   ["/wizard", "开工向导"],
   ["/writing", "写作"],
   ["/graph", "图谱"],
+  ["/styles", "风格"],
   ["/chapter-analysis", "标注回溯"],
   ["/worldbook", "世界书"],
   ["/prompts", "模型配置"],
@@ -257,6 +259,13 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={false}
+                          icon={<Palette size={18} />}
+                          label="风格"
+                          to={`/projects/${projectId}/styles`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
                           icon={<Sparkles size={18} />}
                           label="Prompt Studio"
                           to={`/projects/${projectId}/prompt-studio`}
@@ -368,6 +377,12 @@ export function AppShell() {
                     icon={<Bot size={18} />}
                     label="模型配置"
                     to={`/projects/${projectId}/prompts`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Palette size={18} />}
+                    label="风格"
+                    to={`/projects/${projectId}/styles`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
