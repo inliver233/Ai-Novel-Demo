@@ -96,6 +96,8 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
         TASK_QUEUE_BACKEND: "inline",
         DATABASE_URL: "sqlite:///./.tmp_test/ainovel.e2e.db",
         CORS_ORIGINS: `http://localhost:${frontendPort},http://127.0.0.1:${frontendPort}`,
+        AUTH_ADMIN_USER_ID: "admin",
+        AUTH_ADMIN_PASSWORD: "admin-pass",
         PYTHONUNBUFFERED: "1",
       },
       logFile: path.join(artifactsDir, "backend.log"),
@@ -105,17 +107,20 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
 
     const frontendCommand = process.platform === "win32" ? "cmd.exe" : npmCommand();
     const frontendCommandArgs = process.platform === "win32" ? ["/c", npmCommand(), "run", "dev"] : ["run", "dev"];
+    const frontendEnv: Record<string, string | undefined> = {
+      // Make sure Vite uses a stable URL in tests.
+      HOST: frontendConfig.hostname,
+      VITE_DEV_PORT: String(frontendPort),
+    };
+    // Allow overriding backend for external runs, but keep default-path coverage for local E2E.
+    if (process.env.E2E_BACKEND_URL) frontendEnv.VITE_API_PROXY_TARGET = backendUrl;
+
     const frontend = spawnLogged({
       name: "frontend",
       cwd: frontendDir,
       command: frontendCommand,
       commandArgs: frontendCommandArgs,
-      env: {
-        // Make sure Vite uses a stable URL in tests.
-        HOST: frontendConfig.hostname,
-        VITE_DEV_PORT: String(frontendPort),
-        VITE_API_PROXY_TARGET: backendUrl,
-      },
+      env: frontendEnv,
       logFile: path.join(artifactsDir, "frontend.log"),
     });
     spawnedPids.push(frontend.pid ?? 0);

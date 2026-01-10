@@ -51,7 +51,7 @@ def get_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str
             .first()
         )
     if row is None:
-        raise AppError.not_found()
+        row = ensure_active_outline(db, project=project)
     structure = None
     if row.structure_json:
         try:
