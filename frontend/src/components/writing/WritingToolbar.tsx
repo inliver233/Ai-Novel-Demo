@@ -13,6 +13,7 @@ export function WritingToolbar(props: {
   onOpenBatch: () => void;
   onOpenHistory: () => void;
   onOpenContextPreview: () => void;
+  onOpenMemoryUpdate: () => void;
   onCreateChapter: () => void;
 }) {
   return (
@@ -46,6 +47,9 @@ export function WritingToolbar(props: {
           </button>
           <button className="btn btn-secondary" onClick={props.onOpenHistory} type="button">
             生成记录
+          </button>
+          <button className="btn btn-secondary" onClick={props.onOpenMemoryUpdate} type="button">
+            Memory Update
           </button>
           <button className="btn btn-secondary" onClick={props.onOpenContextPreview} type="button">
             {UI_COPY.writing.contextPreview}

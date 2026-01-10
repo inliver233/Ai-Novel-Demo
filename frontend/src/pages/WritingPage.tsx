@@ -12,6 +12,7 @@ import { CreateChapterDialog } from "../components/writing/CreateChapterDialog";
 import { ChapterAnalysisModal } from "../components/writing/ChapterAnalysisModal";
 import { ContextPreviewDrawer } from "../components/writing/ContextPreviewDrawer";
 import { GenerationHistoryDrawer } from "../components/writing/GenerationHistoryDrawer";
+import { MemoryUpdateDrawer } from "../components/writing/MemoryUpdateDrawer";
 import { WritingToolbar } from "../components/writing/WritingToolbar";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
@@ -93,6 +94,7 @@ export function WritingPage() {
 
   const [aiOpen, setAiOpen] = useState(false);
   const [contextPreviewOpen, setContextPreviewOpen] = useState(false);
+  const [memoryUpdateOpen, setMemoryUpdateOpen] = useState(false);
   const autoGenerateNextRef = useRef<{ chapterId: string; mode: "replace" | "append" } | null>(null);
 
   useEffect(() => {
@@ -269,6 +271,7 @@ export function WritingPage() {
         onOpenChapterList={() => setChapterListOpen(true)}
         onOpenBatch={batch.openModal}
         onOpenHistory={history.openDrawer}
+        onOpenMemoryUpdate={() => setMemoryUpdateOpen(true)}
         onOpenContextPreview={() => setContextPreviewOpen(true)}
         onCreateChapter={chapterCrud.openCreate}
       />
@@ -518,6 +521,13 @@ export function WritingPage() {
         onChangeMemoryInjectionEnabled={(enabled) =>
           setGenForm((v) => ({ ...v, memory_injection_enabled: Boolean(enabled) }))
         }
+      />
+
+      <MemoryUpdateDrawer
+        open={memoryUpdateOpen}
+        onClose={() => setMemoryUpdateOpen(false)}
+        projectId={projectId}
+        chapterId={activeId ?? undefined}
       />
 
       {generating && genForm.stream && !aiOpen ? (
