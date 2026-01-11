@@ -98,11 +98,11 @@ class TestProjectMembershipRbac(unittest.TestCase):
         self.assertEqual(len(projects), 1)
         self.assertEqual(projects[0]["id"], "p1")
 
-    def test_outsider_get_project_is_403(self) -> None:
+    def test_outsider_get_project_is_404(self) -> None:
         client = TestClient(self.app)
         resp = client.get("/api/projects/p1", headers={"X-Test-User": "u_out"})
-        self.assertEqual(resp.status_code, 403)
-        self.assertEqual(resp.json()["error"]["code"], "FORBIDDEN")
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()["error"]["code"], "NOT_FOUND")
 
     def test_viewer_cannot_create_chapter_but_can_read_after_editor_creates(self) -> None:
         client = TestClient(self.app)

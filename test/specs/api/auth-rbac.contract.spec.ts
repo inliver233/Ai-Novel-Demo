@@ -70,7 +70,7 @@ test("api: login sets session cookie and enables auth/user", async ({ request })
   expect(afterLogout.status()).toBe(401);
 });
 
-test("api: rbac forbids reading non-member project", async ({ request }) => {
+test("api: rbac hides non-member project existence (404)", async ({ request }) => {
   const state = loadState();
 
   const { projectId } = await bootstrapProject(request);
@@ -80,13 +80,25 @@ test("api: rbac forbids reading non-member project", async ({ request }) => {
   });
   expect(login.ok()).toBeTruthy();
 
-  const res = await request.get(`${state.backendUrl}/api/projects/${projectId}`);
-  expect(res.status()).toBe(403);
-  expect(res.headers()["x-request-id"]).toBeTruthy();
+  const projectRes = await request.get(`${state.backendUrl}/api/projects/${projectId}`);
+  expect(projectRes.status()).toBe(404);
+  expect(projectRes.headers()["x-request-id"]).toBeTruthy();
 
-  const json = (await res.json()) as ApiErr;
-  expect(json.ok).toBe(false);
-  expect(json.error.code).toBe("FORBIDDEN");
-  expect(typeof json.request_id).toBe("string");
-  expect(json.request_id.length).toBeGreaterThan(0);
+  const projectJson = (await projectRes.json()) as ApiErr;
+  expect(projectJson.ok).toBe(false);
+  expect(projectJson.error.code).toBe("NOT_FOUND");
+  expect(typeof projectJson.request_id).toBe("string");
+  expect(projectJson.request_id.length).toBeGreaterThan(0);
+
+  const presetRes = await request.get(`${state.backendUrl}/api/projects/${projectId}/llm_preset`);
+  expect(presetRes.status()).toBe(404);
+  const presetJson = (await presetRes.json()) as ApiErr;
+  expect(presetJson.ok).toBe(false);
+  expect(presetJson.error.code).toBe("NOT_FOUND");
+
+  const updateRes = await request.put(`${state.backendUrl}/api/projects/${projectId}`, { data: {} });
+  expect(updateRes.status()).toBe(404);
+  const updateJson = (await updateRes.json()) as ApiErr;
+  expect(updateJson.ok).toBe(false);
+  expect(updateJson.error.code).toBe("NOT_FOUND");
 });

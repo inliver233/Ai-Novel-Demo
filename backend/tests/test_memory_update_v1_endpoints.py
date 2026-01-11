@@ -248,8 +248,8 @@ class TestMemoryUpdateV1Endpoints(unittest.TestCase):
             f"/api/memory_change_sets/{change_set_id}/apply",
             headers={"X-Test-User": "u_editor"},
         )
-        self.assertEqual(apply_forbidden.status_code, 403)
-        self.assertEqual(apply_forbidden.json()["error"]["code"], "FORBIDDEN")
+        self.assertEqual(apply_forbidden.status_code, 404)
+        self.assertEqual(apply_forbidden.json()["error"]["code"], "NOT_FOUND")
 
 
 if __name__ == "__main__":

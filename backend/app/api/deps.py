@@ -59,7 +59,8 @@ def require_project_access(db: Session, *, project_id: str, user_id: str, min_ro
 
     role = _project_role(db, project=project, user_id=user_id)
     if role is None:
-        raise AppError.forbidden()
+        # Fail-closed to reduce resource existence leaks across projects.
+        raise AppError.not_found()
 
     if _ROLE_RANK[role] < _ROLE_RANK[min_role]:
         raise AppError.forbidden()
