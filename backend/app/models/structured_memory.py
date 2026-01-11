@@ -162,15 +162,45 @@ class MemoryChangeSetItem(Base):
 
 Index("ix_entities_project_id", MemoryEntity.project_id)
 Index("ix_entities_project_id_entity_type", MemoryEntity.project_id, MemoryEntity.entity_type)
+Index(
+    "ix_entities_project_id_deleted_at_updated_at",
+    MemoryEntity.project_id,
+    MemoryEntity.deleted_at,
+    MemoryEntity.updated_at,
+)
 Index("ix_relations_project_id", MemoryRelation.project_id)
 Index("ix_relations_project_id_from_entity_id", MemoryRelation.project_id, MemoryRelation.from_entity_id)
 Index("ix_relations_project_id_to_entity_id", MemoryRelation.project_id, MemoryRelation.to_entity_id)
+Index(
+    "ix_relations_project_id_deleted_at_updated_at",
+    MemoryRelation.project_id,
+    MemoryRelation.deleted_at,
+    MemoryRelation.updated_at,
+)
 Index("ix_events_project_id", MemoryEvent.project_id)
 Index("ix_events_project_id_chapter_id", MemoryEvent.project_id, MemoryEvent.chapter_id)
+Index(
+    "ix_events_project_id_deleted_at_updated_at",
+    MemoryEvent.project_id,
+    MemoryEvent.deleted_at,
+    MemoryEvent.updated_at,
+)
 Index("ix_foreshadows_project_id", MemoryForeshadow.project_id)
 Index("ix_foreshadows_project_id_resolved", MemoryForeshadow.project_id, MemoryForeshadow.resolved)
+Index(
+    "ix_foreshadows_project_id_deleted_at_updated_at",
+    MemoryForeshadow.project_id,
+    MemoryForeshadow.deleted_at,
+    MemoryForeshadow.updated_at,
+)
 Index("ix_evidence_project_id", MemoryEvidence.project_id)
 Index("ix_evidence_project_id_source", MemoryEvidence.project_id, MemoryEvidence.source_type, MemoryEvidence.source_id)
+Index(
+    "ix_evidence_project_id_deleted_at_created_at",
+    MemoryEvidence.project_id,
+    MemoryEvidence.deleted_at,
+    MemoryEvidence.created_at,
+)
 Index("ix_memory_change_sets_project_id", MemoryChangeSet.project_id)
 Index("ix_memory_change_sets_project_id_status", MemoryChangeSet.project_id, MemoryChangeSet.status)
 Index("ix_memory_change_set_items_project_id", MemoryChangeSetItem.project_id)

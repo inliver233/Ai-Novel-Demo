@@ -602,6 +602,18 @@
         {
           "columns": [
             "project_id",
+            "deleted_at",
+            "updated_at"
+          ],
+          "name": "ix_entities_project_id_deleted_at_updated_at",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_entities_project_id_deleted_at_updated_at ON entities (project_id, deleted_at, updated_at)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
             "entity_type"
           ],
           "name": "ix_entities_project_id_entity_type",
@@ -748,6 +760,18 @@
         },
         {
           "columns": [
+            "project_id",
+            "deleted_at",
+            "updated_at"
+          ],
+          "name": "ix_events_project_id_deleted_at_updated_at",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_events_project_id_deleted_at_updated_at ON events (project_id, deleted_at, updated_at)",
+          "unique": 0
+        },
+        {
+          "columns": [
             "id"
           ],
           "name": "sqlite_autoindex_events_1",
@@ -836,6 +860,18 @@
           "origin": "c",
           "partial": 0,
           "sql": "CREATE INDEX ix_evidence_project_id ON evidence (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "deleted_at",
+            "created_at"
+          ],
+          "name": "ix_evidence_project_id_deleted_at_created_at",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_evidence_project_id_deleted_at_created_at ON evidence (project_id, deleted_at, created_at)",
           "unique": 0
         },
         {
@@ -975,6 +1011,18 @@
           "origin": "c",
           "partial": 0,
           "sql": "CREATE INDEX ix_foreshadows_project_id ON foreshadows (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "deleted_at",
+            "updated_at"
+          ],
+          "name": "ix_foreshadows_project_id_deleted_at_updated_at",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_foreshadows_project_id_deleted_at_updated_at ON foreshadows (project_id, deleted_at, updated_at)",
           "unique": 0
         },
         {
@@ -2086,7 +2134,7 @@
     },
     "project_memberships": {
       "checks": [
-        "role IN ('owner','editor','viewer')"
+        "role IN ('viewer','editor','owner')"
       ],
       "columns": [
         {
@@ -2715,6 +2763,18 @@
           "origin": "c",
           "partial": 0,
           "sql": "CREATE INDEX ix_relations_project_id ON relations (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "deleted_at",
+            "updated_at"
+          ],
+          "name": "ix_relations_project_id_deleted_at_updated_at",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_relations_project_id_deleted_at_updated_at ON relations (project_id, deleted_at, updated_at)",
           "unique": 0
         },
         {
