@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,6 +16,8 @@ from app.models.chapter import Chapter
 from app.models.fractal_memory import FractalMemory
 
 logger = logging.getLogger("ainovel")
+
+T = TypeVar("T")
 
 
 def _compact_json_dumps(value: Any) -> str:
@@ -47,7 +49,7 @@ def _to_scene_summary(chapter: Chapter) -> str:
     return title or "(empty)"
 
 
-def _chunks[T](items: list[T], *, size: int) -> list[list[T]]:
+def _chunks(items: list[T], *, size: int) -> list[list[T]]:
     if size <= 0:
         return [items]
     return [items[i : i + size] for i in range(0, len(items), size)]
@@ -206,4 +208,3 @@ def rebuild_fractal_memory(*, db: Session, project_id: str, reason: str) -> dict
         timings_ms={"total": int((time.perf_counter() - t0) * 1000)},
     )
     return out
-
