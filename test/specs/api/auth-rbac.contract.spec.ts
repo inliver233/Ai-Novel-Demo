@@ -36,13 +36,16 @@ test("api: login sets session cookie and enables auth/user", async ({ request })
   });
   expect(login.ok()).toBeTruthy();
 
-  const setCookies = login
+  const setCookiesList = login
     .headersArray()
     .filter((h) => h.name.toLowerCase() === "set-cookie")
-    .map((h) => h.value)
-    .join("\n");
+    .map((h) => h.value);
+  const setCookies = setCookiesList.join("\n");
   expect(setCookies).toContain("user_id=");
   expect(setCookies).toContain("session_expire_at=");
+  const expireCookie = setCookiesList.find((line) => line.startsWith("session_expire_at="));
+  expect(expireCookie).toBeTruthy();
+  expect(expireCookie?.toLowerCase()).toContain("httponly");
 
   const loginJson = (await login.json()) as ApiOk<{ user: { id: string; is_admin: boolean } }>;
   expect(loginJson.ok).toBe(true);

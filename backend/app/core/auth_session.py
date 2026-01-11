@@ -127,7 +127,7 @@ def set_session_cookies(response: Response, *, user_id: str, expires_at: datetim
     response.set_cookie(
         key=settings.auth_cookie_expire_at_name,
         value=str(int(expires_at.astimezone(timezone.utc).timestamp())),
-        httponly=False,
+        httponly=True,
         secure=secure,
         samesite=samesite,
         max_age=max_age,
