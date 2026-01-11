@@ -53,6 +53,8 @@ npm run dev
 
 > 目标：给出一个“可启动、可观测、可回滚”的最小部署形态（frontend/backend/postgres/redis/worker）。
 
+生产部署前建议先过一遍安全清单：`docs/deployment/security-checklist.md`。
+
 ### 1) 准备环境变量（必做）
 
 ```bash
