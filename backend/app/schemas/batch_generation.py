@@ -14,7 +14,7 @@ BatchGenerationItemStatus = Literal["queued", "running", "succeeded", "failed", 
 
 
 class BatchGenerationCreateRequest(BaseModel):
-    after_chapter_id: str | None = None
+    after_chapter_id: str | None = Field(default=None, max_length=36)
     count: int = Field(ge=1, le=20)
     include_existing: bool = False
     instruction: str = Field(default="", max_length=4000)

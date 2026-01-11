@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ChapterGenerateContext(BaseModel):
@@ -12,9 +12,24 @@ class ChapterGenerateContext(BaseModel):
     include_outline: bool = True
     include_smart_context: bool = True
     require_sequential: bool = False
-    character_ids: list[str] = Field(default_factory=list)
+    character_ids: list[str] = Field(default_factory=list, max_length=200)
     previous_chapter: Literal["none", "summary", "content", "tail"] | None = None
     current_draft_tail: str | None = Field(default=None, max_length=5000)
+
+    @field_validator("character_ids")
+    @classmethod
+    def _validate_character_ids(cls, v: list[str]) -> list[str]:
+        out: list[str] = []
+        for item in v or []:
+            if not isinstance(item, str):
+                raise ValueError("character_ids must be strings")
+            item = item.strip()
+            if not item:
+                raise ValueError("character_ids cannot contain empty strings")
+            if len(item) > 36:
+                raise ValueError("character_id too long")
+            out.append(item)
+        return out
 
 
 class ChapterGenerateRequest(BaseModel):

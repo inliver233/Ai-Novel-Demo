@@ -12,12 +12,12 @@ router = APIRouter()
 
 
 class VectorIngestRequest(BaseModel):
-    sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"])
+    sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
 
 
 class VectorQueryRequest(BaseModel):
     query_text: str = Field(default="", max_length=8000)
-    sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"])
+    sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
 
 
 @router.post("/projects/{project_id}/vector/ingest")
@@ -62,4 +62,3 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
 
     result = query_project(project_id=project_id, query_text=body.query_text, sources=body.sources)
     return ok_payload(request_id=request_id, data={"result": result})
-

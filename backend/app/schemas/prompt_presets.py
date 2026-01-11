@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.limits import MAX_JSON_CHARS_MEDIUM, MAX_JSON_CHARS_SMALL, MAX_TEMPLATE_CHARS, validate_json_chars
 
 
 class PromptPresetOut(BaseModel):
@@ -21,14 +23,14 @@ class PromptPresetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     scope: str = Field(default="project", min_length=1, max_length=32)
     version: int = Field(default=1, ge=1)
-    active_for: list[str] = Field(default_factory=list)
+    active_for: list[str] = Field(default_factory=list, max_length=50)
 
 
 class PromptPresetUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     scope: str | None = Field(default=None, min_length=1, max_length=32)
     version: int | None = Field(default=None, ge=1)
-    active_for: list[str] | None = None
+    active_for: list[str] | None = Field(default=None, max_length=50)
 
 
 class PromptBlockOut(BaseModel):
@@ -56,15 +58,25 @@ class PromptBlockCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     role: str = Field(min_length=1, max_length=16)
     enabled: bool = True
-    template: str | None = None
+    template: str | None = Field(default=None, max_length=MAX_TEMPLATE_CHARS)
     marker_key: str | None = Field(default=None, max_length=255)
     injection_position: str = Field(default="relative", min_length=1, max_length=16)
     injection_depth: int | None = None
     injection_order: int = 0
-    triggers: list[str] = Field(default_factory=list)
+    triggers: list[str] = Field(default_factory=list, max_length=50)
     forbid_overrides: bool = False
-    budget: dict[str, Any] = Field(default_factory=dict)
-    cache: dict[str, Any] = Field(default_factory=dict)
+    budget: dict[str, Any] = Field(default_factory=dict, max_length=100)
+    cache: dict[str, Any] = Field(default_factory=dict, max_length=100)
+
+    @field_validator("budget")
+    @classmethod
+    def _validate_budget(cls, v: dict[str, Any]) -> dict[str, Any]:
+        return validate_json_chars(v, max_chars=MAX_JSON_CHARS_SMALL, field_name="budget") or {}
+
+    @field_validator("cache")
+    @classmethod
+    def _validate_cache(cls, v: dict[str, Any]) -> dict[str, Any]:
+        return validate_json_chars(v, max_chars=MAX_JSON_CHARS_SMALL, field_name="cache") or {}
 
 
 class PromptBlockUpdate(BaseModel):
@@ -72,25 +84,55 @@ class PromptBlockUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     role: str | None = Field(default=None, min_length=1, max_length=16)
     enabled: bool | None = None
-    template: str | None = None
+    template: str | None = Field(default=None, max_length=MAX_TEMPLATE_CHARS)
     marker_key: str | None = Field(default=None, max_length=255)
     injection_position: str | None = Field(default=None, min_length=1, max_length=16)
     injection_depth: int | None = None
     injection_order: int | None = None
-    triggers: list[str] | None = None
+    triggers: list[str] | None = Field(default=None, max_length=50)
     forbid_overrides: bool | None = None
-    budget: dict[str, Any] | None = None
-    cache: dict[str, Any] | None = None
+    budget: dict[str, Any] | None = Field(default=None, max_length=100)
+    cache: dict[str, Any] | None = Field(default=None, max_length=100)
+
+    @field_validator("budget")
+    @classmethod
+    def _validate_budget(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        return validate_json_chars(v, max_chars=MAX_JSON_CHARS_SMALL, field_name="budget")
+
+    @field_validator("cache")
+    @classmethod
+    def _validate_cache(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        return validate_json_chars(v, max_chars=MAX_JSON_CHARS_SMALL, field_name="cache")
 
 
 class PromptBlockReorderRequest(BaseModel):
-    ordered_block_ids: list[str] = Field(min_length=1)
+    ordered_block_ids: list[str] = Field(min_length=1, max_length=200)
+
+    @field_validator("ordered_block_ids")
+    @classmethod
+    def _validate_ordered_block_ids(cls, v: list[str]) -> list[str]:
+        out: list[str] = []
+        for item in v or []:
+            if not isinstance(item, str):
+                raise ValueError("ordered_block_ids must be strings")
+            item = item.strip()
+            if not item:
+                raise ValueError("ordered_block_ids cannot contain empty strings")
+            if len(item) > 36:
+                raise ValueError("ordered_block_id too long")
+            out.append(item)
+        return out
 
 
 class PromptPreviewRequest(BaseModel):
     task: str = Field(min_length=1, max_length=64)
-    preset_id: str | None = None
-    values: dict[str, Any] = Field(default_factory=dict)
+    preset_id: str | None = Field(default=None, max_length=36)
+    values: dict[str, Any] = Field(default_factory=dict, max_length=200)
+
+    @field_validator("values")
+    @classmethod
+    def _validate_values(cls, v: dict[str, Any]) -> dict[str, Any]:
+        return validate_json_chars(v, max_chars=MAX_JSON_CHARS_MEDIUM, field_name="values") or {}
 
 
 class PromptPreviewBlock(BaseModel):
@@ -119,22 +161,32 @@ class PromptPresetExportBlock(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     role: str = Field(min_length=1, max_length=16)
     enabled: bool = True
-    template: str | None = None
+    template: str | None = Field(default=None, max_length=MAX_TEMPLATE_CHARS)
     marker_key: str | None = Field(default=None, max_length=255)
     injection_position: str = Field(default="relative", min_length=1, max_length=16)
     injection_depth: int | None = None
     injection_order: int = 0
-    triggers: list[str] = Field(default_factory=list)
+    triggers: list[str] = Field(default_factory=list, max_length=50)
     forbid_overrides: bool = False
-    budget: dict[str, Any] = Field(default_factory=dict)
-    cache: dict[str, Any] = Field(default_factory=dict)
+    budget: dict[str, Any] = Field(default_factory=dict, max_length=100)
+    cache: dict[str, Any] = Field(default_factory=dict, max_length=100)
+
+    @field_validator("budget")
+    @classmethod
+    def _validate_budget(cls, v: dict[str, Any]) -> dict[str, Any]:
+        return validate_json_chars(v, max_chars=MAX_JSON_CHARS_SMALL, field_name="budget") or {}
+
+    @field_validator("cache")
+    @classmethod
+    def _validate_cache(cls, v: dict[str, Any]) -> dict[str, Any]:
+        return validate_json_chars(v, max_chars=MAX_JSON_CHARS_SMALL, field_name="cache") or {}
 
 
 class PromptPresetExportPreset(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     scope: str = Field(default="project", min_length=1, max_length=32)
     version: int = Field(default=1, ge=1)
-    active_for: list[str] = Field(default_factory=list)
+    active_for: list[str] = Field(default_factory=list, max_length=50)
 
 
 class PromptPresetExportOut(BaseModel):
@@ -144,4 +196,4 @@ class PromptPresetExportOut(BaseModel):
 
 class PromptPresetImportRequest(BaseModel):
     preset: PromptPresetExportPreset
-    blocks: list[PromptPresetExportBlock] = Field(default_factory=list)
+    blocks: list[PromptPresetExportBlock] = Field(default_factory=list, max_length=200)

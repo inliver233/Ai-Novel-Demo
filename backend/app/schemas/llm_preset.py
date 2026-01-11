@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.llm import LLMProvider
+from app.schemas.limits import MAX_JSON_CHARS_SMALL, validate_json_chars
 
 
 class LLMPresetOut(BaseModel):
@@ -28,7 +29,7 @@ class LLMPresetOut(BaseModel):
 
 class LLMPresetPutRequest(BaseModel):
     provider: LLMProvider
-    base_url: str | None = None
+    base_url: str | None = Field(default=None, max_length=2048)
     model: str = Field(min_length=1, max_length=255)
     temperature: float | None = None
     top_p: float | None = None
@@ -36,6 +37,31 @@ class LLMPresetPutRequest(BaseModel):
     presence_penalty: float | None = None
     frequency_penalty: float | None = None
     top_k: int | None = None
-    stop: list[str] = Field(default_factory=list)
+    stop: list[str] = Field(default_factory=list, max_length=32)
     timeout_seconds: int | None = Field(default=None, ge=1, le=1800)
-    extra: dict[str, Any] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict, max_length=200)
+
+    @field_validator("stop")
+    @classmethod
+    def _validate_stop(cls, v: list[str]) -> list[str]:
+        out: list[str] = []
+        for item in v or []:
+            if not isinstance(item, str):
+                raise ValueError("stop must be strings")
+            item = item.strip()
+            if not item:
+                raise ValueError("stop cannot contain empty strings")
+            if len(item) > 256:
+                raise ValueError("stop item too long")
+            out.append(item)
+        return out
+
+    @field_validator("extra")
+    @classmethod
+    def _validate_extra(cls, v: dict[str, Any]) -> dict[str, Any]:
+        for k in (v or {}).keys():
+            if not isinstance(k, str):
+                raise ValueError("extra keys must be strings")
+            if len(k) > 128:
+                raise ValueError("extra key too long")
+        return validate_json_chars(v, max_chars=MAX_JSON_CHARS_SMALL, field_name="extra") or {}

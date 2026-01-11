@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.limits import MAX_MD_CHARS
 
 
 WorldBookPriority = Literal["drop_first", "optional", "important", "must"]
@@ -26,26 +28,58 @@ class WorldBookEntryOut(BaseModel):
 
 class WorldBookEntryCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
-    content_md: str = ""
+    content_md: str = Field(default="", max_length=MAX_MD_CHARS)
     enabled: bool = True
     constant: bool = False
-    keywords: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list, max_length=100)
     exclude_recursion: bool = False
     prevent_recursion: bool = False
     char_limit: int = Field(default=12000, ge=0, le=200000)
     priority: WorldBookPriority = "important"
 
+    @field_validator("keywords")
+    @classmethod
+    def _validate_keywords(cls, v: list[str]) -> list[str]:
+        out: list[str] = []
+        for item in v or []:
+            if not isinstance(item, str):
+                raise ValueError("keywords must be strings")
+            item = item.strip()
+            if not item:
+                raise ValueError("keywords cannot contain empty strings")
+            if len(item) > 64:
+                raise ValueError("keyword too long")
+            out.append(item)
+        return out
+
 
 class WorldBookEntryUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
-    content_md: str | None = None
+    content_md: str | None = Field(default=None, max_length=MAX_MD_CHARS)
     enabled: bool | None = None
     constant: bool | None = None
-    keywords: list[str] | None = None
+    keywords: list[str] | None = Field(default=None, max_length=100)
     exclude_recursion: bool | None = None
     prevent_recursion: bool | None = None
     char_limit: int | None = Field(default=None, ge=0, le=200000)
     priority: WorldBookPriority | None = None
+
+    @field_validator("keywords")
+    @classmethod
+    def _validate_keywords(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        out: list[str] = []
+        for item in v or []:
+            if not isinstance(item, str):
+                raise ValueError("keywords must be strings")
+            item = item.strip()
+            if not item:
+                raise ValueError("keywords cannot contain empty strings")
+            if len(item) > 64:
+                raise ValueError("keyword too long")
+            out.append(item)
+        return out
 
 
 class WorldBookTriggeredEntryOut(BaseModel):
