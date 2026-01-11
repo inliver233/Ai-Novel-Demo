@@ -90,9 +90,11 @@ def apply_position_fallback(
     max_attempts: int = 40,
     max_scan_chars: int = 20000,
 ) -> dict[str, int]:
-    search_text = _normalize_search_text(content_md or "", max_len=int(max_scan_chars))
-    text_len = len(search_text)
-    stats = {"need_fallback": 0, "attempted": 0, "found": 0, "clamped": int(len(content_md or "") > text_len)}
+    full_text = content_md or ""
+    full_len = len(full_text)
+    search_text = _normalize_search_text(full_text, max_len=int(max_scan_chars))
+    search_len = len(search_text)
+    stats = {"need_fallback": 0, "attempted": 0, "found": 0, "clamped": int(full_len > search_len)}
     if not search_text:
         return stats
 
@@ -106,7 +108,7 @@ def apply_position_fallback(
         position = int(raw_pos) if isinstance(raw_pos, int) else -1
         length = int(raw_len) if isinstance(raw_len, int) else 0
 
-        if _is_valid_span(position, length, text_len=text_len):
+        if _is_valid_span(position, length, text_len=full_len):
             continue
 
         stats["need_fallback"] += 1
