@@ -133,7 +133,26 @@ class TestProjectMembershipRbac(unittest.TestCase):
         self.assertEqual(resp.status_code, 403)
         self.assertEqual(resp.json()["error"]["code"], "FORBIDDEN")
 
+    def test_owner_can_delete_project(self) -> None:
+        client = TestClient(self.app)
+        resp = client.delete("/api/projects/p1", headers={"X-Test-User": "u_owner"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["ok"], True)
+
+    def test_role_is_case_insensitive_and_trimmed(self) -> None:
+        with self.SessionLocal() as db:
+            db.add(User(id="u_editor_caps", display_name="editor_caps"))
+            db.add(ProjectMembership(project_id="p1", user_id="u_editor_caps", role="  EDITOR  "))
+            db.commit()
+
+        client = TestClient(self.app)
+        resp_create = client.post(
+            "/api/projects/p1/chapters",
+            headers={"X-Test-User": "u_editor_caps"},
+            json={"number": 2, "title": "Ch2"},
+        )
+        self.assertEqual(resp_create.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
-
