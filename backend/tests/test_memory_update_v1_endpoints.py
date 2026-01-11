@@ -102,6 +102,9 @@ class TestMemoryUpdateV1Endpoints(unittest.TestCase):
             db.add(ProjectMembership(project_id="p1", user_id="u_viewer", role="viewer"))
             db.add(Outline(id="o1", project_id="p1", title="Outline", content_md=None, structure_json=None))
             db.add(Chapter(id="c1", project_id="p1", outline_id="o1", number=1, title="Ch1"))
+            db.add(Project(id="p2", owner_user_id="u_owner", name="Project 2", genre=None, logline=None))
+            db.add(Outline(id="o2", project_id="p2", title="Outline 2", content_md=None, structure_json=None))
+            db.add(Chapter(id="c2", project_id="p2", outline_id="o2", number=1, title="Ch2"))
             db.commit()
 
     def test_validation_fail_closed(self) -> None:
@@ -220,7 +223,34 @@ class TestMemoryUpdateV1Endpoints(unittest.TestCase):
             self.assertIsNotNone(e1)
             self.assertIsNone(e1.deleted_at)
 
+    def test_change_set_cannot_cross_project_apply(self) -> None:
+        client = TestClient(self.app)
+        propose = client.post(
+            "/api/chapters/c2/memory/propose",
+            headers={"X-Test-User": "u_owner"},
+            json={
+                "schema_version": "memory_update_v1",
+                "idempotency_key": "key-cross-project-1",
+                "ops": [
+                    {
+                        "op": "upsert",
+                        "target_table": "entities",
+                        "target_id": "p2_e1",
+                        "after": {"entity_type": "character", "name": "Mallory"},
+                    }
+                ],
+            },
+        )
+        self.assertEqual(propose.status_code, 200)
+        change_set_id = propose.json()["data"]["change_set"]["id"]
+
+        apply_forbidden = client.post(
+            f"/api/memory_change_sets/{change_set_id}/apply",
+            headers={"X-Test-User": "u_editor"},
+        )
+        self.assertEqual(apply_forbidden.status_code, 403)
+        self.assertEqual(apply_forbidden.json()["error"]["code"], "FORBIDDEN")
+
 
 if __name__ == "__main__":
     unittest.main()
-
