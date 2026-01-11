@@ -21,9 +21,11 @@ test("ui: batch generation -> apply to editor -> history visible", async ({ page
   const chapter1 = bulkJson.data.chapters.find((c) => c.number === 1);
   expect(chapter1?.id).toBeTruthy();
 
+  const seedText = "__SEED_CH1__";
+
   // Batch generation enforces sequential prerequisites; make chapter 1 non-empty.
   const seed = await request.put(`${state.backendUrl}/api/chapters/${chapter1!.id}`, {
-    data: { content_md: "E2E seed content (chapter 1)" },
+    data: { content_md: seedText },
   });
   expect(seed.ok()).toBeTruthy();
 
@@ -81,6 +83,7 @@ test("ui: batch generation -> apply to editor -> history visible", async ({ page
 
   const content = page.locator('textarea[name="content_md"]:visible');
   await expect(content).toHaveValue(/E2E/, { timeout: 60_000 });
+  await expect(content).not.toHaveValue(new RegExp(seedText));
 
   const openHistory = page.getByRole("button", { name: "生成记录", exact: true });
   try {
