@@ -611,7 +611,7 @@ def ingest_chunks(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, An
                 project_id=project_id,
                 backend="pgvector",
                 fallback="chroma",
-                error=str(exc),
+                error_type=type(exc).__name__,
             )
 
     try:
@@ -652,7 +652,7 @@ def rebuild_project(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, 
                 action="rebuild",
                 project_id=project_id,
                 backend="pgvector",
-                error=str(exc),
+                error_type=type(exc).__name__,
             )
         out = ingest_chunks(project_id=project_id, chunks=chunks)
         return {"enabled": bool(out.get("enabled")), "skipped": bool(out.get("skipped")), "rebuilt": int(out.get("ingested") or 0), **out}
@@ -749,7 +749,10 @@ def query_project(
             dropped: list[dict[str, Any]] = []
             final_chunks: list[dict[str, Any]] = []
             seen_keys: set[tuple[str, str]] = set()
+            max_chunks = int(settings.vector_final_max_chunks or 6)
+            processed = 0
             for c in trimmed_candidates:
+                processed += 1
                 meta = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
                 key = (str(meta.get("source") or ""), str(meta.get("source_id") or ""))
                 if key in seen_keys:
@@ -757,11 +760,11 @@ def query_project(
                     continue
                 seen_keys.add(key)
                 final_chunks.append(c)
-                if len(final_chunks) >= int(settings.vector_final_max_chunks or 6):
+                if len(final_chunks) >= max_chunks:
                     break
 
-            for c in trimmed_candidates[len(final_chunks) :]:
-                if len(final_chunks) >= int(settings.vector_final_max_chunks or 6):
+            if len(final_chunks) >= max_chunks:
+                for c in trimmed_candidates[processed:]:
                     dropped.append({"id": c.get("id"), "reason": "budget"})
 
             post_start = time.perf_counter()
@@ -805,7 +808,7 @@ def query_project(
                 },
             }
         except Exception as exc:  # pragma: no cover - env dependent
-            pgvector_error = str(exc)
+            pgvector_error = type(exc).__name__
 
     try:
         collection = _get_collection(project_id=project_id)
@@ -860,7 +863,10 @@ def query_project(
     dropped: list[dict[str, Any]] = []
     final_chunks: list[dict[str, Any]] = []
     seen_keys: set[tuple[str, str]] = set()
+    max_chunks = int(settings.vector_final_max_chunks or 6)
+    processed = 0
     for c in candidates:
+        processed += 1
         meta = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
         key = (str(meta.get("source") or ""), str(meta.get("source_id") or ""))
         if key in seen_keys:
@@ -868,12 +874,12 @@ def query_project(
             continue
         seen_keys.add(key)
         final_chunks.append(c)
-        if len(final_chunks) >= int(settings.vector_final_max_chunks or 6):
+        if len(final_chunks) >= max_chunks:
             break
 
     trimmed_candidates = candidates[:top_k]
-    for c in candidates[len(final_chunks) :]:
-        if len(final_chunks) >= int(settings.vector_final_max_chunks or 6):
+    if len(final_chunks) >= max_chunks:
+        for c in candidates[processed:]:
             dropped.append({"id": c.get("id"), "reason": "budget"})
 
     post_start = time.perf_counter()
