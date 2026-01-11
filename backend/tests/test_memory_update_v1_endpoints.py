@@ -251,6 +251,91 @@ class TestMemoryUpdateV1Endpoints(unittest.TestCase):
         self.assertEqual(apply_forbidden.status_code, 404)
         self.assertEqual(apply_forbidden.json()["error"]["code"], "NOT_FOUND")
 
+    def test_change_set_cannot_cross_project_rollback(self) -> None:
+        client = TestClient(self.app)
+        propose = client.post(
+            "/api/chapters/c2/memory/propose",
+            headers={"X-Test-User": "u_owner"},
+            json={
+                "schema_version": "memory_update_v1",
+                "idempotency_key": "key-cross-project-rb-1",
+                "ops": [
+                    {
+                        "op": "upsert",
+                        "target_table": "entities",
+                        "target_id": "p2_e2",
+                        "after": {"entity_type": "character", "name": "Carol"},
+                    }
+                ],
+            },
+        )
+        self.assertEqual(propose.status_code, 200)
+        change_set_id = propose.json()["data"]["change_set"]["id"]
+
+        apply_ok = client.post(
+            f"/api/memory_change_sets/{change_set_id}/apply",
+            headers={"X-Test-User": "u_owner"},
+        )
+        self.assertEqual(apply_ok.status_code, 200)
+
+        rollback_forbidden = client.post(
+            f"/api/memory_change_sets/{change_set_id}/rollback",
+            headers={"X-Test-User": "u_editor"},
+        )
+        self.assertEqual(rollback_forbidden.status_code, 404)
+        self.assertEqual(rollback_forbidden.json()["error"]["code"], "NOT_FOUND")
+
+    def test_apply_integrity_error_marks_failed(self) -> None:
+        with self.SessionLocal() as db:
+            db.add(
+                MemoryEntity(
+                    id="e_existing",
+                    project_id="p1",
+                    entity_type="character",
+                    name="Alice",
+                    summary_md=None,
+                    attributes_json=None,
+                    deleted_at=None,
+                )
+            )
+            db.commit()
+
+        client = TestClient(self.app)
+        propose = client.post(
+            "/api/chapters/c1/memory/propose",
+            headers={"X-Test-User": "u_editor"},
+            json={
+                "schema_version": "memory_update_v1",
+                "idempotency_key": "key-integrity-error-1",
+                "ops": [
+                    {
+                        "op": "upsert",
+                        "target_table": "entities",
+                        "target_id": "e_conflict",
+                        "after": {"entity_type": "character", "name": "Alice"},
+                    }
+                ],
+            },
+        )
+        self.assertEqual(propose.status_code, 200)
+        change_set_id = propose.json()["data"]["change_set"]["id"]
+
+        apply_conflict = client.post(
+            f"/api/memory_change_sets/{change_set_id}/apply",
+            headers={"X-Test-User": "u_editor"},
+        )
+        self.assertEqual(apply_conflict.status_code, 409)
+        self.assertEqual(apply_conflict.json()["error"]["code"], "CONFLICT")
+        self.assertEqual(apply_conflict.json()["error"]["details"]["reason"], "integrity_error")
+
+        with self.SessionLocal() as db:
+            change_set = db.get(MemoryChangeSet, change_set_id)
+            self.assertIsNotNone(change_set)
+            self.assertEqual(change_set.status, "failed")
+
+            conflict_row = db.get(MemoryEntity, "e_conflict")
+            self.assertIsNone(conflict_row)
+
 
 if __name__ == "__main__":
     unittest.main()
