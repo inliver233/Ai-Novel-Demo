@@ -139,6 +139,16 @@ class TestProjectMembershipRbac(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["ok"], True)
 
+    def test_invalid_role_cannot_be_written(self) -> None:
+        with self.SessionLocal() as db:
+            db.add(User(id="u_bad_role", display_name="bad_role"))
+            db.commit()
+
+            with self.assertRaises(Exception):
+                db.add(ProjectMembership(project_id="p1", user_id="u_bad_role", role="hacker"))
+                db.commit()
+            db.rollback()
+
     def test_role_is_case_insensitive_and_trimmed(self) -> None:
         with self.SessionLocal() as db:
             db.add(User(id="u_editor_caps", display_name="editor_caps"))
