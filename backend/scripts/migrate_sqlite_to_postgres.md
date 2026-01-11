@@ -42,6 +42,15 @@ cd backend
   --report .\\sqlite_to_postgres.report.json
 ```
 
+可选参数（建议先跑一遍 dry-run 熟悉流程）：
+
+- `--dry-run`：只输出计划，不写入目标库
+- `--resume`：幂等断点续跑（Postgres：`ON CONFLICT DO NOTHING`；要求表有主键）
+- `--no-migrate-schema`：跳过目标库的 `alembic upgrade head`（已手工跑过迁移时使用）
+- `--chunk-size`：单表批量写入大小（默认通常够用；大库可调）
+
+> 注意：脚本会在控制台输出 `[target]`，但会对 URL 中的密码做掩码；report 以计数/抽样 hash 为主，不包含明文 API Key（建议不要提交 report 文件）。
+
 如果中途失败/中断，直接重跑并开启幂等模式（断点续跑）：
 
 ```powershell
@@ -75,4 +84,3 @@ $env:DATABASE_URL = "postgresql://user:pass@host:5432/ainovel"
 
 - **SQLite 源库永远保留**（不要在原文件上试验；生产数据务必备份）
 - Postgres 侧若出现问题：**直接 drop/recreate** 目标库，再按上面流程重来
-
