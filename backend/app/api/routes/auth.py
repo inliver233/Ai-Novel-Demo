@@ -4,7 +4,7 @@ from datetime import timedelta, timezone
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from app.api.deps import AuthenticatedUserIdDep, DbDep
 from app.core.auth_session import build_session, clear_session_cookies, set_session_cookies
@@ -13,6 +13,7 @@ from app.core.errors import AppError, ok_payload
 from app.db.utils import utc_now
 from app.models.user import User
 from app.models.user_password import UserPassword
+from app.schemas.base import RequestModel
 from app.services.auth_service import hash_password, verify_password
 
 router = APIRouter()
@@ -22,17 +23,17 @@ def _user_public(user: User) -> dict:
     return {"id": user.id, "display_name": user.display_name, "is_admin": bool(user.is_admin)}
 
 
-class LocalLoginRequest(BaseModel):
+class LocalLoginRequest(RequestModel):
     user_id: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=256)
 
 
-class ChangePasswordRequest(BaseModel):
+class ChangePasswordRequest(RequestModel):
     old_password: str = Field(min_length=1, max_length=256)
     new_password: str = Field(min_length=1, max_length=256)
 
 
-class DisableUserRequest(BaseModel):
+class DisableUserRequest(RequestModel):
     disabled: bool = True
 
 

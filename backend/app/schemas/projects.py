@@ -4,16 +4,16 @@ from datetime import datetime
 
 from pydantic import Field
 
-from app.schemas.base import ORMModel
+from app.schemas.base import ORMModel, RequestModel
 
 
-class ProjectCreate(ORMModel):
+class ProjectCreate(RequestModel):
     name: str = Field(min_length=1, max_length=255)
     genre: str | None = Field(default=None, max_length=255)
     logline: str | None = Field(default=None, max_length=1024)
 
 
-class ProjectUpdate(ORMModel):
+class ProjectUpdate(RequestModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     genre: str | None = Field(default=None, max_length=255)
     logline: str | None = Field(default=None, max_length=1024)

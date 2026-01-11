@@ -4,8 +4,10 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.base import RequestModel
 
-class LLMProfileCreate(BaseModel):
+
+class LLMProfileCreate(RequestModel):
     name: str = Field(min_length=1, max_length=255)
     provider: str = Field(min_length=1, max_length=32)
     base_url: str | None = Field(default=None, max_length=2048)
@@ -13,7 +15,7 @@ class LLMProfileCreate(BaseModel):
     api_key: str | None = Field(default=None, max_length=4096)
 
 
-class LLMProfileUpdate(BaseModel):
+class LLMProfileUpdate(RequestModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     provider: str | None = Field(default=None, min_length=1, max_length=32)
     base_url: str | None = Field(default=None, max_length=2048)
