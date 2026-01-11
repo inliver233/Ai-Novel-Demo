@@ -330,8 +330,8 @@ def plan_chapter(
     chapter_id: str,
     body: ChapterPlanRequest,
     user_id: UserIdDep,
-    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider"),
-    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
+    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider", max_length=64),
+    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ) -> dict:
     request_id = request.state.request_id
     resolved_api_key = ""
@@ -496,8 +496,8 @@ def generate_chapter(
     chapter_id: str,
     body: ChapterGenerateRequest,
     user_id: UserIdDep,
-    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider"),
-    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
+    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider", max_length=64),
+    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ) -> dict:
     request_id = request.state.request_id
     resolved_api_key = ""
@@ -715,8 +715,8 @@ def generate_chapter_stream(
     chapter_id: str,
     body: ChapterGenerateRequest,
     user_id: UserIdDep,
-    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider"),
-    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
+    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider", max_length=64),
+    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ):
     request_id = request.state.request_id
 

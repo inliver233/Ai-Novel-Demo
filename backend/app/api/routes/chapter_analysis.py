@@ -36,8 +36,8 @@ def analyze_chapter(
     chapter_id: str,
     body: ChapterAnalyzeRequest,
     user_id: UserIdDep,
-    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider"),
-    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
+    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider", max_length=64),
+    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ) -> dict:
     request_id = request.state.request_id
     resolved_api_key = ""
@@ -122,8 +122,8 @@ def rewrite_chapter(
     chapter_id: str,
     body: ChapterRewriteRequest,
     user_id: UserIdDep,
-    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider"),
-    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key"),
+    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider", max_length=64),
+    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ) -> dict:
     request_id = request.state.request_id
     resolved_api_key = ""
