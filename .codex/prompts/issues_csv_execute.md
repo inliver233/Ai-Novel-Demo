@@ -30,6 +30,8 @@ argument-hint: "<issues CSV 文件路径>"
    - `evidence:<已完成的替代验证>`
    - `risk:<low|medium|high> <说明>`
    并在交接输出中明确“未运行哪些测试/为何未运行”。
+8. **Windows 编码注意**：读取源码优先用 `rg -n`；若用 PowerShell 查看文件，推荐 `Get-Content -Encoding UTF8`（避免 UTF-8 无 BOM 被误解码导致“乱码/误判”）。
+9. **Review 类 issues 的证据落盘**：若该行属于“审计/评审”任务（不一定改代码），仍需产出可追溯输出（推荐：`docs/reviews/<ID>.md`）并与 CSV 状态一并提交（同一 commit）。
 
 ## 2) Git 分支规则（核心约束）
 - **所有代码变更与 git commit 必须在 `test`（或 `test/*`）分支进行**。
@@ -55,6 +57,8 @@ git checkout test
    - 若有 `Dependencies` 未满足：在 `Notes` 写 `blocked:<原因>`，跳到下一条。
 2. **进入 DOING（先改 CSV 再改代码）**
    - 将该行 `Dev_Status=DOING` 并保存 CSV。
+   - 可选（推荐）：先跑一次 CSV 校验脚本，避免后续提交时才发现表头/枚举错误：
+     - `python .codex/skills/plan/scripts/validate_issues_csv.py <issues.csv>`
 3. **上下文收集（最小必要）**
    - 优先从 `Files` / `Notes.refs` 指向的路径切入；用 `rg` 精确定位；避免目录级扫。
 4. **实现（只做本 Issue）**
