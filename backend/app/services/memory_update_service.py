@@ -267,17 +267,6 @@ def propose_chapter_memory_change_set(
     for idx, op in enumerate(payload.ops):
         target_table = str(op.target_table)
         target_id = str(op.target_id or "").strip()
-        if op.op == "upsert" and not target_id:
-            target_id = new_id()
-
-        if not target_id:
-            raise AppError.validation(details={"item_index": idx, "reason": "target_id_missing"})
-
-        before_row = _load_target_row(db, target_table=target_table, project_id=project_id, target_id=target_id)
-        if op.op == "delete" and before_row is None:
-            raise AppError.validation(details={"item_index": idx, "reason": "target_not_found"})
-
-        before_dict = _row_payload(target_table, before_row) if before_row is not None else None
 
         after_dict: dict[str, Any] | None = None
         if op.op == "upsert":
@@ -288,7 +277,56 @@ def propose_chapter_memory_change_set(
             after_dict = dict(after_obj.model_dump())
             if target_table in {"events", "foreshadows"} and not (after_dict.get("chapter_id") or "").strip():
                 after_dict["chapter_id"] = chapter_id
+
+            # restore-on-create: resolve by unique key when caller omits target_id
+            if not target_id and target_table == "entities":
+                entity_type = str(after_dict.get("entity_type") or "generic").strip() or "generic"
+                name = str(after_dict.get("name") or "").strip()
+                existing_id = (
+                    db.execute(
+                        select(MemoryEntity.id).where(
+                            MemoryEntity.project_id == project_id,
+                            MemoryEntity.entity_type == entity_type,
+                            MemoryEntity.name == name,
+                        )
+                    )
+                    .scalars()
+                    .first()
+                )
+                if existing_id:
+                    target_id = str(existing_id)
+            if not target_id and target_table == "relations":
+                from_entity_id = str(after_dict.get("from_entity_id") or "").strip()
+                to_entity_id = str(after_dict.get("to_entity_id") or "").strip()
+                relation_type = str(after_dict.get("relation_type") or "related_to").strip() or "related_to"
+                existing_id = (
+                    db.execute(
+                        select(MemoryRelation.id).where(
+                            MemoryRelation.project_id == project_id,
+                            MemoryRelation.from_entity_id == from_entity_id,
+                            MemoryRelation.to_entity_id == to_entity_id,
+                            MemoryRelation.relation_type == relation_type,
+                        )
+                    )
+                    .scalars()
+                    .first()
+                )
+                if existing_id:
+                    target_id = str(existing_id)
+
+            if not target_id:
+                target_id = new_id()
+
             after_dict["id"] = target_id
+
+        if not target_id:
+            raise AppError.validation(details={"item_index": idx, "reason": "target_id_missing"})
+
+        before_row = _load_target_row(db, target_table=target_table, project_id=project_id, target_id=target_id)
+        if op.op == "delete" and before_row is None:
+            raise AppError.validation(details={"item_index": idx, "reason": "target_not_found"})
+
+        before_dict = _row_payload(target_table, before_row) if before_row is not None else None
 
         evidence_ids_json = _compact_json_dumps(op.evidence_ids) if op.evidence_ids else None
 
