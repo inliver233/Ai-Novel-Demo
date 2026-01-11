@@ -52,6 +52,7 @@
 ## 7) 相关文件与链接（本仓库）
 
 - Compose：`../../docker-compose.yml`
+- Prod overlay（不暴露 DB/Redis 端口）：`docker-compose-prod.md`
 - Backend Dockerfile：`../../backend/Dockerfile`
 - Frontend Dockerfile：`../../frontend/Dockerfile`
 - 部署说明：`../../README.md`（Docker Compose 章节）
@@ -61,4 +62,3 @@
 - `docs/reviews/REV-001.md`
 - `docs/reviews/REV-002.md`
 - `docs/reviews/REV-017.md`
-
