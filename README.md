@@ -148,6 +148,7 @@ cd backend
 - `CORS_ORIGINS`：默认 `http://localhost:5173`
 - `LOG_LEVEL`：默认 `INFO`
 - `APP_ENV`：`dev|prod`
+- `AUTH_DEV_FALLBACK_USER_ID`：仅 `APP_ENV=dev` 生效（dev 免登录本地用户）。生产环境务必 `APP_ENV=prod`，并建议将该值置空/不设置；若生产误以 `APP_ENV=dev` 启动会造成鉴权绕过（high）。
 - `SECRET_ENCRYPTION_KEY`：prod 必填（用于可迁移的 `enc:` 加密）。升级旧数据库时可先运行 `backend/scripts/migrate_llm_profile_secrets.py` 迁移历史 API Key。
 
 ## SQLite 约束（MVP 口径）
