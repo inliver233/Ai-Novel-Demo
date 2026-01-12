@@ -13,6 +13,65 @@ from app.models.structured_memory import MemoryEntity, MemoryEvidence, MemoryRel
 
 logger = logging.getLogger("ainovel")
 
+_PROMPT_BLOCK_CHAR_LIMIT = 6000
+_PROMPT_BLOCK_TRUNCATION_MARK = "\n…(truncated)\n"
+
+
+def _build_prompt_block(*, inner: str, char_limit: int) -> dict[str, Any]:
+    prefix = "<GraphContext>\n"
+    suffix = "\n</GraphContext>"
+
+    if not inner.strip():
+        return {
+            "identifier": "sys.memory.graph_context",
+            "role": "system",
+            "text_md": "",
+            "truncated": False,
+            "char_limit": int(char_limit),
+            "original_chars": 0,
+        }
+
+    raw_text = f"{prefix}{inner}{suffix}"
+    original_chars = len(raw_text)
+
+    if char_limit <= 0 or original_chars <= char_limit:
+        return {
+            "identifier": "sys.memory.graph_context",
+            "role": "system",
+            "text_md": raw_text,
+            "truncated": False,
+            "char_limit": int(char_limit),
+            "original_chars": original_chars,
+        }
+
+    budget = max(0, int(char_limit) - len(prefix) - len(suffix))
+    if budget <= 0:
+        return {
+            "identifier": "sys.memory.graph_context",
+            "role": "system",
+            "text_md": "",
+            "truncated": True,
+            "char_limit": int(char_limit),
+            "original_chars": original_chars,
+        }
+
+    marker = _PROMPT_BLOCK_TRUNCATION_MARK
+    if budget <= len(marker):
+        clipped_inner = marker[:budget]
+    else:
+        clipped_inner = inner[: max(0, budget - len(marker))].rstrip() + marker
+    clipped_text = f"{prefix}{clipped_inner}{suffix}"
+    if len(clipped_text) > char_limit:
+        clipped_text = clipped_text[:char_limit]
+    return {
+        "identifier": "sys.memory.graph_context",
+        "role": "system",
+        "text_md": clipped_text,
+        "truncated": True,
+        "char_limit": int(char_limit),
+        "original_chars": original_chars,
+    }
+
 
 def _safe_json_loads_dict(raw: str | None) -> dict[str, Any]:
     if not raw:
@@ -109,7 +168,7 @@ def query_graph_context(
             "evidence": [],
             "timings_ms": {},
             "truncated": {"nodes": False, "edges": False},
-            "prompt_block": {"identifier": "sys.memory.graph_context", "role": "system", "text_md": ""},
+            "prompt_block": _build_prompt_block(inner="", char_limit=_PROMPT_BLOCK_CHAR_LIMIT),
             "logs": [],
         }
 
@@ -251,7 +310,7 @@ def query_graph_context(
                 lines.append(line)
 
         inner = "\n".join(lines).strip()
-        text_md = f"<GraphContext>\n{inner}\n</GraphContext>" if inner else ""
+        prompt_block = _build_prompt_block(inner=inner, char_limit=_PROMPT_BLOCK_CHAR_LIMIT)
 
         out = {
             "enabled": True,
@@ -264,13 +323,14 @@ def query_graph_context(
             "evidence": evidence_payloads,
             "timings_ms": {"load": int((t1 - t0) * 1000), "format": int((time.perf_counter() - t1) * 1000)},
             "truncated": {"nodes": bool(truncated_nodes), "edges": bool(truncated_edges)},
-            "prompt_block": {"identifier": "sys.memory.graph_context", "role": "system", "text_md": text_md},
+            "prompt_block": prompt_block,
             "logs": [
                 {
                     "section": "graph",
                     "matched_entity_ids": seed_ids[:5],
                     "counts": {"nodes": len(node_payloads), "edges": len(edge_payloads), "evidence": len(evidence_payloads)},
                     "truncated": {"nodes": bool(truncated_nodes), "edges": bool(truncated_edges)},
+                    "prompt_block_truncated": bool(prompt_block.get("truncated")),
                 }
             ],
         }
@@ -309,7 +369,6 @@ def query_graph_context(
             "evidence": [],
             "timings_ms": {"total": int((time.perf_counter() - t0) * 1000)},
             "truncated": {"nodes": False, "edges": False},
-            "prompt_block": {"identifier": "sys.memory.graph_context", "role": "system", "text_md": ""},
+            "prompt_block": _build_prompt_block(inner="", char_limit=_PROMPT_BLOCK_CHAR_LIMIT),
             "logs": [],
         }
-
