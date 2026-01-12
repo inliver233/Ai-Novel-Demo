@@ -448,7 +448,7 @@ def _pgvector_hybrid_fetch(
         where_sql += " AND source = :source"
         base_params["source"] = sources[0]
     elif sources:
-        where_sql += " AND source = ANY(:sources)"
+        where_sql += " AND source = ANY((:sources)::text[])"
         base_params["sources"] = sources
 
     vec_sql = text(
@@ -497,7 +497,7 @@ def _pgvector_hybrid_fetch(
                 (embedding <=> (:qvec)::vector) AS distance,
                 ts_rank_cd(content_tsv, plainto_tsquery('simple', :qtext)) AS fts_score
             FROM {_PGVECTOR_TABLE}
-            WHERE id = ANY(:ids)
+            WHERE id = ANY((:ids)::text[])
             """.strip()
         )
         rows = db.execute(details_sql, {**base_params, "ids": ids}).all()
