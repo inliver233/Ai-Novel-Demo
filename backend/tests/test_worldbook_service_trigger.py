@@ -213,3 +213,67 @@ class TestWorldBookServiceTrigger(unittest.TestCase):
         self.assertTrue(out.truncated)
         self.assertIn("<WORLD_BOOK>", out.text_md)
         self.assertIn("</WORLD_BOOK>", out.text_md)
+
+    def test_preview_trigger_keyword_boundary_option(self) -> None:
+        SessionLocal = self._make_db()
+        now = datetime.now(timezone.utc)
+
+        with SessionLocal() as db:
+            db.add_all(
+                [
+                    WorldBookEntry(
+                        id="S1",
+                        project_id="project-1",
+                        title="substring",
+                        content_md="S1 content",
+                        enabled=True,
+                        constant=False,
+                        keywords_json=json.dumps(["he"]),
+                        exclude_recursion=False,
+                        prevent_recursion=False,
+                        char_limit=9999,
+                        priority="important",
+                        updated_at=now,
+                    ),
+                    WorldBookEntry(
+                        id="W1",
+                        project_id="project-1",
+                        title="word_boundary",
+                        content_md="W1 content",
+                        enabled=True,
+                        constant=False,
+                        keywords_json=json.dumps(["word:he"]),
+                        exclude_recursion=False,
+                        prevent_recursion=False,
+                        char_limit=9999,
+                        priority="important",
+                        updated_at=now,
+                    ),
+                ]
+            )
+            db.commit()
+
+            out_substring = preview_worldbook_trigger(
+                db=db,
+                project_id="project-1",
+                query_text="the",
+                include_constant=False,
+                enable_recursion=False,
+                char_limit=200000,
+            )
+            out_word = preview_worldbook_trigger(
+                db=db,
+                project_id="project-1",
+                query_text="he",
+                include_constant=False,
+                enable_recursion=False,
+                char_limit=200000,
+            )
+
+        ids_substring = {t.id for t in out_substring.triggered}
+        self.assertIn("S1", ids_substring)
+        self.assertNotIn("W1", ids_substring)
+
+        ids_word = {t.id for t in out_word.triggered}
+        self.assertIn("S1", ids_word)
+        self.assertIn("W1", ids_word)

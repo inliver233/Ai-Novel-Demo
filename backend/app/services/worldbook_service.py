@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -38,6 +39,22 @@ def _lower_nonempty(items: list[str]) -> list[str]:
         seen.add(key)
         out.append(key)
     return out
+
+
+def _keyword_matches(*, base: str, keyword: str) -> bool:
+    k = (keyword or "").strip().lower()
+    if not k:
+        return False
+
+    if k.startswith("word:"):
+        needle = k[len("word:") :].strip()
+        if not needle:
+            return False
+        # ASCII word boundary: avoids "he" matching "the".
+        pattern = r"(?<![0-9a-z_])" + re.escape(needle) + r"(?![0-9a-z_])"
+        return re.search(pattern, base) is not None
+
+    return k in base
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +111,7 @@ def _trigger_entries(
                 continue
 
             base = query if bool(e.exclude_recursion) else search_text
-            matched = next((k for k in keywords if k in base), None)
+            matched = next((k for k in keywords if _keyword_matches(base=base, keyword=k)), None)
             if matched is None:
                 next_pending.append(e)
                 continue
