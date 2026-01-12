@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { ApiError, apiJson } from "../services/apiClient";
 import { DEFAULT_USER_ID, clearCurrentUserId, setCurrentUserId } from "../services/currentUser";
-import { AuthContext, type AuthSession, type AuthState, type AuthUser } from "./auth";
+import { AuthContext, computeNextAuthRefreshDelayMs, type AuthSession, type AuthState, type AuthUser } from "./auth";
 
 type AuthUserApi = { id: string; display_name: string; is_admin: boolean };
 
@@ -29,6 +29,11 @@ export function AuthProvider(props: { children: React.ReactNode }) {
   useEffect(() => {
     statusRef.current = state.status;
   }, [state.status]);
+
+  const sessionExpireAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    sessionExpireAtRef.current = state.status === "authenticated" ? (state.session?.expireAt ?? null) : null;
+  }, [state.session?.expireAt, state.status]);
 
   const refresh = useCallback(async ({ silent }: { silent?: boolean } = {}) => {
     if (!silent) setState((s) => ({ ...s, status: "loading" }));
@@ -58,6 +63,25 @@ export function AuthProvider(props: { children: React.ReactNode }) {
         }
       }
       setState({ status: "unauthenticated", user: null, session: null });
+    }
+  }, []);
+
+  const refreshSession = useCallback(async () => {
+    try {
+      const res = await apiJson<{ refreshed: boolean; session: { expire_at: number } }>("/api/auth/refresh", {
+        method: "POST",
+        timeoutMs: 15_000,
+      });
+      const expireAt = res.data.session?.expire_at ?? null;
+      sessionExpireAtRef.current = expireAt;
+      setState((s) => {
+        if (s.status !== "authenticated") return s;
+        const session: AuthSession = { expireAt };
+        return { ...s, session };
+      });
+    } catch (e) {
+      const err = e instanceof ApiError ? e : null;
+      if (err?.status === 401) setState({ status: "unauthenticated", user: null, session: null });
     }
   }, []);
 
@@ -98,27 +122,28 @@ export function AuthProvider(props: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (state.status !== "authenticated") return undefined;
+    if (typeof window === "undefined") return undefined;
 
-    const refreshSession = async () => {
-      try {
-        const res = await apiJson<{ refreshed: boolean; session: { expire_at: number } }>("/api/auth/refresh", {
-          method: "POST",
-          timeoutMs: 15_000,
-        });
-        setState((s) => {
-          if (s.status !== "authenticated") return s;
-          const session: AuthSession = { expireAt: res.data.session?.expire_at ?? null };
-          return { ...s, session };
-        });
-      } catch (e) {
-        const err = e instanceof ApiError ? e : null;
-        if (err?.status === 401) setState({ status: "unauthenticated", user: null, session: null });
-      }
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    const scheduleNext = () => {
+      if (cancelled) return;
+      if (timerId !== null) window.clearTimeout(timerId);
+
+      const delayMs = computeNextAuthRefreshDelayMs({ expireAtSec: sessionExpireAtRef.current });
+      timerId = window.setTimeout(async () => {
+        await refreshSession();
+        scheduleNext();
+      }, delayMs);
     };
 
-    const id = window.setInterval(() => void refreshSession(), 5 * 60_000);
-    return () => window.clearInterval(id);
-  }, [state.status]);
+    scheduleNext();
+    return () => {
+      cancelled = true;
+      if (timerId !== null) window.clearTimeout(timerId);
+    };
+  }, [refreshSession, state.status]);
 
   const value = useMemo(
     () => ({
