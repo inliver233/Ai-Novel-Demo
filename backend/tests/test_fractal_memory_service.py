@@ -3,8 +3,17 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timezone
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.db.base import Base
 from app.models.chapter import Chapter
-from app.services.fractal_memory_service import FractalConfig, compute_fractal
+from app.models.fractal_memory import FractalMemory
+from app.models.outline import Outline
+from app.models.project import Project
+from app.models.user import User
+from app.services.fractal_memory_service import FractalConfig, compute_fractal, get_fractal_context, rebuild_fractal_memory
 
 
 class TestFractalMemoryService(unittest.TestCase):
@@ -66,3 +75,79 @@ class TestFractalMemoryService(unittest.TestCase):
         self.assertEqual(len(out["scenes"]), 5)
         self.assertEqual(len(out["arcs"]), 3)
 
+
+class TestFractalMemoryStorageLoop(unittest.TestCase):
+    def setUp(self) -> None:
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(
+            engine,
+            tables=[
+                User.__table__,
+                Project.__table__,
+                Outline.__table__,
+                Chapter.__table__,
+                FractalMemory.__table__,
+            ],
+        )
+        self.SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+    def _seed_project(self, *, db, chapter_count: int) -> None:
+        db.add(User(id="u1", display_name="User 1", is_admin=False))
+        db.add(Project(id="p1", owner_user_id="u1", name="Project 1", genre=None, logline=None))
+        db.add(Outline(id="o1", project_id="p1", title="Outline 1", content_md=None, structure_json=None))
+        db.bulk_save_objects(
+            [
+                Chapter(
+                    id=f"c{i}",
+                    project_id="p1",
+                    outline_id="o1",
+                    number=i,
+                    title=f"第{i}章",
+                    plan=None,
+                    content_md=f"scene {i}",
+                    summary=None,
+                    status="done",
+                )
+                for i in range(1, chapter_count + 1)
+            ]
+        )
+        db.commit()
+
+    def test_rebuild_then_get_roundtrip(self) -> None:
+        with self.SessionLocal() as db:
+            self._seed_project(db=db, chapter_count=2)
+
+            rebuilt = rebuild_fractal_memory(db=db, project_id="p1", reason="test_roundtrip")
+            fetched = get_fractal_context(db=db, project_id="p1", enabled=True)
+
+        self.assertTrue(rebuilt.get("enabled"))
+        self.assertTrue(fetched.get("enabled"))
+        self.assertEqual(rebuilt.get("prompt_block"), fetched.get("prompt_block"))
+        self.assertEqual(rebuilt.get("config"), fetched.get("config"))
+
+        cfg = fetched.get("config") or {}
+        self.assertEqual(cfg.get("reason"), "test_roundtrip")
+        self.assertEqual(cfg.get("done_chapters_total"), 2)
+        self.assertEqual(cfg.get("done_chapters_used"), 2)
+        self.assertFalse(bool(cfg.get("done_chapters_truncated")))
+
+    def test_rebuild_caps_done_chapters_with_observable_config(self) -> None:
+        with self.SessionLocal() as db:
+            self._seed_project(db=db, chapter_count=260)
+            out = rebuild_fractal_memory(db=db, project_id="p1", reason="test_cap")
+
+        cfg = out.get("config") or {}
+        self.assertEqual(cfg.get("reason"), "test_cap")
+        self.assertEqual(cfg.get("done_chapters_total"), 260)
+        self.assertTrue(bool(cfg.get("done_chapters_truncated")))
+        self.assertIsInstance(cfg.get("done_chapters_limit"), int)
+        self.assertIsInstance(cfg.get("done_chapters_used"), int)
+        self.assertEqual(cfg.get("done_chapters_used"), cfg.get("done_chapters_limit"))
+
+        scenes = list(out.get("scenes") or [])
+        self.assertEqual(len(scenes), int(cfg.get("done_chapters_used") or 0))
+        self.assertEqual(int(scenes[0].get("chapter_number") or 0), 61)

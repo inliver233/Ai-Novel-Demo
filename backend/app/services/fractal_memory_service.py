@@ -17,6 +17,8 @@ from app.models.fractal_memory import FractalMemory
 
 logger = logging.getLogger("ainovel")
 
+_MAX_DONE_CHAPTERS_PER_REBUILD = 200
+
 T = TypeVar("T")
 
 
@@ -181,14 +183,32 @@ def rebuild_fractal_memory(*, db: Session, project_id: str, reason: str) -> dict
         .all()
     )
 
-    computed = compute_fractal(chapters=chapters, config=cfg)
+    done_chapters = [c for c in chapters if str(c.status or "").strip() == "done"]
+    done_total = len(done_chapters)
+
+    done_limit = max(1, int(_MAX_DONE_CHAPTERS_PER_REBUILD))
+    done_truncated = False
+    if done_total > done_limit:
+        done_truncated = True
+        done_chapters = done_chapters[-done_limit:]
+
+    computed = compute_fractal(chapters=done_chapters, config=cfg)
     row = db.execute(select(FractalMemory).where(FractalMemory.project_id == project_id)).scalars().first()
     if row is None:
         row = FractalMemory(id=new_id(), project_id=project_id)
         db.add(row)
 
     row.config_json = _compact_json_dumps(
-        {"scene_window": cfg.scene_window, "arc_window": cfg.arc_window, "char_limit": cfg.char_limit, "reason": reason}
+        {
+            "scene_window": cfg.scene_window,
+            "arc_window": cfg.arc_window,
+            "char_limit": cfg.char_limit,
+            "reason": reason,
+            "done_chapters_total": done_total,
+            "done_chapters_used": len(done_chapters),
+            "done_chapters_limit": done_limit,
+            "done_chapters_truncated": bool(done_truncated),
+        }
     )
     row.scenes_json = _compact_json_dumps(computed["scenes"])
     row.arcs_json = _compact_json_dumps(computed["arcs"])
