@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Any
 
-from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, func, literal, or_, select
+from sqlalchemy.orm import Session, load_only
 
 from app.core.logging import log_event
 from app.models.structured_memory import MemoryEntity, MemoryEvidence, MemoryRelation
@@ -15,6 +16,7 @@ logger = logging.getLogger("ainovel")
 
 _PROMPT_BLOCK_CHAR_LIMIT = 6000
 _PROMPT_BLOCK_TRUNCATION_MARK = "\n…(truncated)\n"
+_MATCH_ENTITY_ALIAS_CANDIDATES_LIMIT = 2000
 
 
 def _build_prompt_block(*, inner: str, char_limit: int) -> dict[str, Any]:
@@ -141,6 +143,109 @@ def _match_entities(*, entities: list[MemoryEntity], query_text: str, max_matche
     return [(eid, name) for _score, eid, name in picked]
 
 
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _extract_query_phrases(query_text: str, *, max_phrases: int = 48, max_ngram: int = 4) -> list[str]:
+    raw = (query_text or "").strip()
+    if not raw:
+        return []
+
+    tokens = [
+        t.strip().lower()
+        for t in re.findall(r"[0-9A-Za-z\u4e00-\u9fff][0-9A-Za-z\u4e00-\u9fff_-]*", raw)
+        if t.strip()
+    ]
+    tokens = [t for t in tokens if len(t) >= 2]
+
+    # De-dup while preserving order.
+    uniq_tokens: list[str] = []
+    seen: set[str] = set()
+    for t in tokens:
+        if t in seen:
+            continue
+        seen.add(t)
+        uniq_tokens.append(t)
+        if len(uniq_tokens) >= max_phrases:
+            return uniq_tokens
+
+    phrases: list[str] = list(uniq_tokens)
+    if len(phrases) >= max_phrases:
+        return phrases[:max_phrases]
+
+    n_tokens = len(uniq_tokens)
+    max_n = min(int(max_ngram), n_tokens)
+    for n in range(2, max_n + 1):
+        for i in range(0, n_tokens - n + 1):
+            phrase = " ".join(uniq_tokens[i : i + n]).strip()
+            if len(phrase) < 2 or phrase in seen:
+                continue
+            seen.add(phrase)
+            phrases.append(phrase)
+            if len(phrases) >= max_phrases:
+                return phrases
+
+    return phrases
+
+
+def _load_match_candidates(
+    *,
+    db: Session,
+    project_id: str,
+    query_text: str,
+    alias_candidates_limit: int,
+) -> tuple[list[MemoryEntity], dict[str, Any]]:
+    q = (query_text or "").strip()
+    if not q:
+        return [], {"loaded": 0, "name_loaded": 0, "alias_loaded": 0, "alias_truncated": False}
+
+    base = (
+        select(MemoryEntity)
+        .options(load_only(MemoryEntity.id, MemoryEntity.name, MemoryEntity.attributes_json))
+        .where(MemoryEntity.project_id == project_id)
+        .where(MemoryEntity.deleted_at.is_(None))
+    )
+
+    q_expr = func.lower(literal(q))
+    name_candidates = (
+        db.execute(base.where(q_expr.contains(func.lower(MemoryEntity.name))).order_by(MemoryEntity.updated_at.desc()))
+        .scalars()
+        .all()
+    )
+    name_ids = {str(e.id) for e in name_candidates}
+
+    alias_candidates: list[MemoryEntity] = []
+    alias_truncated = False
+    phrases = _extract_query_phrases(q)
+    if phrases and int(alias_candidates_limit) > 0:
+        attr_lower = func.lower(MemoryEntity.attributes_json)
+        like_exprs = [attr_lower.like(f"%{_escape_like(p)}%", escape="\\") for p in phrases]
+        stmt = base.where(and_(MemoryEntity.attributes_json.is_not(None), or_(*like_exprs)))
+        if name_ids:
+            stmt = stmt.where(MemoryEntity.id.notin_(name_ids))
+
+        # Fetch one extra row to detect truncation without running COUNT(*).
+        limit_plus_one = int(alias_candidates_limit) + 1
+        alias_candidates = (
+            db.execute(stmt.order_by(MemoryEntity.updated_at.desc()).limit(limit_plus_one)).scalars().all()
+        )
+        if len(alias_candidates) > int(alias_candidates_limit):
+            alias_truncated = True
+            alias_candidates = alias_candidates[: int(alias_candidates_limit)]
+
+    candidates = [*name_candidates, *alias_candidates]
+    meta = {
+        "loaded": len(candidates),
+        "name_loaded": len(name_candidates),
+        "alias_loaded": len(alias_candidates),
+        "alias_limit": int(alias_candidates_limit),
+        "alias_truncated": bool(alias_truncated),
+        "phrases": len(phrases),
+    }
+    return candidates, meta
+
+
 def query_graph_context(
     *,
     db: Session,
@@ -178,18 +283,14 @@ def query_graph_context(
         max_nodes = max(1, min(int(max_nodes), 200))
         max_edges = max(0, min(int(max_edges), 500))
 
-        entities = (
-            db.execute(
-                select(MemoryEntity)
-                .where(MemoryEntity.project_id == project_id)
-                .where(MemoryEntity.deleted_at.is_(None))
-                .order_by(MemoryEntity.updated_at.desc())
-            )
-            .scalars()
-            .all()
+        candidates, match_meta = _load_match_candidates(
+            db=db,
+            project_id=project_id,
+            query_text=query_text,
+            alias_candidates_limit=_MATCH_ENTITY_ALIAS_CANDIDATES_LIMIT,
         )
 
-        matched_pairs = _match_entities(entities=entities, query_text=query_text, max_matches=min(12, max_nodes))
+        matched_pairs = _match_entities(entities=candidates, query_text=query_text, max_matches=min(12, max_nodes))
         seed_ids = [eid for eid, _name in matched_pairs]
         seed_set = set(seed_ids)
         matched_names = [_name for _eid, _name in matched_pairs]
@@ -227,7 +328,18 @@ def query_graph_context(
                 node_ids.update(new_nodes)
                 picked_edges.append(r)
 
-        nodes = [e for e in entities if str(e.id) in node_ids]
+        nodes: list[MemoryEntity] = []
+        if node_ids:
+            nodes = (
+                db.execute(
+                    select(MemoryEntity)
+                    .where(MemoryEntity.project_id == project_id)
+                    .where(MemoryEntity.deleted_at.is_(None))
+                    .where(MemoryEntity.id.in_(list(node_ids)))
+                )
+                .scalars()
+                .all()
+            )
 
         evidence_source_ids: list[str] = [*node_ids, *[str(e.id) for e in picked_edges]]
         evidence = (
@@ -328,6 +440,7 @@ def query_graph_context(
                 {
                     "section": "graph",
                     "matched_entity_ids": seed_ids[:5],
+                    "match_candidates": match_meta,
                     "counts": {"nodes": len(node_payloads), "edges": len(edge_payloads), "evidence": len(evidence_payloads)},
                     "truncated": {"nodes": bool(truncated_nodes), "edges": bool(truncated_edges)},
                     "prompt_block_truncated": bool(prompt_block.get("truncated")),
