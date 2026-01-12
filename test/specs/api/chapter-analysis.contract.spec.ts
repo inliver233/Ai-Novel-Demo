@@ -4,6 +4,7 @@ import { bootstrapProject } from "../../lib/bootstrap";
 import { loadState } from "../../lib/state";
 
 type ApiOk<T> = { ok: true; data: T; request_id: string };
+type ApiErr = { ok: false; error: { code: string; message: string; details: Record<string, unknown> }; request_id: string };
 
 test("api: analysis/apply + annotations contract", async ({ request }) => {
   const state = loadState();
@@ -98,3 +99,41 @@ test("api: analysis/apply + annotations contract", async ({ request }) => {
   expect(raw).not.toMatch(/sk-[a-zA-Z0-9]{10,}/);
 });
 
+test("api: analysis/apply rejects unknown analysis fields (fail-closed)", async ({ request }) => {
+  const state = loadState();
+  const { projectId } = await bootstrapProject(request);
+
+  const create = await request.post(`${state.backendUrl}/api/projects/${projectId}/chapters`, {
+    data: { number: 1, title: "E2E 第一章", plan: "要点 A；要点 B" },
+  });
+  expect(create.ok()).toBeTruthy();
+  const createJson = (await create.json()) as ApiOk<{ chapter: { id: string } }>;
+  const chapterId = createJson.data.chapter.id;
+
+  const contentMd = "E2E 正文：用于 analysis/apply fail-closed。";
+  const update = await request.put(`${state.backendUrl}/api/chapters/${chapterId}`, {
+    data: { title: "E2E 第一章", plan: "要点 A；要点 B", content_md: contentMd, summary: "", status: "drafting" },
+  });
+  expect(update.ok()).toBeTruthy();
+
+  const analysis = {
+    chapter_summary: "E2E 摘要",
+    hooks: [{ excerpt: "E2E_HOOK_EXCERPT", note: "钩子：用于 E2E" }],
+    foreshadows: [],
+    plot_points: [],
+    suggestions: [],
+    overall_notes: "OK",
+    unknown_field: "MUST_FAIL",
+  };
+
+  const apply = await request.post(`${state.backendUrl}/api/chapters/${chapterId}/analysis/apply`, {
+    data: { analysis, draft_content_md: contentMd },
+  });
+  expect(apply.ok()).toBeFalsy();
+  expect(apply.status()).toBe(400);
+  const applyJson = (await apply.json()) as ApiErr;
+  expect(applyJson.ok).toBe(false);
+  expect(typeof applyJson.request_id).toBe("string");
+  expect(applyJson.error.code).toBe("ANALYSIS_SCHEMA_ERROR");
+  expect(Array.isArray(applyJson.error.details.unknown_fields)).toBe(true);
+});

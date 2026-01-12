@@ -11,6 +11,7 @@ from app.models.plot_analysis import PlotAnalysis
 from app.models.story_memory import StoryMemory
 from app.services.plot_analysis_service import (
     apply_chapter_analysis,
+    compute_analysis_hash,
     extract_story_memory_seeds,
     validate_analysis_payload,
 )
@@ -37,6 +38,25 @@ class TestPlotAnalysisApply(unittest.TestCase):
         with self.assertRaises(AppError) as ctx:
             validate_analysis_payload(["not-a-dict"])  # type: ignore[arg-type]
         self.assertEqual(ctx.exception.code, "ANALYSIS_PARSE_ERROR")
+
+    def test_validate_analysis_payload_rejects_unknown_fields(self) -> None:
+        with self.assertRaises(AppError) as ctx:
+            validate_analysis_payload({"chapter_summary": "ok", "unknown_field": 1})
+        self.assertEqual(ctx.exception.code, "ANALYSIS_SCHEMA_ERROR")
+        self.assertIn("unknown_fields", ctx.exception.details)
+
+    def test_validate_analysis_payload_rejects_unknown_nested_fields(self) -> None:
+        with self.assertRaises(AppError) as ctx:
+            validate_analysis_payload({"hooks": [{"excerpt": "a", "note": "b", "extra": "x"}]})
+        self.assertEqual(ctx.exception.code, "ANALYSIS_SCHEMA_ERROR")
+        self.assertIn("unknown_fields", ctx.exception.details)
+
+    def test_canonicalization_is_stable_for_key_order(self) -> None:
+        a = {"chapter_summary": "sum", "overall_notes": "ok", "hooks": [{"excerpt": "E", "note": "N"}]}
+        b = {"overall_notes": "ok", "hooks": [{"note": "N", "excerpt": "E"}], "chapter_summary": "sum"}
+        _, h1 = compute_analysis_hash(validate_analysis_payload(a))
+        _, h2 = compute_analysis_hash(validate_analysis_payload(b))
+        self.assertEqual(h1, h2)
 
     def test_extract_story_memory_seeds_always_has_chapter_summary(self) -> None:
         seeds = extract_story_memory_seeds(
@@ -104,4 +124,3 @@ class TestPlotAnalysisApply(unittest.TestCase):
             self.assertEqual(ids1, ids2)
             self.assertEqual(db.query(PlotAnalysis).count(), 1)
             self.assertEqual(db.query(GenerationRun).filter(GenerationRun.type == "analysis_apply").count(), 1)
-

@@ -15,6 +15,25 @@ from app.models.story_memory import StoryMemory
 
 _MANAGED_MEMORY_TYPES = {"chapter_summary", "hook", "plot_point", "foreshadow", "character_state"}
 
+_ANALYSIS_SCHEMA_V1_TOP_LEVEL_KEYS = {
+    "schema_version",
+    "chapter_summary",
+    "hooks",
+    "foreshadows",
+    "plot_points",
+    "character_states",
+    "suggestions",
+    "overall_notes",
+}
+
+_ANALYSIS_SCHEMA_V1_LIST_ITEM_KEYS: dict[str, set[str]] = {
+    "hooks": {"excerpt", "note"},
+    "foreshadows": {"excerpt", "note", "type"},
+    "plot_points": {"beat", "excerpt"},
+    "character_states": {"character_name", "state_before", "state_after", "psychological_change"},
+    "suggestions": {"title", "excerpt", "issue", "recommendation", "priority"},
+}
+
 
 def _canonical_json(value: dict[str, Any]) -> str:
     try:
@@ -32,6 +51,22 @@ def compute_analysis_hash(analysis: dict[str, Any]) -> tuple[str, str]:
 def validate_analysis_payload(analysis: object) -> dict[str, Any]:
     if not isinstance(analysis, dict):
         raise AppError(code="ANALYSIS_PARSE_ERROR", message="analysis 必须是 JSON object", status_code=400)
+
+    schema_version = analysis.get("schema_version")
+    if schema_version is not None:
+        if isinstance(schema_version, bool) or not isinstance(schema_version, (int, float)):
+            raise AppError(code="ANALYSIS_SCHEMA_ERROR", message="analysis.schema_version 必须是 number", status_code=400)
+        if int(schema_version) != 1:
+            raise AppError(code="ANALYSIS_SCHEMA_ERROR", message="analysis.schema_version 不支持（仅支持 1）", status_code=400)
+
+    unknown_top_level = sorted(set(analysis.keys()) - _ANALYSIS_SCHEMA_V1_TOP_LEVEL_KEYS)
+    if unknown_top_level:
+        raise AppError(
+            code="ANALYSIS_SCHEMA_ERROR",
+            message="analysis 含未知字段",
+            status_code=400,
+            details={"unknown_fields": unknown_top_level},
+        )
 
     def _ensure_str_field(key: str) -> None:
         if key not in analysis or analysis[key] is None:
@@ -52,6 +87,24 @@ def validate_analysis_payload(analysis: object) -> dict[str, Any]:
                     message=f"analysis.{key}[{idx}] 必须是 object",
                     status_code=400,
                 )
+            allowed = _ANALYSIS_SCHEMA_V1_LIST_ITEM_KEYS.get(key)
+            if allowed is None:
+                continue
+            unknown_item = sorted(set(item.keys()) - allowed)
+            if unknown_item:
+                raise AppError(
+                    code="ANALYSIS_SCHEMA_ERROR",
+                    message=f"analysis.{key}[{idx}] 含未知字段",
+                    status_code=400,
+                    details={"unknown_fields": unknown_item},
+                )
+
+            for k, v in item.items():
+                if v is None:
+                    continue
+                # Schema v1 list items are strings only.
+                if not isinstance(v, str):
+                    raise AppError(code="ANALYSIS_PARSE_ERROR", message=f"analysis.{key}[{idx}].{k} 必须是 string", status_code=400)
 
     _ensure_str_field("chapter_summary")
     _ensure_str_field("overall_notes")
