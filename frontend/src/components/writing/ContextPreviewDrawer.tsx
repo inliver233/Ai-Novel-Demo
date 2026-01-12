@@ -23,6 +23,15 @@ type VectorCandidate = {
   metadata: Record<string, unknown>;
 };
 
+type VectorRagCounts = {
+  candidates_total: number;
+  candidates_returned: number;
+  unique_sources: number;
+  final_selected: number;
+  dropped_total: number;
+  dropped_by_reason: Record<string, number>;
+};
+
 type VectorRagQueryResult = {
   enabled: boolean;
   disabled_reason: string | null;
@@ -32,6 +41,7 @@ type VectorRagQueryResult = {
   candidates: VectorCandidate[];
   final: { chunks: VectorCandidate[]; text_md: string; truncated: boolean };
   dropped: Array<{ id?: string; reason: string }>;
+  counts?: VectorRagCounts;
   prompt_block: { identifier: string; role: string; text_md: string };
   error?: string;
 };
@@ -123,6 +133,44 @@ function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
     })
     .filter((v): v is { id?: string; reason: string } => Boolean(v));
 
+  const countsRaw = hasOwn(o, "counts") && typeof o.counts === "object" && o.counts !== null ? (o.counts as Record<string, unknown>) : null;
+  let counts: VectorRagCounts | undefined = undefined;
+  if (countsRaw) {
+    const candidatesTotal = typeof countsRaw.candidates_total === "number" ? countsRaw.candidates_total : Number(countsRaw.candidates_total);
+    const candidatesReturned =
+      typeof countsRaw.candidates_returned === "number" ? countsRaw.candidates_returned : Number(countsRaw.candidates_returned);
+    const uniqueSources = typeof countsRaw.unique_sources === "number" ? countsRaw.unique_sources : Number(countsRaw.unique_sources);
+    const finalSelected = typeof countsRaw.final_selected === "number" ? countsRaw.final_selected : Number(countsRaw.final_selected);
+    const droppedTotal = typeof countsRaw.dropped_total === "number" ? countsRaw.dropped_total : Number(countsRaw.dropped_total);
+
+    const droppedByReasonRaw =
+      typeof countsRaw.dropped_by_reason === "object" && countsRaw.dropped_by_reason !== null
+        ? (countsRaw.dropped_by_reason as Record<string, unknown>)
+        : {};
+    const droppedByReason: Record<string, number> = Object.fromEntries(
+      Object.entries(droppedByReasonRaw)
+        .map(([k, v]) => [k, typeof v === "number" ? v : Number(v)] as const)
+        .filter(([, v]) => Number.isFinite(v) && v >= 0),
+    );
+
+    if (
+      Number.isFinite(candidatesTotal) &&
+      Number.isFinite(candidatesReturned) &&
+      Number.isFinite(uniqueSources) &&
+      Number.isFinite(finalSelected) &&
+      Number.isFinite(droppedTotal)
+    ) {
+      counts = {
+        candidates_total: candidatesTotal,
+        candidates_returned: candidatesReturned,
+        unique_sources: uniqueSources,
+        final_selected: finalSelected,
+        dropped_total: droppedTotal,
+        dropped_by_reason: droppedByReason,
+      };
+    }
+  }
+
   return {
     enabled: Boolean(o.enabled),
     disabled_reason: typeof o.disabled_reason === "string" ? o.disabled_reason : null,
@@ -145,6 +193,7 @@ function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
       text_md: typeof promptBlock.text_md === "string" ? promptBlock.text_md : "",
     },
     dropped,
+    counts,
   };
 }
 
@@ -583,8 +632,26 @@ export function ContextPreviewDrawer(props: Props) {
               <>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-subtext">
                   <span>
-                    candidates: {vectorResult.candidates.length} | final_chunks: {vectorResult.final.chunks.length} | dropped:{" "}
-                    {vectorResult.dropped.length}
+                    {vectorResult.counts ? (
+                      <>
+                        counts: total:{vectorResult.counts.candidates_total} | returned:{vectorResult.counts.candidates_returned} | unique_sources:
+                        {vectorResult.counts.unique_sources} | final_selected:{vectorResult.counts.final_selected} | dropped:
+                        {vectorResult.counts.dropped_total}
+                        {Object.keys(vectorResult.counts.dropped_by_reason).length ? (
+                          <>
+                            {" "}
+                            | drop_by_reason:
+                            {Object.entries(vectorResult.counts.dropped_by_reason)
+                              .map(([k, v]) => `${k}:${v}`)
+                              .join(" | ")}
+                          </>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        counts: candidates:{vectorResult.candidates.length} | final_chunks:{vectorResult.final.chunks.length} | dropped:{vectorResult.dropped.length}
+                      </>
+                    )}
                   </span>
                   <span>
                     timings_ms:{" "}

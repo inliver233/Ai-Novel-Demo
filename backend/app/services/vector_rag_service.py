@@ -73,6 +73,42 @@ def _rrf_score(*, vector_rank: int | None, fts_rank: int | None, k: int) -> floa
     return _rrf_contrib(vector_rank, k=k) + _rrf_contrib(fts_rank, k=k)
 
 
+def _vector_candidate_key(candidate: dict[str, Any]) -> tuple[str, str]:
+    meta = candidate.get("metadata") if isinstance(candidate.get("metadata"), dict) else {}
+    return (str(meta.get("source") or ""), str(meta.get("source_id") or ""))
+
+
+def _build_vector_query_counts(
+    *,
+    candidates_total: int,
+    returned_candidates: list[dict[str, Any]],
+    final_selected: int,
+    dropped: list[dict[str, Any]],
+) -> dict[str, Any]:
+    unique_keys: set[tuple[str, str]] = set()
+    for c in returned_candidates:
+        if isinstance(c, dict):
+            unique_keys.add(_vector_candidate_key(c))
+
+    dropped_by_reason: dict[str, int] = {}
+    for d in dropped:
+        if not isinstance(d, dict):
+            continue
+        reason = str(d.get("reason") or "")
+        if not reason:
+            continue
+        dropped_by_reason[reason] = dropped_by_reason.get(reason, 0) + 1
+
+    return {
+        "candidates_total": int(candidates_total),
+        "candidates_returned": int(len(returned_candidates)),
+        "unique_sources": int(len(unique_keys)),
+        "final_selected": int(final_selected),
+        "dropped_total": int(len(dropped)),
+        "dropped_by_reason": dropped_by_reason,
+    }
+
+
 def _backend_dir() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -104,6 +140,7 @@ def vector_rag_status(*, project_id: str, sources: list[VectorSource] | None = N
             "candidates": [],
             "final": {"chunks": [], "text_md": "", "truncated": False},
             "dropped": [],
+            "counts": _build_vector_query_counts(candidates_total=0, returned_candidates=[], final_selected=0, dropped=[]),
             "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
             "backend_preferred": "pgvector" if _prefer_pgvector() else "chroma",
             "hybrid_enabled": bool(getattr(settings, "vector_hybrid_enabled", True)),
@@ -117,6 +154,7 @@ def vector_rag_status(*, project_id: str, sources: list[VectorSource] | None = N
         "candidates": [],
         "final": {"chunks": [], "text_md": "", "truncated": False},
         "dropped": [],
+        "counts": _build_vector_query_counts(candidates_total=0, returned_candidates=[], final_selected=0, dropped=[]),
         "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
         "backend_preferred": "pgvector" if _prefer_pgvector() else "chroma",
         "hybrid_enabled": bool(getattr(settings, "vector_hybrid_enabled", True)),
@@ -721,6 +759,7 @@ def query_project(
             "candidates": [],
             "final": {"chunks": [], "text_md": "", "truncated": False},
             "dropped": [],
+            "counts": _build_vector_query_counts(candidates_total=0, returned_candidates=[], final_selected=0, dropped=[]),
             "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
         }
 
@@ -772,6 +811,12 @@ def query_project(
             post_ms = int((time.perf_counter() - post_start) * 1000)
 
             timings_ms = {"embed": embed_ms, "query": query_ms, "post": post_ms}
+            obs_counts = _build_vector_query_counts(
+                candidates_total=len(candidates),
+                returned_candidates=trimmed_candidates,
+                final_selected=len(final_chunks),
+                dropped=dropped,
+            )
             log_event(
                 logger,
                 "info",
@@ -798,6 +843,7 @@ def query_project(
                 "candidates": trimmed_candidates,
                 "final": {"chunks": final_chunks, "text_md": text_md, "truncated": truncated},
                 "dropped": dropped,
+                "counts": obs_counts,
                 "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},
                 "backend": "pgvector",
                 "hybrid": {
@@ -823,6 +869,7 @@ def query_project(
             "candidates": [],
             "final": {"chunks": [], "text_md": "", "truncated": False},
             "dropped": [],
+            "counts": _build_vector_query_counts(candidates_total=0, returned_candidates=[], final_selected=0, dropped=[]),
             "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
         }
         if pgvector_error:
@@ -887,6 +934,12 @@ def query_project(
     post_ms = int((time.perf_counter() - post_start) * 1000)
 
     timings_ms = {"embed": embed_ms, "query": query_ms, "post": post_ms}
+    obs_counts = _build_vector_query_counts(
+        candidates_total=len(candidates),
+        returned_candidates=trimmed_candidates,
+        final_selected=len(final_chunks),
+        dropped=dropped,
+    )
     log_event(
         logger,
         "info",
@@ -910,6 +963,7 @@ def query_project(
         "candidates": trimmed_candidates,
         "final": {"chunks": final_chunks, "text_md": text_md, "truncated": truncated},
         "dropped": dropped,
+        "counts": obs_counts,
         "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},
         "backend": "chroma",
     }

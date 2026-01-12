@@ -94,7 +94,7 @@ test("ui: writing ContextPreviewDrawer supports Vector RAG debug query preview",
 
   await dialog.getByRole("button", { name: "查询", exact: true }).click();
 
-  await expect(dialog.getByText(/candidates:/)).toBeVisible();
+  await expect(dialog.getByText(/counts:/)).toBeVisible();
   await expect(dialog.getByText("注入预览（prompt_block.text_md）", { exact: true })).toBeVisible();
 
   const rawSummary = dialog.locator("summary", { hasText: "raw vector query result" });
