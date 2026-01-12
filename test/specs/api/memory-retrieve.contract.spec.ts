@@ -32,5 +32,18 @@ test("api: memory/retrieve returns stable empty pack structure", async ({ reques
   expect(typeof json.data.graph).toBe("object");
   expect(typeof json.data.fractal).toBe("object");
   expect(Array.isArray(json.data.logs)).toBe(true);
-});
 
+  for (const key of ["worldbook", "story_memory", "structured", "vector_rag", "graph", "fractal"] as const) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const section = (json.data as any)[key] as Record<string, unknown>;
+    expect(typeof section.enabled).toBe("boolean");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(section.disabled_reason === null || typeof (section as any).disabled_reason === "string").toBeTruthy();
+  }
+
+  const logs = json.data.logs as Array<Record<string, unknown>>;
+  const sections = new Set(logs.map((l) => (typeof l.section === "string" ? l.section : "")));
+  for (const key of ["worldbook", "story_memory", "structured", "vector_rag", "graph", "fractal"] as const) {
+    expect(sections.has(key)).toBe(true);
+  }
+});

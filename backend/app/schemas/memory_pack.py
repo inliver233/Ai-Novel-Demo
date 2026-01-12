@@ -1,8 +1,26 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+MemoryContextSection = Literal["worldbook", "story_memory", "structured", "vector_rag", "graph", "fractal"]
+
+
+class MemoryContextSectionOut(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = False
+    disabled_reason: str | None = None
+
+
+class MemoryContextLogItemOut(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    section: MemoryContextSection
+    enabled: bool
+    disabled_reason: str | None = None
+    note: str | None = None
 
 
 class MemoryContextPackOut(BaseModel):
@@ -11,11 +29,10 @@ class MemoryContextPackOut(BaseModel):
     Later phases will progressively populate these sections.
     """
 
-    worldbook: dict[str, Any] = Field(default_factory=dict)
-    story_memory: dict[str, Any] = Field(default_factory=dict)
-    structured: dict[str, Any] = Field(default_factory=dict)
-    vector_rag: dict[str, Any] = Field(default_factory=dict)
-    graph: dict[str, Any] = Field(default_factory=dict)
-    fractal: dict[str, Any] = Field(default_factory=dict)
-    logs: list[dict[str, Any]] = Field(default_factory=list)
-
+    worldbook: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
+    story_memory: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
+    structured: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
+    vector_rag: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
+    graph: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
+    fractal: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
+    logs: list[MemoryContextLogItemOut] = Field(default_factory=list)

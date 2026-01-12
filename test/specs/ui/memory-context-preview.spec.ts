@@ -61,6 +61,11 @@ test("ui: writing ContextPreviewDrawer supports worldbook injection toggle", asy
 
   await toggle.check();
 
+  await expect(dialog.getByText("Pack sections", { exact: true })).toBeVisible();
+  const storyMemoryCard = dialog.getByText("story_memory", { exact: true }).locator("..").locator("..");
+  await expect(storyMemoryCard).toContainText("disabled: not_implemented");
+  await expect(dialog.getByText("vector_rag", { exact: true })).toBeVisible();
+
   await expect(dialog.getByText("世界书（WorldBook）", { exact: true })).toBeVisible();
   await expect(dialog.getByText("keyword:dragon | priority:important", { exact: true })).toBeVisible();
   await expect(dialog.getByText("constant | priority:important", { exact: true })).toBeVisible();

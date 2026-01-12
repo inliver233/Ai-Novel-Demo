@@ -36,6 +36,13 @@ type VectorRagQueryResult = {
   error?: string;
 };
 
+type MemoryContextPackLogItem = {
+  section: string;
+  enabled: boolean;
+  disabled_reason: string | null;
+  note: string | null;
+};
+
 const EMPTY_PACK: MemoryContextPack = {
   worldbook: {},
   story_memory: {},
@@ -141,6 +148,20 @@ function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
   };
 }
 
+function normalizePackLogItem(raw: unknown): MemoryContextPackLogItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const section = typeof o.section === "string" ? o.section : "";
+  const enabled = typeof o.enabled === "boolean" ? o.enabled : Boolean(o.enabled);
+  if (!section) return null;
+  return {
+    section,
+    enabled,
+    disabled_reason: typeof o.disabled_reason === "string" ? o.disabled_reason : null,
+    note: typeof o.note === "string" ? o.note : null,
+  };
+}
+
 async function writeClipboardText(text: string): Promise<void> {
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
@@ -210,6 +231,11 @@ export function ContextPreviewDrawer(props: Props) {
       (effectivePack.logs ?? []).length === 0
     );
   }, [effectivePack]);
+
+  const packLogs = useMemo(() => {
+    const rawLogs = Array.isArray(effectivePack.logs) ? effectivePack.logs : [];
+    return rawLogs.map(normalizePackLogItem).filter((v): v is MemoryContextPackLogItem => Boolean(v));
+  }, [effectivePack.logs]);
 
   const worldbookPreview = useMemo(() => {
     const raw = (effectivePack.worldbook ?? {}) as Record<string, unknown>;
@@ -311,7 +337,7 @@ export function ContextPreviewDrawer(props: Props) {
       open={open}
       onClose={onClose}
       ariaLabel={UI_COPY.writing.contextPreviewTitle}
-      panelClassName="h-full w-full max-w-2xl border-l border-border bg-canvas p-6 shadow-sm"
+      panelClassName="h-full w-full max-w-2xl overflow-y-auto border-l border-border bg-canvas p-6 shadow-sm"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -368,6 +394,33 @@ export function ContextPreviewDrawer(props: Props) {
 
         {memoryInjectionEnabled && isEmptyPack ? (
           <div className="text-sm text-subtext">{UI_COPY.writing.memoryPackEmpty}</div>
+        ) : null}
+
+        {memoryInjectionEnabled ? (
+          <div className="panel p-4">
+            <div className="text-sm text-ink">Pack sections</div>
+            {packLogs.length ? (
+              <div className="mt-2 grid gap-2">
+                {packLogs.map((it) => (
+                  <div key={it.section} className="rounded-atelier border border-border bg-surface p-2">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-mono text-ink">{it.section}</span>
+                      {it.enabled ? (
+                        <span className="text-emerald-600 dark:text-emerald-400">enabled</span>
+                      ) : (
+                        <span className="text-amber-600 dark:text-amber-400">
+                          disabled: {it.disabled_reason ?? "unknown"}
+                        </span>
+                      )}
+                    </div>
+                    {it.note ? <div className="mt-1 text-[11px] text-subtext">{it.note}</div> : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-2 text-sm text-subtext">No logs available.</div>
+            )}
+          </div>
         ) : null}
 
         {memoryInjectionEnabled ? (
