@@ -70,7 +70,9 @@ export function StylesPage() {
       setDefaultStyleId(defaultRes.data.default?.style_id ?? null);
     } catch (e) {
       const err =
-        e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       setError(err);
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
@@ -111,7 +113,10 @@ export function StylesPage() {
       };
 
       if (modalMode === "create") {
-        await apiJson<{ style: WritingStyle }>("/api/writing_styles", { method: "POST", body: JSON.stringify(payload) });
+        await apiJson<{ style: WritingStyle }>("/api/writing_styles", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
         toast.toastSuccess("已创建风格");
       } else if (editingStyleId) {
         await apiJson<{ style: WritingStyle }>(`/api/writing_styles/${editingStyleId}`, {
@@ -125,7 +130,9 @@ export function StylesPage() {
       await refresh();
     } catch (e) {
       const err =
-        e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
       setSaving(false);
@@ -149,7 +156,9 @@ export function StylesPage() {
         await refresh();
       } catch (e) {
         const err =
-          e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       }
     },
@@ -160,15 +169,20 @@ export function StylesPage() {
     async (styleId: string | null) => {
       if (!projectId) return;
       try {
-        const res = await apiJson<{ default: ProjectDefaultStyle }>(`/api/projects/${projectId}/writing_style_default`, {
-          method: "PUT",
-          body: JSON.stringify({ style_id: styleId }),
-        });
+        const res = await apiJson<{ default: ProjectDefaultStyle }>(
+          `/api/projects/${projectId}/writing_style_default`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ style_id: styleId }),
+          },
+        );
         setDefaultStyleId(res.data.default?.style_id ?? null);
         toast.toastSuccess(styleId ? "已设为项目默认" : "已清空项目默认");
       } catch (e) {
         const err =
-          e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       }
     },
@@ -317,7 +331,11 @@ export function StylesPage() {
         </div>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} ariaLabel={modalMode === "create" ? "新建风格" : "编辑风格"}>
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        ariaLabel={modalMode === "create" ? "新建风格" : "编辑风格"}
+      >
         <div className="panel w-full max-w-2xl p-5">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -376,4 +394,3 @@ export function StylesPage() {
     </div>
   );
 }
-

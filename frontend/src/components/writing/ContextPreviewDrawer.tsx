@@ -92,7 +92,8 @@ function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
       const id = typeof cc.id === "string" ? cc.id : "";
       const distance = typeof cc.distance === "number" ? cc.distance : Number(cc.distance);
       const text = typeof cc.text === "string" ? cc.text : "";
-      const metadata = typeof cc.metadata === "object" && cc.metadata !== null ? (cc.metadata as Record<string, unknown>) : {};
+      const metadata =
+        typeof cc.metadata === "object" && cc.metadata !== null ? (cc.metadata as Record<string, unknown>) : {};
       if (!id) return null;
       if (!Number.isFinite(distance)) return null;
       return { id, distance, text, metadata };
@@ -107,14 +108,16 @@ function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
       const id = typeof cc.id === "string" ? cc.id : "";
       const distance = typeof cc.distance === "number" ? cc.distance : Number(cc.distance);
       const text = typeof cc.text === "string" ? cc.text : "";
-      const metadata = typeof cc.metadata === "object" && cc.metadata !== null ? (cc.metadata as Record<string, unknown>) : {};
+      const metadata =
+        typeof cc.metadata === "object" && cc.metadata !== null ? (cc.metadata as Record<string, unknown>) : {};
       if (!id) return null;
       if (!Number.isFinite(distance)) return null;
       return { id, distance, text, metadata };
     })
     .filter((v): v is VectorCandidate => Boolean(v));
 
-  const timings = typeof o.timings_ms === "object" && o.timings_ms !== null ? (o.timings_ms as Record<string, unknown>) : {};
+  const timings =
+    typeof o.timings_ms === "object" && o.timings_ms !== null ? (o.timings_ms as Record<string, unknown>) : {};
   const timingsMs: Record<string, number> = Object.fromEntries(
     Object.entries(timings)
       .map(([k, v]) => [k, typeof v === "number" ? v : Number(v)] as const)
@@ -133,15 +136,24 @@ function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
     })
     .filter((v): v is { id?: string; reason: string } => Boolean(v));
 
-  const countsRaw = hasOwn(o, "counts") && typeof o.counts === "object" && o.counts !== null ? (o.counts as Record<string, unknown>) : null;
+  const countsRaw =
+    hasOwn(o, "counts") && typeof o.counts === "object" && o.counts !== null
+      ? (o.counts as Record<string, unknown>)
+      : null;
   let counts: VectorRagCounts | undefined = undefined;
   if (countsRaw) {
-    const candidatesTotal = typeof countsRaw.candidates_total === "number" ? countsRaw.candidates_total : Number(countsRaw.candidates_total);
+    const candidatesTotal =
+      typeof countsRaw.candidates_total === "number" ? countsRaw.candidates_total : Number(countsRaw.candidates_total);
     const candidatesReturned =
-      typeof countsRaw.candidates_returned === "number" ? countsRaw.candidates_returned : Number(countsRaw.candidates_returned);
-    const uniqueSources = typeof countsRaw.unique_sources === "number" ? countsRaw.unique_sources : Number(countsRaw.unique_sources);
-    const finalSelected = typeof countsRaw.final_selected === "number" ? countsRaw.final_selected : Number(countsRaw.final_selected);
-    const droppedTotal = typeof countsRaw.dropped_total === "number" ? countsRaw.dropped_total : Number(countsRaw.dropped_total);
+      typeof countsRaw.candidates_returned === "number"
+        ? countsRaw.candidates_returned
+        : Number(countsRaw.candidates_returned);
+    const uniqueSources =
+      typeof countsRaw.unique_sources === "number" ? countsRaw.unique_sources : Number(countsRaw.unique_sources);
+    const finalSelected =
+      typeof countsRaw.final_selected === "number" ? countsRaw.final_selected : Number(countsRaw.final_selected);
+    const droppedTotal =
+      typeof countsRaw.dropped_total === "number" ? countsRaw.dropped_total : Number(countsRaw.dropped_total);
 
     const droppedByReasonRaw =
       typeof countsRaw.dropped_by_reason === "object" && countsRaw.dropped_by_reason !== null
@@ -311,7 +323,8 @@ export function ContextPreviewDrawer(props: Props) {
         body: JSON.stringify({ query_text: vectorQueryText, sources: selectedVectorSources }),
       });
       const normalized = normalizeVectorResult(res.data?.result);
-      if (!normalized) throw new ApiError({ code: "BAD_RESPONSE", message: "响应格式错误", requestId: res.request_id, status: 200 });
+      if (!normalized)
+        throw new ApiError({ code: "BAD_RESPONSE", message: "响应格式错误", requestId: res.request_id, status: 200 });
       setVectorResult(normalized);
       setVectorRequestId(res.request_id ?? null);
     } catch (e) {
@@ -557,7 +570,12 @@ export function ContextPreviewDrawer(props: Props) {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <button className="btn btn-secondary" disabled={!projectId || vectorLoading} onClick={() => void runVectorQuery()} type="button">
+              <button
+                className="btn btn-secondary"
+                disabled={!projectId || vectorLoading}
+                onClick={() => void runVectorQuery()}
+                type="button"
+              >
                 {vectorLoading ? "查询中..." : "查询"}
               </button>
               <button
@@ -634,8 +652,10 @@ export function ContextPreviewDrawer(props: Props) {
                   <span>
                     {vectorResult.counts ? (
                       <>
-                        counts: total:{vectorResult.counts.candidates_total} | returned:{vectorResult.counts.candidates_returned} | unique_sources:
-                        {vectorResult.counts.unique_sources} | final_selected:{vectorResult.counts.final_selected} | dropped:
+                        counts: total:{vectorResult.counts.candidates_total} | returned:
+                        {vectorResult.counts.candidates_returned} | unique_sources:
+                        {vectorResult.counts.unique_sources} | final_selected:{vectorResult.counts.final_selected} |
+                        dropped:
                         {vectorResult.counts.dropped_total}
                         {Object.keys(vectorResult.counts.dropped_by_reason).length ? (
                           <>
@@ -649,7 +669,8 @@ export function ContextPreviewDrawer(props: Props) {
                       </>
                     ) : (
                       <>
-                        counts: candidates:{vectorResult.candidates.length} | final_chunks:{vectorResult.final.chunks.length} | dropped:{vectorResult.dropped.length}
+                        counts: candidates:{vectorResult.candidates.length} | final_chunks:
+                        {vectorResult.final.chunks.length} | dropped:{vectorResult.dropped.length}
                       </>
                     )}
                   </span>
@@ -689,7 +710,10 @@ export function ContextPreviewDrawer(props: Props) {
                             {source || "chunk"} {title ? `| ${title}` : ""} {sourceId ? `| ${sourceId}` : ""}
                           </div>
                           <div className="mt-1 text-subtext">distance: {c.distance.toFixed(4)}</div>
-                          <div className="mt-1 text-subtext">{snippet || "（空）"}{snippet.length >= 220 ? "…" : ""}</div>
+                          <div className="mt-1 text-subtext">
+                            {snippet || "（空）"}
+                            {snippet.length >= 220 ? "…" : ""}
+                          </div>
                         </div>
                       );
                     })}
@@ -706,7 +730,9 @@ export function ContextPreviewDrawer(props: Props) {
                 </details>
               </>
             ) : (
-              <div className="text-sm text-subtext">提示：当前环境缺 embedding/chroma 时会返回 disabled_reason，但结构仍可用于排查。</div>
+              <div className="text-sm text-subtext">
+                提示：当前环境缺 embedding/chroma 时会返回 disabled_reason，但结构仍可用于排查。
+              </div>
             )}
           </div>
         </div>

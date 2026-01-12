@@ -14,6 +14,14 @@ function fallbackUser(): AuthUser {
   return { id: DEFAULT_USER_ID, displayName: "本地用户", isAdmin: false };
 }
 
+function devFallbackEnabled(): boolean {
+  if (!import.meta.env.DEV) return false;
+  const raw = String(import.meta.env.VITE_DEV_FALLBACK_ENABLED ?? "")
+    .trim()
+    .toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
 export function AuthProvider(props: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading", user: null, session: null });
 
@@ -35,6 +43,10 @@ export function AuthProvider(props: { children: React.ReactNode }) {
     } catch (e) {
       const err = e instanceof ApiError ? e : null;
       if (err?.status === 401) {
+        if (!devFallbackEnabled()) {
+          setState({ status: "unauthenticated", user: null, session: null });
+          return;
+        }
         try {
           await apiJson<{ projects: unknown[] }>("/api/projects", { timeoutMs: 15_000 });
           setCurrentUserId(DEFAULT_USER_ID);

@@ -62,23 +62,30 @@ export function AiGenerateDrawer(props: Props) {
     if (!open) return;
     if (!props.projectId) return;
     let cancelled = false;
-    setStylesLoading(true);
-    setStylesError(null);
-    Promise.all([
-      apiJson<{ styles: WritingStyle[] }>("/api/writing_styles/presets"),
-      apiJson<{ styles: WritingStyle[] }>("/api/writing_styles"),
-      apiJson<{ default: { style_id?: string | null } }>(`/api/projects/${props.projectId}/writing_style_default`),
-    ])
-      .then(([presetRes, userRes, defRes]) => {
-        if (cancelled) return;
-        setPresets(presetRes.data.styles ?? []);
-        setUserStyles(userRes.data.styles ?? []);
-        setProjectDefaultStyleId(defRes.data.default?.style_id ?? null);
+    Promise.resolve()
+      .then(async () => {
+        if (cancelled) return null;
+        setStylesLoading(true);
+        setStylesError(null);
+        const [presetRes, userRes, defRes] = await Promise.all([
+          apiJson<{ styles: WritingStyle[] }>("/api/writing_styles/presets"),
+          apiJson<{ styles: WritingStyle[] }>("/api/writing_styles"),
+          apiJson<{ default: { style_id?: string | null } }>(`/api/projects/${props.projectId}/writing_style_default`),
+        ]);
+        return { presetRes, userRes, defRes };
+      })
+      .then((res) => {
+        if (cancelled || !res) return;
+        setPresets(res.presetRes.data.styles ?? []);
+        setUserStyles(res.userRes.data.styles ?? []);
+        setProjectDefaultStyleId(res.defRes.data.default?.style_id ?? null);
       })
       .catch((e) => {
         if (cancelled) return;
         const err =
-          e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
         setStylesError(err);
       })
       .finally(() => {

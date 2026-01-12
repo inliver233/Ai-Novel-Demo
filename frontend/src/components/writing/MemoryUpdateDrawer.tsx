@@ -179,9 +179,16 @@ export function MemoryUpdateDrawer(props: Props) {
     setApplyError(null);
     try {
       const parsed = safeJsonParse(inputJson);
-      if (!parsed.ok) throw new ApiError({ code: "INVALID_JSON", message: parsed.error, requestId: "local", status: 0 });
+      if (!parsed.ok)
+        throw new ApiError({ code: "INVALID_JSON", message: parsed.error, requestId: "local", status: 0 });
       const ops = toOpsPayload(parsed.value);
-      if (!ops.length) throw new ApiError({ code: "INVALID_OPS", message: "JSON 必须是 ops 数组或包含 ops 字段", requestId: "local", status: 0 });
+      if (!ops.length)
+        throw new ApiError({
+          code: "INVALID_OPS",
+          message: "JSON 必须是 ops 数组或包含 ops 字段",
+          requestId: "local",
+          status: 0,
+        });
 
       const idempotencyKey = `memupd-${crypto.randomUUID().slice(0, 12)}`;
       const req = {
@@ -198,7 +205,10 @@ export function MemoryUpdateDrawer(props: Props) {
       setProposeResult(res.data);
       toast.toastSuccess("已生成提议");
     } catch (e) {
-      const err = e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       setProposeError(err);
     } finally {
       setProposeLoading(false);
@@ -259,7 +269,12 @@ export function MemoryUpdateDrawer(props: Props) {
       });
       const changeSetId = proposed.data?.change_set?.id;
       if (!changeSetId) {
-        throw new ApiError({ code: "BAD_RESPONSE", message: "缺少 change_set.id", requestId: proposed.request_id, status: 200 });
+        throw new ApiError({
+          code: "BAD_RESPONSE",
+          message: "缺少 change_set.id",
+          requestId: proposed.request_id,
+          status: 200,
+        });
       }
       setLastApplyChangeSetId(changeSetId);
 
@@ -267,7 +282,10 @@ export function MemoryUpdateDrawer(props: Props) {
       setApplyResult(applied.data);
       toast.toastSuccess("已应用");
     } catch (e) {
-      const err = e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       setApplyError(err);
     } finally {
       setApplyLoading(false);
@@ -282,11 +300,16 @@ export function MemoryUpdateDrawer(props: Props) {
     setApplyLoading(true);
     setApplyError(null);
     try {
-      const applied = await apiJson<ApplyResult>(`/api/memory_change_sets/${lastApplyChangeSetId}/apply`, { method: "POST" });
+      const applied = await apiJson<ApplyResult>(`/api/memory_change_sets/${lastApplyChangeSetId}/apply`, {
+        method: "POST",
+      });
       setApplyResult(applied.data);
       toast.toastSuccess("已应用（重试）");
     } catch (e) {
-      const err = e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       setApplyError(err);
     } finally {
       setApplyLoading(false);
@@ -301,10 +324,15 @@ export function MemoryUpdateDrawer(props: Props) {
     setStructuredLoading(true);
     setStructuredError(null);
     try {
-      const res = await apiJson<StructuredMemory>(`/api/projects/${props.projectId}/memory/structured`, { method: "GET" });
+      const res = await apiJson<StructuredMemory>(`/api/projects/${props.projectId}/memory/structured`, {
+        method: "GET",
+      });
       setStructured(res.data);
     } catch (e) {
-      const err = e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       setStructuredError(err);
     } finally {
       setStructuredLoading(false);
@@ -347,7 +375,12 @@ export function MemoryUpdateDrawer(props: Props) {
                 />
               </label>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <button className="btn btn-primary" onClick={() => void runPropose()} disabled={proposeLoading} type="button">
+                <button
+                  className="btn btn-primary"
+                  onClick={() => void runPropose()}
+                  disabled={proposeLoading}
+                  type="button"
+                >
                   {proposeLoading ? "Propose..." : "Propose"}
                 </button>
                 <button
@@ -364,7 +397,8 @@ export function MemoryUpdateDrawer(props: Props) {
                 <div className="mt-3 rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
                   <div className="text-ink">Propose 失败</div>
                   <div className="mt-1">
-                    {proposeError.message} ({proposeError.code}) {proposeError.requestId ? `| request_id: ${proposeError.requestId}` : ""}
+                    {proposeError.message} ({proposeError.code}){" "}
+                    {proposeError.requestId ? `| request_id: ${proposeError.requestId}` : ""}
                   </div>
                 </div>
               ) : null}
@@ -373,11 +407,17 @@ export function MemoryUpdateDrawer(props: Props) {
                 <div className="mt-3 rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
                   <div className="text-ink">Apply 失败</div>
                   <div className="mt-1">
-                    {applyError.message} ({applyError.code}) {applyError.requestId ? `| request_id: ${applyError.requestId}` : ""}
+                    {applyError.message} ({applyError.code}){" "}
+                    {applyError.requestId ? `| request_id: ${applyError.requestId}` : ""}
                   </div>
                   {lastApplyChangeSetId ? <div className="mt-1">change_set_id: {lastApplyChangeSetId}</div> : null}
                   <div className="mt-2">
-                    <button className="btn btn-secondary" onClick={() => void retryApply()} disabled={applyLoading} type="button">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => void retryApply()}
+                      disabled={applyLoading}
+                      type="button"
+                    >
                       重试 apply
                     </button>
                   </div>
@@ -394,7 +434,8 @@ export function MemoryUpdateDrawer(props: Props) {
                   </div>
                 </div>
                 <div className="mt-1 text-xs text-subtext">
-                  change_set_id: {proposeResult.change_set.id} {proposeResult.change_set.request_id ? `| request_id: ${proposeResult.change_set.request_id}` : ""}
+                  change_set_id: {proposeResult.change_set.id}{" "}
+                  {proposeResult.change_set.request_id ? `| request_id: ${proposeResult.change_set.request_id}` : ""}
                 </div>
 
                 <div className="mt-3 grid gap-2">
@@ -420,7 +461,8 @@ export function MemoryUpdateDrawer(props: Props) {
                                   accept
                                 </label>
                                 <div className="text-subtext">
-                                  #{item.item_index} {item.op} {item.target_table} {item.target_id ? `| ${item.target_id}` : ""}
+                                  #{item.item_index} {item.op} {item.target_table}{" "}
+                                  {item.target_id ? `| ${item.target_id}` : ""}
                                 </div>
                               </div>
 
@@ -480,7 +522,12 @@ export function MemoryUpdateDrawer(props: Props) {
             <div className="rounded-atelier border border-border bg-surface p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm text-ink">结构化记忆（调试）</div>
-                <button className="btn btn-secondary" onClick={() => void refreshStructured()} disabled={structuredLoading} type="button">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => void refreshStructured()}
+                  disabled={structuredLoading}
+                  type="button"
+                >
                   {structuredLoading ? "刷新..." : "刷新"}
                 </button>
               </div>
@@ -507,10 +554,14 @@ export function MemoryUpdateDrawer(props: Props) {
                         <div className="text-ink">
                           {e.entity_type}:{e.name}
                         </div>
-                        <div className="mt-1 text-subtext">{e.deleted_at ? `deleted_at: ${e.deleted_at}` : "active"}</div>
+                        <div className="mt-1 text-subtext">
+                          {e.deleted_at ? `deleted_at: ${e.deleted_at}` : "active"}
+                        </div>
                       </div>
                     ))}
-                    {(structured.entities ?? []).length === 0 ? <div className="text-xs text-subtext">entities: 0</div> : null}
+                    {(structured.entities ?? []).length === 0 ? (
+                      <div className="text-xs text-subtext">entities: 0</div>
+                    ) : null}
                   </div>
                 </div>
               ) : (

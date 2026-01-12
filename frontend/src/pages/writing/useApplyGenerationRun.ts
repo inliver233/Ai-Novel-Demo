@@ -91,13 +91,12 @@ export function useApplyGenerationRun(args: {
       } catch (e) {
         const err = e as ApiError;
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
-      } finally {
-        if (canceled) return;
-        if (!shouldClearApplyRunId) return;
-        const next = new URLSearchParams(searchParams);
-        next.delete("applyRunId");
-        setSearchParams(next, { replace: true });
       }
+      if (canceled) return;
+      if (!shouldClearApplyRunId) return;
+      const next = new URLSearchParams(searchParams);
+      next.delete("applyRunId");
+      setSearchParams(next, { replace: true });
     })();
 
     return () => {

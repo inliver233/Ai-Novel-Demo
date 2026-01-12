@@ -73,7 +73,9 @@ export function GraphPage() {
       setResult(res.data?.result ?? null);
     } catch (e) {
       const err =
-        e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       setError(err);
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
@@ -132,7 +134,8 @@ export function GraphPage() {
             <div className="text-sm text-ink">GraphContext（注入预览）</div>
             <div className="mt-1 text-xs text-subtext">
               status: {result?.enabled ? "enabled" : `disabled (${result?.disabled_reason ?? "unknown"})`} | nodes:{" "}
-              {result?.nodes?.length ?? 0} | edges: {result?.edges?.length ?? 0} | evidence: {result?.evidence?.length ?? 0}
+              {result?.nodes?.length ?? 0} | edges: {result?.edges?.length ?? 0} | evidence:{" "}
+              {result?.evidence?.length ?? 0}
             </div>
             <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
               {result?.prompt_block?.text_md || "（空）"}
@@ -174,12 +177,12 @@ export function GraphPage() {
               </div>
               <div className="mt-2 grid gap-2">
                 {(result?.edges ?? []).map((e) => (
-                    <div key={e.id} className="rounded-atelier border border-border bg-surface p-2 text-xs">
-                      <div className="text-ink">
+                  <div key={e.id} className="rounded-atelier border border-border bg-surface p-2 text-xs">
+                    <div className="text-ink">
                       {e.from_name || e.from_entity_id} --({e.relation_type})→ {e.to_name || e.to_entity_id}
-                      </div>
-                      {e.description_md ? <div className="mt-1 text-subtext">{e.description_md}</div> : null}
                     </div>
+                    {e.description_md ? <div className="mt-1 text-subtext">{e.description_md}</div> : null}
+                  </div>
                 ))}
                 {(result?.edges ?? []).length === 0 ? <div className="text-xs text-subtext">edges: 0</div> : null}
               </div>

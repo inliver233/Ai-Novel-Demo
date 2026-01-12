@@ -111,6 +111,7 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       // Make sure Vite uses a stable URL in tests.
       HOST: frontendConfig.hostname,
       VITE_DEV_PORT: String(frontendPort),
+      VITE_DEV_FALLBACK_ENABLED: "true",
     };
     // Allow overriding backend for external runs, but keep default-path coverage for local E2E.
     if (process.env.E2E_BACKEND_URL) frontendEnv.VITE_API_PROXY_TARGET = backendUrl;
