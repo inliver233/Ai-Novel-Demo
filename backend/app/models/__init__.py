@@ -5,6 +5,7 @@ from app.models.generation_run import GenerationRun
 from app.models.fractal_memory import FractalMemory
 from app.models.llm_profile import LLMProfile
 from app.models.llm_preset import LLMPreset
+from app.models.memory_task import MemoryTask
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.project_membership import ProjectMembership
@@ -37,6 +38,7 @@ __all__ = [
     "GenerationRun",
     "LLMProfile",
     "LLMPreset",
+    "MemoryTask",
     "Outline",
     "Project",
     "ProjectMembership",

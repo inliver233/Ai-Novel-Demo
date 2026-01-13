@@ -9,11 +9,16 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.errors import AppError
 from app.core.logging import exception_log_fields, log_event
+from app.core.secrets import SecretCryptoError, decrypt_secret
+from app.db.session import SessionLocal
 from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
 from app.models.generation_run import GenerationRun
+from app.models.memory_task import MemoryTask
+from app.models.project_settings import ProjectSettings
 from app.models.structured_memory import (
     MemoryChangeSet,
     MemoryChangeSetItem,
@@ -24,6 +29,8 @@ from app.models.structured_memory import (
     MemoryRelation,
 )
 from app.schemas.memory_update import AFTER_MODEL_BY_TABLE, MemoryUpdateV1Request
+from app.services.fractal_memory_service import rebuild_fractal_memory
+from app.services.vector_rag_service import build_project_chunks, rebuild_project, vector_rag_status
 
 logger = logging.getLogger("ainovel")
 
@@ -562,6 +569,18 @@ def apply_memory_change_set(
 
         db.commit()
 
+        try:
+            _schedule_memory_tasks_after_apply(db=db, request_id=request_id, actor_user_id=actor_user_id, change_set=change_set)
+        except Exception as exc:
+            log_event(
+                logger,
+                "warning",
+                event="MEMORY_TASKS_ENQUEUE_FAILED",
+                change_set_id=str(change_set.id),
+                project_id=project_id,
+                error_type=type(exc).__name__,
+            )
+
         log_event(
             logger,
             "info",
@@ -591,6 +610,185 @@ def apply_memory_change_set(
     except Exception:
         db.rollback()
         raise
+
+
+def _vector_embedding_overrides(*, db: Session, project_id: str) -> dict[str, str | None]:
+    row = db.get(ProjectSettings, project_id)
+    if row is None:
+        return {}
+
+    out: dict[str, str | None] = {}
+    base_url = str(row.vector_embedding_base_url or "").strip()
+    if base_url:
+        out["base_url"] = base_url
+    model = str(row.vector_embedding_model or "").strip()
+    if model:
+        out["model"] = model
+
+    if row.vector_embedding_api_key_ciphertext:
+        try:
+            api_key = decrypt_secret(row.vector_embedding_api_key_ciphertext).strip()
+        except SecretCryptoError:
+            api_key = ""
+        if api_key:
+            out["api_key"] = api_key
+    return out
+
+
+def _ensure_memory_tasks(
+    *,
+    db: Session,
+    project_id: str,
+    change_set_id: str,
+    actor_user_id: str,
+) -> list[MemoryTask]:
+    kinds = ["vector_rebuild", "graph_update", "fractal_rebuild"]
+    existing = (
+        db.execute(select(MemoryTask).where(MemoryTask.change_set_id == change_set_id).order_by(MemoryTask.kind.asc()))
+        .scalars()
+        .all()
+    )
+    by_kind = {str(t.kind): t for t in existing}
+
+    tasks: list[MemoryTask] = []
+    for kind in kinds:
+        row = by_kind.get(kind)
+        if row is None:
+            row = MemoryTask(
+                id=new_id(),
+                project_id=project_id,
+                change_set_id=change_set_id,
+                actor_user_id=actor_user_id,
+                kind=kind,
+                status="queued",
+            )
+            db.add(row)
+        tasks.append(row)
+    db.commit()
+    return tasks
+
+
+def _schedule_memory_tasks_after_apply(*, db: Session, request_id: str, actor_user_id: str, change_set: MemoryChangeSet) -> None:
+    project_id = str(change_set.project_id)
+    tasks = _ensure_memory_tasks(db=db, project_id=project_id, change_set_id=str(change_set.id), actor_user_id=actor_user_id)
+
+    from app.services.task_queue import get_task_queue
+
+    queue = get_task_queue()
+    for task in tasks:
+        if str(task.status) != "queued":
+            continue
+        try:
+            queue.enqueue(kind="memory_task", task_id=str(task.id))
+        except Exception as exc:
+            task.status = "failed"
+            task.finished_at = utc_now()
+            task.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": str(exc)[:200]})
+            db.commit()
+            log_event(
+                logger,
+                "warning",
+                event="MEMORY_TASK_ENQUEUE_ERROR",
+                project_id=project_id,
+                change_set_id=str(change_set.id),
+                task_id=str(task.id),
+                kind=str(task.kind),
+                error_type=type(exc).__name__,
+            )
+            continue
+
+    log_event(
+        logger,
+        "info",
+        event="MEMORY_TASKS_ENQUEUED",
+        project_id=project_id,
+        change_set_id=str(change_set.id),
+        tasks=[{"id": str(t.id), "kind": str(t.kind)} for t in tasks],
+        request_id=request_id,
+    )
+
+
+def run_memory_task(*, task_id: str) -> str:
+    """
+    RQ worker entrypoint. Consumes MemoryTask and records result to DB.
+    """
+
+    db = SessionLocal()
+    try:
+        task = db.get(MemoryTask, task_id)
+        if task is None:
+            log_event(logger, "warning", event="MEMORY_TASK_MISSING", task_id=task_id)
+            return task_id
+
+        if str(task.status) in {"succeeded", "failed", "running"}:
+            return task_id
+
+        task.status = "running"
+        task.started_at = utc_now()
+        db.commit()
+
+        kind = str(task.kind)
+        project_id = str(task.project_id)
+
+        result: dict[str, Any]
+        if kind == "graph_update":
+            result = {"skipped": True, "note": "graph context is computed on query; no rebuild required"}
+        elif kind == "fractal_rebuild":
+            if not bool(getattr(settings, "fractal_enabled", True)):
+                result = {"skipped": True, "disabled_reason": "disabled"}
+            else:
+                result = rebuild_fractal_memory(db=db, project_id=project_id, reason=f"memory_task:{task_id[:8]}")
+        elif kind == "vector_rebuild":
+            db2 = SessionLocal()
+            try:
+                embedding = _vector_embedding_overrides(db=db2, project_id=project_id)
+                status = vector_rag_status(project_id=project_id, embedding=embedding)
+                if not bool(status.get("enabled")):
+                    result = {"skipped": True, **status}
+                else:
+                    chunks = build_project_chunks(db=db2, project_id=project_id)
+                    result = rebuild_project(project_id=project_id, chunks=chunks, embedding=embedding)
+            finally:
+                db2.close()
+        else:
+            raise ValueError(f"Unsupported MemoryTask.kind: {kind!r}")
+
+        task.status = "succeeded"
+        task.result_json = _compact_json_dumps(result)
+        task.finished_at = utc_now()
+        db.commit()
+
+        log_event(
+            logger,
+            "info",
+            event="MEMORY_TASK_SUCCEEDED",
+            task_id=task_id,
+            project_id=str(task.project_id),
+            kind=kind,
+        )
+        return task_id
+    except Exception as exc:
+        try:
+            task2 = db.get(MemoryTask, task_id)
+            if task2 is not None:
+                task2.status = "failed"
+                task2.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": str(exc)[:400]})
+                task2.finished_at = utc_now()
+                db.commit()
+        except Exception:
+            db.rollback()
+
+        log_event(
+            logger,
+            "error",
+            event="MEMORY_TASK_FAILED",
+            task_id=task_id,
+            error_type=type(exc).__name__,
+            **exception_log_fields(exc),
+        )
+        return task_id
+    finally:
+        db.close()
 
 
 def rollback_memory_change_set(
