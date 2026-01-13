@@ -462,6 +462,8 @@ export function SettingsPage() {
             <span className="text-xs text-subtext">Base URL（项目覆盖；留空=env fallback）</span>
             <input
               className="input"
+              id="vector_embedding_base_url"
+              name="vector_embedding_base_url"
               value={settingsForm.vector_embedding_base_url}
               onChange={(e) => setSettingsForm((v) => ({ ...v, vector_embedding_base_url: e.target.value }))}
             />
@@ -474,6 +476,8 @@ export function SettingsPage() {
             <span className="text-xs text-subtext">Model（项目覆盖；留空=env fallback）</span>
             <input
               className="input"
+              id="vector_embedding_model"
+              name="vector_embedding_model"
               value={settingsForm.vector_embedding_model}
               onChange={(e) => setSettingsForm((v) => ({ ...v, vector_embedding_model: e.target.value }))}
             />
@@ -486,6 +490,8 @@ export function SettingsPage() {
             <span className="text-xs text-subtext">API Key（项目覆盖；留空不修改）</span>
             <input
               className="input"
+              id="vector_embedding_api_key"
+              name="vector_embedding_api_key"
               type="password"
               autoComplete="off"
               value={vectorApiKeyDraft}
@@ -543,6 +549,8 @@ export function SettingsPage() {
                 <span className="text-xs text-subtext">邀请 user_id</span>
                 <input
                   className="input"
+                  id="invite_user_id"
+                  name="invite_user_id"
                   value={inviteUserId}
                   onChange={(e) => setInviteUserId(e.target.value)}
                   placeholder="admin"
@@ -552,6 +560,8 @@ export function SettingsPage() {
                 <span className="text-xs text-subtext">角色</span>
                 <select
                   className="select"
+                  id="invite_role"
+                  name="invite_role"
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value === "editor" ? "editor" : "viewer")}
                 >
@@ -603,6 +613,7 @@ export function SettingsPage() {
                           ) : (
                             <select
                               className="select"
+                              name="member_role"
                               value={m.role === "editor" ? "editor" : "viewer"}
                               disabled={membershipSaving || membershipsLoading}
                               onChange={(e) =>
