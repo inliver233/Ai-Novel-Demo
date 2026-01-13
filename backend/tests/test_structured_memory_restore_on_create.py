@@ -88,7 +88,7 @@ class TestStructuredMemoryRestoreOnCreate(unittest.TestCase):
             db.add(Project(id="p1", owner_user_id="u_owner", name="Project 1", genre=None, logline=None))
             db.add(ProjectMembership(project_id="p1", user_id="u_editor", role="editor"))
             db.add(Outline(id="o1", project_id="p1", title="Outline", content_md=None, structure_json=None))
-            db.add(Chapter(id="c1", project_id="p1", outline_id="o1", number=1, title="Ch1"))
+            db.add(Chapter(id="c1", project_id="p1", outline_id="o1", number=1, title="Ch1", status="done"))
             db.add(
                 MemoryEntity(
                     id="e_alice",

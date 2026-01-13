@@ -96,10 +96,15 @@ export function WritingPage() {
   const [contextPreviewOpen, setContextPreviewOpen] = useState(false);
   const [memoryUpdateOpen, setMemoryUpdateOpen] = useState(false);
   const autoGenerateNextRef = useRef<{ chapterId: string; mode: "replace" | "append" } | null>(null);
+  const editedDoneAutoRevertedRef = useRef(false);
 
   useEffect(() => {
     if (!activeChapter) autoGenerateNextRef.current = null;
   }, [activeChapter]);
+
+  useEffect(() => {
+    editedDoneAutoRevertedRef.current = false;
+  }, [activeId]);
 
   useApplyGenerationRun({
     applyRunId,
@@ -271,7 +276,18 @@ export function WritingPage() {
         onOpenChapterList={() => setChapterListOpen(true)}
         onOpenBatch={batch.openModal}
         onOpenHistory={history.openDrawer}
-        onOpenMemoryUpdate={() => setMemoryUpdateOpen(true)}
+        onOpenMemoryUpdate={() => {
+          if (!activeChapter) return;
+          if (dirty) {
+            toast.toastWarning("请先保存当前章节后再进行记忆更新。");
+            return;
+          }
+          if (activeChapter.status !== "done") {
+            toast.toastWarning("仅定稿章节（status=done）允许记忆更新；请先将章节标记为 done。");
+            return;
+          }
+          setMemoryUpdateOpen(true);
+        }}
         onOpenContextPreview={() => setContextPreviewOpen(true)}
         onCreateChapter={chapterCrud.openCreate}
       />
@@ -362,7 +378,18 @@ export function WritingPage() {
                     className="input"
                     name="title"
                     value={form.title}
-                    onChange={(e) => setForm((v) => (v ? { ...v, title: e.target.value } : v))}
+                    onChange={(e) => {
+                      const nextTitle = e.target.value;
+                      if (form.status === "done") {
+                        if (!editedDoneAutoRevertedRef.current) {
+                          editedDoneAutoRevertedRef.current = true;
+                          toast.toastWarning("已将章节状态从 done 回退为 drafting：编辑定稿章会产生草稿污染风险。");
+                        }
+                        setForm((v) => (v ? { ...v, title: nextTitle, status: "drafting" } : v));
+                        return;
+                      }
+                      setForm((v) => (v ? { ...v, title: nextTitle } : v));
+                    }}
                   />
                 </label>
                 <label className="grid gap-1 sm:col-span-1">
@@ -371,12 +398,19 @@ export function WritingPage() {
                     className="select"
                     name="status"
                     value={form.status}
-                    onChange={(e) => setForm((v) => (v ? { ...v, status: e.target.value as ChapterStatus } : v))}
+                    onChange={(e) => {
+                      const next = e.target.value as ChapterStatus;
+                      if (next === "done") editedDoneAutoRevertedRef.current = false;
+                      setForm((v) => (v ? { ...v, status: next } : v));
+                    }}
                   >
                     <option value="planned">planned</option>
                     <option value="drafting">drafting</option>
                     <option value="done">done</option>
                   </select>
+                  <div className="text-[11px] text-subtext">
+                    提示：保存不等于定稿。仅 status=done（定稿章）允许进行记忆更新（Memory Update）写入长期记忆。
+                  </div>
                 </label>
               </div>
 
@@ -388,14 +422,35 @@ export function WritingPage() {
                     name="plan"
                     rows={4}
                     value={form.plan}
-                    onChange={(e) => setForm((v) => (v ? { ...v, plan: e.target.value } : v))}
+                    onChange={(e) => {
+                      const nextPlan = e.target.value;
+                      if (form.status === "done") {
+                        if (!editedDoneAutoRevertedRef.current) {
+                          editedDoneAutoRevertedRef.current = true;
+                          toast.toastWarning("已将章节状态从 done 回退为 drafting：编辑定稿章会产生草稿污染风险。");
+                        }
+                        setForm((v) => (v ? { ...v, plan: nextPlan, status: "drafting" } : v));
+                        return;
+                      }
+                      setForm((v) => (v ? { ...v, plan: nextPlan } : v));
+                    }}
                   />
                 </label>
                 <label className="grid gap-1">
                   <span className="text-xs text-subtext">正文（Markdown）</span>
                   <MarkdownEditor
                     value={form.content_md}
-                    onChange={(next) => setForm((v) => (v ? { ...v, content_md: next } : v))}
+                    onChange={(next) => {
+                      if (form.status === "done") {
+                        if (!editedDoneAutoRevertedRef.current) {
+                          editedDoneAutoRevertedRef.current = true;
+                          toast.toastWarning("已将章节状态从 done 回退为 drafting：编辑定稿章会产生草稿污染风险。");
+                        }
+                        setForm((v) => (v ? { ...v, content_md: next, status: "drafting" } : v));
+                        return;
+                      }
+                      setForm((v) => (v ? { ...v, content_md: next } : v));
+                    }}
                     placeholder="开始写作..."
                     minRows={16}
                     name="content_md"
@@ -413,7 +468,18 @@ export function WritingPage() {
                     name="summary"
                     rows={3}
                     value={form.summary}
-                    onChange={(e) => setForm((v) => (v ? { ...v, summary: e.target.value } : v))}
+                    onChange={(e) => {
+                      const nextSummary = e.target.value;
+                      if (form.status === "done") {
+                        if (!editedDoneAutoRevertedRef.current) {
+                          editedDoneAutoRevertedRef.current = true;
+                          toast.toastWarning("已将章节状态从 done 回退为 drafting：编辑定稿章会产生草稿污染风险。");
+                        }
+                        setForm((v) => (v ? { ...v, summary: nextSummary, status: "drafting" } : v));
+                        return;
+                      }
+                      setForm((v) => (v ? { ...v, summary: nextSummary } : v));
+                    }}
                   />
                 </label>
               </div>

@@ -102,10 +102,10 @@ class TestMemoryUpdateV1Endpoints(unittest.TestCase):
             db.add(ProjectMembership(project_id="p1", user_id="u_editor", role="editor"))
             db.add(ProjectMembership(project_id="p1", user_id="u_viewer", role="viewer"))
             db.add(Outline(id="o1", project_id="p1", title="Outline", content_md=None, structure_json=None))
-            db.add(Chapter(id="c1", project_id="p1", outline_id="o1", number=1, title="Ch1"))
+            db.add(Chapter(id="c1", project_id="p1", outline_id="o1", number=1, title="Ch1", status="done"))
             db.add(Project(id="p2", owner_user_id="u_owner", name="Project 2", genre=None, logline=None))
             db.add(Outline(id="o2", project_id="p2", title="Outline 2", content_md=None, structure_json=None))
-            db.add(Chapter(id="c2", project_id="p2", outline_id="o2", number=1, title="Ch2"))
+            db.add(Chapter(id="c2", project_id="p2", outline_id="o2", number=1, title="Ch2", status="done"))
             db.commit()
 
     def test_validation_fail_closed(self) -> None:

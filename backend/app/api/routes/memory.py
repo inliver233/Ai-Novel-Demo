@@ -11,6 +11,8 @@ from app.api.deps import DbDep, UserIdDep, require_chapter_editor, require_proje
 from app.core.errors import AppError, ok_payload
 from app.db.session import SessionLocal
 from app.db.utils import new_id
+from app.models.chapter import Chapter
+from app.models.generation_run import GenerationRun
 from app.models.llm_preset import LLMPreset
 from app.models.project import Project
 from app.models.structured_memory import (
@@ -21,6 +23,7 @@ from app.models.structured_memory import (
     MemoryForeshadow,
     MemoryRelation,
 )
+from app.models.user import User
 from app.schemas.base import RequestModel
 from app.schemas.memory_update import MemoryUpdateV1Request
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
@@ -32,6 +35,23 @@ from app.services.prompt_presets import _ensure_default_preset_from_resource, re
 
 router = APIRouter()
 logger = logging.getLogger("ainovel")
+
+
+def _require_chapter_done_for_memory_update(*, db: DbDep, chapter: Chapter, user_id: str, allow_draft: bool) -> None:
+    status = str(getattr(chapter, "status", "") or "").strip().lower()
+    if status == "done":
+        return
+
+    if allow_draft:
+        actor = db.get(User, user_id)
+        if actor is None or not bool(getattr(actor, "is_admin", False)):
+            raise AppError.forbidden()
+        return
+
+    raise AppError.conflict(
+        message="仅定稿章节可进行记忆更新",
+        details={"reason": "chapter_not_done", "chapter_status": str(getattr(chapter, "status", "") or "")},
+    )
 
 
 @router.get("/projects/{project_id}/memory/retrieve")
@@ -186,9 +206,11 @@ def propose_chapter_memory_update(
     user_id: UserIdDep,
     chapter_id: str,
     body: MemoryUpdateV1Request,
+    allow_draft: bool = Query(default=False),
 ) -> dict:
     request_id = request.state.request_id
     chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
+    _require_chapter_done_for_memory_update(db=db, chapter=chapter, user_id=user_id, allow_draft=allow_draft)
     out = propose_chapter_memory_change_set(db=db, request_id=request_id, actor_user_id=user_id, chapter=chapter, payload=body)
     return ok_payload(request_id=request_id, data=out)
 
@@ -199,6 +221,7 @@ def auto_propose_chapter_memory_update(
     chapter_id: str,
     body: MemoryAutoProposeRequest,
     user_id: UserIdDep,
+    allow_draft: bool = Query(default=False),
     x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider", max_length=64),
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ) -> dict:
@@ -218,6 +241,7 @@ def auto_propose_chapter_memory_update(
     db = SessionLocal()
     try:
         chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
+        _require_chapter_done_for_memory_update(db=db, chapter=chapter, user_id=user_id, allow_draft=allow_draft)
         project_id = str(chapter.project_id)
         project = db.get(Project, project_id)
         if project is None:
@@ -299,6 +323,7 @@ def auto_propose_chapter_memory_update(
     db2 = SessionLocal()
     try:
         chapter2 = require_chapter_editor(db2, chapter_id=chapter_id, user_id=user_id)
+        _require_chapter_done_for_memory_update(db=db2, chapter=chapter2, user_id=user_id, allow_draft=allow_draft)
         out = propose_chapter_memory_change_set(
             db=db2,
             request_id=request_id,
@@ -318,12 +343,21 @@ def apply_memory_update(
     db: DbDep,
     user_id: UserIdDep,
     change_set_id: str,
+    allow_draft: bool = Query(default=False),
 ) -> dict:
     request_id = request.state.request_id
     change_set = db.get(MemoryChangeSet, change_set_id)
     if change_set is None:
         raise AppError.not_found()
     require_project_editor(db, project_id=str(change_set.project_id), user_id=user_id)
+
+    run = db.get(GenerationRun, str(change_set.generation_run_id)) if change_set.generation_run_id else None
+    chapter_id = str(getattr(run, "chapter_id", "") or "").strip()
+    if chapter_id:
+        chapter = db.get(Chapter, chapter_id)
+        if chapter is not None:
+            _require_chapter_done_for_memory_update(db=db, chapter=chapter, user_id=user_id, allow_draft=allow_draft)
+
     out = apply_memory_change_set(db=db, request_id=request_id, actor_user_id=user_id, change_set=change_set)
     return ok_payload(request_id=request_id, data=out)
 

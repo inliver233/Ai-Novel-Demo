@@ -8,7 +8,7 @@ test("ui: Memory Update propose -> review -> apply", async ({ page, request }) =
   const { projectId } = await bootstrapProject(request);
 
   const create = await request.post(`${state.backendUrl}/api/projects/${projectId}/chapters`, {
-    data: { number: 1, title: "E2E 第一章", plan: "用于 Memory Update" },
+    data: { number: 1, title: "E2E 第一章", plan: "用于 Memory Update", status: "done" },
   });
   expect(create.ok()).toBeTruthy();
   const createJson = (await create.json()) as { ok: boolean; data: { chapter: { id: string } } };
