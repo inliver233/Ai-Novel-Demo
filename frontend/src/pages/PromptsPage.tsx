@@ -7,8 +7,9 @@ import type { LlmForm } from "../components/prompts/types";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useAutoSave } from "../hooks/useAutoSave";
+import { usePersistentOutletIsActive } from "../hooks/usePersistentOutlet";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
-import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
+import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { createRequestSeqGuard } from "../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../services/apiClient";
@@ -61,6 +62,7 @@ export function PromptsPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
+  const outletActive = usePersistentOutletIsActive();
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
   const bumpWizardLocal = wizard.bumpLocal;
@@ -216,7 +218,6 @@ export function PromptsPage() {
   }, [baselinePreset, llmForm]);
 
   const dirty = presetDirty;
-  useUnsavedChangesGuard(dirty);
 
   const selectedProfileId = project?.llm_profile_id ?? null;
   const selectedProfile = selectedProfileId ? (profiles.find((p) => p.id === selectedProfileId) ?? null) : null;
@@ -748,6 +749,7 @@ export function PromptsPage() {
 
   return (
     <div className="grid gap-6">
+      {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
       <LlmPresetPanel
         llmForm={llmForm}
         setLlmForm={setLlmForm}

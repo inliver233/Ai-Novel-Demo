@@ -4,7 +4,6 @@ import type { ConfirmApi } from "../../components/ui/confirm";
 import type { ToastApi } from "../../components/ui/toast";
 import { useAutoSave } from "../../hooks/useAutoSave";
 import { useSaveHotkey } from "../../hooks/useSaveHotkey";
-import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../../services/apiClient";
 import { markWizardProjectChanged } from "../../services/wizard";
@@ -84,8 +83,6 @@ export function useChapterEditor(args: {
       form.status !== baseline.status
     );
   }, [baseline, form]);
-
-  useUnsavedChangesGuard(dirty);
 
   const refreshChapters = useCallback(async () => {
     if (!projectId) return;

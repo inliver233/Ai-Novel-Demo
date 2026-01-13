@@ -3,9 +3,9 @@ import { useBlocker } from "react-router-dom";
 
 import { useConfirm } from "../components/ui/confirm";
 
-export function useUnsavedChangesGuard(when: boolean) {
+export function UnsavedChangesGuard(props: { when: boolean }) {
   const { confirm } = useConfirm();
-  const blocker = useBlocker(when);
+  const blocker = useBlocker(props.when);
 
   useEffect(() => {
     if (blocker.state !== "blocked") return;
@@ -23,12 +23,14 @@ export function useUnsavedChangesGuard(when: boolean) {
   }, [blocker, confirm]);
 
   useEffect(() => {
-    if (!when) return;
+    if (!props.when) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [when]);
+  }, [props.when]);
+
+  return null;
 }

@@ -16,8 +16,10 @@ import { MemoryUpdateDrawer } from "../components/writing/MemoryUpdateDrawer";
 import { WritingToolbar } from "../components/writing/WritingToolbar";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
+import { usePersistentOutletIsActive } from "../hooks/usePersistentOutlet";
 import { useProjectData } from "../hooks/useProjectData";
 import { useWizardProgress } from "../hooks/useWizardProgress";
+import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { apiJson } from "../services/apiClient";
 import { useApplyGenerationRun } from "./writing/useApplyGenerationRun";
 import { useBatchGeneration } from "./writing/useBatchGeneration";
@@ -39,6 +41,7 @@ export function WritingPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
+  const outletActive = usePersistentOutletIsActive();
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
   const bumpWizardLocal = wizard.bumpLocal;
@@ -263,6 +266,7 @@ export function WritingPage() {
 
   return (
     <div className="grid gap-4">
+      {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
       <WritingToolbar
         outlines={outlines}
         activeOutlineId={activeOutlineId}

@@ -8,8 +8,9 @@ import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
 import { useAutoSave } from "../hooks/useAutoSave";
+import { usePersistentOutletIsActive } from "../hooks/usePersistentOutlet";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
-import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
+import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
 import { SSEError, SSEPostClient } from "../services/sseClient";
@@ -55,6 +56,7 @@ export function OutlinePage() {
   const toast = useToast();
   const confirm = useConfirm();
   const navigate = useNavigate();
+  const outletActive = usePersistentOutletIsActive();
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
   const bumpWizardLocal = wizard.bumpLocal;
@@ -134,7 +136,6 @@ export function OutlinePage() {
   }, []);
 
   const dirty = content !== baseline;
-  useUnsavedChangesGuard(dirty);
 
   const save = useCallback(
     async (
@@ -419,6 +420,7 @@ export function OutlinePage() {
 
   return (
     <div className="grid gap-4">
+      {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
       <div className="panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">

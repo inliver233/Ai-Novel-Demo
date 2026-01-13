@@ -6,9 +6,10 @@ import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { useAuth } from "../contexts/auth";
 import { useProjects } from "../contexts/projects";
 import { useAutoSave } from "../hooks/useAutoSave";
+import { usePersistentOutletIsActive } from "../hooks/usePersistentOutlet";
 import { useProjectData } from "../hooks/useProjectData";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
-import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
+import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
 import { markWizardProjectChanged } from "../services/wizard";
@@ -37,6 +38,7 @@ export function SettingsPage() {
   const toast = useToast();
   const auth = useAuth();
   const { refresh } = useProjects();
+  const outletActive = usePersistentOutletIsActive();
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
   const bumpWizardLocal = wizard.bumpLocal;
@@ -215,8 +217,6 @@ export function SettingsPage() {
     );
   }, [baselineProject, baselineSettings, projectForm, settingsForm, vectorApiKeyClearRequested, vectorApiKeyDraft]);
 
-  useUnsavedChangesGuard(dirty);
-
   useEffect(() => {
     return () => {
       if (wizardRefreshTimerRef.current !== null) window.clearTimeout(wizardRefreshTimerRef.current);
@@ -366,6 +366,7 @@ export function SettingsPage() {
 
   return (
     <div className="grid gap-6">
+      {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
       <section className="panel p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="grid gap-2">

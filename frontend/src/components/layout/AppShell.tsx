@@ -23,6 +23,7 @@ import { NavLink, useLocation, useNavigate, useOutlet, useParams } from "react-r
 import { ProjectSwitcher } from "../atelier/ProjectSwitcher";
 import { ThemeToggle } from "../atelier/ThemeToggle";
 import { useAuth } from "../../contexts/auth";
+import { PersistentOutletProvider } from "../../hooks/usePersistentOutlet";
 import { UI_COPY } from "../../lib/uiCopy";
 import { transition } from "../../lib/motion";
 import { getCurrentUserId } from "../../services/currentUser";
@@ -121,7 +122,9 @@ function PersistentOutlet(props: { activeKey: string }) {
     <>
       {Array.from(cacheWithActive.entries()).map(([key, element]) => (
         <div key={key} style={{ display: key === props.activeKey ? "block" : "none" }}>
-          {element}
+          <PersistentOutletProvider outletKey={key} activeKey={props.activeKey}>
+            {element}
+          </PersistentOutletProvider>
         </div>
       ))}
     </>
