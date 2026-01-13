@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { useToast } from "../components/ui/toast";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
+import { useAuth } from "../contexts/auth";
 import { useProjects } from "../contexts/projects";
 import { useAutoSave } from "../hooks/useAutoSave";
 import { useProjectData } from "../hooks/useProjectData";
@@ -23,10 +24,18 @@ type SettingsForm = {
 };
 type SettingsLoaded = { project: Project; settings: ProjectSettings };
 type SaveSnapshot = { projectForm: ProjectForm; settingsForm: SettingsForm };
+type ProjectMembershipItem = {
+  project_id: string;
+  user: { id: string; display_name: string | null; is_admin: boolean };
+  role: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
 
 export function SettingsPage() {
   const { projectId } = useParams();
   const toast = useToast();
+  const auth = useAuth();
   const { refresh } = useProjects();
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
@@ -79,6 +88,116 @@ export function SettingsPage() {
     setVectorApiKeyDraft("");
     setVectorApiKeyClearRequested(false);
   }, [settingsQuery.data]);
+
+  const [membershipsLoading, setMembershipsLoading] = useState(false);
+  const [membershipSaving, setMembershipSaving] = useState(false);
+  const [memberships, setMemberships] = useState<ProjectMembershipItem[]>([]);
+  const [inviteUserId, setInviteUserId] = useState("");
+  const [inviteRole, setInviteRole] = useState<"viewer" | "editor">("viewer");
+
+  const canManageMemberships = useMemo(() => {
+    if (!baselineProject) return false;
+    const uid = auth.user?.id ?? "";
+    return Boolean(uid) && baselineProject.owner_user_id === uid;
+  }, [auth.user?.id, baselineProject]);
+
+  const loadMemberships = useCallback(async () => {
+    if (!projectId) return;
+    setMembershipsLoading(true);
+    try {
+      const res = await apiJson<{ memberships: ProjectMembershipItem[] }>(`/api/projects/${projectId}/memberships`);
+      const next = Array.isArray(res.data.memberships) ? res.data.memberships : [];
+      next.sort((a, b) => String(a.user?.id ?? "").localeCompare(String(b.user?.id ?? "")));
+      setMemberships(next);
+    } catch (e) {
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setMembershipsLoading(false);
+    }
+  }, [projectId, toast]);
+
+  useEffect(() => {
+    if (!canManageMemberships) return;
+    void loadMemberships();
+  }, [canManageMemberships, loadMemberships]);
+
+  const inviteMember = useCallback(async () => {
+    if (!projectId) return;
+    const targetUserId = inviteUserId.trim();
+    if (!targetUserId) {
+      toast.toastError("user_id 不能为空");
+      return;
+    }
+    setMembershipSaving(true);
+    try {
+      await apiJson<{ membership: unknown }>(`/api/projects/${projectId}/memberships`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: targetUserId, role: inviteRole }),
+      });
+      setInviteUserId("");
+      toast.toastSuccess("已邀请成员");
+      await loadMemberships();
+    } catch (e) {
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setMembershipSaving(false);
+    }
+  }, [inviteRole, inviteUserId, loadMemberships, projectId, toast]);
+
+  const updateMemberRole = useCallback(
+    async (targetUserId: string, role: "viewer" | "editor") => {
+      if (!projectId) return;
+      setMembershipSaving(true);
+      try {
+        await apiJson<{ membership: unknown }>(`/api/projects/${projectId}/memberships/${targetUserId}`, {
+          method: "PUT",
+          body: JSON.stringify({ role }),
+        });
+        toast.toastSuccess("已更新角色");
+        await loadMemberships();
+      } catch (e) {
+        const err =
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setMembershipSaving(false);
+      }
+    },
+    [loadMemberships, projectId, toast],
+  );
+
+  const removeMember = useCallback(
+    async (targetUserId: string) => {
+      if (!projectId) return;
+      setMembershipSaving(true);
+      try {
+        await apiJson<Record<string, never>>(`/api/projects/${projectId}/memberships/${targetUserId}`, {
+          method: "DELETE",
+        });
+        toast.toastSuccess("已移除成员");
+        await loadMemberships();
+      } catch (e) {
+        const err =
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setMembershipSaving(false);
+      }
+    },
+    [loadMemberships, projectId, toast],
+  );
 
   const dirty = useMemo(() => {
     if (!baselineProject || !baselineSettings) return false;
@@ -410,6 +529,123 @@ export function SettingsPage() {
             </button>
           </div>
         </div>
+      </section>
+
+      <section className="panel p-6">
+        <div className="font-content text-xl">协作成员（Project Memberships）</div>
+        <div className="mt-1 text-xs text-subtext">项目 owner 可邀请/改角色/移除成员；非成员访问将被 404（RBAC fail-closed）。</div>
+
+        {canManageMemberships ? (
+          <div className="mt-4 grid gap-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="grid gap-1">
+                <span className="text-xs text-subtext">邀请 user_id</span>
+                <input
+                  className="input"
+                  value={inviteUserId}
+                  onChange={(e) => setInviteUserId(e.target.value)}
+                  placeholder="admin"
+                />
+              </label>
+              <label className="grid gap-1">
+                <span className="text-xs text-subtext">角色</span>
+                <select
+                  className="select"
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value === "editor" ? "editor" : "viewer")}
+                >
+                  <option value="viewer">viewer</option>
+                  <option value="editor">editor</option>
+                </select>
+              </label>
+              <div className="flex gap-2">
+                <button
+                  className="btn btn-secondary"
+                  disabled={membershipSaving || membershipsLoading}
+                  onClick={() => void inviteMember()}
+                  type="button"
+                >
+                  邀请
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  disabled={membershipSaving || membershipsLoading}
+                  onClick={() => void loadMemberships()}
+                  type="button"
+                >
+                  {membershipsLoading ? "刷新中…" : "刷新"}
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-auto rounded-atelier border border-border bg-canvas">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead className="text-xs text-subtext">
+                  <tr>
+                    <th className="px-3 py-2">user_id</th>
+                    <th className="px-3 py-2">display_name</th>
+                    <th className="px-3 py-2">role</th>
+                    <th className="px-3 py-2">actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {memberships.map((m) => {
+                    const memberUserId = m.user?.id ?? "";
+                    const isOwnerRow = memberUserId === baselineProject.owner_user_id || m.role === "owner";
+                    return (
+                      <tr key={memberUserId} className="border-t border-border">
+                        <td className="px-3 py-2 font-mono text-xs">{memberUserId}</td>
+                        <td className="px-3 py-2">{m.user?.display_name ?? "-"}</td>
+                        <td className="px-3 py-2">
+                          {isOwnerRow ? (
+                            <span className="text-xs text-subtext">owner</span>
+                          ) : (
+                            <select
+                              className="select"
+                              value={m.role === "editor" ? "editor" : "viewer"}
+                              disabled={membershipSaving || membershipsLoading}
+                              onChange={(e) =>
+                                void updateMemberRole(memberUserId, e.target.value === "editor" ? "editor" : "viewer")
+                              }
+                            >
+                              <option value="viewer">viewer</option>
+                              <option value="editor">editor</option>
+                            </select>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {isOwnerRow ? (
+                            <span className="text-xs text-subtext">-</span>
+                          ) : (
+                            <button
+                              className="btn btn-secondary"
+                              disabled={membershipSaving || membershipsLoading}
+                              onClick={() => void removeMember(memberUserId)}
+                              type="button"
+                            >
+                              移除
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {memberships.length === 0 ? (
+                    <tr>
+                      <td className="px-3 py-3 text-xs text-subtext" colSpan={4}>
+                        暂无成员数据
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 text-xs text-subtext">
+            仅项目 owner（{baselineProject.owner_user_id}）可管理成员；当前用户：{auth.user?.id ?? "unknown"}。
+          </div>
+        )}
       </section>
 
       <div className="text-xs text-subtext">快捷键：Ctrl/Cmd + S 保存</div>

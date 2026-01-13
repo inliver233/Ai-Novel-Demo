@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+from pydantic import Field
 from sqlalchemy import case, func, select
 
 from app.api.deps import DbDep, UserIdDep, require_outline_viewer, require_owned_llm_profile, require_project_owner, require_project_viewer
@@ -15,12 +16,40 @@ from app.models.outline import Outline
 from app.models.project import Project
 from app.models.project_membership import ProjectMembership
 from app.models.project_settings import ProjectSettings
+from app.models.user import User
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
+from app.schemas.base import RequestModel
 from app.services.prompt_presets import ensure_default_chapter_preset, ensure_default_outline_preset
 
 router = APIRouter()
 
 PROJECTS_SUMMARY_OUTLINE_MAX_CHARS = 2048
+
+
+class ProjectMembershipCreate(RequestModel):
+    user_id: str = Field(min_length=1, max_length=64)
+    role: str = Field(min_length=1, max_length=16)
+
+
+class ProjectMembershipUpdateRole(RequestModel):
+    role: str = Field(min_length=1, max_length=16)
+
+
+def _normalize_membership_role(raw: str) -> str:
+    role = (raw or "").strip().lower()
+    if role not in ("viewer", "editor"):
+        raise AppError.validation("role must be viewer|editor")
+    return role
+
+
+def _membership_public(*, membership: ProjectMembership, user: User | None) -> dict:
+    return {
+        "project_id": membership.project_id,
+        "user": {"id": membership.user_id, "display_name": getattr(user, "display_name", None), "is_admin": bool(getattr(user, "is_admin", False))},
+        "role": membership.role,
+        "created_at": membership.created_at,
+        "updated_at": membership.updated_at,
+    }
 
 
 @router.get("/projects")
@@ -187,6 +216,104 @@ def get_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: str
     request_id = request.state.request_id
     project = require_project_viewer(db, project_id=project_id, user_id=user_id)
     return ok_payload(request_id=request_id, data={"project": ProjectOut.model_validate(project).model_dump()})
+
+
+@router.get("/projects/{project_id}/memberships")
+def list_project_memberships(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
+    request_id = request.state.request_id
+    require_project_owner(db, project_id=project_id, user_id=user_id)
+
+    rows = (
+        db.execute(
+            select(ProjectMembership, User)
+            .join(User, User.id == ProjectMembership.user_id)
+            .where(ProjectMembership.project_id == project_id)
+        )
+        .all()
+    )
+    memberships = [_membership_public(membership=m, user=u) for m, u in rows]
+    memberships.sort(key=lambda x: str(x.get("user", {}).get("id") or ""))
+    return ok_payload(request_id=request_id, data={"memberships": memberships})
+
+
+@router.post("/projects/{project_id}/memberships")
+def add_project_membership(
+    request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: ProjectMembershipCreate
+) -> dict:
+    request_id = request.state.request_id
+    project = require_project_owner(db, project_id=project_id, user_id=user_id)
+
+    target_user_id = body.user_id.strip()
+    if not target_user_id:
+        raise AppError.validation("user_id 不能为空")
+    if target_user_id == project.owner_user_id:
+        raise AppError.validation("不可修改 owner membership")
+    role = _normalize_membership_role(body.role)
+
+    target_user = db.get(User, target_user_id)
+    if target_user is None:
+        raise AppError.not_found("用户不存在")
+
+    exists = db.get(ProjectMembership, (project_id, target_user_id))
+    if exists is not None:
+        raise AppError.conflict("membership 已存在")
+
+    membership = ProjectMembership(project_id=project_id, user_id=target_user_id, role=role)
+    db.add(membership)
+    db.commit()
+    db.refresh(membership)
+
+    return ok_payload(request_id=request_id, data={"membership": _membership_public(membership=membership, user=target_user)})
+
+
+@router.put("/projects/{project_id}/memberships/{target_user_id}")
+def update_project_membership_role(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    target_user_id: str,
+    body: ProjectMembershipUpdateRole,
+) -> dict:
+    request_id = request.state.request_id
+    project = require_project_owner(db, project_id=project_id, user_id=user_id)
+
+    if target_user_id == project.owner_user_id:
+        raise AppError.validation("不可修改 owner membership")
+
+    membership = db.get(ProjectMembership, (project_id, target_user_id))
+    if membership is None:
+        raise AppError.not_found("membership 不存在")
+
+    membership.role = _normalize_membership_role(body.role)
+    db.commit()
+
+    target_user = db.get(User, target_user_id)
+    return ok_payload(request_id=request_id, data={"membership": _membership_public(membership=membership, user=target_user)})
+
+
+@router.delete("/projects/{project_id}/memberships/{target_user_id}")
+def remove_project_membership(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    target_user_id: str,
+) -> dict:
+    request_id = request.state.request_id
+    project = require_project_owner(db, project_id=project_id, user_id=user_id)
+
+    if target_user_id == project.owner_user_id:
+        raise AppError.validation("不可移除 owner membership")
+
+    membership = db.get(ProjectMembership, (project_id, target_user_id))
+    if membership is None:
+        raise AppError.not_found("membership 不存在")
+
+    db.delete(membership)
+    db.commit()
+
+    return ok_payload(request_id=request_id, data={})
 
 
 @router.put("/projects/{project_id}")

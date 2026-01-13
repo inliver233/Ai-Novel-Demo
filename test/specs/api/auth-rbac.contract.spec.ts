@@ -105,3 +105,71 @@ test("api: rbac hides non-member project existence (404)", async ({ request }) =
   expect(updateJson.ok).toBe(false);
   expect(updateJson.error.code).toBe("NOT_FOUND");
 });
+
+test("api: project memberships manage access (viewer/editor/remove)", async ({ request }) => {
+  const state = loadState();
+  const { projectId } = await bootstrapProject(request);
+
+  // As dev_fallback owner (local-user), invite admin as viewer.
+  const invite = await request.post(`${state.backendUrl}/api/projects/${projectId}/memberships`, {
+    data: { user_id: "admin", role: "viewer" },
+  });
+  expect(invite.ok()).toBeTruthy();
+
+  // Admin becomes a viewer: can read project but cannot call editor-only routes.
+  const loginAsAdminViewer = await request.post(`${state.backendUrl}/api/auth/local/login`, {
+    data: { user_id: "admin", password: "admin-pass" },
+  });
+  expect(loginAsAdminViewer.ok()).toBeTruthy();
+
+  const canRead = await request.get(`${state.backendUrl}/api/projects/${projectId}`);
+  expect(canRead.ok()).toBeTruthy();
+
+  const viewerIngest = await request.post(`${state.backendUrl}/api/projects/${projectId}/vector/ingest`, {
+    data: { sources: ["worldbook"] },
+  });
+  expect(viewerIngest.status()).toBe(403);
+  const viewerIngestJson = (await viewerIngest.json()) as ApiErr;
+  expect(viewerIngestJson.ok).toBe(false);
+  expect(viewerIngestJson.error.code).toBe("FORBIDDEN");
+
+  // Switch back to owner (dev_fallback) to promote to editor.
+  const logout = await request.post(`${state.backendUrl}/api/auth/logout`);
+  expect(logout.ok()).toBeTruthy();
+
+  const promote = await request.put(`${state.backendUrl}/api/projects/${projectId}/memberships/admin`, {
+    data: { role: "editor" },
+  });
+  expect(promote.ok()).toBeTruthy();
+
+  // Editor can call editor-only routes.
+  const loginAsAdminEditor = await request.post(`${state.backendUrl}/api/auth/local/login`, {
+    data: { user_id: "admin", password: "admin-pass" },
+  });
+  expect(loginAsAdminEditor.ok()).toBeTruthy();
+
+  const editorIngest = await request.post(`${state.backendUrl}/api/projects/${projectId}/vector/ingest`, {
+    data: { sources: ["worldbook"] },
+  });
+  expect(editorIngest.ok()).toBeTruthy();
+  const editorIngestJson = (await editorIngest.json()) as ApiOk<{ result: unknown }>;
+  expect(editorIngestJson.ok).toBe(true);
+
+  // Remove membership and verify access becomes 404 again.
+  const logout2 = await request.post(`${state.backendUrl}/api/auth/logout`);
+  expect(logout2.ok()).toBeTruthy();
+
+  const remove = await request.delete(`${state.backendUrl}/api/projects/${projectId}/memberships/admin`);
+  expect(remove.ok()).toBeTruthy();
+
+  const loginAsAdminAfterRemove = await request.post(`${state.backendUrl}/api/auth/local/login`, {
+    data: { user_id: "admin", password: "admin-pass" },
+  });
+  expect(loginAsAdminAfterRemove.ok()).toBeTruthy();
+
+  const afterRemove = await request.get(`${state.backendUrl}/api/projects/${projectId}`);
+  expect(afterRemove.status()).toBe(404);
+  const afterRemoveJson = (await afterRemove.json()) as ApiErr;
+  expect(afterRemoveJson.ok).toBe(false);
+  expect(afterRemoveJson.error.code).toBe("NOT_FOUND");
+});
