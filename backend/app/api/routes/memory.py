@@ -23,10 +23,16 @@ router = APIRouter()
 
 
 @router.get("/projects/{project_id}/memory/retrieve")
-def retrieve_project_memory(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
+def retrieve_project_memory(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    query_text: str = Query(default="", max_length=5000),
+) -> dict:
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
-    pack = retrieve_memory_context_pack(db=db, project_id=project_id)
+    pack = retrieve_memory_context_pack(db=db, project_id=project_id, query_text=query_text)
     return ok_payload(request_id=request_id, data=pack.model_dump())
 
 

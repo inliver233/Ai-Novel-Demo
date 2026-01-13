@@ -282,14 +282,18 @@ export function ContextPreviewDrawer(props: Props) {
   const effectivePack = useMemo(() => (memoryInjectionEnabled ? pack : EMPTY_PACK), [memoryInjectionEnabled, pack]);
 
   const isEmptyPack = useMemo(() => {
+    const getTextMd = (raw: unknown): string => {
+      if (!raw || typeof raw !== "object") return "";
+      const o = raw as Record<string, unknown>;
+      return typeof o.text_md === "string" ? o.text_md.trim() : "";
+    };
     return (
-      Object.keys(effectivePack.worldbook ?? {}).length === 0 &&
-      Object.keys(effectivePack.story_memory ?? {}).length === 0 &&
-      Object.keys(effectivePack.structured ?? {}).length === 0 &&
-      Object.keys(effectivePack.vector_rag ?? {}).length === 0 &&
-      Object.keys(effectivePack.graph ?? {}).length === 0 &&
-      Object.keys(effectivePack.fractal ?? {}).length === 0 &&
-      (effectivePack.logs ?? []).length === 0
+      !getTextMd(effectivePack.worldbook) &&
+      !getTextMd(effectivePack.story_memory) &&
+      !getTextMd(effectivePack.structured) &&
+      !getTextMd(effectivePack.vector_rag) &&
+      !getTextMd(effectivePack.graph) &&
+      !getTextMd(effectivePack.fractal)
     );
   }, [effectivePack]);
 
@@ -482,6 +486,26 @@ export function ContextPreviewDrawer(props: Props) {
             ) : (
               <div className="mt-2 text-sm text-subtext">No logs available.</div>
             )}
+          </div>
+        ) : null}
+
+        {memoryInjectionEnabled ? (
+          <div className="panel p-4">
+            <div className="text-sm text-ink">Memory text_md</div>
+            {(["story_memory", "structured", "graph", "fractal"] as const).map((key) => {
+              const raw = (effectivePack[key] ?? {}) as Record<string, unknown>;
+              const textMd = typeof raw.text_md === "string" ? raw.text_md : "";
+              return (
+                <details key={key} className="mt-3">
+                  <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                    {key}.text_md
+                  </summary>
+                  <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                    {textMd || "（空）"}
+                  </pre>
+                </details>
+              );
+            })}
           </div>
         ) : null}
 

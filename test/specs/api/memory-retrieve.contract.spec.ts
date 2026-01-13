@@ -5,7 +5,7 @@ import { loadState } from "../../lib/state";
 
 type ApiOk<T> = { ok: true; data: T; request_id: string };
 
-test("api: memory/retrieve returns stable empty pack structure", async ({ request }) => {
+test("api: memory/retrieve returns stable pack structure", async ({ request }) => {
   const state = loadState();
   const { projectId } = await bootstrapProject(request);
 
@@ -40,6 +40,14 @@ test("api: memory/retrieve returns stable empty pack structure", async ({ reques
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(section.disabled_reason === null || typeof (section as any).disabled_reason === "string").toBeTruthy();
   }
+
+  // Must not stay in Phase0 placeholders for implemented modules.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  expect((json.data as any).story_memory.disabled_reason).not.toBe("not_implemented");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  expect((json.data as any).structured.disabled_reason).not.toBe("not_implemented");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  expect((json.data as any).graph.disabled_reason).not.toBe("not_implemented");
 
   const logs = json.data.logs as Array<Record<string, unknown>>;
   const sections = new Set(logs.map((l) => (typeof l.section === "string" ? l.section : "")));
