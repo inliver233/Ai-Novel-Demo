@@ -556,9 +556,14 @@ def generate_chapter(
         )
         pack = None
         pack_errors = None
+        memory_query_text = ""
         if body.memory_injection_enabled:
+            memory_query_text = base_instruction
+            if chapter.plan:
+                memory_query_text = f"{memory_query_text}\n\n{chapter.plan}".strip()
+            memory_query_text = memory_query_text[:5000]
             try:
-                pack = retrieve_memory_context_pack(db=db, project_id=project_id)
+                pack = retrieve_memory_context_pack(db=db, project_id=project_id, query_text=memory_query_text)
                 values["memory"] = pack.model_dump()
             except Exception:
                 pack = None
@@ -571,7 +576,7 @@ def generate_chapter(
         if body.memory_injection_enabled:
             run_params_extra_json["memory_retrieval_log_json"] = build_memory_retrieval_log_json(
                 enabled=True,
-                query_text="",
+                query_text=memory_query_text,
                 pack=pack,
                 errors=pack_errors,
             )
@@ -807,8 +812,12 @@ def generate_chapter_stream(
             pack = None
             pack_errors = None
             if body.memory_injection_enabled:
+                memory_query_text = base_instruction
+                if chapter.plan:
+                    memory_query_text = f"{memory_query_text}\n\n{chapter.plan}".strip()
+                memory_query_text = memory_query_text[:5000]
                 try:
-                    pack = retrieve_memory_context_pack(db=db, project_id=project_id)
+                    pack = retrieve_memory_context_pack(db=db, project_id=project_id, query_text=memory_query_text)
                     values["memory"] = pack.model_dump()
                 except Exception:
                     pack = None
@@ -821,7 +830,7 @@ def generate_chapter_stream(
             if body.memory_injection_enabled:
                 run_params_extra_json["memory_retrieval_log_json"] = build_memory_retrieval_log_json(
                     enabled=True,
-                    query_text="",
+                    query_text=memory_query_text,
                     pack=pack,
                     errors=pack_errors,
                 )

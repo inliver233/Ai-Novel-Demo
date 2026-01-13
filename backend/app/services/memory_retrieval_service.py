@@ -12,7 +12,7 @@ from app.models.structured_memory import MemoryEntity, MemoryEvent, MemoryForesh
 from app.schemas.memory_pack import MemoryContextPackOut
 from app.services.fractal_memory_service import get_fractal_context
 from app.services.graph_context_service import query_graph_context
-from app.services.vector_rag_service import vector_rag_status
+from app.services.vector_rag_service import query_project, vector_rag_status
 from app.services.worldbook_service import preview_worldbook_trigger
 
 
@@ -285,9 +285,20 @@ def retrieve_memory_context_pack(
         pb = graph.get("prompt_block") if isinstance(graph.get("prompt_block"), dict) else {}
         graph["text_md"] = str(pb.get("text_md") or "")
 
-    vector_rag = vector_rag_status(project_id=project_id)
+    vector_query_text = (query_text or "").strip()
+    try:
+        if vector_query_text:
+            vector_rag = query_project(project_id=project_id, query_text=vector_query_text)
+        else:
+            vector_rag = vector_rag_status(project_id=project_id)
+    except Exception as exc:
+        vector_rag = vector_rag_status(project_id=project_id)
+        vector_rag["enabled"] = False
+        vector_rag["disabled_reason"] = "error"
+        vector_rag["query_text"] = vector_query_text
+        vector_rag["error"] = f"vector_query_failed:{type(exc).__name__}"
     if isinstance(vector_rag, dict):
-        vector_rag["query_text"] = query_text
+        vector_rag["query_text"] = vector_query_text
         pb = vector_rag.get("prompt_block") if isinstance(vector_rag.get("prompt_block"), dict) else {}
         vector_rag["text_md"] = str(pb.get("text_md") or "")
 
@@ -319,7 +330,16 @@ def retrieve_memory_context_pack(
             "section": "vector_rag",
             "enabled": bool(vector_rag.get("enabled")),
             "disabled_reason": vector_rag.get("disabled_reason"),
-            "note": "vector_rag_status (use /vector/query for retrieval)",
+            "note": "vector_rag_service.query_project",
+            "timings_ms": vector_rag.get("timings_ms"),
+            "counts": vector_rag.get("counts"),
+            "dropped_total": int(vector_rag.get("counts", {}).get("dropped_total", 0))
+            if isinstance(vector_rag.get("counts"), dict)
+            else 0,
+            "backend": vector_rag.get("backend") or vector_rag.get("backend_preferred"),
+            "hybrid_enabled": bool(vector_rag.get("hybrid_enabled"))
+            if "hybrid_enabled" in vector_rag
+            else bool(vector_rag.get("hybrid", {}).get("enabled")) if isinstance(vector_rag.get("hybrid"), dict) else None,
         },
         {
             "section": "graph",
