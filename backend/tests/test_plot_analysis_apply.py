@@ -20,6 +20,7 @@ from app.services.plot_analysis_service import (
 class TestPlotAnalysisApply(unittest.TestCase):
     def _make_db(self):
         engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+        self.addCleanup(engine.dispose)
         with engine.begin() as conn:
             conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
             conn.exec_driver_sql("CREATE TABLE users (id VARCHAR(64) PRIMARY KEY)")

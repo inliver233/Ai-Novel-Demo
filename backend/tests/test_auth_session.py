@@ -77,6 +77,7 @@ class TestAuthEndpoints(unittest.TestCase):
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
         )
+        self.addCleanup(engine.dispose)
         User.__table__.create(engine)
         UserPassword.__table__.create(engine)
         self.SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

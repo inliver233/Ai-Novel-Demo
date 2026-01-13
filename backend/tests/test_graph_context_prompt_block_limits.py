@@ -20,6 +20,7 @@ class TestGraphContextPromptBlockLimits(unittest.TestCase):
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
         )
+        self.addCleanup(engine.dispose)
         Base.metadata.create_all(
             engine,
             tables=[
@@ -99,4 +100,3 @@ class TestGraphContextPromptBlockLimits(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

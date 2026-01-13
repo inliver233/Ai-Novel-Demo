@@ -68,6 +68,7 @@ class TestSecretsRedaction(unittest.TestCase):
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
         )
+        self.addCleanup(engine.dispose)
         Base.metadata.create_all(engine, tables=[User.__table__, LLMProfile.__table__])
         self.SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
         self.app = _make_test_app(self.SessionLocal)

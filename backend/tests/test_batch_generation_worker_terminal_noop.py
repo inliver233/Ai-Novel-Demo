@@ -13,6 +13,7 @@ from app.services import batch_generation_service
 class TestBatchGenerationWorkerTerminalNoop(unittest.TestCase):
     def test_succeeded_task_is_noop(self) -> None:
         engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+        self.addCleanup(engine.dispose)
         with engine.begin() as conn:
             conn.exec_driver_sql("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY)")
             conn.exec_driver_sql("CREATE TABLE projects (id VARCHAR(36) PRIMARY KEY)")
@@ -44,4 +45,3 @@ class TestBatchGenerationWorkerTerminalNoop(unittest.TestCase):
             task = db.get(BatchGenerationTask, "task-1")
             self.assertIsNotNone(task)
             self.assertEqual(task.status, "succeeded")
-

@@ -57,6 +57,7 @@ class TestProjectMembershipRbac(unittest.TestCase):
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
         )
+        self.addCleanup(engine.dispose)
         Base.metadata.create_all(
             engine,
             tables=[

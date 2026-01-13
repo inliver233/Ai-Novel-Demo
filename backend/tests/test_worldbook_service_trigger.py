@@ -14,6 +14,7 @@ from app.services.worldbook_service import preview_worldbook_trigger
 class TestWorldBookServiceTrigger(unittest.TestCase):
     def _make_db(self):
         engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+        self.addCleanup(engine.dispose)
         with engine.begin() as conn:
             conn.exec_driver_sql("CREATE TABLE projects (id VARCHAR(36) PRIMARY KEY)")
             conn.exec_driver_sql("INSERT INTO projects (id) VALUES ('project-1')")
