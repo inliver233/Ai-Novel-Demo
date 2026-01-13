@@ -29,10 +29,11 @@ def retrieve_project_memory(
     user_id: UserIdDep,
     project_id: str,
     query_text: str = Query(default="", max_length=5000),
+    include_deleted: bool = Query(default=False),
 ) -> dict:
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
-    pack = retrieve_memory_context_pack(db=db, project_id=project_id, query_text=query_text)
+    pack = retrieve_memory_context_pack(db=db, project_id=project_id, query_text=query_text, include_deleted=include_deleted)
     return ok_payload(request_id=request_id, data=pack.model_dump())
 
 

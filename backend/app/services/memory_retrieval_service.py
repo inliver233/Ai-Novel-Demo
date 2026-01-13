@@ -137,7 +137,13 @@ def _format_structured_text_md(
     return _wrap_and_truncate_block(tag="StructuredMemory", inner="\n\n".join(sections), char_limit=char_limit)
 
 
-def retrieve_memory_context_pack(*, db: Session, project_id: str, query_text: str = "") -> MemoryContextPackOut:
+def retrieve_memory_context_pack(
+    *,
+    db: Session,
+    project_id: str,
+    query_text: str = "",
+    include_deleted: bool = False,
+) -> MemoryContextPackOut:
     """
     Must be safe when memory dependencies (vector DB / embeddings / etc.) are missing.
     """
@@ -205,50 +211,21 @@ def retrieve_memory_context_pack(*, db: Session, project_id: str, query_text: st
 
     structured: dict[str, Any] = {"enabled": False, "disabled_reason": "empty", "counts": {}, "text_md": ""}
     try:
-        entities = (
-            db.execute(
-                select(MemoryEntity)
-                .where(MemoryEntity.project_id == project_id)
-                .where(MemoryEntity.deleted_at.is_(None))
-                .order_by(MemoryEntity.updated_at.desc())
-                .limit(21)
-            )
-            .scalars()
-            .all()
-        )
-        relations = (
-            db.execute(
-                select(MemoryRelation)
-                .where(MemoryRelation.project_id == project_id)
-                .where(MemoryRelation.deleted_at.is_(None))
-                .order_by(MemoryRelation.updated_at.desc())
-                .limit(41)
-            )
-            .scalars()
-            .all()
-        )
-        events = (
-            db.execute(
-                select(MemoryEvent)
-                .where(MemoryEvent.project_id == project_id)
-                .where(MemoryEvent.deleted_at.is_(None))
-                .order_by(MemoryEvent.updated_at.desc())
-                .limit(21)
-            )
-            .scalars()
-            .all()
-        )
-        foreshadows = (
-            db.execute(
-                select(MemoryForeshadow)
-                .where(MemoryForeshadow.project_id == project_id)
-                .where(MemoryForeshadow.deleted_at.is_(None))
-                .order_by(MemoryForeshadow.updated_at.desc())
-                .limit(21)
-            )
-            .scalars()
-            .all()
-        )
+        entities_stmt = select(MemoryEntity).where(MemoryEntity.project_id == project_id)
+        relations_stmt = select(MemoryRelation).where(MemoryRelation.project_id == project_id)
+        events_stmt = select(MemoryEvent).where(MemoryEvent.project_id == project_id)
+        foreshadows_stmt = select(MemoryForeshadow).where(MemoryForeshadow.project_id == project_id)
+
+        if not include_deleted:
+            entities_stmt = entities_stmt.where(MemoryEntity.deleted_at.is_(None))
+            relations_stmt = relations_stmt.where(MemoryRelation.deleted_at.is_(None))
+            events_stmt = events_stmt.where(MemoryEvent.deleted_at.is_(None))
+            foreshadows_stmt = foreshadows_stmt.where(MemoryForeshadow.deleted_at.is_(None))
+
+        entities = db.execute(entities_stmt.order_by(MemoryEntity.updated_at.desc()).limit(21)).scalars().all()
+        relations = db.execute(relations_stmt.order_by(MemoryRelation.updated_at.desc()).limit(41)).scalars().all()
+        events = db.execute(events_stmt.order_by(MemoryEvent.updated_at.desc()).limit(21)).scalars().all()
+        foreshadows = db.execute(foreshadows_stmt.order_by(MemoryForeshadow.updated_at.desc()).limit(21)).scalars().all()
         enabled = bool(entities or relations or events or foreshadows)
 
         rel_entity_ids: set[str] = set()
@@ -257,15 +234,14 @@ def retrieve_memory_context_pack(*, db: Session, project_id: str, query_text: st
             rel_entity_ids.add(str(r.to_entity_id))
         entity_name_rows = []
         if rel_entity_ids:
-            entity_name_rows = (
-                db.execute(
-                    select(MemoryEntity.id, MemoryEntity.name)
-                    .where(MemoryEntity.project_id == project_id)
-                    .where(MemoryEntity.deleted_at.is_(None))
-                    .where(MemoryEntity.id.in_(list(rel_entity_ids)))
-                )
-                .all()
+            entity_name_stmt = (
+                select(MemoryEntity.id, MemoryEntity.name)
+                .where(MemoryEntity.project_id == project_id)
+                .where(MemoryEntity.id.in_(list(rel_entity_ids)))
             )
+            if not include_deleted:
+                entity_name_stmt = entity_name_stmt.where(MemoryEntity.deleted_at.is_(None))
+            entity_name_rows = db.execute(entity_name_stmt).all()
         name_by_id = {str(eid): str(name or "") for eid, name in entity_name_rows}
         relations_preview = []
         for r in relations[:40]:
@@ -291,6 +267,7 @@ def retrieve_memory_context_pack(*, db: Session, project_id: str, query_text: st
         structured = {
             "enabled": enabled,
             "disabled_reason": None if enabled else "empty",
+            "include_deleted": bool(include_deleted),
             "counts": {
                 "entities": len(entities[:20]),
                 "relations": len(relations[:40]),
