@@ -318,7 +318,8 @@ export function WorldBookPage() {
             </div>
             <button
               className="btn btn-secondary"
-              disabled={previewLoading}
+              disabled={previewLoading || drawerOpen}
+              title={drawerOpen ? UI_COPY.worldbook.previewUseInDrawerHint : undefined}
               onClick={() => void runPreview()}
               type="button"
             >
@@ -456,6 +457,139 @@ export function WorldBookPage() {
         </div>
 
         <div className="mt-5 grid gap-4">
+          <div className="surface p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm text-ink">{UI_COPY.worldbook.previewTitle}</div>
+                <div className="mt-1 text-xs text-subtext">
+                  {UI_COPY.worldbook.previewHint}
+                  {previewRequestId ? <span className="ml-2">request_id: {previewRequestId}</span> : null}
+                </div>
+              </div>
+              <button
+                className="btn btn-secondary"
+                disabled={previewLoading || dirty}
+                title={dirty ? UI_COPY.worldbook.previewRequiresSaveHint : undefined}
+                onClick={() => void runPreview()}
+                type="button"
+              >
+                {UI_COPY.worldbook.previewRun}
+              </button>
+            </div>
+
+            {dirty ? (
+              <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                {UI_COPY.worldbook.previewRequiresSaveHint}
+              </div>
+            ) : null}
+
+            <div className="mt-4 grid gap-3">
+              <label className="grid gap-1">
+                <span className="text-xs text-subtext">{UI_COPY.worldbook.previewQueryLabel}</span>
+                <textarea
+                  className="textarea atelier-content"
+                  name="query_text"
+                  rows={3}
+                  value={previewQueryText}
+                  onChange={(e) => setPreviewQueryText(e.target.value)}
+                />
+              </label>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="flex items-center justify-between gap-2 text-sm text-ink">
+                  <span>{UI_COPY.worldbook.previewIncludeConstant}</span>
+                  <input
+                    className="checkbox"
+                    checked={previewIncludeConstant}
+                    name="include_constant"
+                    onChange={(e) => setPreviewIncludeConstant(e.target.checked)}
+                    type="checkbox"
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-2 text-sm text-ink">
+                  <span>{UI_COPY.worldbook.previewEnableRecursion}</span>
+                  <input
+                    className="checkbox"
+                    checked={previewEnableRecursion}
+                    name="enable_recursion"
+                    onChange={(e) => setPreviewEnableRecursion(e.target.checked)}
+                    type="checkbox"
+                  />
+                </label>
+                <label className="grid gap-1 sm:col-span-2">
+                  <span className="text-xs text-subtext">{UI_COPY.worldbook.previewCharLimit}</span>
+                  <input
+                    className="input"
+                    min={0}
+                    name="char_limit"
+                    type="number"
+                    value={previewCharLimit}
+                    onChange={(e) => setPreviewCharLimit(e.currentTarget.valueAsNumber)}
+                  />
+                </label>
+              </div>
+
+              {previewLoading ? <div className="text-sm text-subtext">{UI_COPY.common.loading}</div> : null}
+              {previewError ? (
+                <div className="rounded-atelier border border-border bg-canvas p-3 text-sm text-subtext">
+                  <div className="text-ink">{UI_COPY.worldbook.previewFailed}</div>
+                  <div className="mt-1 text-xs text-subtext">
+                    {previewError.message} ({previewError.code})
+                    {previewError.requestId ? (
+                      <span className="ml-2">request_id: {previewError.requestId}</span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {previewResult ? (
+                <div className="grid gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-subtext">
+                    <span>
+                      {UI_COPY.worldbook.previewTriggeredPrefix}
+                      {previewResult.triggered.length}
+                      {UI_COPY.worldbook.previewTriggeredSuffix}
+                    </span>
+                    {previewResult.truncated ? (
+                      <span className="text-amber-600 dark:text-amber-400">{UI_COPY.worldbook.previewTruncated}</span>
+                    ) : null}
+                  </div>
+                  <details>
+                    <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                      {UI_COPY.worldbook.previewTriggeredList}
+                    </summary>
+                    <div className="mt-2 grid gap-2">
+                      {previewResult.triggered.length === 0 ? (
+                        <div className="text-sm text-subtext">{UI_COPY.worldbook.previewNoTriggered}</div>
+                      ) : (
+                        previewResult.triggered.map((t) => (
+                          <div key={t.id} className="rounded-atelier border border-border bg-canvas p-2 text-xs">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="truncate text-ink">{t.title}</div>
+                                <div className="mt-1 text-subtext">
+                                  {t.reason} | priority:{t.priority}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </details>
+                  <details open>
+                    <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                      {UI_COPY.worldbook.previewText}
+                    </summary>
+                    <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
+                      {previewResult.text_md || UI_COPY.worldbook.previewTextEmpty}
+                    </pre>
+                  </details>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
           <label className="grid gap-1">
             <span className="text-xs text-subtext">{UI_COPY.worldbook.formTitle}</span>
             <input

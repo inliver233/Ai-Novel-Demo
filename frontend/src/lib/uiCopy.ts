@@ -62,6 +62,8 @@ export const UI_COPY = {
     previewIncludeConstant: "包含常驻（constant）",
     previewEnableRecursion: "允许递归",
     previewCharLimit: "拼接字符上限",
+    previewRequiresSaveHint: "当前条目有未保存修改：预览基于已保存条目，请先保存后再预览。",
+    previewUseInDrawerHint: "编辑抽屉打开时请在抽屉内使用预览触发。",
     previewFailed: "预览失败",
     previewTriggeredPrefix: "触发 ",
     previewTriggeredSuffix: " 条",
