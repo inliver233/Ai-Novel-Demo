@@ -535,9 +535,7 @@ export function WorldBookPage() {
                   <div className="text-ink">{UI_COPY.worldbook.previewFailed}</div>
                   <div className="mt-1 text-xs text-subtext">
                     {previewError.message} ({previewError.code})
-                    {previewError.requestId ? (
-                      <span className="ml-2">request_id: {previewError.requestId}</span>
-                    ) : null}
+                    {previewError.requestId ? <span className="ml-2">request_id: {previewError.requestId}</span> : null}
                   </div>
                 </div>
               ) : null}

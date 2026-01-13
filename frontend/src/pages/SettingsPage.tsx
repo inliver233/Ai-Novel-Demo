@@ -502,7 +502,9 @@ export function SettingsPage() {
             />
             <div className="text-[11px] text-subtext">
               已保存（项目覆盖）：
-              {baselineSettings.vector_embedding_has_api_key ? baselineSettings.vector_embedding_masked_api_key : "（无）"}
+              {baselineSettings.vector_embedding_has_api_key
+                ? baselineSettings.vector_embedding_masked_api_key
+                : "（无）"}
               {baselineSettings.vector_embedding_effective_has_api_key
                 ? ` | 当前有效：${baselineSettings.vector_embedding_effective_masked_api_key}`
                 : " | 当前有效：（无）"}
@@ -540,7 +542,9 @@ export function SettingsPage() {
 
       <section className="panel p-6">
         <div className="font-content text-xl">协作成员（Project Memberships）</div>
-        <div className="mt-1 text-xs text-subtext">项目 owner 可邀请/改角色/移除成员；非成员访问将被 404（RBAC fail-closed）。</div>
+        <div className="mt-1 text-xs text-subtext">
+          项目 owner 可邀请/改角色/移除成员；非成员访问将被 404（RBAC fail-closed）。
+        </div>
 
         {canManageMemberships ? (
           <div className="mt-4 grid gap-4">

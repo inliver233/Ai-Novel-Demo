@@ -23,7 +23,7 @@ import { NavLink, useLocation, useNavigate, useOutlet, useParams } from "react-r
 import { ProjectSwitcher } from "../atelier/ProjectSwitcher";
 import { ThemeToggle } from "../atelier/ThemeToggle";
 import { useAuth } from "../../contexts/auth";
-import { PersistentOutletProvider } from "../../hooks/usePersistentOutlet";
+import { PersistentOutletProvider } from "../../hooks/PersistentOutletProvider";
 import { UI_COPY } from "../../lib/uiCopy";
 import { transition } from "../../lib/motion";
 import { getCurrentUserId } from "../../services/currentUser";

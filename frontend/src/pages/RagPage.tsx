@@ -223,7 +223,9 @@ export function RagPage() {
           <div className="flex items-center justify-between gap-2">
             <div className="text-sm font-medium text-ink">Status</div>
             <div className="text-xs text-subtext">
-              {status ? `enabled:${String(status.enabled)} | backend_preferred:${status.backend_preferred ?? "-"}` : null}
+              {status
+                ? `enabled:${String(status.enabled)} | backend_preferred:${status.backend_preferred ?? "-"}`
+                : null}
             </div>
           </div>
           {status ? (
@@ -238,9 +240,7 @@ export function RagPage() {
               ) : null}
               <details className="mt-3 rounded-atelier border border-border bg-canvas p-3">
                 <summary className="cursor-pointer select-none text-xs">raw status result</summary>
-                <pre className="mt-2 max-h-80 overflow-auto text-[11px] leading-4 text-subtext">
-                  {safeJson(status)}
-                </pre>
+                <pre className="mt-2 max-h-80 overflow-auto text-[11px] leading-4 text-subtext">{safeJson(status)}</pre>
               </details>
             </div>
           ) : (
@@ -264,10 +264,20 @@ export function RagPage() {
               placeholder="dragon"
             />
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button className="btn btn-primary" disabled={queryLoading || busy} onClick={() => void runQuery()} type="button">
+              <button
+                className="btn btn-primary"
+                disabled={queryLoading || busy}
+                onClick={() => void runQuery()}
+                type="button"
+              >
                 {queryLoading ? "查询中…" : "查询"}
               </button>
-              <button className="btn btn-secondary" disabled={!injectionText} onClick={() => void copyInjectionText()} type="button">
+              <button
+                className="btn btn-secondary"
+                disabled={!injectionText}
+                onClick={() => void copyInjectionText()}
+                type="button"
+              >
                 复制注入文本
               </button>
               {queryResult?.counts ? (
@@ -310,7 +320,9 @@ export function RagPage() {
         <section className="rounded-atelier border border-border bg-surface p-4">
           <div className="text-sm font-medium text-ink">Ingest result</div>
           {ingestResult ? (
-            <pre className="mt-2 max-h-80 overflow-auto text-[11px] leading-4 text-subtext">{safeJson(ingestResult)}</pre>
+            <pre className="mt-2 max-h-80 overflow-auto text-[11px] leading-4 text-subtext">
+              {safeJson(ingestResult)}
+            </pre>
           ) : (
             <div className="mt-2 text-xs text-subtext">点击 “Ingest” 后展示结果。</div>
           )}
@@ -318,7 +330,9 @@ export function RagPage() {
         <section className="rounded-atelier border border-border bg-surface p-4">
           <div className="text-sm font-medium text-ink">Rebuild result</div>
           {rebuildResult ? (
-            <pre className="mt-2 max-h-80 overflow-auto text-[11px] leading-4 text-subtext">{safeJson(rebuildResult)}</pre>
+            <pre className="mt-2 max-h-80 overflow-auto text-[11px] leading-4 text-subtext">
+              {safeJson(rebuildResult)}
+            </pre>
           ) : (
             <div className="mt-2 text-xs text-subtext">点击 “Rebuild” 后展示结果。</div>
           )}
@@ -327,4 +341,3 @@ export function RagPage() {
     </div>
   );
 }
-
