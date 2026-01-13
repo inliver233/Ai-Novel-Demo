@@ -40,3 +40,8 @@ test/.tmp/
 Thumbs.db
 .idea/
 .vscode/
+
+# Windows reserved device names (PowerShell `> nul` can create this file)
+# Cleanup (repo root):
+#   Remove-Item -LiteralPath ("\\?\{0}\nul" -f (Get-Location)) -Force
+/nul
