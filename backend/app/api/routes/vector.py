@@ -8,7 +8,14 @@ from app.core.errors import ok_payload
 from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.db.session import SessionLocal
 from app.models.project_settings import ProjectSettings
-from app.services.vector_rag_service import VectorSource, build_project_chunks, ingest_chunks, query_project, rebuild_project
+from app.services.vector_rag_service import (
+    VectorSource,
+    build_project_chunks,
+    ingest_chunks,
+    query_project,
+    rebuild_project,
+    vector_rag_status,
+)
 
 router = APIRouter()
 
@@ -39,6 +46,26 @@ class VectorIngestRequest(BaseModel):
 class VectorQueryRequest(BaseModel):
     query_text: str = Field(default="", max_length=8000)
     sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
+
+
+class VectorStatusRequest(BaseModel):
+    sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
+
+
+@router.post("/projects/{project_id}/vector/status")
+def get_vector_status(request: Request, user_id: UserIdDep, project_id: str, body: VectorStatusRequest) -> dict:
+    request_id = request.state.request_id
+
+    db = SessionLocal()
+    embedding: dict[str, str | None] = {}
+    try:
+        require_project_viewer(db, project_id=project_id, user_id=user_id)
+        embedding = _vector_embedding_overrides(db.get(ProjectSettings, project_id))
+    finally:
+        db.close()
+
+    result = vector_rag_status(project_id=project_id, sources=body.sources, embedding=embedding)
+    return ok_payload(request_id=request_id, data={"result": result})
 
 
 @router.post("/projects/{project_id}/vector/ingest")

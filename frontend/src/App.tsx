@@ -22,6 +22,7 @@ import { ExportPage } from "./pages/ExportPage";
 import { GraphPage } from "./pages/GraphPage";
 import { StylesPage } from "./pages/StylesPage";
 import { WorldBookPage } from "./pages/WorldBookPage";
+import { RagPage } from "./pages/RagPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
 const router = createBrowserRouter([
@@ -100,6 +101,10 @@ const router = createBrowserRouter([
               {
                 path: "styles",
                 element: <StylesPage />,
+              },
+              {
+                path: "rag",
+                element: <RagPage />,
               },
             ],
           },
