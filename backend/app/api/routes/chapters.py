@@ -554,7 +554,10 @@ def generate_chapter(
             user_id=user_id,
         )
         render_values = values
-        run_params_extra_json = {"style_resolution": style_resolution}
+        run_params_extra_json = {
+            "style_resolution": style_resolution,
+            "memory_injection_enabled": body.memory_injection_enabled,
+        }
 
         if body.plan_first:
             ensure_default_plan_preset(db, project_id=project_id)
@@ -785,7 +788,10 @@ def generate_chapter_stream(
                 user_id=user_id,
             )
             render_values = values
-            run_params_extra_json = {"style_resolution": style_resolution}
+            run_params_extra_json = {
+                "style_resolution": style_resolution,
+                "memory_injection_enabled": body.memory_injection_enabled,
+            }
 
             if body.plan_first:
                 ensure_default_plan_preset(db, project_id=project_id)

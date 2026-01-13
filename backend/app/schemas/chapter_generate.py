@@ -40,4 +40,5 @@ class ChapterGenerateRequest(BaseModel):
     post_edit: bool = False
     post_edit_sanitize: bool = False
     style_id: str | None = Field(default=None, max_length=36)
+    memory_injection_enabled: bool = False
     context: ChapterGenerateContext = Field(default_factory=ChapterGenerateContext)

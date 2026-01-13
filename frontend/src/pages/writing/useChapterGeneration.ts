@@ -156,6 +156,7 @@ export function useChapterGeneration(args: {
           post_edit: genForm.post_edit,
           post_edit_sanitize: genForm.post_edit_sanitize,
           style_id: genForm.style_id,
+          memory_injection_enabled: genForm.memory_injection_enabled,
           context: {
             include_world_setting: genForm.context.include_world_setting,
             include_style_guide: genForm.context.include_style_guide,

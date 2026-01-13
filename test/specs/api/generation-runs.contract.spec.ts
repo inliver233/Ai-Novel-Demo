@@ -24,6 +24,7 @@ test("api: chapter_generate (non-stream) + generation_runs contract", async ({ r
       target_word_count: 300,
       plan_first: false,
       post_edit: false,
+      memory_injection_enabled: true,
       context: {
         include_world_setting: false,
         include_style_guide: false,
@@ -76,6 +77,7 @@ test("api: chapter_generate (non-stream) + generation_runs contract", async ({ r
   expect(run).toBeTruthy();
   expect(run!.project_id).toBe(projectId);
   expect(run!.chapter_id).toBe(chapterId);
+  expect(run!.params).toMatchObject({ memory_injection_enabled: true });
   expect(typeof run!.type).toBe("string");
   expect(typeof run!.created_at).toBe("string");
 
@@ -89,4 +91,3 @@ test("api: chapter_generate (non-stream) + generation_runs contract", async ({ r
   // Must not leak api keys (bootstrapProject uses "test-key").
   expect(JSON.stringify(getJson)).not.toContain("test-key");
 });
-
