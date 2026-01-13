@@ -14,7 +14,13 @@ import { markWizardProjectChanged } from "../services/wizard";
 import type { Project, ProjectSettings } from "../types";
 
 type ProjectForm = { name: string; genre: string; logline: string };
-type SettingsForm = { world_setting: string; style_guide: string; constraints: string };
+type SettingsForm = {
+  world_setting: string;
+  style_guide: string;
+  constraints: string;
+  vector_embedding_base_url: string;
+  vector_embedding_model: string;
+};
 type SettingsLoaded = { project: Project; settings: ProjectSettings };
 type SaveSnapshot = { projectForm: ProjectForm; settingsForm: SettingsForm };
 
@@ -39,7 +45,11 @@ export function SettingsPage() {
     world_setting: "",
     style_guide: "",
     constraints: "",
+    vector_embedding_base_url: "",
+    vector_embedding_model: "",
   });
+  const [vectorApiKeyDraft, setVectorApiKeyDraft] = useState("");
+  const [vectorApiKeyClearRequested, setVectorApiKeyClearRequested] = useState(false);
 
   const settingsQuery = useProjectData<SettingsLoaded>(projectId, async (id) => {
     const [pRes, sRes] = await Promise.all([
@@ -63,20 +73,28 @@ export function SettingsPage() {
       world_setting: settings.world_setting ?? "",
       style_guide: settings.style_guide ?? "",
       constraints: settings.constraints ?? "",
+      vector_embedding_base_url: settings.vector_embedding_base_url ?? "",
+      vector_embedding_model: settings.vector_embedding_model ?? "",
     });
+    setVectorApiKeyDraft("");
+    setVectorApiKeyClearRequested(false);
   }, [settingsQuery.data]);
 
   const dirty = useMemo(() => {
     if (!baselineProject || !baselineSettings) return false;
+    const vectorApiKeyDirty = vectorApiKeyClearRequested || vectorApiKeyDraft.trim().length > 0;
     return (
       projectForm.name !== baselineProject.name ||
       projectForm.genre !== (baselineProject.genre ?? "") ||
       projectForm.logline !== (baselineProject.logline ?? "") ||
       settingsForm.world_setting !== baselineSettings.world_setting ||
       settingsForm.style_guide !== baselineSettings.style_guide ||
-      settingsForm.constraints !== baselineSettings.constraints
+      settingsForm.constraints !== baselineSettings.constraints ||
+      settingsForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
+      settingsForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
+      vectorApiKeyDirty
     );
-  }, [baselineProject, baselineSettings, projectForm, settingsForm]);
+  }, [baselineProject, baselineSettings, projectForm, settingsForm, vectorApiKeyClearRequested, vectorApiKeyDraft]);
 
   useUnsavedChangesGuard(dirty);
 
@@ -104,10 +122,14 @@ export function SettingsPage() {
         nextProjectForm.name.trim() !== baselineProject.name ||
         nextProjectForm.genre.trim() !== (baselineProject.genre ?? "") ||
         nextProjectForm.logline.trim() !== (baselineProject.logline ?? "");
+      const vectorApiKeyDirty = vectorApiKeyClearRequested || vectorApiKeyDraft.trim().length > 0;
       const settingsDirty =
         nextSettingsForm.world_setting !== baselineSettings.world_setting ||
         nextSettingsForm.style_guide !== baselineSettings.style_guide ||
-        nextSettingsForm.constraints !== baselineSettings.constraints;
+        nextSettingsForm.constraints !== baselineSettings.constraints ||
+        nextSettingsForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
+        nextSettingsForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
+        vectorApiKeyDirty;
       if (!projectDirty && !settingsDirty) return true;
 
       const scheduleWizardRefresh = () => {
@@ -140,13 +162,22 @@ export function SettingsPage() {
                   world_setting: nextSettingsForm.world_setting,
                   style_guide: nextSettingsForm.style_guide,
                   constraints: nextSettingsForm.constraints,
+                  vector_embedding_base_url: nextSettingsForm.vector_embedding_base_url,
+                  vector_embedding_model: nextSettingsForm.vector_embedding_model,
+                  ...(vectorApiKeyDirty
+                    ? { vector_embedding_api_key: vectorApiKeyClearRequested ? "" : vectorApiKeyDraft }
+                    : {}),
                 }),
               })
             : null,
         ]);
 
         if (pRes) setBaselineProject(pRes.data.project);
-        if (sRes) setBaselineSettings(sRes.data.settings);
+        if (sRes) {
+          setBaselineSettings(sRes.data.settings);
+          setVectorApiKeyDraft("");
+          setVectorApiKeyClearRequested(false);
+        }
         markWizardProjectChanged(projectId);
         bumpWizardLocal();
         if (silent) {
@@ -182,13 +213,16 @@ export function SettingsPage() {
       refreshWizard,
       settingsForm,
       toast,
+      vectorApiKeyClearRequested,
+      vectorApiKeyDraft,
     ],
   );
 
   useSaveHotkey(() => void save(), dirty);
 
+  const vectorApiKeyDirty = vectorApiKeyClearRequested || vectorApiKeyDraft.trim().length > 0;
   useAutoSave({
-    enabled: Boolean(projectId && baselineProject && baselineSettings),
+    enabled: Boolean(projectId && baselineProject && baselineSettings && !vectorApiKeyDirty),
     dirty,
     delayMs: 1200,
     getSnapshot: () => ({ projectForm: { ...projectForm }, settingsForm: { ...settingsForm } }),
@@ -202,12 +236,14 @@ export function SettingsPage() {
       settingsForm.world_setting,
       settingsForm.style_guide,
       settingsForm.constraints,
+      settingsForm.vector_embedding_base_url,
+      settingsForm.vector_embedding_model,
     ],
   });
 
   const loading = settingsQuery.loading;
   if (loading) return <div className="text-subtext">加载中...</div>;
-  if (!baselineProject) return <div className="text-subtext">项目加载失败</div>;
+  if (!baselineProject || !baselineSettings) return <div className="text-subtext">项目加载失败</div>;
 
   return (
     <div className="grid gap-6">
@@ -287,6 +323,92 @@ export function SettingsPage() {
               onChange={(e) => setSettingsForm((v) => ({ ...v, constraints: e.target.value }))}
             />
           </label>
+        </div>
+      </section>
+
+      <section className="panel p-6">
+        <div className="font-content text-xl">向量检索（Vector RAG）</div>
+        <div className="mt-1 text-xs text-subtext">
+          Embedding 配置支持项目级覆盖（API Key 加密存储，仅回显 masked），并可 fallback 到后端 env。
+        </div>
+
+        <div className="mt-3 text-xs text-subtext">
+          status: {baselineSettings.vector_embedding_effective_disabled_reason ?? "enabled"} | source:{" "}
+          {baselineSettings.vector_embedding_effective_source}
+        </div>
+
+        <div className="mt-4 grid gap-4">
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">Base URL（项目覆盖；留空=env fallback）</span>
+            <input
+              className="input"
+              value={settingsForm.vector_embedding_base_url}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, vector_embedding_base_url: e.target.value }))}
+            />
+            <div className="text-[11px] text-subtext">
+              当前有效：{baselineSettings.vector_embedding_effective_base_url || "（空）"}
+            </div>
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">Model（项目覆盖；留空=env fallback）</span>
+            <input
+              className="input"
+              value={settingsForm.vector_embedding_model}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, vector_embedding_model: e.target.value }))}
+            />
+            <div className="text-[11px] text-subtext">
+              当前有效：{baselineSettings.vector_embedding_effective_model || "（空）"}
+            </div>
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">API Key（项目覆盖；留空不修改）</span>
+            <input
+              className="input"
+              type="password"
+              autoComplete="off"
+              value={vectorApiKeyDraft}
+              onChange={(e) => {
+                setVectorApiKeyDraft(e.target.value);
+                setVectorApiKeyClearRequested(false);
+              }}
+            />
+            <div className="text-[11px] text-subtext">
+              已保存（项目覆盖）：
+              {baselineSettings.vector_embedding_has_api_key ? baselineSettings.vector_embedding_masked_api_key : "（无）"}
+              {baselineSettings.vector_embedding_effective_has_api_key
+                ? ` | 当前有效：${baselineSettings.vector_embedding_effective_masked_api_key}`
+                : " | 当前有效：（无）"}
+              {vectorApiKeyClearRequested ? " | 将在保存时清除" : ""}
+            </div>
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="btn btn-secondary"
+              disabled={saving || !baselineSettings.vector_embedding_has_api_key}
+              onClick={() => {
+                setVectorApiKeyDraft("");
+                setVectorApiKeyClearRequested(true);
+              }}
+              type="button"
+            >
+              清除项目 API Key
+            </button>
+            <button
+              className="btn btn-secondary"
+              disabled={saving}
+              onClick={() => {
+                setSettingsForm((v) => ({ ...v, vector_embedding_base_url: "", vector_embedding_model: "" }));
+                setVectorApiKeyDraft("");
+                setVectorApiKeyClearRequested(true);
+              }}
+              type="button"
+            >
+              恢复 env fallback（清除项目覆盖）
+            </button>
+          </div>
         </div>
       </section>
 

@@ -117,19 +117,35 @@ def _default_chroma_persist_dir() -> str:
     return str((_backend_dir() / ".chroma").resolve().as_posix())
 
 
-def _vector_enabled_reason() -> tuple[bool, str | None]:
-    if not settings.vector_embedding_base_url:
+def _resolve_embedding_values(embedding: dict[str, str | None] | None) -> tuple[str | None, str | None, str | None]:
+    if not embedding:
+        return settings.vector_embedding_base_url, settings.vector_embedding_model, settings.vector_embedding_api_key
+    return (
+        (embedding.get("base_url") or settings.vector_embedding_base_url),
+        (embedding.get("model") or settings.vector_embedding_model),
+        (embedding.get("api_key") or settings.vector_embedding_api_key),
+    )
+
+
+def _vector_enabled_reason(*, embedding: dict[str, str | None] | None = None) -> tuple[bool, str | None]:
+    base_url, model, api_key = _resolve_embedding_values(embedding)
+    if not base_url:
         return False, "embedding_base_url_missing"
-    if not settings.vector_embedding_model:
+    if not model:
         return False, "embedding_model_missing"
-    if not settings.vector_embedding_api_key:
+    if not api_key:
         return False, "embedding_api_key_missing"
     return True, None
 
 
-def vector_rag_status(*, project_id: str, sources: list[VectorSource] | None = None) -> dict[str, Any]:
+def vector_rag_status(
+    *,
+    project_id: str,
+    sources: list[VectorSource] | None = None,
+    embedding: dict[str, str | None] | None = None,
+) -> dict[str, Any]:
     sources = sources or list(_ALL_SOURCES)
-    enabled, disabled_reason = _vector_enabled_reason()
+    enabled, disabled_reason = _vector_enabled_reason(embedding=embedding)
     if not enabled:
         return {
             "enabled": False,
@@ -301,10 +317,11 @@ def build_project_chunks(*, db: Session, project_id: str, sources: list[VectorSo
     return out
 
 
-def _embed_texts(texts: list[str]) -> list[list[float]]:
-    base_url = normalize_base_url(str(settings.vector_embedding_base_url))
-    model = str(settings.vector_embedding_model)
-    api_key = str(settings.vector_embedding_api_key)
+def _embed_texts(texts: list[str], *, embedding: dict[str, str | None] | None = None) -> list[list[float]]:
+    base_url_raw, model_raw, api_key_raw = _resolve_embedding_values(embedding)
+    base_url = normalize_base_url(str(base_url_raw or ""))
+    model = str(model_raw or "")
+    api_key = str(api_key_raw or "")
 
     url = base_url.rstrip("/") + "/embeddings"
     client = get_llm_http_client()
@@ -608,8 +625,13 @@ def _pgvector_hybrid_query(*, project_id: str, query_text: str, query_vec: list[
     }
 
 
-def ingest_chunks(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, Any]:
-    enabled, disabled_reason = _vector_enabled_reason()
+def ingest_chunks(
+    *,
+    project_id: str,
+    chunks: list[VectorChunk],
+    embedding: dict[str, str | None] | None = None,
+) -> dict[str, Any]:
+    enabled, disabled_reason = _vector_enabled_reason(embedding=embedding)
     if not enabled:
         return {"enabled": False, "skipped": True, "disabled_reason": disabled_reason, "ingested": 0}
 
@@ -620,7 +642,7 @@ def ingest_chunks(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, An
 
     embeddings: list[list[float]] = []
     if texts:
-        embeddings = _embed_texts(texts)
+        embeddings = _embed_texts(texts, embedding=embedding)
 
     embed_ms = int((time.perf_counter() - start) * 1000)
 
@@ -674,8 +696,13 @@ def ingest_chunks(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, An
     return {"enabled": True, "skipped": False, "ingested": len(chunks), "timings_ms": {"embed": embed_ms, "upsert": write_ms}, "backend": "chroma"}
 
 
-def rebuild_project(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, Any]:
-    enabled, disabled_reason = _vector_enabled_reason()
+def rebuild_project(
+    *,
+    project_id: str,
+    chunks: list[VectorChunk],
+    embedding: dict[str, str | None] | None = None,
+) -> dict[str, Any]:
+    enabled, disabled_reason = _vector_enabled_reason(embedding=embedding)
     if not enabled:
         return {"enabled": False, "skipped": True, "disabled_reason": disabled_reason, "rebuilt": 0}
 
@@ -692,7 +719,7 @@ def rebuild_project(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, 
                 backend="pgvector",
                 error_type=type(exc).__name__,
             )
-        out = ingest_chunks(project_id=project_id, chunks=chunks)
+        out = ingest_chunks(project_id=project_id, chunks=chunks, embedding=embedding)
         return {"enabled": bool(out.get("enabled")), "skipped": bool(out.get("skipped")), "rebuilt": int(out.get("ingested") or 0), **out}
 
     try:
@@ -707,7 +734,7 @@ def rebuild_project(*, project_id: str, chunks: list[VectorChunk]) -> dict[str, 
     except Exception as exc:  # pragma: no cover - env dependent
         return {"enabled": False, "skipped": True, "disabled_reason": "chroma_unavailable", "error": str(exc), "rebuilt": 0}
 
-    out = ingest_chunks(project_id=project_id, chunks=chunks)
+    out = ingest_chunks(project_id=project_id, chunks=chunks, embedding=embedding)
     return {"enabled": bool(out.get("enabled")), "skipped": bool(out.get("skipped")), "rebuilt": int(out.get("ingested") or 0), **out}
 
 
@@ -746,9 +773,10 @@ def query_project(
     project_id: str,
     query_text: str,
     sources: list[VectorSource] | None = None,
+    embedding: dict[str, str | None] | None = None,
 ) -> dict[str, Any]:
     sources = sources or list(_ALL_SOURCES)
-    enabled, disabled_reason = _vector_enabled_reason()
+    enabled, disabled_reason = _vector_enabled_reason(embedding=embedding)
     if not enabled:
         return {
             "enabled": False,
@@ -764,7 +792,7 @@ def query_project(
         }
 
     start = time.perf_counter()
-    qvec = _embed_texts([query_text.strip() or " "])[0]
+    qvec = _embed_texts([query_text.strip() or " "], embedding=embedding)[0]
     embed_ms = int((time.perf_counter() - start) * 1000)
 
     top_k = int(settings.vector_max_candidates or 20)

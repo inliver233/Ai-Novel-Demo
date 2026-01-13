@@ -5,10 +5,31 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import UserIdDep, require_project_editor, require_project_viewer
 from app.core.errors import ok_payload
+from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.db.session import SessionLocal
+from app.models.project_settings import ProjectSettings
 from app.services.vector_rag_service import VectorSource, build_project_chunks, ingest_chunks, query_project, rebuild_project
 
 router = APIRouter()
+
+def _vector_embedding_overrides(row: ProjectSettings | None) -> dict[str, str | None]:
+    if row is None:
+        return {}
+    out: dict[str, str | None] = {}
+    base_url = str(row.vector_embedding_base_url or "").strip()
+    if base_url:
+        out["base_url"] = base_url
+    model = str(row.vector_embedding_model or "").strip()
+    if model:
+        out["model"] = model
+    if row.vector_embedding_api_key_ciphertext:
+        try:
+            api_key = decrypt_secret(row.vector_embedding_api_key_ciphertext).strip()
+        except SecretCryptoError:
+            api_key = ""
+        if api_key:
+            out["api_key"] = api_key
+    return out
 
 
 class VectorIngestRequest(BaseModel):
@@ -25,13 +46,15 @@ def ingest_vector_index(request: Request, user_id: UserIdDep, project_id: str, b
     request_id = request.state.request_id
 
     db = SessionLocal()
+    embedding: dict[str, str | None] = {}
     try:
         require_project_editor(db, project_id=project_id, user_id=user_id)
         chunks = build_project_chunks(db=db, project_id=project_id, sources=body.sources)
+        embedding = _vector_embedding_overrides(db.get(ProjectSettings, project_id))
     finally:
         db.close()
 
-    result = ingest_chunks(project_id=project_id, chunks=chunks)
+    result = ingest_chunks(project_id=project_id, chunks=chunks, embedding=embedding)
     return ok_payload(request_id=request_id, data={"result": result})
 
 
@@ -40,13 +63,15 @@ def rebuild_vector_index(request: Request, user_id: UserIdDep, project_id: str, 
     request_id = request.state.request_id
 
     db = SessionLocal()
+    embedding: dict[str, str | None] = {}
     try:
         require_project_editor(db, project_id=project_id, user_id=user_id)
         chunks = build_project_chunks(db=db, project_id=project_id, sources=body.sources)
+        embedding = _vector_embedding_overrides(db.get(ProjectSettings, project_id))
     finally:
         db.close()
 
-    result = rebuild_project(project_id=project_id, chunks=chunks)
+    result = rebuild_project(project_id=project_id, chunks=chunks, embedding=embedding)
     return ok_payload(request_id=request_id, data={"result": result})
 
 
@@ -55,10 +80,12 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
     request_id = request.state.request_id
 
     db = SessionLocal()
+    embedding: dict[str, str | None] = {}
     try:
         require_project_viewer(db, project_id=project_id, user_id=user_id)
+        embedding = _vector_embedding_overrides(db.get(ProjectSettings, project_id))
     finally:
         db.close()
 
-    result = query_project(project_id=project_id, query_text=body.query_text, sources=body.sources)
+    result = query_project(project_id=project_id, query_text=body.query_text, sources=body.sources, embedding=embedding)
     return ok_payload(request_id=request_id, data={"result": result})

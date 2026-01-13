@@ -25,6 +25,16 @@ export interface ProjectSettings {
   world_setting: string;
   style_guide: string;
   constraints: string;
+  vector_embedding_base_url: string;
+  vector_embedding_model: string;
+  vector_embedding_has_api_key: boolean;
+  vector_embedding_masked_api_key: string;
+  vector_embedding_effective_base_url: string;
+  vector_embedding_effective_model: string;
+  vector_embedding_effective_has_api_key: boolean;
+  vector_embedding_effective_masked_api_key: string;
+  vector_embedding_effective_disabled_reason?: string | null;
+  vector_embedding_effective_source: string;
 }
 
 export interface Character {

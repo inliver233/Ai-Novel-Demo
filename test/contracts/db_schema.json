@@ -2249,6 +2249,34 @@
         },
         {
           "dflt_value": null,
+          "name": "vector_embedding_api_key_ciphertext",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_embedding_api_key_masked",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_embedding_base_url",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(2048)"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_embedding_model",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
           "name": "world_setting",
           "notnull": 0,
           "pk": 0,

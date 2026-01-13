@@ -7,6 +7,8 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.secrets import SecretCryptoError, decrypt_secret
+from app.models.project_settings import ProjectSettings
 from app.models.story_memory import StoryMemory
 from app.models.structured_memory import MemoryEntity, MemoryEvent, MemoryForeshadow, MemoryRelation
 from app.schemas.memory_pack import MemoryContextPackOut
@@ -18,6 +20,29 @@ from app.services.worldbook_service import preview_worldbook_trigger
 
 _MEMORY_TEXT_MD_CHAR_LIMIT = 6000
 _TRUNCATION_MARK = "\n…(truncated)\n"
+
+
+def _vector_embedding_overrides(*, db: Session, project_id: str) -> dict[str, str | None]:
+    row = db.get(ProjectSettings, project_id)
+    if row is None:
+        return {}
+
+    out: dict[str, str | None] = {}
+    base_url = str(row.vector_embedding_base_url or "").strip()
+    if base_url:
+        out["base_url"] = base_url
+    model = str(row.vector_embedding_model or "").strip()
+    if model:
+        out["model"] = model
+
+    if row.vector_embedding_api_key_ciphertext:
+        try:
+            api_key = decrypt_secret(row.vector_embedding_api_key_ciphertext).strip()
+        except SecretCryptoError:
+            api_key = ""
+        if api_key:
+            out["api_key"] = api_key
+    return out
 
 
 def _wrap_and_truncate_block(*, tag: str, inner: str, char_limit: int) -> tuple[str, bool]:
@@ -325,16 +350,17 @@ def retrieve_memory_context_pack(
         graph["text_md"] = str(pb.get("text_md") or "")
 
     vector_query_text = (query_text or "").strip()
+    embedding_overrides = _vector_embedding_overrides(db=db, project_id=project_id)
     try:
         if not vector_rag_enabled:
-            vector_rag = vector_rag_status(project_id=project_id)
+            vector_rag = vector_rag_status(project_id=project_id, embedding=embedding_overrides)
             vector_rag["enabled"] = False
             vector_rag["disabled_reason"] = "disabled"
             vector_rag["query_text"] = vector_query_text
         elif vector_query_text:
-            vector_rag = query_project(project_id=project_id, query_text=vector_query_text)
+            vector_rag = query_project(project_id=project_id, query_text=vector_query_text, embedding=embedding_overrides)
         else:
-            vector_rag = vector_rag_status(project_id=project_id)
+            vector_rag = vector_rag_status(project_id=project_id, embedding=embedding_overrides)
     except Exception as exc:
         vector_rag = vector_rag_status(project_id=project_id)
         vector_rag["enabled"] = False
