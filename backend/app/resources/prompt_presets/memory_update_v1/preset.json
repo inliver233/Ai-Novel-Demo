@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "name": "默认·Memory Update v1（推荐）",
+  "scope": "project",
+  "version": 1,
+  "activation_tasks": [
+    "memory_update"
+  ],
+  "blocks": [
+    {
+      "identifier": "sys.memory_update.role",
+      "name": "Memory Update：角色与原则",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.memory_update.role.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 10,
+      "triggers": [
+        "memory_update"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.memory_update.contract.json",
+      "name": "Memory Update：输出契约（JSON）",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.memory_update.contract.json.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 20,
+      "triggers": [
+        "memory_update"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "user.memory_update.inputs",
+      "name": "Memory Update：输入（章节/焦点）",
+      "role": "user",
+      "enabled": true,
+      "template_file": "templates/user.memory_update.inputs.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 100,
+      "triggers": [
+        "memory_update"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    }
+  ]
+}
+

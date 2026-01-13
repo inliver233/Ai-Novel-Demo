@@ -4,15 +4,18 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from app.services.output_parsers import (
+    extract_json_value,
     build_outline_fix_json_prompt,
+    likely_truncated_json,
     parse_chapter_analysis_output,
     parse_chapter_output,
     parse_outline_output,
     parse_tag_output,
 )
+from app.schemas.memory_update import MemoryUpdateOpV1
 
 
-OutputContractType = Literal["markers", "json", "tags", "analysis_json"]
+OutputContractType = Literal["markers", "json", "tags", "analysis_json", "memory_update_json"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +62,62 @@ class OutputContract:
                     )
             return OutputParseResult(data=data, warnings=warnings, parse_error=parse_error)
 
+        if self.type == "memory_update_json":
+            warnings: list[str] = []
+            value, raw_json = extract_json_value(text)
+            if isinstance(value, list):
+                value = {"ops": value}
+            if not isinstance(value, dict):
+                parse_error: dict[str, Any] = {"code": "MEMORY_UPDATE_PARSE_ERROR", "message": "无法从模型输出解析 memory_update JSON"}
+                if likely_truncated_json(text):
+                    parse_error["hint"] = "输出疑似被截断（JSON 未闭合），可尝试增大 max_tokens 或减少输出长度"
+                data = {"title": "", "summary_md": "", "ops": [], "raw_output": text}
+                return OutputParseResult(data=data, warnings=warnings, parse_error=parse_error)
+
+            title = value.get("title")
+            title_out = title.strip() if isinstance(title, str) else ""
+            summary_md = value.get("summary_md")
+            summary_out = summary_md.strip() if isinstance(summary_md, str) else ""
+
+            ops_raw = value.get("ops")
+            if not isinstance(ops_raw, list) or not ops_raw:
+                data = {"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text}
+                if raw_json:
+                    data["raw_json"] = raw_json
+                return OutputParseResult(
+                    data=data,
+                    warnings=warnings,
+                    parse_error={"code": "MEMORY_UPDATE_PARSE_ERROR", "message": "ops 为空或缺失"},
+                )
+
+            ops_out: list[dict[str, Any]] = []
+            for idx, item in enumerate(ops_raw):
+                if not isinstance(item, dict):
+                    return OutputParseResult(
+                        data={"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text},
+                        warnings=warnings,
+                        parse_error={"code": "MEMORY_UPDATE_PARSE_ERROR", "message": f"ops[{idx}] 必须是 object"},
+                    )
+                try:
+                    op = MemoryUpdateOpV1.model_validate(item)
+                except Exception as exc:
+                    return OutputParseResult(
+                        data={"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text},
+                        warnings=warnings,
+                        parse_error={
+                            "code": "MEMORY_UPDATE_PARSE_ERROR",
+                            "message": f"ops[{idx}] schema invalid:{type(exc).__name__}",
+                        },
+                    )
+                ops_out.append(dict(op.model_dump()))
+
+            data: dict[str, Any] = {"title": title_out, "summary_md": summary_out, "ops": ops_out, "raw_output": text}
+            if raw_json:
+                data["raw_json"] = raw_json
+            if finish_reason == "length":
+                warnings.append("output_truncated")
+            return OutputParseResult(data=data, warnings=warnings, parse_error=None)
+
         if self.type == "tags":
             tag = (self.tag or "").strip()
             if not tag:
@@ -85,6 +144,8 @@ def contract_for_task(task: str) -> OutputContract:
         return OutputContract(type="analysis_json")
     if task == "chapter_generate":
         return OutputContract(type="markers")
+    if task == "memory_update":
+        return OutputContract(type="memory_update_json")
     if task == "plan_chapter":
         return OutputContract(type="tags", tag="plan", output_key="plan")
     if task == "post_edit":

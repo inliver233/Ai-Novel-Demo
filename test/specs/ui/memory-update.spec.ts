@@ -20,22 +20,7 @@ test("ui: Memory Update propose -> review -> apply", async ({ page, request }) =
   const dialog = page.getByRole("dialog", { name: "Memory Update" });
   await expect(dialog).toBeVisible();
 
-  const input = dialog.getByLabel("memory_update_json", { exact: true });
-  await input.fill(
-    JSON.stringify(
-      [
-        {
-          op: "upsert",
-          target_table: "entities",
-          after: { entity_type: "character", name: "Alice", attributes: { age: 18 } },
-        },
-      ],
-      null,
-      2,
-    ),
-  );
-
-  await dialog.getByRole("button", { name: "Propose", exact: true }).click();
+  await dialog.getByRole("button", { name: "一键生成提议", exact: true }).click();
   await expect(dialog.getByText("提议 diff", { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(dialog.getByText("entities（1）", { exact: true })).toBeVisible();
 

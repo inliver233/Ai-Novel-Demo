@@ -127,6 +127,7 @@ function safeParseJsonField(raw: string | null | undefined): unknown {
 export function MemoryUpdateDrawer(props: Props) {
   const toast = useToast();
   const [inputJson, setInputJson] = useState(EXAMPLE_OPS);
+  const [autoFocus, setAutoFocus] = useState("");
 
   const [proposeLoading, setProposeLoading] = useState(false);
   const [proposeError, setProposeError] = useState<ApiError | null>(null);
@@ -214,6 +215,34 @@ export function MemoryUpdateDrawer(props: Props) {
       setProposeLoading(false);
     }
   }, [inputJson, props.chapterId, toast]);
+
+  const runAutoPropose = useCallback(async () => {
+    if (!props.chapterId) {
+      toast.toastError("请先选择章节");
+      return;
+    }
+    setProposeLoading(true);
+    setProposeError(null);
+    setApplyResult(null);
+    setApplyError(null);
+    try {
+      const idempotencyKey = `memupd-auto-${crypto.randomUUID().slice(0, 12)}`;
+      const res = await apiJson<ProposeResult>(`/api/chapters/${props.chapterId}/memory/propose/auto`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: idempotencyKey, focus: autoFocus.trim() || null }),
+      });
+      setProposeResult(res.data);
+      toast.toastSuccess("已生成提议（自动）");
+    } catch (e) {
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      setProposeError(err);
+    } finally {
+      setProposeLoading(false);
+    }
+  }, [autoFocus, props.chapterId, toast]);
 
   const runApplyAccepted = useCallback(async () => {
     if (!props.chapterId) {
@@ -365,6 +394,17 @@ export function MemoryUpdateDrawer(props: Props) {
               <div className="text-sm text-ink">输入（memory_update_v1）</div>
               <div className="mt-1 text-xs text-subtext">支持：ops 数组 或包含 ops 字段的对象。</div>
               <label className="mt-2 block text-xs text-subtext">
+                focus（可选）
+                <input
+                  className="input mt-1 w-full"
+                  aria-label="memory_update_focus"
+                  name="memory_update_focus"
+                  value={autoFocus}
+                  onChange={(e) => setAutoFocus(e.target.value)}
+                  placeholder="例如：只更新角色关系 / 仅新增事件"
+                />
+              </label>
+              <label className="mt-2 block text-xs text-subtext">
                 memory_update_json
                 <textarea
                   className="textarea mt-1 min-h-40 w-full font-mono text-xs"
@@ -377,6 +417,14 @@ export function MemoryUpdateDrawer(props: Props) {
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button
                   className="btn btn-primary"
+                  onClick={() => void runAutoPropose()}
+                  disabled={proposeLoading}
+                  type="button"
+                >
+                  {proposeLoading ? "生成中..." : "一键生成提议"}
+                </button>
+                <button
+                  className="btn btn-secondary"
                   onClick={() => void runPropose()}
                   disabled={proposeLoading}
                   type="button"

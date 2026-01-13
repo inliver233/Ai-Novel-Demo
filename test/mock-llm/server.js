@@ -76,6 +76,24 @@ function chooseOutputText(payload) {
     );
   }
 
+  if (all.includes("memory_update_v1") || all.includes("<memory_update_input>")) {
+    return JSON.stringify(
+      {
+        title: "E2E Memory Update",
+        summary_md: "自动化测试：新增/更新角色实体",
+        ops: [
+          {
+            op: "upsert",
+            target_table: "entities",
+            after: { entity_type: "character", name: "Alice", summary_md: "E2E 角色", attributes: { age: 18 } },
+          },
+        ],
+      },
+      null,
+      2,
+    );
+  }
+
   return "E2E mock response.";
 }
 
