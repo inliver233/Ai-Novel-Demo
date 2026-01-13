@@ -9,7 +9,7 @@ import { transition } from "../../lib/motion";
 
 type ToastItem = {
   id: string;
-  variant: "success" | "error";
+  variant: "success" | "warning" | "error";
   message: string;
   requestId?: string;
   action?: { label: string; onClick: () => void | Promise<void> };
@@ -61,6 +61,7 @@ export function ToastProvider(props: { children: React.ReactNode }) {
   const api = useMemo<ToastApi>(
     () => ({
       toastSuccess: (message, requestId, action) => push({ variant: "success", message, requestId, action }),
+      toastWarning: (message, requestId, action) => push({ variant: "warning", message, requestId, action }),
       toastError: (message, requestId, action) => push({ variant: "error", message, requestId, action }),
     }),
     [push],
@@ -89,7 +90,11 @@ export function ToastProvider(props: { children: React.ReactNode }) {
                 }
                 className={clsx(
                   "rounded-atelier border bg-surface/85 p-3 shadow-sm backdrop-blur",
-                  t.variant === "error" ? "border-accent/60" : "border-border",
+                  t.variant === "error"
+                    ? "border-accent/60"
+                    : t.variant === "warning"
+                      ? "border-amber-500/50"
+                      : "border-border",
                 )}
               >
                 <div className="flex items-start justify-between gap-3">

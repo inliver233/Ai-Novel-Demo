@@ -6,6 +6,11 @@ export type ToastApi = {
     requestId?: string,
     action?: { label: string; onClick: () => void | Promise<void> },
   ) => void;
+  toastWarning: (
+    message: string,
+    requestId?: string,
+    action?: { label: string; onClick: () => void | Promise<void> },
+  ) => void;
   toastError: (
     message: string,
     requestId?: string,
