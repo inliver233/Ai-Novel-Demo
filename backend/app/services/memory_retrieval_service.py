@@ -104,3 +104,27 @@ def placeholder_memory_retrieval_log(*, enabled: bool) -> dict[str, Any]:
         "overfilter": {},
         "errors": [],
     }
+
+
+def build_memory_retrieval_log_json(
+    *,
+    enabled: bool,
+    query_text: str,
+    pack: MemoryContextPackOut | None,
+    errors: list[str] | None = None,
+) -> dict[str, Any]:
+    per_section: dict[str, Any] = {}
+    if pack is not None:
+        for item in pack.logs:
+            per_section[str(item.section)] = item.model_dump()
+
+    safe_errors = [str(e).strip() for e in (errors or []) if str(e).strip()]
+    return {
+        "phase": "1.0",
+        "enabled": bool(enabled),
+        "query_text": str(query_text or ""),
+        "per_section": per_section,
+        "budgets": {},
+        "overfilter": {},
+        "errors": safe_errors,
+    }

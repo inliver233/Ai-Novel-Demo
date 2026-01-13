@@ -43,6 +43,7 @@ from app.services.chapter_context_service import (
     inject_plan_into_render_values,
 )
 from app.services.fractal_memory_service import rebuild_fractal_memory
+from app.services.memory_retrieval_service import build_memory_retrieval_log_json, retrieve_memory_context_pack
 from app.services.prompt_presets import ensure_default_plan_preset, ensure_default_post_edit_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
 from app.services.run_store import write_generation_run
@@ -553,11 +554,27 @@ def generate_chapter(
             body=body,
             user_id=user_id,
         )
+        pack = None
+        pack_errors = None
+        if body.memory_injection_enabled:
+            try:
+                pack = retrieve_memory_context_pack(db=db, project_id=project_id)
+                values["memory"] = pack.model_dump()
+            except Exception:
+                pack = None
+                pack_errors = ["memory_pack_error"]
         render_values = values
         run_params_extra_json = {
             "style_resolution": style_resolution,
             "memory_injection_enabled": body.memory_injection_enabled,
         }
+        if body.memory_injection_enabled:
+            run_params_extra_json["memory_retrieval_log_json"] = build_memory_retrieval_log_json(
+                enabled=True,
+                query_text="",
+                pack=pack,
+                errors=pack_errors,
+            )
 
         if body.plan_first:
             ensure_default_plan_preset(db, project_id=project_id)
@@ -787,11 +804,27 @@ def generate_chapter_stream(
                 body=body,
                 user_id=user_id,
             )
+            pack = None
+            pack_errors = None
+            if body.memory_injection_enabled:
+                try:
+                    pack = retrieve_memory_context_pack(db=db, project_id=project_id)
+                    values["memory"] = pack.model_dump()
+                except Exception:
+                    pack = None
+                    pack_errors = ["memory_pack_error"]
             render_values = values
             run_params_extra_json = {
                 "style_resolution": style_resolution,
                 "memory_injection_enabled": body.memory_injection_enabled,
             }
+            if body.memory_injection_enabled:
+                run_params_extra_json["memory_retrieval_log_json"] = build_memory_retrieval_log_json(
+                    enabled=True,
+                    query_text="",
+                    pack=pack,
+                    errors=pack_errors,
+                )
 
             if body.plan_first:
                 ensure_default_plan_preset(db, project_id=project_id)
