@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     vector_embedding_api_key: str | None = None
     vector_backend: VectorBackend = "auto"
     vector_hybrid_enabled: bool = True
+    vector_rerank_enabled: bool = False
     vector_hybrid_rrf_k: int = 60
     vector_overfiltering_enabled: bool = True
     vector_max_candidates: int = 20

@@ -73,6 +73,92 @@ def _rrf_score(*, vector_rank: int | None, fts_rank: int | None, k: int) -> floa
     return _rrf_contrib(vector_rank, k=k) + _rrf_contrib(fts_rank, k=k)
 
 
+_RERANK_TOKEN_RE = re.compile("[A-Za-z0-9\u4e00-\u9fff]+")
+
+
+def _rerank_tokens(text: str) -> set[str]:
+    if not text:
+        return set()
+    return {t.lower() for t in _RERANK_TOKEN_RE.findall(text) if t.strip()}
+
+
+def _rerank_score(*, method: str, query_text: str, candidate_text: str) -> float:
+    qtext = (query_text or "").strip()
+    if not qtext:
+        return 0.0
+
+    if method == "rapidfuzz_token_set_ratio":
+        from rapidfuzz import fuzz  # type: ignore[import-not-found]
+
+        return float(fuzz.token_set_ratio(qtext, candidate_text or "")) / 100.0
+
+    q_tokens = _rerank_tokens(qtext)
+    if not q_tokens:
+        return 0.0
+    c_tokens = _rerank_tokens(candidate_text or "")
+    if not c_tokens:
+        return 0.0
+    return float(len(q_tokens & c_tokens)) / float(len(q_tokens))
+
+
+def _rerank_candidates(
+    *, query_text: str, candidates: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    before = [str(c.get("id") or "") for c in candidates if isinstance(c, dict)]
+    start = time.perf_counter()
+
+    qtext = (query_text or "").strip()
+    if not qtext or not candidates:
+        return list(candidates), {
+            "enabled": True,
+            "applied": False,
+            "method": None,
+            "reason": "empty_query_or_candidates",
+            "before": before,
+            "after": list(before),
+            "timing_ms": int((time.perf_counter() - start) * 1000),
+        }
+
+    errors: list[dict[str, str]] = []
+    for method in ("rapidfuzz_token_set_ratio", "token_overlap"):
+        try:
+            scored: list[tuple[float, int, dict[str, Any]]] = []
+            for idx, c in enumerate(candidates):
+                if not isinstance(c, dict):
+                    continue
+                score = float(_rerank_score(method=method, query_text=qtext, candidate_text=str(c.get("text") or "")))
+                scored.append((score, idx, c))
+
+            scored.sort(key=lambda x: (-x[0], x[1]))
+            reranked = [c for _score, _idx, c in scored]
+            after = [str(c.get("id") or "") for c in reranked if isinstance(c, dict)]
+            obs: dict[str, Any] = {
+                "enabled": True,
+                "applied": True,
+                "method": method,
+                "before": before,
+                "after": after,
+                "timing_ms": int((time.perf_counter() - start) * 1000),
+            }
+            if errors:
+                obs["fallback"] = errors
+            return reranked, obs
+        except ImportError as exc:
+            errors.append({"method": method, "reason": "dependency_missing", "error": type(exc).__name__})
+        except Exception as exc:
+            errors.append({"method": method, "reason": "error", "error": type(exc).__name__})
+
+    return list(candidates), {
+        "enabled": True,
+        "applied": False,
+        "method": None,
+        "before": before,
+        "after": list(before),
+        "timing_ms": int((time.perf_counter() - start) * 1000),
+        "errors": errors,
+    }
+
+
 def _vector_candidate_key(candidate: dict[str, Any]) -> tuple[str, str]:
     meta = candidate.get("metadata") if isinstance(candidate.get("metadata"), dict) else {}
     return (str(meta.get("source") or ""), str(meta.get("source_id") or ""))
@@ -813,6 +899,9 @@ def query_project(
                 candidates.append(cc)
 
             trimmed_candidates = candidates[:top_k]
+            rerank_obs: dict[str, Any] | None = None
+            if bool(getattr(settings, "vector_rerank_enabled", False)) and trimmed_candidates:
+                trimmed_candidates, rerank_obs = _rerank_candidates(query_text=query_text, candidates=trimmed_candidates)
             dropped: list[dict[str, Any]] = []
             final_chunks: list[dict[str, Any]] = []
             seen_keys: set[tuple[str, str]] = set()
@@ -839,6 +928,8 @@ def query_project(
             post_ms = int((time.perf_counter() - post_start) * 1000)
 
             timings_ms = {"embed": embed_ms, "query": query_ms, "post": post_ms}
+            if rerank_obs:
+                timings_ms["rerank"] = int(rerank_obs.get("timing_ms") or 0)
             obs_counts = _build_vector_query_counts(
                 candidates_total=len(candidates),
                 returned_candidates=trimmed_candidates,
@@ -860,6 +951,7 @@ def query_project(
                 filters={"sources": sources},
                 overfilter=hybrid_out.get("overfilter"),
                 counts=hybrid_out.get("counts"),
+                rerank=rerank_obs,
             )
 
             return {
@@ -872,6 +964,7 @@ def query_project(
                 "final": {"chunks": final_chunks, "text_md": text_md, "truncated": truncated},
                 "dropped": dropped,
                 "counts": obs_counts,
+                "rerank": rerank_obs,
                 "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},
                 "backend": "pgvector",
                 "hybrid": {
@@ -935,12 +1028,17 @@ def query_project(
             }
         )
 
+    trimmed_candidates = candidates[:top_k]
+    rerank_obs: dict[str, Any] | None = None
+    if bool(getattr(settings, "vector_rerank_enabled", False)) and trimmed_candidates:
+        trimmed_candidates, rerank_obs = _rerank_candidates(query_text=query_text, candidates=trimmed_candidates)
+
     dropped: list[dict[str, Any]] = []
     final_chunks: list[dict[str, Any]] = []
     seen_keys: set[tuple[str, str]] = set()
     max_chunks = int(settings.vector_final_max_chunks or 6)
     processed = 0
-    for c in candidates:
+    for c in trimmed_candidates:
         processed += 1
         meta = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
         key = (str(meta.get("source") or ""), str(meta.get("source_id") or ""))
@@ -952,9 +1050,8 @@ def query_project(
         if len(final_chunks) >= max_chunks:
             break
 
-    trimmed_candidates = candidates[:top_k]
     if len(final_chunks) >= max_chunks:
-        for c in candidates[processed:]:
+        for c in trimmed_candidates[processed:]:
             dropped.append({"id": c.get("id"), "reason": "budget"})
 
     post_start = time.perf_counter()
@@ -962,6 +1059,8 @@ def query_project(
     post_ms = int((time.perf_counter() - post_start) * 1000)
 
     timings_ms = {"embed": embed_ms, "query": query_ms, "post": post_ms}
+    if rerank_obs:
+        timings_ms["rerank"] = int(rerank_obs.get("timing_ms") or 0)
     obs_counts = _build_vector_query_counts(
         candidates_total=len(candidates),
         returned_candidates=trimmed_candidates,
@@ -980,6 +1079,7 @@ def query_project(
         dropped=dropped[:5],
         timings_ms=timings_ms,
         filters={"sources": sources},
+        rerank=rerank_obs,
     )
 
     out: dict[str, Any] = {
@@ -992,6 +1092,7 @@ def query_project(
         "final": {"chunks": final_chunks, "text_md": text_md, "truncated": truncated},
         "dropped": dropped,
         "counts": obs_counts,
+        "rerank": rerank_obs,
         "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},
         "backend": "chroma",
     }
