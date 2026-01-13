@@ -55,6 +55,15 @@ Playwright `globalSetup/globalTeardown` 会做这些事：
 3. 启动前端（Vite）：`http://127.0.0.1:5173`
 4. 测试产物输出到：`test/.artifacts/`
 
+## 默认测试账号（E2E）
+
+Playwright `globalSetup` 会用以下默认账号启动后端并用于 UI 测试登录：
+
+- 用户名：`admin`
+- 密码：`admin-pass`
+
+同时前端会设置 `VITE_DEV_FALLBACK_ENABLED=true`（仅 DEV；生产环境不得开启 dev_fallback）。
+
 端口占用会直接报错：`4010 / 8000 / 5173` 必须空闲。
 
 如需自定义端口（例如本机已占用 8000/5173），可在运行前设置环境变量：

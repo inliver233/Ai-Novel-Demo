@@ -102,6 +102,14 @@ docker compose logs -f rq_worker
 - Claude（Anthropic）思考预算：可在 `extra.thinking` 配置；如需 Beta 特性可在 `extra.anthropic_beta` 传 header 值
 - Gemini 思考预算：可在 `extra.thinkingConfig` 配置（透传到 `generationConfig.thinkingConfig`）
 
+## 长期记忆（LMEM）/记忆注入（memory injection）
+
+- 预览：写作页的 Context Preview 会调用 `/api/projects/{project_id}/memory/retrieve` 返回 MemoryContextPack（worldbook/story_memory/structured/vector_rag/graph_context/fractal）。
+- 开关：生成章节时会把 `memory_injection_enabled` 随请求发送到后端；后端会在生成前将 pack 注入到 `render_values.memory`。
+- Prompt 注入：推荐使用内置章节预设 `chapter_generate_v4`（包含 `sys.memory.*` blocks，marker_key=`memory.<section>.text_md`）；旧的 `chapter_generate_v3` 不包含 memory blocks。
+- 回放/定位：`generation_runs.params_json` 会记录 `memory_injection_enabled` 与 `memory_retrieval_log_json`。
+- 向量检索：embedding 配置可通过「项目设置」写入 DB（API Key 加密，仅返回 `has_api_key/masked_api_key`），或通过后端 env fallback（见 `backend/.env.example`）。
+
 ## 工程卫生（必须）
 
 - **不要提交运行/构建产物**：例如 `backend/.env`、`backend/*.db`、`frontend/dist`、`frontend/node_modules`、`demo/**/__pycache__` 等（已由根 `.gitignore` 统一忽略）。
@@ -142,6 +150,11 @@ cd backend
 手工闭环：
 
 - 按 `mvp开发计划.md` 第 11 节演示脚本跑通（LLM 步骤需要真实 Key）
+
+## E2E 默认账号 & dev_fallback（DEV only）
+
+- Playwright E2E（`pwsh test/run-all.ps1`）会以 `AUTH_ADMIN_USER_ID=admin` / `AUTH_ADMIN_PASSWORD=admin-pass` 启动后端并用于 UI 测试登录。
+- 前端 E2E 会设置 `VITE_DEV_FALLBACK_ENABLED=true` 以覆盖 dev_fallback 路径；生产环境务必保持禁用并确保 `APP_ENV=prod`（避免鉴权绕过风险）。
 
 ## 环境变量（后端）
 
