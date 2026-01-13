@@ -62,6 +62,15 @@ test("api: analysis/apply + annotations contract", async ({ request }) => {
   expect(apply1Json.data.memories.length).toBeGreaterThanOrEqual(1);
   expect(apply1Json.data.memories.some((m) => m.memory_type === "hook")).toBe(true);
 
+  const packRes = await request.get(`${state.backendUrl}/api/projects/${projectId}/memory/retrieve?query_text=E2E_HOOK_EXCERPT`);
+  expect(packRes.ok()).toBeTruthy();
+  const packJson = (await packRes.json()) as ApiOk<{ story_memory: Record<string, unknown> }>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const storyMemory = (packJson.data as any).story_memory as Record<string, unknown>;
+  expect(storyMemory.enabled).toBe(true);
+  expect(typeof storyMemory.text_md).toBe("string");
+  expect(String(storyMemory.text_md)).toContain("E2E_HOOK_EXCERPT");
+
   const apply2 = await request.post(`${state.backendUrl}/api/chapters/${chapterId}/analysis/apply`, {
     data: { analysis, draft_content_md: contentMd },
   });

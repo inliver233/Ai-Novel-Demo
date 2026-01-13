@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -56,6 +57,25 @@ def _format_story_memory_text_md(*, memories: list[StoryMemory], char_limit: int
             content = content[:800].rstrip() + "…"
         parts.append(f"### [{mem_type}] {title}\n{content}".rstrip())
     return _wrap_and_truncate_block(tag="StoryMemory", inner="\n\n".join(parts), char_limit=char_limit)
+
+
+def _extract_query_tokens(query_text: str, *, limit: int) -> list[str]:
+    q = (query_text or "").strip()
+    if not q:
+        return []
+    tokens = [t.strip() for t in re.split(r"[^0-9A-Za-z\u4e00-\u9fff]+", q) if t and t.strip()]
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in tokens:
+        if len(t) < 2:
+            continue
+        if t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+        if len(out) >= int(limit):
+            break
+    return out
 
 
 def _format_structured_text_md(
@@ -137,16 +157,22 @@ def retrieve_memory_context_pack(*, db: Session, project_id: str, query_text: st
     story_memory: dict[str, Any] = {"enabled": False, "disabled_reason": "empty", "items": [], "text_md": ""}
     try:
         limit_plus_one = 41
-        rows = (
-            db.execute(
-                select(StoryMemory)
-                .where(StoryMemory.project_id == project_id)
-                .order_by(StoryMemory.importance_score.desc(), StoryMemory.updated_at.desc())
-                .limit(limit_plus_one)
-            )
-            .scalars()
-            .all()
+        tokens = _extract_query_tokens(query_text, limit=6)
+        stmt = (
+            select(StoryMemory)
+            .where(StoryMemory.project_id == project_id)
+            .order_by(StoryMemory.importance_score.desc(), StoryMemory.updated_at.desc())
         )
+        if tokens:
+            conds = []
+            for t in tokens:
+                like_term = f"%{t}%"
+                conds.append(StoryMemory.content.like(like_term))
+                conds.append(StoryMemory.title.like(like_term))
+            filtered = db.execute(stmt.where(or_(*conds)).limit(limit_plus_one)).scalars().all()
+            rows = filtered if filtered else db.execute(stmt.limit(limit_plus_one)).scalars().all()
+        else:
+            rows = db.execute(stmt.limit(limit_plus_one)).scalars().all()
         truncated = len(rows) > (limit_plus_one - 1)
         rows = rows[: limit_plus_one - 1]
         enabled = bool(rows)
@@ -168,6 +194,8 @@ def retrieve_memory_context_pack(*, db: Session, project_id: str, query_text: st
         story_memory = {
             "enabled": enabled,
             "disabled_reason": None if enabled else "empty",
+            "query_text": query_text,
+            "filter_tokens": tokens,
             "items": items,
             "truncated": bool(truncated or text_truncated),
             "text_md": text_md,
