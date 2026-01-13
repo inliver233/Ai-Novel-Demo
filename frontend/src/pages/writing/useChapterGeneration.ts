@@ -38,6 +38,15 @@ const DEFAULT_GEN_FORM: GenerateForm = {
   post_edit_sanitize: false,
   style_id: null,
   memory_injection_enabled: false,
+  memory_query_text: "",
+  memory_modules: {
+    worldbook: true,
+    story_memory: true,
+    structured: true,
+    vector_rag: true,
+    graph: true,
+    fractal: true,
+  },
   context: {
     include_world_setting: true,
     include_style_guide: true,
@@ -157,6 +166,8 @@ export function useChapterGeneration(args: {
           post_edit_sanitize: genForm.post_edit_sanitize,
           style_id: genForm.style_id,
           memory_injection_enabled: genForm.memory_injection_enabled,
+          memory_query_text: genForm.memory_query_text.trim() ? genForm.memory_query_text : null,
+          memory_modules: genForm.memory_modules,
           context: {
             include_world_setting: genForm.context.include_world_setting,
             include_style_guide: genForm.context.include_style_guide,

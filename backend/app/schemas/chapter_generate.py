@@ -41,4 +41,6 @@ class ChapterGenerateRequest(BaseModel):
     post_edit_sanitize: bool = False
     style_id: str | None = Field(default=None, max_length=36)
     memory_injection_enabled: bool = False
+    memory_query_text: str | None = Field(default=None, max_length=5000)
+    memory_modules: dict[str, bool] = Field(default_factory=dict)
     context: ChapterGenerateContext = Field(default_factory=ChapterGenerateContext)

@@ -557,13 +557,35 @@ def generate_chapter(
         pack = None
         pack_errors = None
         memory_query_text = ""
+        query_text_source = "auto"
+        memory_modules = {"worldbook": True, "story_memory": True, "structured": True, "vector_rag": True, "graph": True, "fractal": True}
         if body.memory_injection_enabled:
-            memory_query_text = base_instruction
-            if chapter.plan:
-                memory_query_text = f"{memory_query_text}\n\n{chapter.plan}".strip()
-            memory_query_text = memory_query_text[:5000]
+            requested_query_text = str(body.memory_query_text or "").strip()
+            if requested_query_text:
+                memory_query_text = requested_query_text[:5000]
+                query_text_source = "user"
+            else:
+                memory_query_text = base_instruction
+                if chapter.plan:
+                    memory_query_text = f"{memory_query_text}\n\n{chapter.plan}".strip()
+                memory_query_text = memory_query_text[:5000]
+
+            raw_modules = body.memory_modules or {}
+            memory_modules = {
+                "worldbook": bool(raw_modules.get("worldbook", True)),
+                "story_memory": bool(raw_modules.get("story_memory", True)),
+                "structured": bool(raw_modules.get("structured", True)),
+                "vector_rag": bool(raw_modules.get("vector_rag", True)),
+                "graph": bool(raw_modules.get("graph", True)),
+                "fractal": bool(raw_modules.get("fractal", True)),
+            }
             try:
-                pack = retrieve_memory_context_pack(db=db, project_id=project_id, query_text=memory_query_text)
+                pack = retrieve_memory_context_pack(
+                    db=db,
+                    project_id=project_id,
+                    query_text=memory_query_text,
+                    section_enabled=memory_modules,
+                )
                 values["memory"] = pack.model_dump()
             except Exception:
                 pack = None
@@ -574,6 +596,11 @@ def generate_chapter(
             "memory_injection_enabled": body.memory_injection_enabled,
         }
         if body.memory_injection_enabled:
+            run_params_extra_json["memory_injection_config"] = {
+                "query_text": memory_query_text,
+                "query_text_source": query_text_source,
+                "modules": memory_modules,
+            }
             run_params_extra_json["memory_retrieval_log_json"] = build_memory_retrieval_log_json(
                 enabled=True,
                 query_text=memory_query_text,
@@ -812,12 +839,34 @@ def generate_chapter_stream(
             pack = None
             pack_errors = None
             if body.memory_injection_enabled:
-                memory_query_text = base_instruction
-                if chapter.plan:
-                    memory_query_text = f"{memory_query_text}\n\n{chapter.plan}".strip()
-                memory_query_text = memory_query_text[:5000]
+                query_text_source = "auto"
+                memory_modules = {"worldbook": True, "story_memory": True, "structured": True, "vector_rag": True, "graph": True, "fractal": True}
+                requested_query_text = str(body.memory_query_text or "").strip()
+                if requested_query_text:
+                    memory_query_text = requested_query_text[:5000]
+                    query_text_source = "user"
+                else:
+                    memory_query_text = base_instruction
+                    if chapter.plan:
+                        memory_query_text = f"{memory_query_text}\n\n{chapter.plan}".strip()
+                    memory_query_text = memory_query_text[:5000]
+
+                raw_modules = body.memory_modules or {}
+                memory_modules = {
+                    "worldbook": bool(raw_modules.get("worldbook", True)),
+                    "story_memory": bool(raw_modules.get("story_memory", True)),
+                    "structured": bool(raw_modules.get("structured", True)),
+                    "vector_rag": bool(raw_modules.get("vector_rag", True)),
+                    "graph": bool(raw_modules.get("graph", True)),
+                    "fractal": bool(raw_modules.get("fractal", True)),
+                }
                 try:
-                    pack = retrieve_memory_context_pack(db=db, project_id=project_id, query_text=memory_query_text)
+                    pack = retrieve_memory_context_pack(
+                        db=db,
+                        project_id=project_id,
+                        query_text=memory_query_text,
+                        section_enabled=memory_modules,
+                    )
                     values["memory"] = pack.model_dump()
                 except Exception:
                     pack = None
@@ -828,6 +877,11 @@ def generate_chapter_stream(
                 "memory_injection_enabled": body.memory_injection_enabled,
             }
             if body.memory_injection_enabled:
+                run_params_extra_json["memory_injection_config"] = {
+                    "query_text": memory_query_text,
+                    "query_text_source": query_text_source,
+                    "modules": memory_modules,
+                }
                 run_params_extra_json["memory_retrieval_log_json"] = build_memory_retrieval_log_json(
                     enabled=True,
                     query_text=memory_query_text,

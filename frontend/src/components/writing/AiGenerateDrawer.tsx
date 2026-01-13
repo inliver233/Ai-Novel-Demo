@@ -188,6 +188,116 @@ export function AiGenerateDrawer(props: Props) {
               />
             </label>
             <div className="mt-1 text-[11px] text-subtext">{UI_COPY.writing.memoryInjectionHint}</div>
+
+            {props.genForm.memory_injection_enabled ? (
+              <div className="mt-2 rounded-atelier border border-border bg-surface p-3">
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">记忆查询文本（vector/graph 等）</span>
+                  <input
+                    className="input"
+                    disabled={props.generating}
+                    aria-label="memory_query_text"
+                    value={props.genForm.memory_query_text}
+                    onChange={(e) => props.setGenForm((v) => ({ ...v, memory_query_text: e.currentTarget.value }))}
+                  />
+                </label>
+                <div className="mt-1 text-[11px] text-subtext">留空将自动使用 instruction + chapter_plan。</div>
+
+                <div className="mt-3 grid gap-2">
+                  <div className="text-xs text-subtext">模块开关（影响生成注入，且会写入生成记录）</div>
+                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                    <span>世界书（worldbook）</span>
+                    <input
+                      className="checkbox"
+                      checked={props.genForm.memory_modules.worldbook}
+                      disabled={props.generating}
+                      onChange={(e) =>
+                        props.setGenForm((v) => ({
+                          ...v,
+                          memory_modules: { ...v.memory_modules, worldbook: e.target.checked },
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                    <span>剧情记忆（story_memory）</span>
+                    <input
+                      className="checkbox"
+                      checked={props.genForm.memory_modules.story_memory}
+                      disabled={props.generating}
+                      onChange={(e) =>
+                        props.setGenForm((v) => ({
+                          ...v,
+                          memory_modules: { ...v.memory_modules, story_memory: e.target.checked },
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                    <span>结构化记忆（structured）</span>
+                    <input
+                      className="checkbox"
+                      checked={props.genForm.memory_modules.structured}
+                      disabled={props.generating}
+                      onChange={(e) =>
+                        props.setGenForm((v) => ({
+                          ...v,
+                          memory_modules: { ...v.memory_modules, structured: e.target.checked },
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                    <span>向量 RAG（vector_rag）</span>
+                    <input
+                      className="checkbox"
+                      checked={props.genForm.memory_modules.vector_rag}
+                      disabled={props.generating}
+                      onChange={(e) =>
+                        props.setGenForm((v) => ({
+                          ...v,
+                          memory_modules: { ...v.memory_modules, vector_rag: e.target.checked },
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                    <span>关系图（graph）</span>
+                    <input
+                      className="checkbox"
+                      checked={props.genForm.memory_modules.graph}
+                      disabled={props.generating}
+                      onChange={(e) =>
+                        props.setGenForm((v) => ({
+                          ...v,
+                          memory_modules: { ...v.memory_modules, graph: e.target.checked },
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                    <span>Fractal（fractal）</span>
+                    <input
+                      className="checkbox"
+                      checked={props.genForm.memory_modules.fractal}
+                      disabled={props.generating}
+                      onChange={(e) =>
+                        props.setGenForm((v) => ({
+                          ...v,
+                          memory_modules: { ...v.memory_modules, fractal: e.target.checked },
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <label className="grid gap-1">

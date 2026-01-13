@@ -13,6 +13,15 @@ export type GenerateForm = {
   post_edit_sanitize: boolean;
   style_id: string | null;
   memory_injection_enabled: boolean;
+  memory_query_text: string;
+  memory_modules: {
+    worldbook: boolean;
+    story_memory: boolean;
+    structured: boolean;
+    vector_rag: boolean;
+    graph: boolean;
+    fractal: boolean;
+  };
   context: {
     include_world_setting: boolean;
     include_style_guide: boolean;

@@ -143,151 +143,195 @@ def retrieve_memory_context_pack(
     project_id: str,
     query_text: str = "",
     include_deleted: bool = False,
+    section_enabled: dict[str, bool] | None = None,
 ) -> MemoryContextPackOut:
     """
     Must be safe when memory dependencies (vector DB / embeddings / etc.) are missing.
     """
-    worldbook_preview = preview_worldbook_trigger(
-        db=db,
-        project_id=project_id,
-        query_text=query_text,
-        include_constant=True,
-        enable_recursion=True,
-        char_limit=12000,
-    )
+    enabled_map = section_enabled or {}
+    worldbook_enabled = bool(enabled_map.get("worldbook", True))
+    story_memory_enabled = bool(enabled_map.get("story_memory", True))
+    structured_enabled = bool(enabled_map.get("structured", True))
+    vector_rag_enabled = bool(enabled_map.get("vector_rag", True))
+    graph_enabled = bool(enabled_map.get("graph", True))
+    fractal_enabled = bool(enabled_map.get("fractal", True)) and bool(getattr(settings, "fractal_enabled", True))
 
-    worldbook = {**worldbook_preview.model_dump(), "enabled": True, "disabled_reason": None}
-    if not isinstance(worldbook.get("text_md"), str):
-        worldbook["text_md"] = str(worldbook_preview.text_md or "")
+    if worldbook_enabled:
+        worldbook_preview = preview_worldbook_trigger(
+            db=db,
+            project_id=project_id,
+            query_text=query_text,
+            include_constant=True,
+            enable_recursion=True,
+            char_limit=12000,
+        )
+        worldbook = {**worldbook_preview.model_dump(), "enabled": True, "disabled_reason": None}
+        if not isinstance(worldbook.get("text_md"), str):
+            worldbook["text_md"] = str(worldbook_preview.text_md or "")
+    else:
+        worldbook = {"enabled": False, "disabled_reason": "disabled", "triggered": [], "text_md": "", "truncated": False}
 
     story_memory: dict[str, Any] = {"enabled": False, "disabled_reason": "empty", "items": [], "text_md": ""}
-    try:
-        limit_plus_one = 41
-        tokens = _extract_query_tokens(query_text, limit=6)
-        stmt = (
-            select(StoryMemory)
-            .where(StoryMemory.project_id == project_id)
-            .order_by(StoryMemory.importance_score.desc(), StoryMemory.updated_at.desc())
-        )
-        if tokens:
-            conds = []
-            for t in tokens:
-                like_term = f"%{t}%"
-                conds.append(StoryMemory.content.like(like_term))
-                conds.append(StoryMemory.title.like(like_term))
-            filtered = db.execute(stmt.where(or_(*conds)).limit(limit_plus_one)).scalars().all()
-            rows = filtered if filtered else db.execute(stmt.limit(limit_plus_one)).scalars().all()
-        else:
-            rows = db.execute(stmt.limit(limit_plus_one)).scalars().all()
-        truncated = len(rows) > (limit_plus_one - 1)
-        rows = rows[: limit_plus_one - 1]
-        enabled = bool(rows)
-        items = []
-        for m in rows[:20]:
-            items.append(
-                {
-                    "id": m.id,
-                    "chapter_id": m.chapter_id,
-                    "memory_type": m.memory_type,
-                    "title": m.title,
-                    "importance_score": float(m.importance_score or 0.0),
-                    "story_timeline": int(m.story_timeline or 0),
-                    "is_foreshadow": bool(m.is_foreshadow),
-                    "content_preview": (str(m.content or "").strip()[:200] + "…") if len(str(m.content or "").strip()) > 200 else str(m.content or "").strip(),
-                }
+    if not story_memory_enabled:
+        story_memory = {"enabled": False, "disabled_reason": "disabled", "items": [], "text_md": ""}
+    else:
+        try:
+            limit_plus_one = 41
+            tokens = _extract_query_tokens(query_text, limit=6)
+            stmt = (
+                select(StoryMemory)
+                .where(StoryMemory.project_id == project_id)
+                .order_by(StoryMemory.importance_score.desc(), StoryMemory.updated_at.desc())
             )
-        text_md, text_truncated = _format_story_memory_text_md(memories=rows[:12], char_limit=_MEMORY_TEXT_MD_CHAR_LIMIT)
-        story_memory = {
-            "enabled": enabled,
-            "disabled_reason": None if enabled else "empty",
-            "query_text": query_text,
-            "filter_tokens": tokens,
-            "items": items,
-            "truncated": bool(truncated or text_truncated),
-            "text_md": text_md,
-        }
-    except Exception:
-        story_memory = {"enabled": False, "disabled_reason": "error", "items": [], "text_md": "", "error": "story_memory_query_failed"}
+            if tokens:
+                conds = []
+                for t in tokens:
+                    like_term = f"%{t}%"
+                    conds.append(StoryMemory.content.like(like_term))
+                    conds.append(StoryMemory.title.like(like_term))
+                filtered = db.execute(stmt.where(or_(*conds)).limit(limit_plus_one)).scalars().all()
+                rows = filtered if filtered else db.execute(stmt.limit(limit_plus_one)).scalars().all()
+            else:
+                rows = db.execute(stmt.limit(limit_plus_one)).scalars().all()
+            truncated = len(rows) > (limit_plus_one - 1)
+            rows = rows[: limit_plus_one - 1]
+            enabled = bool(rows)
+            items = []
+            for m in rows[:20]:
+                items.append(
+                    {
+                        "id": m.id,
+                        "chapter_id": m.chapter_id,
+                        "memory_type": m.memory_type,
+                        "title": m.title,
+                        "importance_score": float(m.importance_score or 0.0),
+                        "story_timeline": int(m.story_timeline or 0),
+                        "is_foreshadow": bool(m.is_foreshadow),
+                        "content_preview": (str(m.content or "").strip()[:200] + "…")
+                        if len(str(m.content or "").strip()) > 200
+                        else str(m.content or "").strip(),
+                    }
+                )
+            text_md, text_truncated = _format_story_memory_text_md(
+                memories=rows[:12], char_limit=_MEMORY_TEXT_MD_CHAR_LIMIT
+            )
+            story_memory = {
+                "enabled": enabled,
+                "disabled_reason": None if enabled else "empty",
+                "query_text": query_text,
+                "filter_tokens": tokens,
+                "items": items,
+                "truncated": bool(truncated or text_truncated),
+                "text_md": text_md,
+            }
+        except Exception:
+            story_memory = {
+                "enabled": False,
+                "disabled_reason": "error",
+                "items": [],
+                "text_md": "",
+                "error": "story_memory_query_failed",
+            }
 
     structured: dict[str, Any] = {"enabled": False, "disabled_reason": "empty", "counts": {}, "text_md": ""}
-    try:
-        entities_stmt = select(MemoryEntity).where(MemoryEntity.project_id == project_id)
-        relations_stmt = select(MemoryRelation).where(MemoryRelation.project_id == project_id)
-        events_stmt = select(MemoryEvent).where(MemoryEvent.project_id == project_id)
-        foreshadows_stmt = select(MemoryForeshadow).where(MemoryForeshadow.project_id == project_id)
+    if not structured_enabled:
+        structured = {"enabled": False, "disabled_reason": "disabled", "counts": {}, "text_md": ""}
+    else:
+        try:
+            entities_stmt = select(MemoryEntity).where(MemoryEntity.project_id == project_id)
+            relations_stmt = select(MemoryRelation).where(MemoryRelation.project_id == project_id)
+            events_stmt = select(MemoryEvent).where(MemoryEvent.project_id == project_id)
+            foreshadows_stmt = select(MemoryForeshadow).where(MemoryForeshadow.project_id == project_id)
 
-        if not include_deleted:
-            entities_stmt = entities_stmt.where(MemoryEntity.deleted_at.is_(None))
-            relations_stmt = relations_stmt.where(MemoryRelation.deleted_at.is_(None))
-            events_stmt = events_stmt.where(MemoryEvent.deleted_at.is_(None))
-            foreshadows_stmt = foreshadows_stmt.where(MemoryForeshadow.deleted_at.is_(None))
-
-        entities = db.execute(entities_stmt.order_by(MemoryEntity.updated_at.desc()).limit(21)).scalars().all()
-        relations = db.execute(relations_stmt.order_by(MemoryRelation.updated_at.desc()).limit(41)).scalars().all()
-        events = db.execute(events_stmt.order_by(MemoryEvent.updated_at.desc()).limit(21)).scalars().all()
-        foreshadows = db.execute(foreshadows_stmt.order_by(MemoryForeshadow.updated_at.desc()).limit(21)).scalars().all()
-        enabled = bool(entities or relations or events or foreshadows)
-
-        rel_entity_ids: set[str] = set()
-        for r in relations[:40]:
-            rel_entity_ids.add(str(r.from_entity_id))
-            rel_entity_ids.add(str(r.to_entity_id))
-        entity_name_rows = []
-        if rel_entity_ids:
-            entity_name_stmt = (
-                select(MemoryEntity.id, MemoryEntity.name)
-                .where(MemoryEntity.project_id == project_id)
-                .where(MemoryEntity.id.in_(list(rel_entity_ids)))
-            )
             if not include_deleted:
-                entity_name_stmt = entity_name_stmt.where(MemoryEntity.deleted_at.is_(None))
-            entity_name_rows = db.execute(entity_name_stmt).all()
-        name_by_id = {str(eid): str(name or "") for eid, name in entity_name_rows}
-        relations_preview = []
-        for r in relations[:40]:
-            relations_preview.append(
-                {
-                    "id": r.id,
-                    "from_entity_id": r.from_entity_id,
-                    "to_entity_id": r.to_entity_id,
-                    "from_name": name_by_id.get(str(r.from_entity_id)) or "",
-                    "to_name": name_by_id.get(str(r.to_entity_id)) or "",
-                    "relation_type": r.relation_type,
-                    "description_md": r.description_md,
-                }
+                entities_stmt = entities_stmt.where(MemoryEntity.deleted_at.is_(None))
+                relations_stmt = relations_stmt.where(MemoryRelation.deleted_at.is_(None))
+                events_stmt = events_stmt.where(MemoryEvent.deleted_at.is_(None))
+                foreshadows_stmt = foreshadows_stmt.where(MemoryForeshadow.deleted_at.is_(None))
+
+            entities = db.execute(entities_stmt.order_by(MemoryEntity.updated_at.desc()).limit(21)).scalars().all()
+            relations = db.execute(relations_stmt.order_by(MemoryRelation.updated_at.desc()).limit(41)).scalars().all()
+            events = db.execute(events_stmt.order_by(MemoryEvent.updated_at.desc()).limit(21)).scalars().all()
+            foreshadows = db.execute(foreshadows_stmt.order_by(MemoryForeshadow.updated_at.desc()).limit(21)).scalars().all()
+            enabled = bool(entities or relations or events or foreshadows)
+
+            rel_entity_ids: set[str] = set()
+            for r in relations[:40]:
+                rel_entity_ids.add(str(r.from_entity_id))
+                rel_entity_ids.add(str(r.to_entity_id))
+            entity_name_rows = []
+            if rel_entity_ids:
+                entity_name_stmt = (
+                    select(MemoryEntity.id, MemoryEntity.name)
+                    .where(MemoryEntity.project_id == project_id)
+                    .where(MemoryEntity.id.in_(list(rel_entity_ids)))
+                )
+                if not include_deleted:
+                    entity_name_stmt = entity_name_stmt.where(MemoryEntity.deleted_at.is_(None))
+                entity_name_rows = db.execute(entity_name_stmt).all()
+            name_by_id = {str(eid): str(name or "") for eid, name in entity_name_rows}
+            relations_preview = []
+            for r in relations[:40]:
+                relations_preview.append(
+                    {
+                        "id": r.id,
+                        "from_entity_id": r.from_entity_id,
+                        "to_entity_id": r.to_entity_id,
+                        "from_name": name_by_id.get(str(r.from_entity_id)) or "",
+                        "to_name": name_by_id.get(str(r.to_entity_id)) or "",
+                        "relation_type": r.relation_type,
+                        "description_md": r.description_md,
+                    }
+                )
+
+            text_md, text_truncated = _format_structured_text_md(
+                entities=entities[:20],
+                relations=relations_preview,
+                events=events[:20],
+                foreshadows=foreshadows[:20],
+                char_limit=_MEMORY_TEXT_MD_CHAR_LIMIT,
             )
+            structured = {
+                "enabled": enabled,
+                "disabled_reason": None if enabled else "empty",
+                "include_deleted": bool(include_deleted),
+                "counts": {
+                    "entities": len(entities[:20]),
+                    "relations": len(relations[:40]),
+                    "events": len(events[:20]),
+                    "foreshadows": len(foreshadows[:20]),
+                },
+                "truncated": bool(
+                    len(entities) > 20
+                    or len(relations) > 40
+                    or len(events) > 20
+                    or len(foreshadows) > 20
+                    or text_truncated
+                ),
+                "text_md": text_md,
+            }
+        except Exception:
+            structured = {
+                "enabled": False,
+                "disabled_reason": "error",
+                "counts": {},
+                "text_md": "",
+                "error": "structured_query_failed",
+            }
 
-        text_md, text_truncated = _format_structured_text_md(
-            entities=entities[:20],
-            relations=relations_preview,
-            events=events[:20],
-            foreshadows=foreshadows[:20],
-            char_limit=_MEMORY_TEXT_MD_CHAR_LIMIT,
-        )
-        structured = {
-            "enabled": enabled,
-            "disabled_reason": None if enabled else "empty",
-            "include_deleted": bool(include_deleted),
-            "counts": {
-                "entities": len(entities[:20]),
-                "relations": len(relations[:40]),
-                "events": len(events[:20]),
-                "foreshadows": len(foreshadows[:20]),
-            },
-            "truncated": bool(len(entities) > 20 or len(relations) > 40 or len(events) > 20 or len(foreshadows) > 20 or text_truncated),
-            "text_md": text_md,
-        }
-    except Exception:
-        structured = {"enabled": False, "disabled_reason": "error", "counts": {}, "text_md": "", "error": "structured_query_failed"}
-
-    graph = query_graph_context(db=db, project_id=project_id, query_text=query_text, enabled=True)
+    graph = query_graph_context(db=db, project_id=project_id, query_text=query_text, enabled=graph_enabled)
     if isinstance(graph, dict):
         pb = graph.get("prompt_block") if isinstance(graph.get("prompt_block"), dict) else {}
         graph["text_md"] = str(pb.get("text_md") or "")
 
     vector_query_text = (query_text or "").strip()
     try:
-        if vector_query_text:
+        if not vector_rag_enabled:
+            vector_rag = vector_rag_status(project_id=project_id)
+            vector_rag["enabled"] = False
+            vector_rag["disabled_reason"] = "disabled"
+            vector_rag["query_text"] = vector_query_text
+        elif vector_query_text:
             vector_rag = query_project(project_id=project_id, query_text=vector_query_text)
         else:
             vector_rag = vector_rag_status(project_id=project_id)
@@ -302,7 +346,7 @@ def retrieve_memory_context_pack(
         pb = vector_rag.get("prompt_block") if isinstance(vector_rag.get("prompt_block"), dict) else {}
         vector_rag["text_md"] = str(pb.get("text_md") or "")
 
-    fractal = get_fractal_context(db=db, project_id=project_id, enabled=bool(getattr(settings, "fractal_enabled", True)))
+    fractal = get_fractal_context(db=db, project_id=project_id, enabled=fractal_enabled)
     if isinstance(fractal, dict):
         pb = fractal.get("prompt_block") if isinstance(fractal.get("prompt_block"), dict) else {}
         fractal["text_md"] = str(pb.get("text_md") or "")
