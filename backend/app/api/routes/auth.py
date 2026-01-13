@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import secrets
 from datetime import timedelta, timezone
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import Field
+from sqlalchemy import select
 
 from app.api.deps import AuthenticatedUserIdDep, DbDep
 from app.core.auth_session import build_session, clear_session_cookies, set_session_cookies
@@ -23,6 +25,25 @@ def _user_public(user: User) -> dict:
     return {"id": user.id, "display_name": user.display_name, "is_admin": bool(user.is_admin)}
 
 
+def _require_admin(db: DbDep, *, user_id: str) -> User:
+    actor = db.get(User, user_id)
+    if actor is None or not actor.is_admin:
+        raise AppError.forbidden()
+    return actor
+
+
+def _user_admin_public(*, user: User, pwd: UserPassword | None) -> dict:
+    return {
+        "id": user.id,
+        "email": user.email,
+        "display_name": user.display_name,
+        "is_admin": bool(user.is_admin),
+        "disabled": bool(getattr(pwd, "disabled_at", None) is not None),
+        "password_updated_at": getattr(pwd, "password_updated_at", None),
+        "created_at": user.created_at,
+        "updated_at": user.updated_at,
+    }
+
 class LocalLoginRequest(RequestModel):
     user_id: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=256)
@@ -35,6 +56,18 @@ class ChangePasswordRequest(RequestModel):
 
 class DisableUserRequest(RequestModel):
     disabled: bool = True
+
+
+class AdminCreateUserRequest(RequestModel):
+    user_id: str = Field(min_length=1, max_length=64)
+    display_name: str | None = Field(default=None, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    is_admin: bool = False
+    password: str | None = Field(default=None, max_length=256)
+
+
+class AdminResetPasswordRequest(RequestModel):
+    new_password: str | None = Field(default=None, max_length=256)
 
 
 @router.get("/auth/user")
@@ -103,9 +136,7 @@ def set_user_disabled(
     body: DisableUserRequest,
 ) -> dict:
     request_id = request.state.request_id
-    actor = db.get(User, user_id)
-    if actor is None or not actor.is_admin:
-        raise AppError.forbidden()
+    _require_admin(db, user_id=user_id)
 
     pwd = db.get(UserPassword, target_user_id)
     if pwd is None:
@@ -115,6 +146,88 @@ def set_user_disabled(
     db.commit()
 
     return ok_payload(request_id=request_id, data={})
+
+
+@router.get("/auth/admin/users")
+def list_users(request: Request, db: DbDep, user_id: AuthenticatedUserIdDep) -> dict:
+    request_id = request.state.request_id
+    _require_admin(db, user_id=user_id)
+
+    rows = db.execute(select(User, UserPassword).join(UserPassword, UserPassword.user_id == User.id, isouter=True)).all()
+    users = [_user_admin_public(user=u, pwd=p) for u, p in rows]
+    users.sort(key=lambda x: str(x.get("id") or ""))
+    return ok_payload(request_id=request_id, data={"users": users})
+
+
+@router.post("/auth/admin/users")
+def create_user(request: Request, db: DbDep, user_id: AuthenticatedUserIdDep, body: AdminCreateUserRequest) -> dict:
+    request_id = request.state.request_id
+    _require_admin(db, user_id=user_id)
+
+    target_user_id = body.user_id.strip()
+    if not target_user_id:
+        raise AppError.validation("user_id 不能为空")
+    if db.get(User, target_user_id) is not None:
+        raise AppError.conflict("用户已存在")
+
+    user = User(
+        id=target_user_id,
+        email=(body.email or "").strip() or None,
+        display_name=(body.display_name or "").strip() or None,
+        is_admin=bool(body.is_admin),
+    )
+    db.add(user)
+
+    raw_password = (body.password or "").strip()
+    generated_password: str | None = None
+    if not raw_password:
+        generated_password = secrets.token_urlsafe(12)
+        raw_password = generated_password
+
+    pwd = UserPassword(
+        user_id=target_user_id,
+        password_hash=hash_password(raw_password),
+        password_updated_at=utc_now(),
+        disabled_at=None,
+    )
+    db.add(pwd)
+    db.commit()
+
+    return ok_payload(
+        request_id=request_id,
+        data={"user": _user_admin_public(user=user, pwd=pwd), "temp_password": generated_password},
+    )
+
+
+@router.post("/auth/admin/users/{target_user_id}/password/reset")
+def reset_user_password(
+    request: Request,
+    db: DbDep,
+    user_id: AuthenticatedUserIdDep,
+    target_user_id: str,
+    body: AdminResetPasswordRequest,
+) -> dict:
+    request_id = request.state.request_id
+    _require_admin(db, user_id=user_id)
+
+    user = db.get(User, target_user_id)
+    if user is None:
+        raise AppError.not_found()
+
+    raw_password = (body.new_password or "").strip()
+    if not raw_password:
+        raw_password = secrets.token_urlsafe(12)
+
+    pwd = db.get(UserPassword, target_user_id)
+    if pwd is None:
+        pwd = UserPassword(user_id=target_user_id, password_hash="", password_updated_at=utc_now(), disabled_at=None)
+        db.add(pwd)
+
+    pwd.password_hash = hash_password(raw_password)
+    pwd.password_updated_at = utc_now()
+    db.commit()
+
+    return ok_payload(request_id=request_id, data={"temp_password": raw_password})
 
 
 @router.post("/auth/refresh")

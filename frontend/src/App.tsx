@@ -23,6 +23,7 @@ import { GraphPage } from "./pages/GraphPage";
 import { StylesPage } from "./pages/StylesPage";
 import { WorldBookPage } from "./pages/WorldBookPage";
 import { RagPage } from "./pages/RagPage";
+import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
 const router = createBrowserRouter([
@@ -44,6 +45,10 @@ const router = createBrowserRouter([
           {
             index: true,
             element: <DashboardPage />,
+          },
+          {
+            path: "admin/users",
+            element: <AdminUsersPage />,
           },
           {
             path: "projects/:projectId",
