@@ -162,7 +162,7 @@ def ensure_default_chapter_preset(db: Session, *, project_id: str, activate: boo
     return _ensure_default_preset_from_resource(
         db,
         project_id=project_id,
-        resource_key="chapter_generate_v3",
+        resource_key="chapter_generate_v4",
         activate=activate,
     )
 
