@@ -8,6 +8,7 @@ from app.core.errors import ok_payload
 from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.db.session import SessionLocal
 from app.models.project_settings import ProjectSettings
+from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
 from app.services.vector_rag_service import (
     VectorSource,
     build_project_chunks,
@@ -108,11 +109,25 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
 
     db = SessionLocal()
     embedding: dict[str, str | None] = {}
+    qp_cfg = None
     try:
         require_project_viewer(db, project_id=project_id, user_id=user_id)
-        embedding = _vector_embedding_overrides(db.get(ProjectSettings, project_id))
+        settings_row = db.get(ProjectSettings, project_id)
+        embedding = _vector_embedding_overrides(settings_row)
+        qp_cfg = parse_query_preprocessing_config(
+            (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
+        )
     finally:
         db.close()
 
-    result = query_project(project_id=project_id, query_text=body.query_text, sources=body.sources, embedding=embedding)
-    return ok_payload(request_id=request_id, data={"result": result})
+    normalized, preprocess_obs = normalize_query_text(query_text=body.query_text, config=qp_cfg)
+    result = query_project(project_id=project_id, query_text=normalized, sources=body.sources, embedding=embedding)
+    return ok_payload(
+        request_id=request_id,
+        data={
+            "result": result,
+            "raw_query_text": body.query_text,
+            "normalized_query_text": normalized,
+            "preprocess_obs": preprocess_obs,
+        },
+    )

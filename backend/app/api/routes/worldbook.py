@@ -14,6 +14,7 @@ from app.api.deps import (
 )
 from app.core.errors import ok_payload
 from app.db.utils import new_id
+from app.models.project_settings import ProjectSettings
 from app.models.worldbook_entry import WorldBookEntry
 from app.schemas.worldbook import (
     WorldBookEntryCreate,
@@ -21,6 +22,7 @@ from app.schemas.worldbook import (
     WorldBookEntryUpdate,
     WorldBookPreviewTriggerRequest,
 )
+from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
 from app.services.worldbook_service import preview_worldbook_trigger
 
 router = APIRouter()
@@ -147,12 +149,22 @@ def preview_trigger(request: Request, db: DbDep, user_id: UserIdDep, project_id:
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
 
+    settings_row = db.get(ProjectSettings, project_id)
+    qp_cfg = parse_query_preprocessing_config(
+        (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
+    )
+    normalized, preprocess_obs = normalize_query_text(query_text=body.query_text, config=qp_cfg)
+
     result = preview_worldbook_trigger(
         db=db,
         project_id=project_id,
-        query_text=body.query_text,
+        query_text=normalized,
         include_constant=body.include_constant,
         enable_recursion=body.enable_recursion,
         char_limit=body.char_limit,
     )
-    return ok_payload(request_id=request_id, data=result.model_dump())
+    payload = result.model_dump()
+    payload["raw_query_text"] = body.query_text
+    payload["normalized_query_text"] = normalized
+    payload["preprocess_obs"] = preprocess_obs
+    return ok_payload(request_id=request_id, data=payload)
