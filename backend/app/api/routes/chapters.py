@@ -43,6 +43,7 @@ from app.services.chapter_context_service import (
     inject_plan_into_render_values,
 )
 from app.services.fractal_memory_service import rebuild_fractal_memory
+from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
 from app.services.memory_retrieval_service import build_memory_retrieval_log_json, retrieve_memory_context_pack
 from app.services.prompt_presets import ensure_default_plan_preset, ensure_default_post_edit_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
@@ -559,6 +560,8 @@ def generate_chapter(
         memory_query_text = ""
         query_text_source = "auto"
         memory_modules = {"worldbook": True, "story_memory": True, "structured": True, "vector_rag": True, "graph": True, "fractal": True}
+        raw_query_text = ""
+        preprocess_obs = None
         if body.memory_injection_enabled:
             requested_query_text = str(body.memory_query_text or "").strip()
             if requested_query_text:
@@ -579,6 +582,13 @@ def generate_chapter(
                 "graph": bool(raw_modules.get("graph", True)),
                 "fractal": bool(raw_modules.get("fractal", True)),
             }
+
+            raw_query_text = memory_query_text
+            settings_row = db.get(ProjectSettings, project_id)
+            qp_cfg = parse_query_preprocessing_config(
+                (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
+            )
+            memory_query_text, preprocess_obs = normalize_query_text(query_text=raw_query_text, config=qp_cfg)
             try:
                 pack = retrieve_memory_context_pack(
                     db=db,
@@ -600,6 +610,9 @@ def generate_chapter(
                 "query_text": memory_query_text,
                 "query_text_source": query_text_source,
                 "modules": memory_modules,
+                "raw_query_text": raw_query_text,
+                "normalized_query_text": memory_query_text,
+                "preprocess_obs": preprocess_obs,
             }
             run_params_extra_json["memory_retrieval_log_json"] = build_memory_retrieval_log_json(
                 enabled=True,
@@ -841,6 +854,8 @@ def generate_chapter_stream(
             if body.memory_injection_enabled:
                 query_text_source = "auto"
                 memory_modules = {"worldbook": True, "story_memory": True, "structured": True, "vector_rag": True, "graph": True, "fractal": True}
+                raw_query_text = ""
+                preprocess_obs = None
                 requested_query_text = str(body.memory_query_text or "").strip()
                 if requested_query_text:
                     memory_query_text = requested_query_text[:5000]
@@ -860,6 +875,13 @@ def generate_chapter_stream(
                     "graph": bool(raw_modules.get("graph", True)),
                     "fractal": bool(raw_modules.get("fractal", True)),
                 }
+
+                raw_query_text = memory_query_text
+                settings_row = db.get(ProjectSettings, project_id)
+                qp_cfg = parse_query_preprocessing_config(
+                    (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
+                )
+                memory_query_text, preprocess_obs = normalize_query_text(query_text=raw_query_text, config=qp_cfg)
                 try:
                     pack = retrieve_memory_context_pack(
                         db=db,
@@ -881,6 +903,9 @@ def generate_chapter_stream(
                     "query_text": memory_query_text,
                     "query_text_source": query_text_source,
                     "modules": memory_modules,
+                    "raw_query_text": raw_query_text,
+                    "normalized_query_text": memory_query_text,
+                    "preprocess_obs": preprocess_obs,
                 }
                 run_params_extra_json["memory_retrieval_log_json"] = build_memory_retrieval_log_json(
                     enabled=True,

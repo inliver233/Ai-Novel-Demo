@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -9,6 +10,19 @@ from app.schemas.settings import QueryPreprocessingConfig
 _TAG_PATTERN = re.compile(r"(^|\s)#([0-9A-Za-z_\-\u4e00-\u9fff]{1,64})")
 _CHAPTER_REF_PATTERN = re.compile(r"第(\d{1,4})章")
 _CHAPTER_REF_EN_PATTERN = re.compile(r"\bchapter\s*(\d{1,4})\b", flags=re.IGNORECASE)
+
+
+def parse_query_preprocessing_config(raw_json: str | None) -> QueryPreprocessingConfig | None:
+    if not raw_json:
+        return None
+    try:
+        data = json.loads(raw_json)
+    except json.JSONDecodeError:
+        return None
+    try:
+        return QueryPreprocessingConfig.model_validate(data)
+    except ValueError:
+        return None
 
 
 def normalize_query_text(
