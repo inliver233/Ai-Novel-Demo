@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Request
 
 from app.api.deps import DbDep, UserIdDep, require_project_editor, require_project_viewer
@@ -7,7 +9,7 @@ from app.core.config import settings
 from app.core.errors import AppError, ok_payload
 from app.core.secrets import SecretCryptoError, decrypt_secret, encrypt_secret, mask_api_key
 from app.models.project_settings import ProjectSettings
-from app.schemas.settings import ProjectSettingsOut, ProjectSettingsUpdate
+from app.schemas.settings import ProjectSettingsOut, ProjectSettingsUpdate, QueryPreprocessingConfig
 
 router = APIRouter()
 
@@ -15,6 +17,19 @@ _VECTOR_DISABLED_BASE_URL_MISSING = "embedding_base_url_missing"
 _VECTOR_DISABLED_MODEL_MISSING = "embedding_model_missing"
 _VECTOR_DISABLED_API_KEY_MISSING = "embedding_api_key_missing"
 _VECTOR_DISABLED_API_KEY_DECRYPT_FAILED = "embedding_api_key_decrypt_failed"
+
+
+def _parse_query_preprocessing_json(raw: str | None) -> QueryPreprocessingConfig | None:
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    try:
+        return QueryPreprocessingConfig.model_validate(data)
+    except ValueError:
+        return None
 
 
 def _vector_effective_disabled_reason(*, base_url: str, model: str, has_api_key: bool) -> str | None:
@@ -31,6 +46,11 @@ def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> 
     world_setting = (row.world_setting or "") if row is not None else ""
     style_guide = (row.style_guide or "") if row is not None else ""
     constraints = (row.constraints or "") if row is not None else ""
+
+    qp_default = QueryPreprocessingConfig()
+    qp_override = _parse_query_preprocessing_json((row.query_preprocessing_json or "").strip() if row is not None else None)
+    qp_effective = qp_override or qp_default
+    qp_source = "project" if qp_override is not None else "default"
 
     override_base_url = (row.vector_embedding_base_url or "").strip() if row is not None else ""
     override_model = (row.vector_embedding_model or "").strip() if row is not None else ""
@@ -89,6 +109,10 @@ def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> 
         world_setting=world_setting,
         style_guide=style_guide,
         constraints=constraints,
+        query_preprocessing=qp_override,
+        query_preprocessing_default=qp_default,
+        query_preprocessing_effective=qp_effective,
+        query_preprocessing_effective_source=qp_source,
         vector_embedding_base_url=override_base_url,
         vector_embedding_model=override_model,
         vector_embedding_has_api_key=override_has_api_key,
@@ -127,6 +151,16 @@ def put_settings(request: Request, db: DbDep, user_id: UserIdDep, project_id: st
         row.style_guide = body.style_guide
     if body.constraints is not None:
         row.constraints = body.constraints
+
+    if "query_preprocessing" in body.model_fields_set:
+        if body.query_preprocessing is None:
+            row.query_preprocessing_json = None
+        else:
+            row.query_preprocessing_json = json.dumps(
+                body.query_preprocessing.model_dump(),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
 
     if body.vector_embedding_base_url is not None:
         row.vector_embedding_base_url = body.vector_embedding_base_url.strip() or None
