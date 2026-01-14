@@ -21,3 +21,5 @@ class ProjectSettings(Base):
     vector_embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     vector_embedding_api_key_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
     vector_embedding_api_key_masked: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    query_preprocessing_json: Mapped[str | None] = mapped_column(Text, nullable=True)

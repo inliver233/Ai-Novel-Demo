@@ -5,6 +5,13 @@ from pydantic import BaseModel, Field
 from app.schemas.limits import MAX_TEXT_CHARS
 
 
+class QueryPreprocessingConfig(BaseModel):
+    enabled: bool = False
+    tags: list[str] = Field(default_factory=list)
+    exclusion_rules: list[str] = Field(default_factory=list)
+    index_ref_enhance: bool = False
+
+
 class ProjectSettingsOut(BaseModel):
     project_id: str
     world_setting: str

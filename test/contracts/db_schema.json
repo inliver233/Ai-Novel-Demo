@@ -2426,6 +2426,13 @@
         },
         {
           "dflt_value": null,
+          "name": "query_preprocessing_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
           "name": "style_guide",
           "notnull": 0,
           "pk": 0,
