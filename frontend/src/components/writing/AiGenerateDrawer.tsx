@@ -127,7 +127,10 @@ export function AiGenerateDrawer(props: Props) {
               checked={props.genForm.stream}
               disabled={props.generating}
               name="stream"
-              onChange={(e) => props.setGenForm((v) => ({ ...v, stream: e.target.checked }))}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                props.setGenForm((v) => ({ ...v, stream: checked }));
+              }}
               type="checkbox"
             />
           </label>
@@ -139,7 +142,10 @@ export function AiGenerateDrawer(props: Props) {
               checked={props.genForm.plan_first}
               disabled={props.generating}
               name="plan_first"
-              onChange={(e) => props.setGenForm((v) => ({ ...v, plan_first: e.target.checked }))}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                props.setGenForm((v) => ({ ...v, plan_first: checked }));
+              }}
               type="checkbox"
             />
           </label>
@@ -151,13 +157,14 @@ export function AiGenerateDrawer(props: Props) {
               checked={props.genForm.post_edit}
               disabled={props.generating}
               name="post_edit"
-              onChange={(e) =>
+              onChange={(e) => {
+                const checked = e.target.checked;
                 props.setGenForm((v) => ({
                   ...v,
-                  post_edit: e.target.checked,
-                  post_edit_sanitize: e.target.checked ? v.post_edit_sanitize : false,
-                }))
-              }
+                  post_edit: checked,
+                  post_edit_sanitize: checked ? v.post_edit_sanitize : false,
+                }));
+              }}
               type="checkbox"
             />
           </label>
@@ -169,7 +176,10 @@ export function AiGenerateDrawer(props: Props) {
               checked={props.genForm.post_edit_sanitize}
               disabled={props.generating || !props.genForm.post_edit}
               name="post_edit_sanitize"
-              onChange={(e) => props.setGenForm((v) => ({ ...v, post_edit_sanitize: e.target.checked }))}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                props.setGenForm((v) => ({ ...v, post_edit_sanitize: checked }));
+              }}
               type="checkbox"
             />
           </label>
@@ -183,7 +193,10 @@ export function AiGenerateDrawer(props: Props) {
                 checked={props.genForm.memory_injection_enabled}
                 disabled={props.generating}
                 name="memory_injection_enabled"
-                onChange={(e) => props.setGenForm((v) => ({ ...v, memory_injection_enabled: e.target.checked }))}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  props.setGenForm((v) => ({ ...v, memory_injection_enabled: checked }));
+                }}
                 type="checkbox"
               />
             </label>
@@ -198,7 +211,10 @@ export function AiGenerateDrawer(props: Props) {
                     disabled={props.generating}
                     aria-label="memory_query_text"
                     value={props.genForm.memory_query_text}
-                    onChange={(e) => props.setGenForm((v) => ({ ...v, memory_query_text: e.currentTarget.value }))}
+                    onChange={(e) => {
+                      const value = e.currentTarget.value;
+                      props.setGenForm((v) => ({ ...v, memory_query_text: value }));
+                    }}
                   />
                 </label>
                 <div className="mt-1 text-[11px] text-subtext">留空将自动使用 instruction + chapter_plan。</div>
@@ -211,12 +227,13 @@ export function AiGenerateDrawer(props: Props) {
                       className="checkbox"
                       checked={props.genForm.memory_modules.worldbook}
                       disabled={props.generating}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const checked = e.target.checked;
                         props.setGenForm((v) => ({
                           ...v,
-                          memory_modules: { ...v.memory_modules, worldbook: e.target.checked },
-                        }))
-                      }
+                          memory_modules: { ...v.memory_modules, worldbook: checked },
+                        }));
+                      }}
                       type="checkbox"
                     />
                   </label>
@@ -226,12 +243,13 @@ export function AiGenerateDrawer(props: Props) {
                       className="checkbox"
                       checked={props.genForm.memory_modules.story_memory}
                       disabled={props.generating}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const checked = e.target.checked;
                         props.setGenForm((v) => ({
                           ...v,
-                          memory_modules: { ...v.memory_modules, story_memory: e.target.checked },
-                        }))
-                      }
+                          memory_modules: { ...v.memory_modules, story_memory: checked },
+                        }));
+                      }}
                       type="checkbox"
                     />
                   </label>
@@ -241,12 +259,13 @@ export function AiGenerateDrawer(props: Props) {
                       className="checkbox"
                       checked={props.genForm.memory_modules.structured}
                       disabled={props.generating}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const checked = e.target.checked;
                         props.setGenForm((v) => ({
                           ...v,
-                          memory_modules: { ...v.memory_modules, structured: e.target.checked },
-                        }))
-                      }
+                          memory_modules: { ...v.memory_modules, structured: checked },
+                        }));
+                      }}
                       type="checkbox"
                     />
                   </label>
@@ -256,12 +275,13 @@ export function AiGenerateDrawer(props: Props) {
                       className="checkbox"
                       checked={props.genForm.memory_modules.vector_rag}
                       disabled={props.generating}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const checked = e.target.checked;
                         props.setGenForm((v) => ({
                           ...v,
-                          memory_modules: { ...v.memory_modules, vector_rag: e.target.checked },
-                        }))
-                      }
+                          memory_modules: { ...v.memory_modules, vector_rag: checked },
+                        }));
+                      }}
                       type="checkbox"
                     />
                   </label>
@@ -271,12 +291,13 @@ export function AiGenerateDrawer(props: Props) {
                       className="checkbox"
                       checked={props.genForm.memory_modules.graph}
                       disabled={props.generating}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const checked = e.target.checked;
                         props.setGenForm((v) => ({
                           ...v,
-                          memory_modules: { ...v.memory_modules, graph: e.target.checked },
-                        }))
-                      }
+                          memory_modules: { ...v.memory_modules, graph: checked },
+                        }));
+                      }}
                       type="checkbox"
                     />
                   </label>
@@ -286,12 +307,13 @@ export function AiGenerateDrawer(props: Props) {
                       className="checkbox"
                       checked={props.genForm.memory_modules.fractal}
                       disabled={props.generating}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const checked = e.target.checked;
                         props.setGenForm((v) => ({
                           ...v,
-                          memory_modules: { ...v.memory_modules, fractal: e.target.checked },
-                        }))
-                      }
+                          memory_modules: { ...v.memory_modules, fractal: checked },
+                        }));
+                      }}
                       type="checkbox"
                     />
                   </label>
@@ -323,7 +345,10 @@ export function AiGenerateDrawer(props: Props) {
               disabled={props.generating || stylesLoading}
               name="style_id"
               value={props.genForm.style_id ?? ""}
-              onChange={(e) => props.setGenForm((v) => ({ ...v, style_id: e.target.value ? e.target.value : null }))}
+              onChange={(e) => {
+                const value = e.target.value;
+                props.setGenForm((v) => ({ ...v, style_id: value ? value : null }));
+              }}
               aria-label="gen_style_id"
             >
               <option value="">自动（项目默认 → settings fallback）</option>
@@ -379,7 +404,10 @@ export function AiGenerateDrawer(props: Props) {
             name="instruction"
             rows={5}
             value={props.genForm.instruction}
-            onChange={(e) => props.setGenForm((v) => ({ ...v, instruction: e.target.value }))}
+            onChange={(e) => {
+              const value = e.target.value;
+              props.setGenForm((v) => ({ ...v, instruction: value }));
+            }}
           />
         </label>
 
@@ -391,9 +419,10 @@ export function AiGenerateDrawer(props: Props) {
               checked={props.genForm.context.include_world_setting}
               disabled={props.generating}
               name="context_include_world_setting"
-              onChange={(e) =>
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_world_setting: e.target.checked } }))
-              }
+              onChange={(e) => {
+                const checked = e.target.checked;
+                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_world_setting: checked } }));
+              }}
               type="checkbox"
             />
             世界观
@@ -404,9 +433,10 @@ export function AiGenerateDrawer(props: Props) {
               checked={props.genForm.context.include_style_guide}
               disabled={props.generating}
               name="context_include_style_guide"
-              onChange={(e) =>
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_style_guide: e.target.checked } }))
-              }
+              onChange={(e) => {
+                const checked = e.target.checked;
+                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_style_guide: checked } }));
+              }}
               type="checkbox"
             />
             风格
@@ -417,9 +447,10 @@ export function AiGenerateDrawer(props: Props) {
               checked={props.genForm.context.include_constraints}
               disabled={props.generating}
               name="context_include_constraints"
-              onChange={(e) =>
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_constraints: e.target.checked } }))
-              }
+              onChange={(e) => {
+                const checked = e.target.checked;
+                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_constraints: checked } }));
+              }}
               type="checkbox"
             />
             约束
@@ -430,9 +461,10 @@ export function AiGenerateDrawer(props: Props) {
               checked={props.genForm.context.include_outline}
               disabled={props.generating}
               name="context_include_outline"
-              onChange={(e) =>
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_outline: e.target.checked } }))
-              }
+              onChange={(e) => {
+                const checked = e.target.checked;
+                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_outline: checked } }));
+              }}
               type="checkbox"
             />
             大纲
@@ -443,9 +475,10 @@ export function AiGenerateDrawer(props: Props) {
               checked={props.genForm.context.include_smart_context}
               disabled={props.generating}
               name="context_include_smart_context"
-              onChange={(e) =>
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_smart_context: e.target.checked } }))
-              }
+              onChange={(e) => {
+                const checked = e.target.checked;
+                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_smart_context: checked } }));
+              }}
               type="checkbox"
             />
             智能上下文
@@ -456,9 +489,10 @@ export function AiGenerateDrawer(props: Props) {
               checked={props.genForm.context.require_sequential}
               disabled={props.generating}
               name="context_require_sequential"
-              onChange={(e) =>
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, require_sequential: e.target.checked } }))
-              }
+              onChange={(e) => {
+                const checked = e.target.checked;
+                props.setGenForm((v) => ({ ...v, context: { ...v.context, require_sequential: checked } }));
+              }}
               type="checkbox"
             />
             严格顺序
@@ -472,15 +506,16 @@ export function AiGenerateDrawer(props: Props) {
             disabled={props.generating}
             name="previous_chapter"
             value={props.genForm.context.previous_chapter}
-            onChange={(e) =>
+            onChange={(e) => {
+              const value = e.target.value as GenerateForm["context"]["previous_chapter"];
               props.setGenForm((v) => ({
                 ...v,
                 context: {
                   ...v.context,
-                  previous_chapter: e.target.value as GenerateForm["context"]["previous_chapter"],
+                  previous_chapter: value,
                 },
-              }))
-            }
+              }));
+            }}
           >
             <option value="none">不注入</option>
             <option value="tail">结尾（推荐）</option>
@@ -502,9 +537,10 @@ export function AiGenerateDrawer(props: Props) {
                   disabled={props.generating}
                   name={`character_${c.id}`}
                   onChange={(e) => {
+                    const checked = e.target.checked;
                     props.setGenForm((v) => {
                       const next = new Set(v.context.character_ids);
-                      if (e.target.checked) next.add(c.id);
+                      if (checked) next.add(c.id);
                       else next.delete(c.id);
                       return { ...v, context: { ...v.context, character_ids: Array.from(next) } };
                     });

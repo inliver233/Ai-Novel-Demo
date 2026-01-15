@@ -589,6 +589,10 @@ export function WritingPage() {
         onClose={() => setContextPreviewOpen(false)}
         projectId={projectId}
         memoryInjectionEnabled={genForm.memory_injection_enabled}
+        genInstruction={genForm.instruction}
+        genChapterPlan={activeChapter?.plan ?? ""}
+        genMemoryQueryText={genForm.memory_query_text}
+        genMemoryModules={genForm.memory_modules}
         onChangeMemoryInjectionEnabled={(enabled) =>
           setGenForm((v) => ({ ...v, memory_injection_enabled: Boolean(enabled) }))
         }

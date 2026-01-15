@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { UI_COPY } from "../../lib/uiCopy";
 import { ApiError, apiJson } from "../../services/apiClient";
@@ -12,6 +12,17 @@ type Props = {
   projectId?: string;
   memoryInjectionEnabled: boolean;
   onChangeMemoryInjectionEnabled?: (enabled: boolean) => void;
+  genInstruction?: string;
+  genChapterPlan?: string;
+  genMemoryQueryText?: string;
+  genMemoryModules?: {
+    worldbook: boolean;
+    story_memory: boolean;
+    structured: boolean;
+    vector_rag: boolean;
+    graph: boolean;
+    fractal: boolean;
+  };
 };
 
 type VectorSource = "worldbook" | "outline" | "chapter";
@@ -51,6 +62,33 @@ type MemoryContextPackLogItem = {
   enabled: boolean;
   disabled_reason: string | null;
   note: string | null;
+};
+
+type MemorySectionEnabled = {
+  worldbook: boolean;
+  story_memory: boolean;
+  structured: boolean;
+  vector_rag: boolean;
+  graph: boolean;
+  fractal: boolean;
+};
+
+const DEFAULT_PREVIEW_SECTIONS: MemorySectionEnabled = {
+  worldbook: true,
+  story_memory: true,
+  structured: true,
+  vector_rag: true,
+  graph: true,
+  fractal: true,
+};
+
+const DEFAULT_BUDGET_INPUTS: Record<string, string> = {
+  worldbook: "",
+  story_memory: "",
+  structured: "",
+  vector_rag: "",
+  graph: "",
+  fractal: "",
 };
 
 const EMPTY_PACK: MemoryContextPack = {
@@ -253,12 +291,29 @@ function downloadJson(filename: string, value: unknown): void {
 }
 
 export function ContextPreviewDrawer(props: Props) {
-  const { onClose, open, projectId, memoryInjectionEnabled, onChangeMemoryInjectionEnabled } = props;
+  const {
+    onClose,
+    open,
+    projectId,
+    memoryInjectionEnabled,
+    onChangeMemoryInjectionEnabled,
+    genInstruction,
+    genChapterPlan,
+    genMemoryQueryText,
+    genMemoryModules,
+  } = props;
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [pack, setPack] = useState<MemoryContextPack>(EMPTY_PACK);
   const [error, setError] = useState<{ code: string; message: string; requestId?: string } | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
+
+  const syncedOnceRef = useRef(false);
+
+  const [previewQueryText, setPreviewQueryText] = useState("");
+  const [previewSections, setPreviewSections] = useState<MemorySectionEnabled>(DEFAULT_PREVIEW_SECTIONS);
+  const [budgetOverrideInputs, setBudgetOverrideInputs] = useState<Record<string, string>>(DEFAULT_BUDGET_INPUTS);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
 
   const [vectorQueryText, setVectorQueryText] = useState("");
   const [vectorSources, setVectorSources] = useState<Record<VectorSource, boolean>>({
@@ -283,6 +338,28 @@ export function ContextPreviewDrawer(props: Props) {
   const [vectorError, setVectorError] = useState<{ code: string; message: string; requestId?: string } | null>(null);
 
   const effectivePack = useMemo(() => (memoryInjectionEnabled ? pack : EMPTY_PACK), [memoryInjectionEnabled, pack]);
+
+  const parsedBudgetOverrides = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const key of ["worldbook", "story_memory", "structured", "vector_rag", "graph", "fractal"] as const) {
+      const raw = String(budgetOverrideInputs[key] ?? "").trim();
+      if (!raw) continue;
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed) || parsed < 0) continue;
+      out[key] = Math.floor(parsed);
+    }
+    return out;
+  }, [budgetOverrideInputs]);
+
+  const computeEffectiveQueryTextFromGenerate = useCallback((): string => {
+    const requested = String(genMemoryQueryText ?? "").trim();
+    if (requested) return requested;
+
+    const instruction = String(genInstruction ?? "").trim();
+    const plan = String(genChapterPlan ?? "").trim();
+    if (!instruction && !plan) return "";
+    return plan ? `${instruction}\n\n${plan}`.trim() : instruction;
+  }, [genChapterPlan, genInstruction, genMemoryQueryText]);
 
   const isEmptyPack = useMemo(() => {
     const getTextMd = (raw: unknown): string => {
@@ -356,37 +433,74 @@ export function ContextPreviewDrawer(props: Props) {
     }
   }, [projectId, selectedVectorSources, toast, vectorQueryText]);
 
+  const fetchPreview = useCallback(
+    async (params: { queryText: string; sections: MemorySectionEnabled; budgets: Record<string, number> }) => {
+      if (!projectId) {
+        setError({ code: "NO_PROJECT", message: UI_COPY.writing.contextPreviewMissingProjectId });
+        return;
+      }
+      const safeQueryText = String(params.queryText ?? "").slice(0, 5000);
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await apiJson<MemoryContextPack>(`/api/projects/${projectId}/memory/preview`, {
+          method: "POST",
+          body: JSON.stringify({
+            query_text: safeQueryText,
+            section_enabled: params.sections,
+            budget_overrides: params.budgets,
+          }),
+        });
+        setPack(res.data ?? EMPTY_PACK);
+        setRequestId(res.request_id ?? null);
+      } catch (e) {
+        if (e instanceof ApiError) {
+          setError({ code: e.code, message: e.message, requestId: e.requestId });
+        } else {
+          setError({ code: "UNKNOWN", message: "加载失败" });
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [projectId],
+  );
+
+  const syncPreviewFromGenerate = useCallback(async () => {
+    const queryText = computeEffectiveQueryTextFromGenerate();
+    const sections = genMemoryModules ?? DEFAULT_PREVIEW_SECTIONS;
+    setPreviewQueryText(queryText);
+    setPreviewSections(sections);
+    setBudgetOverrideInputs(DEFAULT_BUDGET_INPUTS);
+    setSyncedAt(new Date().toISOString().replace("T", " ").slice(0, 19));
+    await fetchPreview({ queryText, sections, budgets: {} });
+  }, [computeEffectiveQueryTextFromGenerate, fetchPreview, genMemoryModules]);
+
   const load = useCallback(async () => {
     if (!projectId) {
       setError({ code: "NO_PROJECT", message: UI_COPY.writing.contextPreviewMissingProjectId });
       return;
     }
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiJson<MemoryContextPack>(`/api/projects/${projectId}/memory/retrieve`);
-      setPack(res.data ?? EMPTY_PACK);
-      setRequestId(res.request_id ?? null);
-    } catch (e) {
-      if (e instanceof ApiError) {
-        setError({ code: e.code, message: e.message, requestId: e.requestId });
-      } else {
-        setError({ code: "UNKNOWN", message: "加载失败" });
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId]);
+    await fetchPreview({ queryText: previewQueryText, sections: previewSections, budgets: parsedBudgetOverrides });
+  }, [fetchPreview, parsedBudgetOverrides, previewQueryText, previewSections, projectId]);
 
   useEffect(() => {
     if (!open) return;
     if (!memoryInjectionEnabled) return;
-    void load();
-  }, [load, memoryInjectionEnabled, open]);
+    if (syncedOnceRef.current) return;
+    syncedOnceRef.current = true;
+    void syncPreviewFromGenerate();
+  }, [memoryInjectionEnabled, open, syncPreviewFromGenerate]);
+
+  useEffect(() => {
+    if (open) return;
+    syncedOnceRef.current = false;
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     if (memoryInjectionEnabled) return;
+    syncedOnceRef.current = false;
     setLoading(false);
     setError(null);
     setPack(EMPTY_PACK);
@@ -460,6 +574,100 @@ export function ContextPreviewDrawer(props: Props) {
               : UI_COPY.writing.memoryInjectionDisabledPreview}
           </div>
         </div>
+
+        {memoryInjectionEnabled ? (
+          <div className="panel p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm text-ink">预览参数（preview API）</div>
+                <div className="mt-1 text-[11px] text-subtext">
+                  当前预览应尽量与“AI 生成”抽屉一致；可手动修改后点刷新。
+                  {syncedAt ? <span className="ml-2">synced_at: {syncedAt}</span> : null}
+                </div>
+              </div>
+              <button
+                className="btn btn-secondary"
+                disabled={loading || !projectId}
+                onClick={() => void syncPreviewFromGenerate()}
+                type="button"
+              >
+                同步生成设置
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              <label className="text-xs text-subtext">
+                memory_query_text（用于 pack 预览）
+                <textarea
+                  className="textarea mt-1 min-h-24 w-full"
+                  name="memory_preview_query_text"
+                  value={previewQueryText}
+                  placeholder="例如：本章要写的角色/地点/冲突（用于检索相关记忆）"
+                  onChange={(e) => setPreviewQueryText(e.target.value)}
+                />
+              </label>
+
+              <div className="grid gap-2">
+                <div className="text-xs text-subtext">modules（section_enabled）</div>
+                {(
+                  [
+                    ["worldbook", "世界书（worldbook）"],
+                    ["story_memory", "剧情记忆（story_memory）"],
+                    ["structured", "结构化记忆（structured）"],
+                    ["vector_rag", "向量 RAG（vector_rag）"],
+                    ["graph", "关系图（graph）"],
+                    ["fractal", "Fractal（fractal）"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key} className="flex items-center justify-between gap-3 text-sm text-ink">
+                    <span>{label}</span>
+                    <input
+                      className="checkbox"
+                      checked={previewSections[key]}
+                      onChange={(e) => setPreviewSections((prev) => ({ ...prev, [key]: e.target.checked }))}
+                      type="checkbox"
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <details className="rounded-atelier border border-border bg-surface p-3">
+                <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                  预算覆盖（budget_overrides，可选）
+                </summary>
+                <div className="mt-3 grid gap-2">
+                  {(
+                    [
+                      ["worldbook", "worldbook char_limit"],
+                      ["story_memory", "story_memory char_limit"],
+                      ["structured", "structured char_limit"],
+                      ["vector_rag", "vector_rag char_limit"],
+                      ["graph", "graph char_limit"],
+                      ["fractal", "fractal char_limit"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="grid gap-1 text-xs text-subtext">
+                      <span>{label}</span>
+                      <input
+                        className="input"
+                        inputMode="numeric"
+                        placeholder="留空=默认"
+                        value={budgetOverrideInputs[key]}
+                        onChange={(e) =>
+                          setBudgetOverrideInputs((prev) => ({
+                            ...prev,
+                            [key]: e.currentTarget.value.replace(/[^\d]/g, ""),
+                          }))
+                        }
+                      />
+                    </label>
+                  ))}
+                  <div className="text-[11px] text-subtext">仅影响预览，不会改变实际生成的注入预算。</div>
+                </div>
+              </details>
+            </div>
+          </div>
+        ) : null}
 
         {loading ? <div className="text-sm text-subtext">{UI_COPY.common.loading}</div> : null}
         {error ? (
