@@ -83,6 +83,22 @@ def _vector_embedding_overrides(*, db: Session, project_id: str) -> dict[str, st
     return out
 
 
+def _vector_rerank_config(*, db: Session, project_id: str) -> dict[str, object]:
+    row = db.get(ProjectSettings, project_id)
+
+    override_enabled = row.vector_rerank_enabled if row is not None else None
+    enabled = override_enabled if override_enabled is not None else bool(getattr(settings, "vector_rerank_enabled", False))
+
+    override_method_raw = str(row.vector_rerank_method or "").strip() if row is not None else ""
+    method = override_method_raw or "auto"
+
+    override_top_k = row.vector_rerank_top_k if row is not None else None
+    top_k = int(override_top_k) if override_top_k is not None else int(getattr(settings, "vector_max_candidates", 20) or 20)
+    top_k = max(1, min(int(top_k), 1000))
+
+    return {"enabled": bool(enabled), "method": method, "top_k": int(top_k)}
+
+
 def _wrap_and_truncate_block(*, tag: str, inner: str, char_limit: int) -> tuple[str, bool]:
     prefix = f"<{tag}>\n"
     suffix = f"\n</{tag}>"
@@ -426,18 +442,21 @@ def retrieve_memory_context_pack(
 
     vector_query_text = (query_text or "").strip()
     embedding_overrides = _vector_embedding_overrides(db=db, project_id=project_id)
+    rerank_config = _vector_rerank_config(db=db, project_id=project_id)
     try:
         if not vector_rag_enabled:
-            vector_rag = vector_rag_status(project_id=project_id, embedding=embedding_overrides)
+            vector_rag = vector_rag_status(project_id=project_id, embedding=embedding_overrides, rerank=rerank_config)
             vector_rag["enabled"] = False
             vector_rag["disabled_reason"] = "disabled"
             vector_rag["query_text"] = vector_query_text
         elif vector_query_text:
-            vector_rag = query_project(project_id=project_id, query_text=vector_query_text, embedding=embedding_overrides)
+            vector_rag = query_project(
+                project_id=project_id, query_text=vector_query_text, embedding=embedding_overrides, rerank=rerank_config
+            )
         else:
-            vector_rag = vector_rag_status(project_id=project_id, embedding=embedding_overrides)
+            vector_rag = vector_rag_status(project_id=project_id, embedding=embedding_overrides, rerank=rerank_config)
     except Exception as exc:
-        vector_rag = vector_rag_status(project_id=project_id)
+        vector_rag = vector_rag_status(project_id=project_id, embedding=embedding_overrides, rerank=rerank_config)
         vector_rag["enabled"] = False
         vector_rag["disabled_reason"] = "error"
         vector_rag["query_text"] = vector_query_text
@@ -512,6 +531,7 @@ def retrieve_memory_context_pack(
             "note": "vector_rag_service.query_project",
             "timings_ms": vector_rag.get("timings_ms"),
             "counts": vector_rag.get("counts"),
+            "rerank": vector_rag.get("rerank"),
             "dropped_total": int(vector_rag.get("counts", {}).get("dropped_total", 0))
             if isinstance(vector_rag.get("counts"), dict)
             else 0,

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from app.api.deps import UserIdDep, require_project_editor, require_project_viewer
+from app.core.config import settings
 from app.core.errors import ok_payload
 from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.db.session import SessionLocal
@@ -19,6 +20,7 @@ from app.services.vector_rag_service import (
 )
 
 router = APIRouter()
+
 
 def _vector_embedding_overrides(row: ProjectSettings | None) -> dict[str, str | None]:
     if row is None:
@@ -40,6 +42,20 @@ def _vector_embedding_overrides(row: ProjectSettings | None) -> dict[str, str | 
     return out
 
 
+def _vector_rerank_config(row: ProjectSettings | None) -> dict[str, object]:
+    override_enabled = row.vector_rerank_enabled if row is not None else None
+    enabled = override_enabled if override_enabled is not None else bool(getattr(settings, "vector_rerank_enabled", False))
+
+    override_method_raw = str(row.vector_rerank_method or "").strip() if row is not None else ""
+    method = override_method_raw or "auto"
+
+    override_top_k = row.vector_rerank_top_k if row is not None else None
+    top_k = int(override_top_k) if override_top_k is not None else int(getattr(settings, "vector_max_candidates", 20) or 20)
+    top_k = max(1, min(int(top_k), 1000))
+
+    return {"enabled": bool(enabled), "method": method, "top_k": int(top_k)}
+
+
 class VectorIngestRequest(BaseModel):
     sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
 
@@ -59,13 +75,16 @@ def get_vector_status(request: Request, user_id: UserIdDep, project_id: str, bod
 
     db = SessionLocal()
     embedding: dict[str, str | None] = {}
+    rerank: dict[str, object] = {}
     try:
         require_project_viewer(db, project_id=project_id, user_id=user_id)
-        embedding = _vector_embedding_overrides(db.get(ProjectSettings, project_id))
+        settings_row = db.get(ProjectSettings, project_id)
+        embedding = _vector_embedding_overrides(settings_row)
+        rerank = _vector_rerank_config(settings_row)
     finally:
         db.close()
 
-    result = vector_rag_status(project_id=project_id, sources=body.sources, embedding=embedding)
+    result = vector_rag_status(project_id=project_id, sources=body.sources, embedding=embedding, rerank=rerank)
     return ok_payload(request_id=request_id, data={"result": result})
 
 
@@ -109,11 +128,13 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
 
     db = SessionLocal()
     embedding: dict[str, str | None] = {}
+    rerank: dict[str, object] = {}
     qp_cfg = None
     try:
         require_project_viewer(db, project_id=project_id, user_id=user_id)
         settings_row = db.get(ProjectSettings, project_id)
         embedding = _vector_embedding_overrides(settings_row)
+        rerank = _vector_rerank_config(settings_row)
         qp_cfg = parse_query_preprocessing_config(
             (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
         )
@@ -121,7 +142,7 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
         db.close()
 
     normalized, preprocess_obs = normalize_query_text(query_text=body.query_text, config=qp_cfg)
-    result = query_project(project_id=project_id, query_text=normalized, sources=body.sources, embedding=embedding)
+    result = query_project(project_id=project_id, query_text=normalized, sources=body.sources, embedding=embedding, rerank=rerank)
     return ok_payload(
         request_id=request_id,
         data={

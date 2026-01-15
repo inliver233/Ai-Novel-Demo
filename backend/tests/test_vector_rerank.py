@@ -12,7 +12,12 @@ class TestVectorRerank(unittest.TestCase):
             {"id": "a", "text": "dragon castle", "metadata": {}},
         ]
 
-        reranked, obs = vector_rag_service._rerank_candidates(query_text="dragon castle", candidates=candidates)
+        reranked, obs = vector_rag_service._rerank_candidates(
+            query_text="dragon castle",
+            candidates=candidates,
+            method="auto",
+            top_k=20,
+        )
         self.assertIsInstance(reranked, list)
         self.assertEqual([c.get("id") for c in reranked], ["a", "b"])
         self.assertTrue(obs.get("enabled"))
@@ -33,7 +38,12 @@ class TestVectorRerank(unittest.TestCase):
                 {"id": "x", "text": "dragon", "metadata": {}},
                 {"id": "y", "text": "castle", "metadata": {}},
             ]
-            reranked, obs = vector_rag_service._rerank_candidates(query_text="dragon castle", candidates=candidates)
+            reranked, obs = vector_rag_service._rerank_candidates(
+                query_text="dragon castle",
+                candidates=candidates,
+                method="auto",
+                top_k=20,
+            )
             self.assertEqual([c.get("id") for c in reranked], ["x", "y"])
             self.assertTrue(obs.get("enabled"))
             self.assertFalse(obs.get("applied"))
@@ -43,4 +53,3 @@ class TestVectorRerank(unittest.TestCase):
             self.assertGreaterEqual(len(obs.get("errors") or []), 1)
         finally:
             vector_rag_service._rerank_score = orig  # type: ignore[assignment]
-
