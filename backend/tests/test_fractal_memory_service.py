@@ -12,6 +12,7 @@ from app.models.chapter import Chapter
 from app.models.fractal_memory import FractalMemory
 from app.models.outline import Outline
 from app.models.project import Project
+from app.models.story_memory import StoryMemory
 from app.models.user import User
 from app.services.fractal_memory_service import FractalConfig, compute_fractal, get_fractal_context, rebuild_fractal_memory
 
@@ -92,6 +93,7 @@ class TestFractalMemoryStorageLoop(unittest.TestCase):
                 Outline.__table__,
                 Chapter.__table__,
                 FractalMemory.__table__,
+                StoryMemory.__table__,
             ],
         )
         self.SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
@@ -121,6 +123,21 @@ class TestFractalMemoryStorageLoop(unittest.TestCase):
     def test_rebuild_then_get_roundtrip(self) -> None:
         with self.SessionLocal() as db:
             self._seed_project(db=db, chapter_count=2)
+            db.add(
+                StoryMemory(
+                    id="m1",
+                    project_id="p1",
+                    chapter_id="c1",
+                    memory_type="chapter_summary",
+                    title=None,
+                    content="摘要：plot_analysis chapter_summary",
+                    full_context_md=None,
+                    importance_score=1.0,
+                    tags_json=None,
+                    story_timeline=1,
+                )
+            )
+            db.commit()
 
             rebuilt = rebuild_fractal_memory(db=db, project_id="p1", reason="test_roundtrip")
             fetched = get_fractal_context(db=db, project_id="p1", enabled=True)
@@ -135,6 +152,9 @@ class TestFractalMemoryStorageLoop(unittest.TestCase):
         self.assertEqual(cfg.get("done_chapters_total"), 2)
         self.assertEqual(cfg.get("done_chapters_used"), 2)
         self.assertFalse(bool(cfg.get("done_chapters_truncated")))
+        scenes = list(rebuilt.get("scenes") or [])
+        self.assertTrue(scenes)
+        self.assertEqual(str(scenes[0].get("summary_md") or ""), "摘要：plot_analysis chapter_summary")
 
     def test_rebuild_caps_done_chapters_with_observable_config(self) -> None:
         with self.SessionLocal() as db:

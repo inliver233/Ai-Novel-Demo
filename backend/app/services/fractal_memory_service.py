@@ -14,6 +14,7 @@ from app.core.logging import log_event
 from app.db.utils import new_id
 from app.models.chapter import Chapter
 from app.models.fractal_memory import FractalMemory
+from app.models.story_memory import StoryMemory
 
 logger = logging.getLogger("ainovel")
 
@@ -64,16 +65,25 @@ class FractalConfig:
     char_limit: int
 
 
-def compute_fractal(*, chapters: list[Chapter], config: FractalConfig) -> dict[str, Any]:
+def compute_fractal(
+    *,
+    chapters: list[Chapter],
+    config: FractalConfig,
+    chapter_summary_by_id: dict[str, str] | None = None,
+) -> dict[str, Any]:
     done = [c for c in chapters if str(c.status or "").strip() == "done"]
     scenes: list[dict[str, Any]] = []
     for c in done:
+        summary_override = (chapter_summary_by_id or {}).get(str(c.id)) if chapter_summary_by_id is not None else None
+        summary_md = str(summary_override or "").strip() if summary_override is not None else ""
+        if not summary_md:
+            summary_md = _to_scene_summary(c)
         scenes.append(
             {
                 "chapter_id": str(c.id),
                 "chapter_number": int(c.number),
                 "title": str(c.title or ""),
-                "summary_md": _to_scene_summary(c),
+                "summary_md": summary_md,
                 "updated_at": c.updated_at.isoformat().replace("+00:00", "Z"),
             }
         )
@@ -192,7 +202,42 @@ def rebuild_fractal_memory(*, db: Session, project_id: str, reason: str) -> dict
         done_truncated = True
         done_chapters = done_chapters[-done_limit:]
 
-    computed = compute_fractal(chapters=done_chapters, config=cfg)
+    chapter_summary_by_id: dict[str, str] = {}
+    if done_chapters:
+        ids = [str(c.id) for c in done_chapters if str(getattr(c, "id", "") or "").strip()]
+        if ids:
+            rows = (
+                db.execute(
+                    select(
+                        StoryMemory.chapter_id,
+                        StoryMemory.content,
+                        StoryMemory.updated_at,
+                        StoryMemory.created_at,
+                        StoryMemory.id,
+                    )
+                    .where(
+                        StoryMemory.project_id == project_id,
+                        StoryMemory.memory_type == "chapter_summary",
+                        StoryMemory.chapter_id.in_(ids),
+                    )
+                    .order_by(
+                        StoryMemory.chapter_id.asc(),
+                        StoryMemory.updated_at.desc(),
+                        StoryMemory.created_at.desc(),
+                        StoryMemory.id.desc(),
+                    )
+                )
+                .all()
+            )
+            for chapter_id, content, _updated_at, _created_at, _mem_id in rows:
+                cid = str(chapter_id or "").strip()
+                if not cid or cid in chapter_summary_by_id:
+                    continue
+                summary = str(content or "").strip()
+                if summary:
+                    chapter_summary_by_id[cid] = summary
+
+    computed = compute_fractal(chapters=done_chapters, config=cfg, chapter_summary_by_id=chapter_summary_by_id)
     row = db.execute(select(FractalMemory).where(FractalMemory.project_id == project_id)).scalars().first()
     if row is None:
         row = FractalMemory(id=new_id(), project_id=project_id)
