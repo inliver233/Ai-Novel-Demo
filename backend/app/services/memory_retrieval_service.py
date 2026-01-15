@@ -20,6 +20,44 @@ from app.services.worldbook_service import preview_worldbook_trigger
 
 _MEMORY_TEXT_MD_CHAR_LIMIT = 6000
 _TRUNCATION_MARK = "\n…(truncated)\n"
+_ALLOWED_SECTIONS = {"worldbook", "story_memory", "structured", "vector_rag", "graph", "fractal"}
+_MAX_BUDGET_CHAR_LIMIT = 50000
+
+
+def _clamp_char_limit(value: object, *, default: int) -> int:
+    try:
+        raw = int(value)  # type: ignore[arg-type]
+    except Exception:
+        return int(default)
+    if raw < 0:
+        return int(default)
+    return max(0, min(int(raw), int(_MAX_BUDGET_CHAR_LIMIT)))
+
+
+def _unwrap_text_md_block(*, text_md: str, tag: str) -> str:
+    prefix = f"<{tag}>\n"
+    suffix = f"\n</{tag}>"
+    if text_md.startswith(prefix) and text_md.endswith(suffix):
+        return text_md[len(prefix) : -len(suffix)]
+    return text_md
+
+
+def _wrap_block_with_inner_limit(*, tag: str, inner: str, char_limit: int, ellipsis: bool) -> tuple[str, bool]:
+    prefix = f"<{tag}>\n"
+    suffix = f"\n</{tag}>"
+
+    body = (inner or "").strip()
+    if not body:
+        return "", False
+
+    truncated = False
+    if char_limit >= 0 and len(body) > char_limit:
+        body = body[:char_limit].rstrip()
+        if ellipsis and body:
+            body = body + "…"
+        truncated = True
+
+    return f"{prefix}{body}{suffix}", truncated
 
 
 def _vector_embedding_overrides(*, db: Session, project_id: str) -> dict[str, str | None]:
@@ -169,17 +207,45 @@ def retrieve_memory_context_pack(
     query_text: str = "",
     include_deleted: bool = False,
     section_enabled: dict[str, bool] | None = None,
+    budget_overrides: dict[str, int] | None = None,
 ) -> MemoryContextPackOut:
     """
     Must be safe when memory dependencies (vector DB / embeddings / etc.) are missing.
     """
     enabled_map = section_enabled or {}
+    budgets_raw = budget_overrides or {}
+    budgets = {str(k): v for k, v in budgets_raw.items() if str(k) in _ALLOWED_SECTIONS}
     worldbook_enabled = bool(enabled_map.get("worldbook", True))
     story_memory_enabled = bool(enabled_map.get("story_memory", True))
     structured_enabled = bool(enabled_map.get("structured", True))
     vector_rag_enabled = bool(enabled_map.get("vector_rag", True))
     graph_enabled = bool(enabled_map.get("graph", True))
     fractal_enabled = bool(enabled_map.get("fractal", True)) and bool(getattr(settings, "fractal_enabled", True))
+
+    worldbook_budget = _clamp_char_limit(budgets.get("worldbook"), default=12000) if "worldbook" in budgets else 12000
+    story_memory_budget = (
+        _clamp_char_limit(budgets.get("story_memory"), default=_MEMORY_TEXT_MD_CHAR_LIMIT)
+        if "story_memory" in budgets
+        else _MEMORY_TEXT_MD_CHAR_LIMIT
+    )
+    structured_budget = (
+        _clamp_char_limit(budgets.get("structured"), default=_MEMORY_TEXT_MD_CHAR_LIMIT)
+        if "structured" in budgets
+        else _MEMORY_TEXT_MD_CHAR_LIMIT
+    )
+    vector_rag_budget = (
+        _clamp_char_limit(budgets.get("vector_rag"), default=int(getattr(settings, "vector_final_char_limit", 6000) or 6000))
+        if "vector_rag" in budgets
+        else int(getattr(settings, "vector_final_char_limit", 6000) or 6000)
+    )
+    graph_budget = (
+        _clamp_char_limit(budgets.get("graph"), default=6000) if "graph" in budgets else 6000
+    )
+    fractal_budget = (
+        _clamp_char_limit(budgets.get("fractal"), default=int(getattr(settings, "fractal_char_limit", 6000) or 6000))
+        if "fractal" in budgets
+        else int(getattr(settings, "fractal_char_limit", 6000) or 6000)
+    )
 
     if worldbook_enabled:
         worldbook_preview = preview_worldbook_trigger(
@@ -188,7 +254,7 @@ def retrieve_memory_context_pack(
             query_text=query_text,
             include_constant=True,
             enable_recursion=True,
-            char_limit=12000,
+            char_limit=int(worldbook_budget),
         )
         worldbook = {**worldbook_preview.model_dump(), "enabled": True, "disabled_reason": None}
         if not isinstance(worldbook.get("text_md"), str):
@@ -238,7 +304,7 @@ def retrieve_memory_context_pack(
                     }
                 )
             text_md, text_truncated = _format_story_memory_text_md(
-                memories=rows[:12], char_limit=_MEMORY_TEXT_MD_CHAR_LIMIT
+                memories=rows[:12], char_limit=int(story_memory_budget)
             )
             story_memory = {
                 "enabled": enabled,
@@ -314,7 +380,7 @@ def retrieve_memory_context_pack(
                 relations=relations_preview,
                 events=events[:20],
                 foreshadows=foreshadows[:20],
-                char_limit=_MEMORY_TEXT_MD_CHAR_LIMIT,
+                char_limit=int(structured_budget),
             )
             structured = {
                 "enabled": enabled,
@@ -347,6 +413,15 @@ def retrieve_memory_context_pack(
     graph = query_graph_context(db=db, project_id=project_id, query_text=query_text, enabled=graph_enabled)
     if isinstance(graph, dict):
         pb = graph.get("prompt_block") if isinstance(graph.get("prompt_block"), dict) else {}
+        if "graph" in budgets and isinstance(pb, dict):
+            inner = _unwrap_text_md_block(text_md=str(pb.get("text_md") or ""), tag="GraphContext")
+            clipped, was_truncated = _wrap_and_truncate_block(tag="GraphContext", inner=inner, char_limit=int(graph_budget))
+            pb = dict(pb)
+            pb["text_md"] = clipped
+            pb["truncated"] = bool(pb.get("truncated") or was_truncated)
+            pb["char_limit"] = int(graph_budget)
+            pb["original_chars"] = int(pb.get("original_chars") or len(str(pb.get("text_md") or "")))
+            graph["prompt_block"] = pb
         graph["text_md"] = str(pb.get("text_md") or "")
 
     vector_query_text = (query_text or "").strip()
@@ -370,12 +445,40 @@ def retrieve_memory_context_pack(
     if isinstance(vector_rag, dict):
         vector_rag["query_text"] = vector_query_text
         pb = vector_rag.get("prompt_block") if isinstance(vector_rag.get("prompt_block"), dict) else {}
-        vector_rag["text_md"] = str(pb.get("text_md") or "")
+        text_md = str(pb.get("text_md") or "")
+        if "vector_rag" in budgets and text_md:
+            inner = _unwrap_text_md_block(text_md=text_md, tag="VECTOR_RAG")
+            clipped, was_truncated = _wrap_block_with_inner_limit(
+                tag="VECTOR_RAG", inner=inner, char_limit=int(vector_rag_budget), ellipsis=False
+            )
+            text_md = clipped
+            pb = dict(pb) if isinstance(pb, dict) else {}
+            pb["text_md"] = text_md
+            vector_rag["prompt_block"] = pb
+            final = vector_rag.get("final") if isinstance(vector_rag.get("final"), dict) else None
+            if isinstance(final, dict):
+                final = dict(final)
+                final["text_md"] = text_md
+                if was_truncated:
+                    final["truncated"] = True
+                vector_rag["final"] = final
+        vector_rag["text_md"] = text_md
 
     fractal = get_fractal_context(db=db, project_id=project_id, enabled=fractal_enabled)
     if isinstance(fractal, dict):
         pb = fractal.get("prompt_block") if isinstance(fractal.get("prompt_block"), dict) else {}
-        fractal["text_md"] = str(pb.get("text_md") or "")
+        text_md = str(pb.get("text_md") or "")
+        if "fractal" in budgets and text_md:
+            inner = _unwrap_text_md_block(text_md=text_md, tag="FractalMemory")
+            clipped, was_truncated = _wrap_block_with_inner_limit(
+                tag="FractalMemory", inner=inner, char_limit=int(fractal_budget), ellipsis=True
+            )
+            text_md = clipped
+            pb = dict(pb) if isinstance(pb, dict) else {}
+            pb["text_md"] = text_md
+            fractal["prompt_block"] = pb
+            fractal["truncated"] = bool(fractal.get("truncated") or was_truncated)
+        fractal["text_md"] = text_md
 
     logs: list[dict[str, Any]] = [
         {
@@ -383,18 +486,24 @@ def retrieve_memory_context_pack(
             "enabled": bool(worldbook.get("enabled")),
             "disabled_reason": worldbook.get("disabled_reason"),
             "note": "preview_worldbook_trigger",
+            "budget_char_limit": int(worldbook_budget),
+            "budget_source": "override" if "worldbook" in budgets else "default",
         },
         {
             "section": "story_memory",
             "enabled": bool(story_memory.get("enabled")),
             "disabled_reason": story_memory.get("disabled_reason"),
             "note": "story_memories (top by importance)",
+            "budget_char_limit": int(story_memory_budget),
+            "budget_source": "override" if "story_memory" in budgets else "default",
         },
         {
             "section": "structured",
             "enabled": bool(structured.get("enabled")),
             "disabled_reason": structured.get("disabled_reason"),
             "note": "entities/relations/events/foreshadows summary",
+            "budget_char_limit": int(structured_budget),
+            "budget_source": "override" if "structured" in budgets else "default",
         },
         {
             "section": "vector_rag",
@@ -410,18 +519,24 @@ def retrieve_memory_context_pack(
             "hybrid_enabled": bool(vector_rag.get("hybrid_enabled"))
             if "hybrid_enabled" in vector_rag
             else bool(vector_rag.get("hybrid", {}).get("enabled")) if isinstance(vector_rag.get("hybrid"), dict) else None,
+            "budget_char_limit": int(vector_rag_budget),
+            "budget_source": "override" if "vector_rag" in budgets else "default",
         },
         {
             "section": "graph",
             "enabled": bool(graph.get("enabled")),
             "disabled_reason": graph.get("disabled_reason"),
             "note": "graph_context_service.query_graph_context",
+            "budget_char_limit": int(graph_budget),
+            "budget_source": "override" if "graph" in budgets else "default",
         },
         {
             "section": "fractal",
             "enabled": bool(fractal.get("enabled")),
             "disabled_reason": fractal.get("disabled_reason"),
             "note": "Phase 6.2: use /api/projects/{project_id}/fractal/rebuild to rebuild deterministically",
+            "budget_char_limit": int(fractal_budget),
+            "budget_source": "override" if "fractal" in budgets else "default",
         },
     ]
 

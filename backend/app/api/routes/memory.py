@@ -26,6 +26,7 @@ from app.models.structured_memory import (
 from app.models.user import User
 from app.schemas.base import RequestModel
 from app.schemas.memory_update import MemoryUpdateV1Request
+from app.schemas.memory_preview import MemoryPreviewRequest
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.memory_retrieval_service import retrieve_memory_context_pack
@@ -66,6 +67,27 @@ def retrieve_project_memory(
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
     pack = retrieve_memory_context_pack(db=db, project_id=project_id, query_text=query_text, include_deleted=include_deleted)
+    return ok_payload(request_id=request_id, data=pack.model_dump())
+
+
+@router.post("/projects/{project_id}/memory/preview")
+def preview_project_memory(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    body: MemoryPreviewRequest,
+) -> dict:
+    request_id = request.state.request_id
+    require_project_viewer(db, project_id=project_id, user_id=user_id)
+    pack = retrieve_memory_context_pack(
+        db=db,
+        project_id=project_id,
+        query_text=body.query_text,
+        include_deleted=False,
+        section_enabled=body.section_enabled,
+        budget_overrides=body.budget_overrides,
+    )
     return ok_payload(request_id=request_id, data=pack.model_dump())
 
 

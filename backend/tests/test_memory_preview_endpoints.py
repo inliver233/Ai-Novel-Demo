@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+import unittest
+from typing import Generator
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+from starlette.testclient import TestClient
+
+from app.api.routes import memory as memory_routes
+from app.core.errors import AppError
+from app.db.base import Base
+from app.db.session import get_db
+from app.main import app_error_handler, validation_error_handler
+from app.models.llm_profile import LLMProfile
+from app.models.outline import Outline
+from app.models.project import Project
+from app.models.project_settings import ProjectSettings
+from app.models.user import User
+from app.models.worldbook_entry import WorldBookEntry
+
+
+def _make_test_app(SessionLocal: sessionmaker) -> FastAPI:
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_user_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
+        request.state.request_id = "rid-test"
+        user_id = request.headers.get("X-Test-User")
+        request.state.user_id = user_id
+        request.state.authenticated_user_id = user_id
+        request.state.session_expire_at = None
+        request.state.auth_source = "test"
+        return await call_next(request)
+
+    app.add_exception_handler(AppError, app_error_handler)
+    app.add_exception_handler(RequestValidationError, validation_error_handler)
+    app.include_router(memory_routes.router, prefix="/api")
+
+    def _override_get_db() -> Generator[Session, None, None]:
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = _override_get_db
+    return app
+
+
+class TestMemoryPreviewEndpoints(unittest.TestCase):
+    def setUp(self) -> None:
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+
+        Base.metadata.create_all(
+            engine,
+            tables=[
+                User.__table__,
+                LLMProfile.__table__,
+                Outline.__table__,
+                Project.__table__,
+                ProjectSettings.__table__,
+                WorldBookEntry.__table__,
+            ],
+        )
+        self.SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+        self.app = _make_test_app(self.SessionLocal)
+
+        with self.SessionLocal() as db:
+            db.add(User(id="u_owner", display_name="owner"))
+            db.add(Project(id="p1", owner_user_id="u_owner", name="Project 1", genre=None, logline=None))
+            db.add(
+                WorldBookEntry(
+                    id="wb1",
+                    project_id="p1",
+                    title="Const Entry",
+                    content_md="A" * 5000,
+                    enabled=True,
+                    constant=True,
+                    keywords_json=None,
+                    exclude_recursion=False,
+                    prevent_recursion=False,
+                    char_limit=20000,
+                    priority="important",
+                )
+            )
+            db.commit()
+
+    def test_memory_preview_accepts_modules_and_budget_overrides(self) -> None:
+        client = TestClient(self.app)
+        resp = client.post(
+            "/api/projects/p1/memory/preview",
+            headers={"X-Test-User": "u_owner"},
+            json={
+                "query_text": "hello",
+                "section_enabled": {
+                    "worldbook": True,
+                    "story_memory": False,
+                    "structured": False,
+                    "vector_rag": False,
+                    "graph": False,
+                    "fractal": False,
+                },
+                "budget_overrides": {
+                    "worldbook": 200,
+                    "story_memory": 300,
+                    "structured": 400,
+                    "vector_rag": 500,
+                    "graph": 600,
+                    "fractal": 700,
+                    "unknown": 800,
+                },
+            },
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertTrue(payload.get("ok"))
+
+        data = payload.get("data") or {}
+        self.assertIn("worldbook", data)
+        self.assertIn("logs", data)
+
+        worldbook = data["worldbook"]
+        self.assertTrue(worldbook.get("enabled") is True)
+        self.assertTrue(worldbook.get("truncated") is True)
+        text_md = str(worldbook.get("text_md") or "")
+        self.assertTrue(text_md.startswith("<WORLD_BOOK>\n"))
+        self.assertTrue(text_md.endswith("\n</WORLD_BOOK>"))
+
+        inner = text_md[len("<WORLD_BOOK>\n") : -len("\n</WORLD_BOOK>")]
+        self.assertLessEqual(len(inner), 200)
+
+        story_memory = data["story_memory"]
+        self.assertEqual(story_memory.get("enabled"), False)
+        self.assertEqual(story_memory.get("disabled_reason"), "disabled")
+
+        logs = data["logs"]
+        worldbook_log = next((x for x in logs if isinstance(x, dict) and x.get("section") == "worldbook"), None)
+        self.assertIsNotNone(worldbook_log)
+        self.assertEqual(worldbook_log.get("budget_char_limit"), 200)
+        self.assertEqual(worldbook_log.get("budget_source"), "override")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
