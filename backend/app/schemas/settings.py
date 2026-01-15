@@ -53,6 +53,14 @@ class ProjectSettingsOut(BaseModel):
     query_preprocessing_effective: QueryPreprocessingConfig
     query_preprocessing_effective_source: str
 
+    vector_rerank_enabled: bool | None
+    vector_rerank_method: str | None
+    vector_rerank_top_k: int | None
+    vector_rerank_effective_enabled: bool
+    vector_rerank_effective_method: str
+    vector_rerank_effective_top_k: int
+    vector_rerank_effective_source: str
+
     vector_embedding_base_url: str
     vector_embedding_model: str
     vector_embedding_has_api_key: bool
@@ -71,6 +79,10 @@ class ProjectSettingsUpdate(BaseModel):
     constraints: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
 
     query_preprocessing: QueryPreprocessingConfig | None = None
+
+    vector_rerank_enabled: bool | None = None
+    vector_rerank_method: str | None = Field(default=None, max_length=64)
+    vector_rerank_top_k: int | None = Field(default=None, ge=1, le=1000)
 
     vector_embedding_base_url: str | None = Field(default=None, max_length=2048)
     vector_embedding_model: str | None = Field(default=None, max_length=255)

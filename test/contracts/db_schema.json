@@ -2468,6 +2468,27 @@
         },
         {
           "dflt_value": null,
+          "name": "vector_rerank_enabled",
+          "notnull": 0,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_rerank_method",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_rerank_top_k",
+          "notnull": 0,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
           "name": "world_setting",
           "notnull": 0,
           "pk": 0,

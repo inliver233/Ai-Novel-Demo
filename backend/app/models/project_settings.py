@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -21,5 +21,9 @@ class ProjectSettings(Base):
     vector_embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     vector_embedding_api_key_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
     vector_embedding_api_key_masked: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    vector_rerank_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    vector_rerank_method: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    vector_rerank_top_k: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     query_preprocessing_json: Mapped[str | None] = mapped_column(Text, nullable=True)

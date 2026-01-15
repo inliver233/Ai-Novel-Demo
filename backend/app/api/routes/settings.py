@@ -52,6 +52,36 @@ def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> 
     qp_effective = qp_override or qp_default
     qp_source = "project" if qp_override is not None else "default"
 
+    rerank_override_enabled = row.vector_rerank_enabled if row is not None else None
+    rerank_override_method_raw = (row.vector_rerank_method or "").strip() if row is not None else ""
+    rerank_override_method = rerank_override_method_raw or None
+    rerank_override_top_k = row.vector_rerank_top_k if row is not None else None
+
+    rerank_default_enabled = bool(getattr(settings, "vector_rerank_enabled", False))
+    rerank_default_method = "auto"
+    rerank_default_top_k = int(getattr(settings, "vector_max_candidates", 20) or 20)
+
+    rerank_effective_enabled = rerank_override_enabled if rerank_override_enabled is not None else rerank_default_enabled
+    rerank_effective_method = rerank_override_method or rerank_default_method
+    rerank_effective_top_k = rerank_override_top_k if rerank_override_top_k is not None else rerank_default_top_k
+
+    source_project_fields = {
+        "enabled": rerank_override_enabled is not None,
+        "method": rerank_override_method is not None,
+        "top_k": rerank_override_top_k is not None,
+    }
+    source_default_fields = {
+        "enabled": rerank_override_enabled is None,
+        "method": rerank_override_method is None,
+        "top_k": rerank_override_top_k is None,
+    }
+    if any(source_project_fields.values()) and any(source_default_fields.values()):
+        rerank_effective_source = "mixed"
+    elif any(source_project_fields.values()):
+        rerank_effective_source = "project"
+    else:
+        rerank_effective_source = "default"
+
     override_base_url = (row.vector_embedding_base_url or "").strip() if row is not None else ""
     override_model = (row.vector_embedding_model or "").strip() if row is not None else ""
     override_ciphertext = row.vector_embedding_api_key_ciphertext if row is not None else None
@@ -113,6 +143,13 @@ def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> 
         query_preprocessing_default=qp_default,
         query_preprocessing_effective=qp_effective,
         query_preprocessing_effective_source=qp_source,
+        vector_rerank_enabled=rerank_override_enabled,
+        vector_rerank_method=rerank_override_method,
+        vector_rerank_top_k=rerank_override_top_k,
+        vector_rerank_effective_enabled=rerank_effective_enabled,
+        vector_rerank_effective_method=rerank_effective_method,
+        vector_rerank_effective_top_k=rerank_effective_top_k,
+        vector_rerank_effective_source=rerank_effective_source,
         vector_embedding_base_url=override_base_url,
         vector_embedding_model=override_model,
         vector_embedding_has_api_key=override_has_api_key,
@@ -161,6 +198,18 @@ def put_settings(request: Request, db: DbDep, user_id: UserIdDep, project_id: st
                 ensure_ascii=False,
                 separators=(",", ":"),
             )
+
+    if "vector_rerank_enabled" in body.model_fields_set:
+        row.vector_rerank_enabled = body.vector_rerank_enabled
+
+    if "vector_rerank_method" in body.model_fields_set:
+        if body.vector_rerank_method is None:
+            row.vector_rerank_method = None
+        else:
+            row.vector_rerank_method = body.vector_rerank_method.strip() or None
+
+    if "vector_rerank_top_k" in body.model_fields_set:
+        row.vector_rerank_top_k = int(body.vector_rerank_top_k) if body.vector_rerank_top_k is not None else None
 
     if body.vector_embedding_base_url is not None:
         row.vector_embedding_base_url = body.vector_embedding_base_url.strip() or None
