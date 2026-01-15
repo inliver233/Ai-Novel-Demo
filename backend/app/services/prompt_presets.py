@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.db.utils import new_id
+from app.llm.capabilities import max_context_tokens_limit, max_output_tokens_limit
 from app.llm.messages import ChatMessage, flatten_messages, normalize_role
+from app.models.llm_preset import LLMPreset
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
 from app.services.prompt_budget import estimate_tokens, trim_text_to_tokens
@@ -289,8 +291,48 @@ def render_preset_for_task(
         "gemini": 12000,
     }
     budget_tokens = prompt_budget_tokens
+    budget_source = "explicit" if budget_tokens is not None else "unset"
+    budget_calc: dict[str, Any] | None = None
     if budget_tokens is None:
-        budget_tokens = default_budget_by_provider.get(provider or "", 24000)
+        llm_preset = db.get(LLMPreset, project_id)
+        effective_provider = str(provider or (llm_preset.provider if llm_preset is not None else "")).strip()
+        effective_model = (
+            str(llm_preset.model or "").strip()
+            if llm_preset is not None and (provider is None or provider == llm_preset.provider)
+            else None
+        )
+
+        max_ctx = max_context_tokens_limit(effective_provider, effective_model)
+        max_out = max_output_tokens_limit(effective_provider, effective_model)
+        safety_margin = 512
+
+        if isinstance(max_ctx, int) and max_ctx > 0 and isinstance(max_out, int) and max_out > 0:
+            computed = int(max_ctx) - int(max_out) - int(safety_margin)
+            if computed > 0:
+                budget_tokens = computed
+                budget_source = "capabilities"
+            else:
+                budget_tokens = default_budget_by_provider.get(effective_provider or "", 24000)
+                budget_source = "provider_default"
+            budget_calc = {
+                "provider": effective_provider,
+                "model": effective_model,
+                "max_context_tokens": int(max_ctx),
+                "max_output_tokens": int(max_out),
+                "safety_margin_tokens": int(safety_margin),
+                "computed_budget_tokens": int(computed),
+            }
+        else:
+            budget_tokens = default_budget_by_provider.get(effective_provider or "", 24000)
+            budget_source = "provider_default"
+            budget_calc = {
+                "provider": effective_provider,
+                "model": effective_model,
+                "max_context_tokens": int(max_ctx) if isinstance(max_ctx, int) else None,
+                "max_output_tokens": int(max_out) if isinstance(max_out, int) else None,
+                "safety_margin_tokens": int(safety_margin),
+                "computed_budget_tokens": None,
+            }
 
     all_missing: set[str] = set()
     block_states: list[dict] = []
@@ -492,6 +534,8 @@ def render_preset_for_task(
         "task": task,
         "preset_id": preset.id,
         "prompt_budget_tokens": budget_tokens,
+        "prompt_budget_source": budget_source,
+        "prompt_budget_calc": budget_calc,
         "prompt_tokens_estimate": total_tokens,
         "missing": sorted(all_missing),
         "blocks": [
