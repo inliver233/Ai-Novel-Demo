@@ -3,14 +3,73 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import Response
 from sqlalchemy import select
 
 from app.api.deps import DbDep, UserIdDep, require_generation_run_viewer, require_project_viewer
+from app.core.config import settings
 from app.core.errors import ok_payload
+from app.core.secrets import SecretCryptoError, decrypt_secret, redact_api_keys
 from app.models.generation_run import GenerationRun
+from app.models.project_settings import ProjectSettings
 from app.schemas.generation_runs import GenerationRunOut
+from app.services.vector_rag_service import VectorSource, query_project, vector_rag_status
 
 router = APIRouter()
+
+
+def _safe_json_dict(raw: str | None) -> dict:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {"_raw": raw}
+    return parsed if isinstance(parsed, dict) else {"_raw": raw}
+
+
+def _safe_json_dict_or_none(raw: str | None) -> dict | None:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {"_raw": raw}
+    return parsed if isinstance(parsed, dict) else {"_raw": raw}
+
+
+def _vector_embedding_overrides(row: ProjectSettings | None) -> dict[str, str | None]:
+    if row is None:
+        return {}
+    out: dict[str, str | None] = {}
+    base_url = str(row.vector_embedding_base_url or "").strip()
+    if base_url:
+        out["base_url"] = base_url
+    model = str(row.vector_embedding_model or "").strip()
+    if model:
+        out["model"] = model
+    if row.vector_embedding_api_key_ciphertext:
+        try:
+            api_key = decrypt_secret(row.vector_embedding_api_key_ciphertext).strip()
+        except SecretCryptoError:
+            api_key = ""
+        if api_key:
+            out["api_key"] = api_key
+    return out
+
+
+def _vector_rerank_config(row: ProjectSettings | None) -> dict[str, object]:
+    override_enabled = row.vector_rerank_enabled if row is not None else None
+    enabled = override_enabled if override_enabled is not None else bool(getattr(settings, "vector_rerank_enabled", False))
+
+    override_method_raw = str(row.vector_rerank_method or "").strip() if row is not None else ""
+    method = override_method_raw or "auto"
+
+    override_top_k = row.vector_rerank_top_k if row is not None else None
+    top_k = int(override_top_k) if override_top_k is not None else int(getattr(settings, "vector_max_candidates", 20) or 20)
+    top_k = max(1, min(int(top_k), 1000))
+
+    return {"enabled": bool(enabled), "method": method, "top_k": int(top_k)}
 
 
 @router.get("/projects/{project_id}/generation_runs")
@@ -114,3 +173,94 @@ def get_run(request: Request, db: DbDep, user_id: UserIdDep, run_id: str) -> dic
         created_at=row.created_at,
     ).model_dump()
     return ok_payload(request_id=request_id, data={"run": payload})
+
+
+@router.get("/generation_runs/{run_id}/debug_bundle")
+def download_debug_bundle(request: Request, db: DbDep, user_id: UserIdDep, run_id: str) -> Response:
+    request_id = request.state.request_id
+    row = require_generation_run_viewer(db, run_id=run_id, user_id=user_id)
+
+    params = _safe_json_dict(row.params_json)
+    render_log = _safe_json_dict_or_none(row.prompt_render_log_json)
+    err = _safe_json_dict_or_none(row.error_json)
+
+    memory_log = params.get("memory_retrieval_log_json") if isinstance(params.get("memory_retrieval_log_json"), dict) else {}
+    injection_cfg = params.get("memory_injection_config") if isinstance(params.get("memory_injection_config"), dict) else {}
+    modules = injection_cfg.get("modules") if isinstance(injection_cfg.get("modules"), dict) else {}
+    normalized_query_text = str(injection_cfg.get("normalized_query_text") or injection_cfg.get("query_text") or "").strip()
+
+    sources: list[VectorSource] = ["worldbook", "outline", "chapter"]
+    settings_row = db.get(ProjectSettings, str(row.project_id))
+    embedding = _vector_embedding_overrides(settings_row)
+    rerank = _vector_rerank_config(settings_row)
+
+    vector_rag_enabled = bool(modules.get("vector_rag", True))
+    try:
+        if vector_rag_enabled and normalized_query_text:
+            vector_rag = query_project(
+                project_id=str(row.project_id),
+                query_text=normalized_query_text,
+                sources=sources,
+                embedding=embedding,
+                rerank=rerank,
+            )
+        else:
+            vector_rag = vector_rag_status(
+                project_id=str(row.project_id),
+                sources=sources,
+                embedding=embedding,
+                rerank=rerank,
+            )
+            if not vector_rag_enabled:
+                vector_rag["enabled"] = False
+                vector_rag["disabled_reason"] = "disabled"
+            vector_rag["query_text"] = normalized_query_text
+    except Exception as exc:
+        vector_rag = vector_rag_status(
+            project_id=str(row.project_id),
+            sources=sources,
+            embedding=embedding,
+            rerank=rerank,
+        )
+        vector_rag["enabled"] = False
+        vector_rag["disabled_reason"] = "error"
+        vector_rag["query_text"] = normalized_query_text
+        vector_rag["error"] = f"debug_bundle_vector_query_failed:{type(exc).__name__}"
+
+    bundle = {
+        "schema_version": "debug_bundle_v1",
+        "request_id": request_id,
+        "run": {
+            "id": str(row.id),
+            "project_id": str(row.project_id),
+            "chapter_id": str(row.chapter_id) if row.chapter_id else None,
+            "type": str(row.type),
+            "provider": str(row.provider) if row.provider else None,
+            "model": str(row.model) if row.model else None,
+            "run_request_id": str(row.request_id) if row.request_id else None,
+            "created_at": row.created_at.isoformat().replace("+00:00", "Z"),
+        },
+        "prompt": {
+            "system": str(row.prompt_system or ""),
+            "user": str(row.prompt_user or ""),
+            "render_log": render_log,
+        },
+        "params": params,
+        "memory_retrieval_log": memory_log,
+        "vector_rag": vector_rag,
+        "memory_injection": {
+            "normalized_query_text": normalized_query_text,
+            "modules": modules,
+        },
+        "error": err,
+    }
+
+    safe_bundle = redact_api_keys(bundle)
+    payload = json.dumps(safe_bundle, ensure_ascii=False, indent=2) + "\n"
+
+    filename = f"debug_bundle_{row.id}.json"
+    return Response(
+        content=payload.encode("utf-8"),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

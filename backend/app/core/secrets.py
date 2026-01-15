@@ -35,6 +35,46 @@ def mask_api_key(api_key: str) -> str:
     return f"{prefix}****{last4}"
 
 
+def redact_api_keys(value: object) -> object:
+    """
+    Redact any `*api_key*` fields in nested dict/list objects.
+
+    Rules:
+    - Keys equal to / ending with `api_key` will be converted into `has_api_key` + `masked_api_key` (with the same prefix if present).
+    - Other keys that merely *contain* `api_key`/`apikey` will be replaced by a constant marker.
+    """
+
+    def _redact(v: object) -> object:
+        if isinstance(v, list):
+            return [_redact(item) for item in v]
+        if isinstance(v, dict):
+            out: dict[str, object] = {}
+            for raw_key, raw_val in v.items():
+                key = str(raw_key)
+                key_norm = key.lower()
+
+                if key_norm in ("api_key", "apikey") or key_norm.endswith("api_key") or key_norm.endswith("_api_key"):
+                    secret = str(raw_val or "")
+                    prefix = key[: -len("api_key")] if key_norm.endswith("api_key") else ""
+                    prefix = prefix.rstrip("_")
+                    has_key = bool(secret.strip())
+                    has_field = f"{prefix + '_' if prefix else ''}has_api_key"
+                    masked_field = f"{prefix + '_' if prefix else ''}masked_api_key"
+                    out[has_field] = has_key
+                    out[masked_field] = mask_api_key(secret) if has_key else ""
+                    continue
+
+                if "api_key" in key_norm or "apikey" in key_norm:
+                    out[key] = "[REDACTED]"
+                    continue
+
+                out[key] = _redact(raw_val)
+            return out
+        return v
+
+    return _redact(value)
+
+
 def encrypt_secret(plaintext: str) -> str:
     raw = (plaintext or "").encode("utf-8")
     if not raw:
