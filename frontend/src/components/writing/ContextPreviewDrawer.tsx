@@ -277,6 +277,9 @@ export function ContextPreviewDrawer(props: Props) {
   const [vectorLoading, setVectorLoading] = useState(false);
   const [vectorResult, setVectorResult] = useState<VectorRagQueryResult | null>(null);
   const [vectorRequestId, setVectorRequestId] = useState<string | null>(null);
+  const [vectorRawQueryText, setVectorRawQueryText] = useState<string | null>(null);
+  const [vectorNormalizedQueryText, setVectorNormalizedQueryText] = useState<string | null>(null);
+  const [vectorPreprocessObs, setVectorPreprocessObs] = useState<unknown>(null);
   const [vectorError, setVectorError] = useState<{ code: string; message: string; requestId?: string } | null>(null);
 
   const effectivePack = useMemo(() => (memoryInjectionEnabled ? pack : EMPTY_PACK), [memoryInjectionEnabled, pack]);
@@ -322,7 +325,12 @@ export function ContextPreviewDrawer(props: Props) {
     setVectorLoading(true);
     setVectorError(null);
     try {
-      const res = await apiJson<{ result: unknown }>(`/api/projects/${projectId}/vector/query`, {
+      const res = await apiJson<{
+        result: unknown;
+        raw_query_text?: unknown;
+        normalized_query_text?: unknown;
+        preprocess_obs?: unknown;
+      }>(`/api/projects/${projectId}/vector/query`, {
         method: "POST",
         body: JSON.stringify({ query_text: vectorQueryText, sources: selectedVectorSources }),
       });
@@ -331,7 +339,13 @@ export function ContextPreviewDrawer(props: Props) {
         throw new ApiError({ code: "BAD_RESPONSE", message: "响应格式错误", requestId: res.request_id, status: 200 });
       setVectorResult(normalized);
       setVectorRequestId(res.request_id ?? null);
+      setVectorRawQueryText(typeof res.data?.raw_query_text === "string" ? res.data.raw_query_text : vectorQueryText);
+      setVectorNormalizedQueryText(typeof res.data?.normalized_query_text === "string" ? res.data.normalized_query_text : null);
+      setVectorPreprocessObs(res.data?.preprocess_obs ?? null);
     } catch (e) {
+      setVectorRawQueryText(null);
+      setVectorNormalizedQueryText(null);
+      setVectorPreprocessObs(null);
       if (e instanceof ApiError) {
         setVectorError({ code: e.code, message: e.message, requestId: e.requestId });
       } else {
@@ -715,6 +729,32 @@ export function ContextPreviewDrawer(props: Props) {
                   <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
                     {vectorResult.prompt_block.text_md || "（空）"}
                   </pre>
+                </details>
+
+                <details className="mt-1">
+                  <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                    query preprocess（raw vs normalized）
+                  </summary>
+                  <div className="mt-2 grid gap-3">
+                    <div>
+                      <div className="text-[11px] text-subtext">raw_query_text</div>
+                      <pre className="mt-1 max-h-28 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                        {vectorRawQueryText ?? ""}
+                      </pre>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-subtext">normalized_query_text</div>
+                      <pre className="mt-1 max-h-28 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                        {vectorNormalizedQueryText ?? ""}
+                      </pre>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-subtext">preprocess_obs</div>
+                      <pre className="mt-1 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                        {JSON.stringify(vectorPreprocessObs ?? null, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
                 </details>
 
                 <details className="mt-1">

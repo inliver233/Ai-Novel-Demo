@@ -25,6 +25,12 @@ export interface ProjectSettings {
   world_setting: string;
   style_guide: string;
   constraints: string;
+
+  query_preprocessing?: QueryPreprocessingConfig | null;
+  query_preprocessing_default?: QueryPreprocessingConfig;
+  query_preprocessing_effective?: QueryPreprocessingConfig;
+  query_preprocessing_effective_source?: string;
+
   vector_embedding_base_url: string;
   vector_embedding_model: string;
   vector_embedding_has_api_key: boolean;
@@ -35,6 +41,13 @@ export interface ProjectSettings {
   vector_embedding_effective_masked_api_key: string;
   vector_embedding_effective_disabled_reason?: string | null;
   vector_embedding_effective_source: string;
+}
+
+export interface QueryPreprocessingConfig {
+  enabled: boolean;
+  tags: string[];
+  exclusion_rules: string[];
+  index_ref_enhance: boolean;
 }
 
 export interface Character {

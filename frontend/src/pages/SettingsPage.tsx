@@ -13,13 +13,17 @@ import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { ApiError, apiJson } from "../services/apiClient";
 import { markWizardProjectChanged } from "../services/wizard";
-import type { Project, ProjectSettings } from "../types";
+import type { Project, ProjectSettings, QueryPreprocessingConfig } from "../types";
 
 type ProjectForm = { name: string; genre: string; logline: string };
 type SettingsForm = {
   world_setting: string;
   style_guide: string;
   constraints: string;
+  query_preprocessing_enabled: boolean;
+  query_preprocessing_tags: string;
+  query_preprocessing_exclusion_rules: string;
+  query_preprocessing_index_ref_enhance: boolean;
   vector_embedding_base_url: string;
   vector_embedding_model: string;
 };
@@ -56,6 +60,10 @@ export function SettingsPage() {
     world_setting: "",
     style_guide: "",
     constraints: "",
+    query_preprocessing_enabled: false,
+    query_preprocessing_tags: "",
+    query_preprocessing_exclusion_rules: "",
+    query_preprocessing_index_ref_enhance: false,
     vector_embedding_base_url: "",
     vector_embedding_model: "",
   });
@@ -84,6 +92,14 @@ export function SettingsPage() {
       world_setting: settings.world_setting ?? "",
       style_guide: settings.style_guide ?? "",
       constraints: settings.constraints ?? "",
+      query_preprocessing_enabled: Boolean(settings.query_preprocessing_effective?.enabled),
+      query_preprocessing_tags: Array.isArray(settings.query_preprocessing_effective?.tags)
+        ? settings.query_preprocessing_effective?.tags.join("\n")
+        : "",
+      query_preprocessing_exclusion_rules: Array.isArray(settings.query_preprocessing_effective?.exclusion_rules)
+        ? settings.query_preprocessing_effective?.exclusion_rules.join("\n")
+        : "",
+      query_preprocessing_index_ref_enhance: Boolean(settings.query_preprocessing_effective?.index_ref_enhance),
       vector_embedding_base_url: settings.vector_embedding_base_url ?? "",
       vector_embedding_model: settings.vector_embedding_model ?? "",
     });
@@ -96,6 +112,11 @@ export function SettingsPage() {
   const [memberships, setMemberships] = useState<ProjectMembershipItem[]>([]);
   const [inviteUserId, setInviteUserId] = useState("");
   const [inviteRole, setInviteRole] = useState<"viewer" | "editor">("viewer");
+
+  const [qpPreviewQueryText, setQpPreviewQueryText] = useState("");
+  const [qpPreviewLoading, setQpPreviewLoading] = useState(false);
+  const [qpPreview, setQpPreview] = useState<null | { normalized: string; obs: unknown; requestId: string }>(null);
+  const [qpPreviewError, setQpPreviewError] = useState<string | null>(null);
 
   const canManageMemberships = useMemo(() => {
     if (!baselineProject) return false;
@@ -201,9 +222,110 @@ export function SettingsPage() {
     [loadMemberships, projectId, toast],
   );
 
+  const parseLineList = useCallback((raw: string) => {
+    return (raw || "")
+      .split(/\r?\n/)
+      .map((v) => v.trim())
+      .filter((v) => Boolean(v));
+  }, []);
+
+  const queryPreprocessFromForm = useCallback(
+    (form: SettingsForm): QueryPreprocessingConfig => {
+      return {
+        enabled: Boolean(form.query_preprocessing_enabled),
+        tags: parseLineList(form.query_preprocessing_tags),
+        exclusion_rules: parseLineList(form.query_preprocessing_exclusion_rules),
+        index_ref_enhance: Boolean(form.query_preprocessing_index_ref_enhance),
+      };
+    },
+    [parseLineList],
+  );
+
+  const queryPreprocessFromBaseline = useCallback((settings: ProjectSettings): QueryPreprocessingConfig => {
+    const cfg = settings.query_preprocessing_effective;
+    return {
+      enabled: Boolean(cfg?.enabled),
+      tags: Array.isArray(cfg?.tags) ? cfg.tags.map((v) => String(v)) : [],
+      exclusion_rules: Array.isArray(cfg?.exclusion_rules) ? cfg.exclusion_rules.map((v) => String(v)) : [],
+      index_ref_enhance: Boolean(cfg?.index_ref_enhance),
+    };
+  }, []);
+
+  const isSameStringList = useCallback((a: string[], b: string[]) => {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }, []);
+
+  const isSameQueryPreprocess = useCallback(
+    (a: QueryPreprocessingConfig, b: QueryPreprocessingConfig) => {
+      return (
+        Boolean(a.enabled) === Boolean(b.enabled) &&
+        Boolean(a.index_ref_enhance) === Boolean(b.index_ref_enhance) &&
+        isSameStringList(a.tags ?? [], b.tags ?? []) &&
+        isSameStringList(a.exclusion_rules ?? [], b.exclusion_rules ?? [])
+      );
+    },
+    [isSameStringList],
+  );
+
+  const validateQueryPreprocess = useCallback((cfg: QueryPreprocessingConfig) => {
+    if ((cfg.tags ?? []).length > 50) return "tags 最多 50 条（每行一条）";
+    for (const tag of cfg.tags ?? []) {
+      if (!tag.trim()) return "tags 不能包含空行";
+      if (tag.length > 64) return "tag 过长（最多 64 字符）";
+    }
+    if ((cfg.exclusion_rules ?? []).length > 50) return "exclusion_rules 最多 50 条（每行一条）";
+    for (const rule of cfg.exclusion_rules ?? []) {
+      if (!rule.trim()) return "exclusion_rules 不能包含空行";
+      if (rule.length > 256) return "exclusion_rule 过长（最多 256 字符）";
+    }
+    return null;
+  }, []);
+
+  const runQpPreview = useCallback(async () => {
+    if (!projectId) return;
+    const queryText = qpPreviewQueryText.trim();
+    if (!queryText) {
+      setQpPreview(null);
+      setQpPreviewError("请输入示例 query_text");
+      return;
+    }
+    setQpPreviewLoading(true);
+    setQpPreviewError(null);
+    try {
+      const res = await apiJson<{
+        result: unknown;
+        raw_query_text: string;
+        normalized_query_text: string;
+        preprocess_obs: unknown;
+      }>(`/api/projects/${projectId}/graph/query`, {
+        method: "POST",
+        body: JSON.stringify({ query_text: queryText, enabled: false }),
+      });
+      setQpPreview({
+        normalized: String(res.data.normalized_query_text ?? ""),
+        obs: res.data.preprocess_obs ?? null,
+        requestId: res.request_id ?? "unknown",
+      });
+    } catch (e) {
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      setQpPreview(null);
+      setQpPreviewError(`${err.message} (${err.code})`);
+    } finally {
+      setQpPreviewLoading(false);
+    }
+  }, [projectId, qpPreviewQueryText]);
+
   const dirty = useMemo(() => {
     if (!baselineProject || !baselineSettings) return false;
     const vectorApiKeyDirty = vectorApiKeyClearRequested || vectorApiKeyDraft.trim().length > 0;
+    const qpDirty = !isSameQueryPreprocess(queryPreprocessFromForm(settingsForm), queryPreprocessFromBaseline(baselineSettings));
     return (
       projectForm.name !== baselineProject.name ||
       projectForm.genre !== (baselineProject.genre ?? "") ||
@@ -211,11 +333,22 @@ export function SettingsPage() {
       settingsForm.world_setting !== baselineSettings.world_setting ||
       settingsForm.style_guide !== baselineSettings.style_guide ||
       settingsForm.constraints !== baselineSettings.constraints ||
+      qpDirty ||
       settingsForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
       settingsForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
       vectorApiKeyDirty
     );
-  }, [baselineProject, baselineSettings, projectForm, settingsForm, vectorApiKeyClearRequested, vectorApiKeyDraft]);
+  }, [
+    baselineProject,
+    baselineSettings,
+    isSameQueryPreprocess,
+    projectForm,
+    queryPreprocessFromBaseline,
+    queryPreprocessFromForm,
+    settingsForm,
+    vectorApiKeyClearRequested,
+    vectorApiKeyDraft,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -242,14 +375,28 @@ export function SettingsPage() {
         nextProjectForm.genre.trim() !== (baselineProject.genre ?? "") ||
         nextProjectForm.logline.trim() !== (baselineProject.logline ?? "");
       const vectorApiKeyDirty = vectorApiKeyClearRequested || vectorApiKeyDraft.trim().length > 0;
+      const qpDirty = !isSameQueryPreprocess(
+        queryPreprocessFromForm(nextSettingsForm),
+        queryPreprocessFromBaseline(baselineSettings),
+      );
       const settingsDirty =
         nextSettingsForm.world_setting !== baselineSettings.world_setting ||
         nextSettingsForm.style_guide !== baselineSettings.style_guide ||
         nextSettingsForm.constraints !== baselineSettings.constraints ||
+        qpDirty ||
         nextSettingsForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
         nextSettingsForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
         vectorApiKeyDirty;
       if (!projectDirty && !settingsDirty) return true;
+
+      if (qpDirty) {
+        const qpCfg = queryPreprocessFromForm(nextSettingsForm);
+        const qpErr = validateQueryPreprocess(qpCfg);
+        if (qpErr) {
+          if (!silent) toast.toastError(qpErr);
+          return false;
+        }
+      }
 
       const scheduleWizardRefresh = () => {
         if (wizardRefreshTimerRef.current !== null) window.clearTimeout(wizardRefreshTimerRef.current);
@@ -281,6 +428,7 @@ export function SettingsPage() {
                   world_setting: nextSettingsForm.world_setting,
                   style_guide: nextSettingsForm.style_guide,
                   constraints: nextSettingsForm.constraints,
+                  ...(qpDirty ? { query_preprocessing: queryPreprocessFromForm(nextSettingsForm) } : {}),
                   vector_embedding_base_url: nextSettingsForm.vector_embedding_base_url,
                   vector_embedding_model: nextSettingsForm.vector_embedding_model,
                   ...(vectorApiKeyDirty
@@ -326,12 +474,16 @@ export function SettingsPage() {
       baselineProject,
       baselineSettings,
       bumpWizardLocal,
+      isSameQueryPreprocess,
       projectForm,
       projectId,
+      queryPreprocessFromBaseline,
+      queryPreprocessFromForm,
       refresh,
       refreshWizard,
       settingsForm,
       toast,
+      validateQueryPreprocess,
       vectorApiKeyClearRequested,
       vectorApiKeyDraft,
     ],
@@ -355,6 +507,10 @@ export function SettingsPage() {
       settingsForm.world_setting,
       settingsForm.style_guide,
       settingsForm.constraints,
+      settingsForm.query_preprocessing_enabled,
+      settingsForm.query_preprocessing_tags,
+      settingsForm.query_preprocessing_exclusion_rules,
+      settingsForm.query_preprocessing_index_ref_enhance,
       settingsForm.vector_embedding_base_url,
       settingsForm.vector_embedding_model,
     ],
@@ -536,6 +692,127 @@ export function SettingsPage() {
             >
               恢复 env fallback（清除项目覆盖）
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="panel p-6">
+        <div className="font-content text-xl">Query 预处理（Query Preprocessing）</div>
+        <div className="mt-1 text-xs text-subtext">
+          用于统一 WorldBook / VectorRAG / Graph / 生成链路的 query_text 处理（默认关闭）。tags 支持从 query_text 中提取
+          #tag；exclusion_rules 会从 query_text 中移除。
+        </div>
+
+        <div className="mt-3 text-xs text-subtext">
+          status: {baselineSettings.query_preprocessing_effective?.enabled ? "enabled" : "disabled"} | source:{" "}
+          {baselineSettings.query_preprocessing_effective_source ?? "unknown"}
+        </div>
+
+        <div className="mt-4 grid gap-4">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={settingsForm.query_preprocessing_enabled}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, query_preprocessing_enabled: e.target.checked }))}
+              type="checkbox"
+            />
+            启用 query_preprocessing（默认关闭）
+          </label>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">tags（每行一条；匹配 #tag；留空=提取所有 tag）</span>
+              <textarea
+                className="textarea"
+                name="query_preprocessing_tags"
+                rows={5}
+                value={settingsForm.query_preprocessing_tags}
+                onChange={(e) => setSettingsForm((v) => ({ ...v, query_preprocessing_tags: e.target.value }))}
+                placeholder={"例如：\nfoo\nbar"}
+              />
+              <div className="text-[11px] text-subtext">最大 50 条；每条最多 64 字符。</div>
+            </label>
+
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">exclusion_rules（每行一条；出现则移除）</span>
+              <textarea
+                className="textarea"
+                name="query_preprocessing_exclusion_rules"
+                rows={5}
+                value={settingsForm.query_preprocessing_exclusion_rules}
+                onChange={(e) =>
+                  setSettingsForm((v) => ({ ...v, query_preprocessing_exclusion_rules: e.target.value }))
+                }
+                placeholder={"例如：\n忽略这段\nREMOVE"}
+              />
+              <div className="text-[11px] text-subtext">最大 50 条；每条最多 256 字符。</div>
+            </label>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={settingsForm.query_preprocessing_index_ref_enhance}
+              onChange={(e) =>
+                setSettingsForm((v) => ({ ...v, query_preprocessing_index_ref_enhance: e.target.checked }))
+              }
+              type="checkbox"
+            />
+            index_ref_enhance（识别“第N章 / chapter N”并追加引用 token）
+          </label>
+
+          <div className="rounded-atelier border border-border bg-canvas p-4">
+            <div className="text-sm text-ink">示例 normalize（基于已保存的 effective 配置）</div>
+            <div className="mt-1 text-xs text-subtext">修改配置后请先保存，再点击预览。</div>
+
+            <label className="mt-3 grid gap-1 text-xs text-subtext">
+              query_text
+              <textarea
+                className="textarea mt-1 min-h-20 w-full"
+                value={qpPreviewQueryText}
+                onChange={(e) => setQpPreviewQueryText(e.target.value)}
+                placeholder="例如：回顾第1章 #foo REMOVE"
+              />
+            </label>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className="btn btn-secondary" disabled={qpPreviewLoading || !projectId} onClick={() => void runQpPreview()} type="button">
+                {qpPreviewLoading ? "预览中…" : "预览"}
+              </button>
+              <button
+                className="btn btn-secondary"
+                disabled={qpPreviewLoading}
+                onClick={() => {
+                  setQpPreview(null);
+                  setQpPreviewError(null);
+                }}
+                type="button"
+              >
+                清空结果
+              </button>
+            </div>
+
+            {qpPreviewError ? <div className="mt-3 text-xs text-amber-600 dark:text-amber-400">{qpPreviewError}</div> : null}
+
+            {qpPreview ? (
+              <div className="mt-3 grid gap-3">
+                <div className="text-xs text-subtext">request_id: {qpPreview.requestId}</div>
+                <div>
+                  <div className="text-xs text-subtext">normalized_query_text</div>
+                  <pre className="mt-1 max-h-40 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                    {qpPreview.normalized}
+                  </pre>
+                </div>
+                <details>
+                  <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                    preprocess_obs
+                  </summary>
+                  <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                    {JSON.stringify(qpPreview.obs ?? null, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
