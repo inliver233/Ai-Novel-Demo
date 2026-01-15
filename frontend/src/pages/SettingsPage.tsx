@@ -24,6 +24,9 @@ type SettingsForm = {
   query_preprocessing_tags: string;
   query_preprocessing_exclusion_rules: string;
   query_preprocessing_index_ref_enhance: boolean;
+  vector_rerank_enabled: boolean;
+  vector_rerank_method: string;
+  vector_rerank_top_k: number;
   vector_embedding_base_url: string;
   vector_embedding_model: string;
 };
@@ -64,6 +67,9 @@ export function SettingsPage() {
     query_preprocessing_tags: "",
     query_preprocessing_exclusion_rules: "",
     query_preprocessing_index_ref_enhance: false,
+    vector_rerank_enabled: false,
+    vector_rerank_method: "auto",
+    vector_rerank_top_k: 20,
     vector_embedding_base_url: "",
     vector_embedding_model: "",
   });
@@ -100,6 +106,9 @@ export function SettingsPage() {
         ? settings.query_preprocessing_effective?.exclusion_rules.join("\n")
         : "",
       query_preprocessing_index_ref_enhance: Boolean(settings.query_preprocessing_effective?.index_ref_enhance),
+      vector_rerank_enabled: Boolean(settings.vector_rerank_effective_enabled),
+      vector_rerank_method: String(settings.vector_rerank_effective_method ?? "auto") || "auto",
+      vector_rerank_top_k: Number(settings.vector_rerank_effective_top_k ?? 20) || 20,
       vector_embedding_base_url: settings.vector_embedding_base_url ?? "",
       vector_embedding_model: settings.vector_embedding_model ?? "",
     });
@@ -334,6 +343,10 @@ export function SettingsPage() {
       settingsForm.style_guide !== baselineSettings.style_guide ||
       settingsForm.constraints !== baselineSettings.constraints ||
       qpDirty ||
+      settingsForm.vector_rerank_enabled !== baselineSettings.vector_rerank_effective_enabled ||
+      settingsForm.vector_rerank_method.trim() !== baselineSettings.vector_rerank_effective_method ||
+      Math.max(1, Math.min(1000, Math.floor(settingsForm.vector_rerank_top_k))) !==
+        baselineSettings.vector_rerank_effective_top_k ||
       settingsForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
       settingsForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
       vectorApiKeyDirty
@@ -379,11 +392,16 @@ export function SettingsPage() {
         queryPreprocessFromForm(nextSettingsForm),
         queryPreprocessFromBaseline(baselineSettings),
       );
+      const rerankMethod = nextSettingsForm.vector_rerank_method.trim() || "auto";
+      const rerankTopK = Math.max(1, Math.min(1000, Math.floor(nextSettingsForm.vector_rerank_top_k)));
       const settingsDirty =
         nextSettingsForm.world_setting !== baselineSettings.world_setting ||
         nextSettingsForm.style_guide !== baselineSettings.style_guide ||
         nextSettingsForm.constraints !== baselineSettings.constraints ||
         qpDirty ||
+        Boolean(nextSettingsForm.vector_rerank_enabled) !== Boolean(baselineSettings.vector_rerank_effective_enabled) ||
+        rerankMethod !== baselineSettings.vector_rerank_effective_method ||
+        rerankTopK !== baselineSettings.vector_rerank_effective_top_k ||
         nextSettingsForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
         nextSettingsForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
         vectorApiKeyDirty;
@@ -396,6 +414,11 @@ export function SettingsPage() {
           if (!silent) toast.toastError(qpErr);
           return false;
         }
+      }
+
+      if (!Number.isFinite(rerankTopK) || rerankTopK < 1 || rerankTopK > 1000) {
+        if (!silent) toast.toastError("rerank top_k 必须为 1-1000 的整数");
+        return false;
       }
 
       const scheduleWizardRefresh = () => {
@@ -429,6 +452,9 @@ export function SettingsPage() {
                   style_guide: nextSettingsForm.style_guide,
                   constraints: nextSettingsForm.constraints,
                   ...(qpDirty ? { query_preprocessing: queryPreprocessFromForm(nextSettingsForm) } : {}),
+                  vector_rerank_enabled: Boolean(nextSettingsForm.vector_rerank_enabled),
+                  vector_rerank_method: rerankMethod,
+                  vector_rerank_top_k: rerankTopK,
                   vector_embedding_base_url: nextSettingsForm.vector_embedding_base_url,
                   vector_embedding_model: nextSettingsForm.vector_embedding_model,
                   ...(vectorApiKeyDirty
@@ -511,6 +537,9 @@ export function SettingsPage() {
       settingsForm.query_preprocessing_tags,
       settingsForm.query_preprocessing_exclusion_rules,
       settingsForm.query_preprocessing_index_ref_enhance,
+      settingsForm.vector_rerank_enabled,
+      settingsForm.vector_rerank_method,
+      settingsForm.vector_rerank_top_k,
       settingsForm.vector_embedding_base_url,
       settingsForm.vector_embedding_model,
     ],
@@ -612,8 +641,54 @@ export function SettingsPage() {
           status: {baselineSettings.vector_embedding_effective_disabled_reason ?? "enabled"} | source:{" "}
           {baselineSettings.vector_embedding_effective_source}
         </div>
+        <div className="mt-1 text-xs text-subtext">
+          rerank: {baselineSettings.vector_rerank_effective_enabled ? "enabled" : "disabled"} | method:{" "}
+          {baselineSettings.vector_rerank_effective_method} | top_k: {baselineSettings.vector_rerank_effective_top_k} |
+          source: {baselineSettings.vector_rerank_effective_source}
+        </div>
 
         <div className="mt-4 grid gap-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
+              <input
+                className="checkbox"
+                checked={settingsForm.vector_rerank_enabled}
+                onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_enabled: e.target.checked }))}
+                type="checkbox"
+              />
+              启用 rerank（对 candidates 做相关性重排）
+            </label>
+            <label className="grid gap-1 sm:col-span-2">
+              <span className="text-xs text-subtext">rerank method</span>
+              <select
+                className="select"
+                value={settingsForm.vector_rerank_method}
+                onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_method: e.target.value }))}
+              >
+                <option value="auto">auto</option>
+                <option value="rapidfuzz_token_set_ratio">rapidfuzz_token_set_ratio</option>
+                <option value="token_overlap">token_overlap</option>
+              </select>
+            </label>
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">rerank top_k</span>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                max={1000}
+                value={settingsForm.vector_rerank_top_k}
+                onChange={(e) => {
+                  const next = Math.floor(Number(e.target.value));
+                  setSettingsForm((v) => ({
+                    ...v,
+                    vector_rerank_top_k: Number.isFinite(next) ? Math.max(1, Math.min(1000, next)) : v.vector_rerank_top_k,
+                  }));
+                }}
+              />
+            </label>
+          </div>
+
           <label className="grid gap-1">
             <span className="text-xs text-subtext">Base URL（项目覆盖；留空=env fallback）</span>
             <input

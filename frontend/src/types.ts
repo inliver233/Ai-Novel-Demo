@@ -31,6 +31,14 @@ export interface ProjectSettings {
   query_preprocessing_effective?: QueryPreprocessingConfig;
   query_preprocessing_effective_source?: string;
 
+  vector_rerank_enabled: boolean | null;
+  vector_rerank_method: string | null;
+  vector_rerank_top_k: number | null;
+  vector_rerank_effective_enabled: boolean;
+  vector_rerank_effective_method: string;
+  vector_rerank_effective_top_k: number;
+  vector_rerank_effective_source: string;
+
   vector_embedding_base_url: string;
   vector_embedding_model: string;
   vector_embedding_has_api_key: boolean;

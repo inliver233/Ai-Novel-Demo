@@ -43,12 +43,27 @@ type VectorRagCounts = {
   dropped_by_reason: Record<string, number>;
 };
 
+type VectorRerankObs = {
+  enabled: boolean;
+  applied: boolean;
+  requested_method: string;
+  method: string | null;
+  top_k: number;
+  reason: string | null;
+  error_type: string | null;
+  before: string[];
+  after: string[];
+  timing_ms: number;
+  errors: Array<Record<string, unknown>>;
+};
+
 type VectorRagQueryResult = {
   enabled: boolean;
   disabled_reason: string | null;
   query_text: string;
   filters: { project_id: string; sources: VectorSource[] };
   timings_ms: Record<string, number>;
+  rerank: VectorRerankObs | null;
   candidates: VectorCandidate[];
   final: { chunks: VectorCandidate[]; text_md: string; truncated: boolean };
   dropped: Array<{ id?: string; reason: string }>;
@@ -103,6 +118,61 @@ const EMPTY_PACK: MemoryContextPack = {
 
 function hasOwn<K extends string>(obj: unknown, key: K): obj is Record<K, unknown> {
   return typeof obj === "object" && obj !== null && Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function normalizeRerankObs(raw: unknown): VectorRerankObs | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+
+  const before = Array.isArray(o.before) ? o.before.map((v) => String(v)) : [];
+  const after = Array.isArray(o.after) ? o.after.map((v) => String(v)) : [];
+  const topK = typeof o.top_k === "number" ? o.top_k : Number(o.top_k);
+  const timingMs = typeof o.timing_ms === "number" ? o.timing_ms : Number(o.timing_ms);
+
+  return {
+    enabled: Boolean(o.enabled),
+    applied: Boolean(o.applied),
+    requested_method: typeof o.requested_method === "string" ? o.requested_method : "",
+    method: typeof o.method === "string" ? o.method : null,
+    top_k: Number.isFinite(topK) ? topK : 0,
+    reason: typeof o.reason === "string" ? o.reason : null,
+    error_type: typeof o.error_type === "string" ? o.error_type : null,
+    before,
+    after,
+    timing_ms: Number.isFinite(timingMs) ? timingMs : 0,
+    errors: Array.isArray(o.errors) ? (o.errors as Array<Record<string, unknown>>) : [],
+  };
+}
+
+function rerankDelta(obs: VectorRerankObs): { compared: number; changedPositions: number; entered: number; left: number } {
+  const compared = Math.min(obs.top_k || 0, obs.before.length, obs.after.length);
+  if (compared <= 0) return { compared: 0, changedPositions: 0, entered: 0, left: 0 };
+  let changedPositions = 0;
+  for (let i = 0; i < compared; i++) {
+    if (obs.before[i] !== obs.after[i]) changedPositions++;
+  }
+  const beforeSet = new Set(obs.before.slice(0, compared));
+  const afterSet = new Set(obs.after.slice(0, compared));
+  let entered = 0;
+  for (const id of afterSet) {
+    if (!beforeSet.has(id)) entered++;
+  }
+  let left = 0;
+  for (const id of beforeSet) {
+    if (!afterSet.has(id)) left++;
+  }
+  return { compared, changedPositions, entered, left };
+}
+
+function formatRerankSummary(obs: VectorRerankObs): string {
+  const delta = rerankDelta(obs);
+  const comparedText = delta.compared ? `${delta.changedPositions}/${delta.compared}` : "-";
+  const methodText = obs.method ?? "-";
+  const reqText = obs.requested_method || "-";
+  const reasonText = obs.reason ?? "-";
+  const errText = obs.error_type ? ` | error:${obs.error_type}` : "";
+  const changesText = delta.compared ? ` | changed_in_top_k:${comparedText} | entered:${delta.entered} | left:${delta.left}` : "";
+  return `enabled:${String(obs.enabled)} | applied:${String(obs.applied)} | reason:${reasonText} | requested:${reqText} | method:${methodText} | top_k:${obs.top_k} | timing_ms:${obs.timing_ms}${changesText}${errText}`;
 }
 
 function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
@@ -221,6 +291,8 @@ function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
     }
   }
 
+  const rerank = hasOwn(o, "rerank") ? normalizeRerankObs(o.rerank) : null;
+
   return {
     enabled: Boolean(o.enabled),
     disabled_reason: typeof o.disabled_reason === "string" ? o.disabled_reason : null,
@@ -231,6 +303,7 @@ function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
       sources,
     },
     timings_ms: timingsMs,
+    rerank,
     candidates,
     final: {
       chunks: finalChunks,
@@ -929,6 +1002,10 @@ export function ContextPreviewDrawer(props: Props) {
                       : "-"}
                   </span>
                 </div>
+
+                {vectorResult.rerank ? (
+                  <div className="mt-1 text-xs text-subtext">rerank: {formatRerankSummary(vectorResult.rerank)}</div>
+                ) : null}
 
                 <details open className="mt-1">
                   <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
