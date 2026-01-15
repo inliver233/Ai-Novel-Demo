@@ -57,6 +57,13 @@ type VectorRerankObs = {
   errors: Array<Record<string, unknown>>;
 };
 
+type VectorHybridObs = {
+  enabled: boolean;
+  ranks?: unknown;
+  counts?: unknown;
+  overfilter?: unknown;
+};
+
 type VectorRagQueryResult = {
   enabled: boolean;
   disabled_reason: string | null;
@@ -64,6 +71,8 @@ type VectorRagQueryResult = {
   filters: { project_id: string; sources: VectorSource[] };
   timings_ms: Record<string, number>;
   rerank: VectorRerankObs | null;
+  backend: string | null;
+  hybrid: VectorHybridObs | null;
   candidates: VectorCandidate[];
   final: { chunks: VectorCandidate[]; text_md: string; truncated: boolean };
   dropped: Array<{ id?: string; reason: string }>;
@@ -173,6 +182,44 @@ function formatRerankSummary(obs: VectorRerankObs): string {
   const errText = obs.error_type ? ` | error:${obs.error_type}` : "";
   const changesText = delta.compared ? ` | changed_in_top_k:${comparedText} | entered:${delta.entered} | left:${delta.left}` : "";
   return `enabled:${String(obs.enabled)} | applied:${String(obs.applied)} | reason:${reasonText} | requested:${reqText} | method:${methodText} | top_k:${obs.top_k} | timing_ms:${obs.timing_ms}${changesText}${errText}`;
+}
+
+function formatHybridCounts(raw: unknown): string {
+  if (!raw || typeof raw !== "object") return "-";
+  const o = raw as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const key of ["vector", "fts", "union"] as const) {
+    const v = o[key];
+    const n = typeof v === "number" ? v : Number(v);
+    if (Number.isFinite(n)) parts.push(`${key}:${n}`);
+  }
+  if (parts.length) return parts.join(" | ");
+  const fallback = Object.entries(o)
+    .map(([k, v]) => {
+      const n = typeof v === "number" ? v : Number(v);
+      return Number.isFinite(n) ? `${k}:${n}` : null;
+    })
+    .filter((v): v is string => Boolean(v));
+  return fallback.length ? fallback.join(" | ") : "-";
+}
+
+function formatOverfilter(raw: unknown): string {
+  if (!raw || typeof raw !== "object") return "-";
+  const o = raw as Record<string, unknown>;
+  const enabled = Boolean(o.enabled);
+  const actions = Array.isArray(o.actions) ? o.actions.map((v) => String(v)).filter((v) => Boolean(v)) : [];
+  const usedSources = Array.isArray(o.used_sources)
+    ? o.used_sources.map((v) => String(v)).filter((v) => Boolean(v))
+    : [];
+  const vectorK = typeof o.vector_k === "number" ? o.vector_k : Number(o.vector_k);
+  const ftsK = typeof o.fts_k === "number" ? o.fts_k : Number(o.fts_k);
+
+  const parts = [`enabled:${String(enabled)}`];
+  if (actions.length) parts.push(`actions:${actions.join(",")}`);
+  if (usedSources.length) parts.push(`used_sources:${usedSources.join(",")}`);
+  if (Number.isFinite(vectorK)) parts.push(`vector_k:${vectorK}`);
+  if (Number.isFinite(ftsK)) parts.push(`fts_k:${ftsK}`);
+  return parts.join(" | ");
 }
 
 function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
@@ -292,6 +339,18 @@ function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
   }
 
   const rerank = hasOwn(o, "rerank") ? normalizeRerankObs(o.rerank) : null;
+  const backend = typeof o.backend === "string" ? o.backend : null;
+
+  let hybrid: VectorHybridObs | null = null;
+  if (hasOwn(o, "hybrid") && typeof o.hybrid === "object" && o.hybrid !== null) {
+    const h = o.hybrid as Record<string, unknown>;
+    hybrid = {
+      enabled: typeof h.enabled === "boolean" ? h.enabled : Boolean(h.enabled),
+      ranks: hasOwn(h, "ranks") ? h.ranks : undefined,
+      counts: hasOwn(h, "counts") ? h.counts : undefined,
+      overfilter: hasOwn(h, "overfilter") ? h.overfilter : undefined,
+    };
+  }
 
   return {
     enabled: Boolean(o.enabled),
@@ -304,6 +363,8 @@ function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null {
     },
     timings_ms: timingsMs,
     rerank,
+    backend,
+    hybrid,
     candidates,
     final: {
       chunks: finalChunks,
@@ -976,15 +1037,13 @@ export function ContextPreviewDrawer(props: Props) {
                         {vectorResult.counts.unique_sources} | final_selected:{vectorResult.counts.final_selected} |
                         dropped:
                         {vectorResult.counts.dropped_total}
-                        {Object.keys(vectorResult.counts.dropped_by_reason).length ? (
-                          <>
-                            {" "}
-                            | drop_by_reason:
-                            {Object.entries(vectorResult.counts.dropped_by_reason)
+                        {" "}
+                        | drop_by_reason:
+                        {Object.keys(vectorResult.counts.dropped_by_reason).length
+                          ? Object.entries(vectorResult.counts.dropped_by_reason)
                               .map(([k, v]) => `${k}:${v}`)
-                              .join(" | ")}
-                          </>
-                        ) : null}
+                              .join(" | ")
+                          : "-"}
                       </>
                     ) : (
                       <>
@@ -1006,6 +1065,14 @@ export function ContextPreviewDrawer(props: Props) {
                 {vectorResult.rerank ? (
                   <div className="mt-1 text-xs text-subtext">rerank: {formatRerankSummary(vectorResult.rerank)}</div>
                 ) : null}
+
+                <div className="mt-1 text-xs text-subtext">
+                  hybrid:{" "}
+                  {vectorResult.hybrid
+                    ? `enabled:${String(vectorResult.hybrid.enabled)} | counts:${formatHybridCounts(vectorResult.hybrid.counts)} | overfilter:${formatOverfilter(vectorResult.hybrid.overfilter)}`
+                    : "-"}{" "}
+                  | backend: {vectorResult.backend ?? "-"}
+                </div>
 
                 <details open className="mt-1">
                   <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">

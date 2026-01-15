@@ -31,6 +31,13 @@ type VectorRerankObs = {
   errors: Array<Record<string, unknown>>;
 };
 
+type VectorHybridObs = {
+  enabled: boolean;
+  ranks?: unknown;
+  counts?: unknown;
+  overfilter?: unknown;
+};
+
 type VectorRagResult = {
   enabled: boolean;
   disabled_reason?: string | null;
@@ -45,6 +52,7 @@ type VectorRagResult = {
   backend_preferred?: string;
   hybrid_enabled?: boolean;
   backend?: string;
+  hybrid?: VectorHybridObs;
   rerank?: VectorRerankObs;
   error?: string;
 };
@@ -112,6 +120,44 @@ function formatRerankSummary(obs: VectorRerankObs): string {
   return `enabled:${String(obs.enabled)} | applied:${String(obs.applied)} | reason:${reasonText} | requested:${reqText} | method:${methodText} | top_k:${obs.top_k} | timing_ms:${obs.timing_ms}${changesText}${errText}`;
 }
 
+function formatHybridCounts(raw: unknown): string {
+  if (!raw || typeof raw !== "object") return "-";
+  const o = raw as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const key of ["vector", "fts", "union"] as const) {
+    const v = o[key];
+    const n = typeof v === "number" ? v : Number(v);
+    if (Number.isFinite(n)) parts.push(`${key}:${n}`);
+  }
+  if (parts.length) return parts.join(" | ");
+  const fallback = Object.entries(o)
+    .map(([k, v]) => {
+      const n = typeof v === "number" ? v : Number(v);
+      return Number.isFinite(n) ? `${k}:${n}` : null;
+    })
+    .filter((v): v is string => Boolean(v));
+  return fallback.length ? fallback.join(" | ") : "-";
+}
+
+function formatOverfilter(raw: unknown): string {
+  if (!raw || typeof raw !== "object") return "-";
+  const o = raw as Record<string, unknown>;
+  const enabled = Boolean(o.enabled);
+  const actions = Array.isArray(o.actions) ? o.actions.map((v) => String(v)).filter((v) => Boolean(v)) : [];
+  const usedSources = Array.isArray(o.used_sources)
+    ? o.used_sources.map((v) => String(v)).filter((v) => Boolean(v))
+    : [];
+  const vectorK = typeof o.vector_k === "number" ? o.vector_k : Number(o.vector_k);
+  const ftsK = typeof o.fts_k === "number" ? o.fts_k : Number(o.fts_k);
+
+  const parts = [`enabled:${String(enabled)}`];
+  if (actions.length) parts.push(`actions:${actions.join(",")}`);
+  if (usedSources.length) parts.push(`used_sources:${usedSources.join(",")}`);
+  if (Number.isFinite(vectorK)) parts.push(`vector_k:${vectorK}`);
+  if (Number.isFinite(ftsK)) parts.push(`fts_k:${ftsK}`);
+  return parts.join(" | ");
+}
+
 export function RagPage() {
   const { projectId } = useParams();
   const toast = useToast();
@@ -138,6 +184,10 @@ export function RagPage() {
   const [ingestResult, setIngestResult] = useState<unknown>(null);
   const [rebuildResult, setRebuildResult] = useState<unknown>(null);
   const [queryResult, setQueryResult] = useState<VectorRagResult | null>(null);
+  const [queryRequestId, setQueryRequestId] = useState<string | null>(null);
+  const [rawQueryText, setRawQueryText] = useState<string | null>(null);
+  const [normalizedQueryText, setNormalizedQueryText] = useState<string | null>(null);
+  const [queryPreprocessObs, setQueryPreprocessObs] = useState<unknown>(null);
 
   const busy = statusLoading || ingestLoading || rebuildLoading || queryLoading || rerankSaving;
 
@@ -266,11 +316,20 @@ export function RagPage() {
     }
     setQueryLoading(true);
     try {
-      const res = await apiJson<{ result: VectorRagResult }>(`/api/projects/${projectId}/vector/query`, {
+      const res = await apiJson<{
+        result: VectorRagResult;
+        raw_query_text?: unknown;
+        normalized_query_text?: unknown;
+        preprocess_obs?: unknown;
+      }>(`/api/projects/${projectId}/vector/query`, {
         method: "POST",
         body: JSON.stringify({ query_text: queryText, sources: sortedSources }),
       });
       setQueryResult(res.data?.result ?? null);
+      setQueryRequestId(res.request_id ?? null);
+      setRawQueryText(typeof res.data?.raw_query_text === "string" ? res.data.raw_query_text : queryText);
+      setNormalizedQueryText(typeof res.data?.normalized_query_text === "string" ? res.data.normalized_query_text : null);
+      setQueryPreprocessObs(res.data?.preprocess_obs ?? null);
     } catch (e) {
       const err =
         e instanceof ApiError
@@ -296,6 +355,38 @@ export function RagPage() {
       toast.toastError("复制失败（Clipboard API 不可用）");
     }
   }, [injectionText, toast]);
+
+  const copyQueryDebug = useCallback(async () => {
+    if (!projectId) return;
+    if (!queryResult) {
+      toast.toastError("还没有 query 结果可复制");
+      return;
+    }
+    const payload = {
+      request_id: queryRequestId,
+      project_id: projectId,
+      sources: sortedSources,
+      raw_query_text: rawQueryText,
+      normalized_query_text: normalizedQueryText,
+      preprocess_obs: queryPreprocessObs,
+      result: queryResult,
+    };
+    try {
+      await navigator.clipboard.writeText(safeJson(payload));
+      toast.toastSuccess("已复制 debug 信息", queryRequestId ?? undefined);
+    } catch {
+      toast.toastError("复制失败（Clipboard API 不可用）");
+    }
+  }, [
+    normalizedQueryText,
+    projectId,
+    queryPreprocessObs,
+    queryRequestId,
+    queryResult,
+    rawQueryText,
+    sortedSources,
+    toast,
+  ]);
 
   return (
     <div className="mx-auto max-w-screen-xl px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
@@ -474,6 +565,9 @@ export function RagPage() {
               >
                 复制注入文本
               </button>
+              <button className="btn btn-secondary" disabled={!queryResult} onClick={() => void copyQueryDebug()} type="button">
+                复制 debug
+              </button>
               {queryResult?.counts ? (
                 <div className="text-xs text-subtext">
                   counts: {queryResult.counts.candidates_total}/{queryResult.counts.candidates_returned} | final:
@@ -500,6 +594,48 @@ export function RagPage() {
               {normalizeRerankObs(queryResult.rerank) ? (
                 <div className="mt-1">rerank: {formatRerankSummary(normalizeRerankObs(queryResult.rerank)!)}</div>
               ) : null}
+              {queryRequestId ? <div className="mt-1">request_id: {queryRequestId}</div> : null}
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <div className="text-[11px] text-subtext">raw_query_text</div>
+                  <pre className="mt-1 max-h-24 overflow-auto rounded-atelier border border-border bg-canvas p-2 text-[11px] leading-4 text-subtext">
+                    {(rawQueryText ?? "").trim() || "（空）"}
+                  </pre>
+                </div>
+                <div>
+                  <div className="text-[11px] text-subtext">normalized_query_text</div>
+                  <pre className="mt-1 max-h-24 overflow-auto rounded-atelier border border-border bg-canvas p-2 text-[11px] leading-4 text-subtext">
+                    {(normalizedQueryText ?? "").trim() || "（空）"}
+                  </pre>
+                </div>
+              </div>
+
+              {queryPreprocessObs ? (
+                <details className="mt-2 rounded-atelier border border-border bg-canvas p-3">
+                  <summary className="cursor-pointer select-none text-xs">preprocess_obs</summary>
+                  <pre className="mt-2 max-h-64 overflow-auto text-[11px] leading-4 text-subtext">
+                    {safeJson(queryPreprocessObs)}
+                  </pre>
+                </details>
+              ) : null}
+
+              <div className="mt-2">
+                hybrid:{" "}
+                {queryResult.hybrid
+                  ? `enabled:${String(queryResult.hybrid.enabled)} | counts:${formatHybridCounts(queryResult.hybrid.counts)} | overfilter:${formatOverfilter(queryResult.hybrid.overfilter)}`
+                  : "-"}
+              </div>
+
+              <div className="mt-1">
+                drop_by_reason:{" "}
+                {queryResult.counts
+                  ? Object.keys(queryResult.counts.dropped_by_reason ?? {}).length
+                    ? Object.entries(queryResult.counts.dropped_by_reason)
+                        .map(([k, v]) => `${k}:${v}`)
+                        .join(" | ")
+                    : "-"
+                  : "-"}
+              </div>
 
               <details className="mt-3 rounded-atelier border border-border bg-canvas p-3">
                 <summary className="cursor-pointer select-none text-xs">注入预览（prompt_block.text_md）</summary>
