@@ -19,6 +19,7 @@ from app.llm.utils import normalize_base_url
 from app.models.chapter import Chapter
 from app.models.outline import Outline
 from app.models.worldbook_entry import WorldBookEntry
+from app.services.rerank_service import rerank_candidates as rerank_candidates_with_providers
 
 logger = logging.getLogger("ainovel")
 
@@ -104,96 +105,13 @@ def _rerank_score(*, method: str, query_text: str, candidate_text: str) -> float
 def _rerank_candidates(
     *, query_text: str, candidates: list[dict[str, Any]], method: str, top_k: int
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    before = [str(c.get("id") or "") for c in candidates if isinstance(c, dict)]
-    start = time.perf_counter()
-
-    qtext = (query_text or "").strip()
-    requested_method = str(method or "").strip() or "auto"
-    try:
-        limit = int(top_k)
-    except Exception:
-        limit = 0
-    if limit <= 0:
-        limit = len(candidates)
-    limit = max(0, min(int(limit), int(len(candidates))))
-
-    base_obs: dict[str, Any] = {
-        "enabled": True,
-        "applied": False,
-        "requested_method": requested_method,
-        "method": None,
-        "top_k": int(limit),
-        "reason": None,
-        "error_type": None,
-        "before": before,
-        "after": list(before),
-        "timing_ms": 0,
-        "errors": [],
-    }
-
-    if not qtext or not candidates:
-        obs = dict(base_obs)
-        obs["reason"] = "empty_query_or_candidates"
-        obs["timing_ms"] = int((time.perf_counter() - start) * 1000)
-        return list(candidates), obs
-
-    supported = {"rapidfuzz_token_set_ratio", "token_overlap"}
-    errors: list[dict[str, str]] = []
-
-    plan: list[str]
-    if requested_method == "auto":
-        plan = ["rapidfuzz_token_set_ratio", "token_overlap"]
-    elif requested_method == "rapidfuzz_token_set_ratio":
-        plan = ["rapidfuzz_token_set_ratio", "token_overlap"]
-    elif requested_method == "token_overlap":
-        plan = ["token_overlap"]
-    else:
-        errors.append({"method": requested_method, "reason": "unknown_method", "error": "ValueError"})
-        plan = ["rapidfuzz_token_set_ratio", "token_overlap"]
-
-    head = candidates[:limit]
-    tail = candidates[limit:]
-
-    for try_method in plan:
-        if try_method not in supported:
-            errors.append({"method": try_method, "reason": "unknown_method", "error": "ValueError"})
-            continue
-        try:
-            scored: list[tuple[float, int, dict[str, Any]]] = []
-            for idx, c in enumerate(head):
-                if not isinstance(c, dict):
-                    continue
-                score = float(_rerank_score(method=try_method, query_text=qtext, candidate_text=str(c.get("text") or "")))
-                scored.append((score, idx, c))
-
-            scored.sort(key=lambda x: (-x[0], x[1]))
-            reranked_head = [c for _score, _idx, c in scored]
-            reranked = list(reranked_head) + list(tail)
-            after = [str(c.get("id") or "") for c in reranked if isinstance(c, dict)]
-            obs = dict(base_obs)
-            obs.update(
-                {
-                    "applied": True,
-                    "method": try_method,
-                    "reason": "ok",
-                    "after": after,
-                    "timing_ms": int((time.perf_counter() - start) * 1000),
-                    "errors": errors,
-                }
-            )
-            return reranked, obs
-        except ImportError as exc:
-            errors.append({"method": try_method, "reason": "dependency_missing", "error": type(exc).__name__})
-        except Exception as exc:
-            errors.append({"method": try_method, "reason": "error", "error": type(exc).__name__})
-
-    obs = dict(base_obs)
-    obs["reason"] = "failed"
-    obs["timing_ms"] = int((time.perf_counter() - start) * 1000)
-    obs["errors"] = errors
-    if errors:
-        obs["error_type"] = str(errors[0].get("error") or "") or None
-    return list(candidates), obs
+    return rerank_candidates_with_providers(
+        query_text=query_text,
+        candidates=candidates,
+        method=method,
+        top_k=top_k,
+        score_fn=_rerank_score,
+    )
 
 
 def _vector_candidate_key(candidate: dict[str, Any]) -> tuple[str, str]:
@@ -296,6 +214,8 @@ def vector_rag_status(
         "applied": False,
         "requested_method": rerank_method,
         "method": None,
+        "provider": None,
+        "model": None,
         "top_k": int(rerank_top_k),
         "reason": "disabled" if not rerank_enabled else "status_only",
         "error_type": None,
@@ -945,6 +865,8 @@ def query_project(
             "applied": False,
             "requested_method": rerank_method,
             "method": None,
+            "provider": None,
+            "model": None,
             "top_k": int(rerank_top_k),
             "reason": "vector_disabled",
             "error_type": None,
@@ -996,6 +918,8 @@ def query_project(
                     "applied": False,
                     "requested_method": rerank_method,
                     "method": None,
+                    "provider": None,
+                    "model": None,
                     "top_k": int(rerank_top_k),
                     "reason": "disabled",
                     "error_type": None,
@@ -1014,6 +938,8 @@ def query_project(
                     "applied": False,
                     "requested_method": rerank_method,
                     "method": None,
+                    "provider": None,
+                    "model": None,
                     "top_k": int(rerank_top_k),
                     "reason": "empty_candidates",
                     "error_type": None,
@@ -1115,6 +1041,8 @@ def query_project(
                 "applied": False,
                 "requested_method": rerank_method,
                 "method": None,
+                "provider": None,
+                "model": None,
                 "top_k": int(rerank_top_k),
                 "reason": "chroma_unavailable",
                 "error_type": None,
@@ -1167,6 +1095,8 @@ def query_project(
             "applied": False,
             "requested_method": rerank_method,
             "method": None,
+            "provider": None,
+            "model": None,
             "top_k": int(rerank_top_k),
             "reason": "disabled",
             "error_type": None,
@@ -1185,6 +1115,8 @@ def query_project(
             "applied": False,
             "requested_method": rerank_method,
             "method": None,
+            "provider": None,
+            "model": None,
             "top_k": int(rerank_top_k),
             "reason": "empty_candidates",
             "error_type": None,

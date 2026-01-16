@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     vector_backend: VectorBackend = "auto"
     vector_hybrid_enabled: bool = True
     vector_rerank_enabled: bool = False
+    vector_rerank_external_base_url: str | None = None
+    vector_rerank_external_model: str | None = None
+    vector_rerank_external_api_key: str | None = None
+    vector_rerank_external_timeout_seconds: float = 15.0
     vector_hybrid_rrf_k: int = 60
     vector_overfiltering_enabled: bool = True
     vector_max_candidates: int = 20
