@@ -119,6 +119,15 @@ def _vector_candidate_key(candidate: dict[str, Any]) -> tuple[str, str]:
     return (str(meta.get("source") or ""), str(meta.get("source_id") or ""))
 
 
+def _vector_candidate_chunk_key(candidate: dict[str, Any]) -> tuple[str, str, int]:
+    meta = candidate.get("metadata") if isinstance(candidate.get("metadata"), dict) else {}
+    try:
+        chunk_index = int(meta.get("chunk_index") or 0)
+    except Exception:
+        chunk_index = 0
+    return (str(meta.get("source") or ""), str(meta.get("source_id") or ""), chunk_index)
+
+
 def _build_vector_query_counts(
     *,
     candidates_total: int,
@@ -950,18 +959,26 @@ def query_project(
                 }
             dropped: list[dict[str, Any]] = []
             final_chunks: list[dict[str, Any]] = []
-            seen_keys: set[tuple[str, str]] = set()
+            seen_chunk_keys: set[tuple[str, str, int]] = set()
+            selected_by_source: dict[tuple[str, str], int] = {}
             max_chunks = int(settings.vector_final_max_chunks or 6)
+            max_chunks = max(1, min(int(max_chunks), 1000))
+            per_source_max_chunks = int(getattr(settings, "vector_per_source_id_max_chunks", 1) or 1)
+            per_source_max_chunks = max(1, min(int(per_source_max_chunks), 1000))
             processed = 0
             for c in trimmed_candidates:
                 processed += 1
-                meta = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
-                key = (str(meta.get("source") or ""), str(meta.get("source_id") or ""))
-                if key in seen_keys:
-                    dropped.append({"id": c.get("id"), "reason": "duplicate_source"})
+                source_key = _vector_candidate_key(c)
+                chunk_key = _vector_candidate_chunk_key(c)
+                if chunk_key in seen_chunk_keys:
+                    dropped.append({"id": c.get("id"), "reason": "duplicate_chunk"})
                     continue
-                seen_keys.add(key)
+                seen_chunk_keys.add(chunk_key)
+                if selected_by_source.get(source_key, 0) >= per_source_max_chunks:
+                    dropped.append({"id": c.get("id"), "reason": "per_source_budget"})
+                    continue
                 final_chunks.append(c)
+                selected_by_source[source_key] = selected_by_source.get(source_key, 0) + 1
                 if len(final_chunks) >= max_chunks:
                     break
 
@@ -1128,18 +1145,26 @@ def query_project(
 
     dropped: list[dict[str, Any]] = []
     final_chunks: list[dict[str, Any]] = []
-    seen_keys: set[tuple[str, str]] = set()
+    seen_chunk_keys: set[tuple[str, str, int]] = set()
+    selected_by_source: dict[tuple[str, str], int] = {}
     max_chunks = int(settings.vector_final_max_chunks or 6)
+    max_chunks = max(1, min(int(max_chunks), 1000))
+    per_source_max_chunks = int(getattr(settings, "vector_per_source_id_max_chunks", 1) or 1)
+    per_source_max_chunks = max(1, min(int(per_source_max_chunks), 1000))
     processed = 0
     for c in trimmed_candidates:
         processed += 1
-        meta = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
-        key = (str(meta.get("source") or ""), str(meta.get("source_id") or ""))
-        if key in seen_keys:
-            dropped.append({"id": c.get("id"), "reason": "duplicate_source"})
+        source_key = _vector_candidate_key(c)
+        chunk_key = _vector_candidate_chunk_key(c)
+        if chunk_key in seen_chunk_keys:
+            dropped.append({"id": c.get("id"), "reason": "duplicate_chunk"})
             continue
-        seen_keys.add(key)
+        seen_chunk_keys.add(chunk_key)
+        if selected_by_source.get(source_key, 0) >= per_source_max_chunks:
+            dropped.append({"id": c.get("id"), "reason": "per_source_budget"})
+            continue
         final_chunks.append(c)
+        selected_by_source[source_key] = selected_by_source.get(source_key, 0) + 1
         if len(final_chunks) >= max_chunks:
             break
 

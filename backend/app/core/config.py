@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     vector_overfiltering_enabled: bool = True
     vector_max_candidates: int = 20
     vector_final_max_chunks: int = 6
+    vector_per_source_id_max_chunks: int = 1
     vector_final_char_limit: int = 6000
     vector_chunk_size: int = 800
     vector_chunk_overlap: int = 120
