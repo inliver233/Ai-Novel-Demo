@@ -421,7 +421,7 @@ function downloadJson(filename: string, value: unknown): void {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function ContextPreviewDrawer(props: Props) {
@@ -484,6 +484,73 @@ export function ContextPreviewDrawer(props: Props) {
     }
     return out;
   }, [budgetOverrideInputs]);
+
+  const downloadPreviewBundle = useCallback(() => {
+    if (!projectId) {
+      toast.toastError(UI_COPY.writing.contextPreviewMissingProjectId);
+      return;
+    }
+    try {
+      const stamp = new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-");
+      const hint = requestId || stamp;
+      const filename = `context_preview_bundle_${projectId}_${hint}.json`;
+      downloadJson(filename, {
+        schema_version: "context_preview_bundle_v1",
+        created_at: new Date().toISOString(),
+        project_id: projectId,
+        request_id: requestId,
+        synced_at: syncedAt,
+        preview: {
+          query_text: previewQueryText,
+          sections: previewSections,
+          budget_overrides: parsedBudgetOverrides,
+          budget_override_inputs: budgetOverrideInputs,
+          memory_injection_enabled: memoryInjectionEnabled,
+        },
+        pack: effectivePack ?? EMPTY_PACK,
+        vector_query: {
+          request_id: vectorRequestId,
+          query_text: vectorQueryText,
+          sources: selectedVectorSources,
+          raw_query_text: vectorRawQueryText,
+          normalized_query_text: vectorNormalizedQueryText,
+          preprocess_obs: vectorPreprocessObs,
+          result: vectorResult,
+        },
+        generate: {
+          instruction: genInstruction ?? null,
+          chapter_plan: genChapterPlan ?? null,
+          memory_query_text: genMemoryQueryText ?? null,
+          memory_modules: genMemoryModules ?? null,
+        },
+      });
+      toast.toastSuccess("已导出预览 bundle", requestId ?? undefined);
+    } catch {
+      toast.toastError("导出失败");
+    }
+  }, [
+    budgetOverrideInputs,
+    effectivePack,
+    genChapterPlan,
+    genInstruction,
+    genMemoryModules,
+    genMemoryQueryText,
+    memoryInjectionEnabled,
+    parsedBudgetOverrides,
+    previewQueryText,
+    previewSections,
+    projectId,
+    requestId,
+    selectedVectorSources,
+    syncedAt,
+    toast,
+    vectorNormalizedQueryText,
+    vectorPreprocessObs,
+    vectorQueryText,
+    vectorRawQueryText,
+    vectorRequestId,
+    vectorResult,
+  ]);
 
   const computeEffectiveQueryTextFromGenerate = useCallback((): string => {
     const requested = String(genMemoryQueryText ?? "").trim();
@@ -676,6 +743,14 @@ export function ContextPreviewDrawer(props: Props) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            className="btn btn-secondary"
+            disabled={!projectId}
+            onClick={() => downloadPreviewBundle()}
+            type="button"
+          >
+            下载预览 bundle
+          </button>
           <button
             className="btn btn-secondary"
             disabled={loading || !memoryInjectionEnabled}

@@ -1,6 +1,8 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { ApiError, apiDownloadAttachment } from "../../services/apiClient";
 import { Drawer } from "../ui/Drawer";
+import { useToast } from "../ui/toast";
 import type { GenerationRun } from "./types";
 
 type Props = {
@@ -14,6 +16,8 @@ type Props = {
 
 export function GenerationHistoryDrawer(props: Props) {
   const { onClose, open } = props;
+  const toast = useToast();
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -27,6 +31,28 @@ export function GenerationHistoryDrawer(props: Props) {
   }, [onClose, open]);
 
   const selectedRun = props.selectedRun;
+  const downloadDebugBundle = useCallback(async () => {
+    if (!selectedRun) return;
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const { filename, blob, requestId } = await apiDownloadAttachment(`/api/generation_runs/${selectedRun.id}/debug_bundle`);
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename || `debug_bundle_${selectedRun.id}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      toast.toastSuccess("已下载 debug bundle", requestId);
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloading, selectedRun, toast]);
 
   return (
     <Drawer
@@ -83,18 +109,30 @@ export function GenerationHistoryDrawer(props: Props) {
           </div>
 
           <div className="rounded-atelier border border-border bg-surface p-4">
-            {!selectedRun ? (
-              <div className="text-sm text-subtext">选择一条记录查看详情。</div>
-            ) : (
-              <div className="grid gap-3">
-                <div className="text-sm text-ink">{selectedRun.type}</div>
-                <div className="text-xs text-subtext">
-                  {selectedRun.provider ?? "unknown"} / {selectedRun.model ?? "unknown"}
-                </div>
-                {selectedRun.request_id ? (
-                  <div className="flex items-center gap-2 text-xs text-subtext">
-                    <span className="truncate">request_id: {selectedRun.request_id}</span>
-                    <button
+	            {!selectedRun ? (
+	              <div className="text-sm text-subtext">选择一条记录查看详情。</div>
+	            ) : (
+	              <div className="grid gap-3">
+	                <div className="text-sm text-ink">{selectedRun.type}</div>
+	                <div className="text-xs text-subtext">
+	                  {selectedRun.provider ?? "unknown"} / {selectedRun.model ?? "unknown"}
+	                </div>
+	                <div className="flex items-center gap-2 text-xs text-subtext">
+	                  <span className="truncate">run_id: {selectedRun.id}</span>
+	                  <button
+	                    className="btn btn-ghost px-2 py-1 text-xs"
+	                    onClick={async () => {
+	                      await navigator.clipboard.writeText(selectedRun.id ?? "");
+	                    }}
+	                    type="button"
+	                  >
+	                    复制
+	                  </button>
+	                </div>
+	                {selectedRun.request_id ? (
+	                  <div className="flex items-center gap-2 text-xs text-subtext">
+	                    <span className="truncate">request_id: {selectedRun.request_id}</span>
+	                    <button
                       className="btn btn-ghost px-2 py-1 text-xs"
                       onClick={async () => {
                         await navigator.clipboard.writeText(selectedRun.request_id ?? "");
@@ -102,13 +140,23 @@ export function GenerationHistoryDrawer(props: Props) {
                       type="button"
                     >
                       复制
-                    </button>
-                  </div>
-                ) : null}
+	                    </button>
+	                  </div>
+	                ) : null}
+	                <div>
+	                  <button
+	                    className="btn btn-secondary"
+	                    disabled={downloading}
+	                    onClick={() => void downloadDebugBundle()}
+	                    type="button"
+	                  >
+	                    {downloading ? "下载中..." : "下载 debug bundle"}
+	                  </button>
+	                </div>
 
-                <details open>
-                  <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
-                    params
+	                <details open>
+	                  <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+	                    params
                   </summary>
                   <pre className="mt-2 max-h-40 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
                     {JSON.stringify(selectedRun.params ?? {}, null, 2)}

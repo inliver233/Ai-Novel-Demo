@@ -176,6 +176,40 @@ export async function apiDownloadMarkdown(path: string): Promise<{ filename: str
   });
 }
 
+export async function apiDownloadAttachment(path: string): Promise<{ filename: string; blob: Blob; requestId: string }> {
+  const res = await fetchWithTimeout(path);
+  const requestIdHeader = res.headers.get("X-Request-Id") ?? "unknown";
+  const cd = res.headers.get("Content-Disposition") ?? "";
+  const filename = parseContentDispositionFilename(cd);
+
+  if (res.ok && filename) {
+    const blob = await res.blob();
+    return { filename, blob, requestId: requestIdHeader };
+  }
+
+  const payload = (await parseJsonSafe(res)) as ApiErrorPayload | unknown;
+  if (typeof payload === "object" && payload && "ok" in payload && (payload as ApiErrorPayload).ok === false) {
+    const typed = payload as ApiErrorPayload;
+    if (res.status === 401) notifyUnauthorized(typed.request_id ?? requestIdHeader);
+    throw new ApiError({
+      code: typed.error.code,
+      message: typed.error.message,
+      details: typed.error.details,
+      requestId: typed.request_id ?? requestIdHeader,
+      status: res.status,
+    });
+  }
+
+  if (res.status === 401) notifyUnauthorized(requestIdHeader);
+  throw new ApiError({
+    code: "BAD_RESPONSE",
+    message: "下载失败",
+    requestId: requestIdHeader,
+    status: res.status,
+    details: payload,
+  });
+}
+
 function unquoteHeaderValue(value: string): string {
   const trimmed = value.trim();
   if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) return trimmed.slice(1, -1);
