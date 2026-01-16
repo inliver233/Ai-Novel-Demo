@@ -186,7 +186,7 @@ export function useChapterGeneration(args: {
 
         const shouldStream = genForm.stream && streamProviderSupported;
         if (genForm.stream && !streamProviderSupported) {
-          toast.toastError("不支持流式，已回退非流式生成");
+          toast.toastWarning("已回退非流式生成");
         }
 
         if (shouldStream) {
