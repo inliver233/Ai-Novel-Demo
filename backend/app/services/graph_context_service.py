@@ -307,7 +307,13 @@ def query_graph_context(
                     .where(MemoryRelation.project_id == project_id)
                     .where(MemoryRelation.deleted_at.is_(None))
                     .where(or_(MemoryRelation.from_entity_id.in_(seed_ids), MemoryRelation.to_entity_id.in_(seed_ids)))
-                    .order_by(MemoryRelation.updated_at.desc())
+                    .order_by(
+                        MemoryRelation.updated_at.desc(),
+                        MemoryRelation.relation_type.asc(),
+                        MemoryRelation.from_entity_id.asc(),
+                        MemoryRelation.to_entity_id.asc(),
+                        MemoryRelation.id.asc(),
+                    )
                 )
                 .scalars()
                 .all()
@@ -349,7 +355,12 @@ def query_graph_context(
                 .where(MemoryEvidence.deleted_at.is_(None))
                 .where(MemoryEvidence.source_id.is_not(None))
                 .where(MemoryEvidence.source_id.in_(evidence_source_ids))
-                .order_by(MemoryEvidence.created_at.desc())
+                .order_by(
+                    MemoryEvidence.created_at.desc(),
+                    func.coalesce(MemoryEvidence.source_type, "").asc(),
+                    MemoryEvidence.source_id.asc(),
+                    MemoryEvidence.id.asc(),
+                )
                 .limit(200)
             )
             .scalars()
@@ -373,6 +384,15 @@ def query_graph_context(
                 }
             )
 
+        node_payloads.sort(
+            key=lambda n: (
+                not bool(n.get("matched")),
+                str(n.get("entity_type") or ""),
+                str(n.get("name") or "").lower(),
+                str(n.get("id") or ""),
+            )
+        )
+
         edge_payloads: list[dict[str, Any]] = []
         for r in picked_edges:
             edge_payloads.append(
@@ -387,6 +407,15 @@ def query_graph_context(
                     "attributes": _safe_json_loads_dict(r.attributes_json),
                 }
             )
+
+        edge_payloads.sort(
+            key=lambda e: (
+                str(e.get("relation_type") or "related_to"),
+                str(e.get("from_name") or e.get("from_entity_id") or ""),
+                str(e.get("to_name") or e.get("to_entity_id") or ""),
+                str(e.get("id") or ""),
+            )
+        )
 
         evidence_payloads: list[dict[str, Any]] = []
         for ev in evidence:
