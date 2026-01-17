@@ -128,6 +128,143 @@ def _vector_candidate_chunk_key(candidate: dict[str, Any]) -> tuple[str, str, in
     return (str(meta.get("source") or ""), str(meta.get("source_id") or ""), chunk_index)
 
 
+def _parse_vector_source_order() -> list[str] | None:
+    raw = str(getattr(settings, "vector_source_order", "") or "").strip()
+    if not raw:
+        return None
+    parts = [p.strip().lower() for p in re.split(r"[\\s,|;]+", raw) if p.strip()]
+    out: list[str] = []
+    for p in parts:
+        if p not in _ALL_SOURCES:
+            continue
+        if p in out:
+            continue
+        out.append(p)
+    return out or None
+
+
+def _parse_vector_source_weights() -> dict[str, float] | None:
+    raw = str(getattr(settings, "vector_source_weights_json", "") or "").strip()
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw)
+    except Exception:
+        return None
+    if not isinstance(value, dict):
+        return None
+    out: dict[str, float] = {}
+    for k, v in value.items():
+        source = str(k or "").strip().lower()
+        if source not in _ALL_SOURCES:
+            continue
+        try:
+            weight = float(v)
+        except Exception:
+            continue
+        if weight <= 0:
+            continue
+        out[source] = weight
+    return out or None
+
+
+def _super_sort_final_chunks(final_chunks: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    before_ids = [str(c.get("id") or "") for c in final_chunks if isinstance(c, dict)]
+
+    order_cfg = _parse_vector_source_order()
+    weights_cfg = _parse_vector_source_weights()
+    enabled = bool(order_cfg or weights_cfg)
+
+    base_obs: dict[str, Any] = {
+        "enabled": bool(enabled),
+        "applied": False,
+        "reason": "disabled" if not enabled else None,
+        "source_order": order_cfg,
+        "source_weights": weights_cfg,
+        "before": before_ids,
+        "after": list(before_ids),
+    }
+    if not enabled or len(final_chunks) <= 1:
+        if enabled:
+            base_obs["reason"] = "noop"
+        return list(final_chunks), base_obs
+
+    if order_cfg:
+        order = list(order_cfg)
+        for s in _ALL_SOURCES:
+            if s not in order:
+                order.append(s)
+    else:
+        weights_for_sort = weights_cfg or {}
+        order = sorted(_ALL_SOURCES, key=lambda s: (-float(weights_for_sort.get(s, 1.0)), s))
+
+    weights_for_all = {s: float((weights_cfg or {}).get(s, 1.0)) for s in _ALL_SOURCES}
+    order_index = {s: i for i, s in enumerate(order)}
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for c in final_chunks:
+        if not isinstance(c, dict):
+            continue
+        meta = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+        source = str(meta.get("source") or "")
+        grouped.setdefault(source, []).append(c)
+
+    def _natural_key(source: str, c: dict[str, Any]) -> tuple:
+        meta = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+        try:
+            chunk_index = int(meta.get("chunk_index") or 0)
+        except Exception:
+            chunk_index = 0
+        source_id = str(meta.get("source_id") or "")
+        cid = str(c.get("id") or "")
+        if source == "chapter":
+            try:
+                chapter_number = int(meta.get("chapter_number") or 0)
+            except Exception:
+                chapter_number = 0
+            return (chapter_number, chunk_index, source_id, cid)
+        title = str(meta.get("title") or "")
+        return (title, chunk_index, source_id, cid)
+
+    for source, items in grouped.items():
+        items.sort(key=lambda c: _natural_key(source, c))
+
+    pos = {s: 0 for s in grouped.keys()}
+    taken = {s: 0 for s in grouped.keys()}
+
+    out: list[dict[str, Any]] = []
+    while True:
+        available = [s for s in grouped.keys() if pos.get(s, 0) < len(grouped[s])]
+        if not available:
+            break
+
+        def _pick_key(s: str) -> tuple[float, int, str]:
+            weight = float(weights_for_all.get(s, 1.0))
+            if weight <= 0:
+                weight = 1.0
+            ratio = float(taken.get(s, 0)) / weight
+            return (ratio, int(order_index.get(s, 999)), s)
+
+        selected_source = min(available, key=_pick_key)
+        out.append(grouped[selected_source][pos[selected_source]])
+        pos[selected_source] = int(pos.get(selected_source, 0)) + 1
+        taken[selected_source] = int(taken.get(selected_source, 0)) + 1
+
+    after_ids = [str(c.get("id") or "") for c in out if isinstance(c, dict)]
+    obs = dict(base_obs)
+    obs.update(
+        {
+            "applied": after_ids != before_ids,
+            "reason": "ok",
+            "source_order_effective": order,
+            "source_weights_effective": weights_for_all,
+            "after": after_ids,
+            "by_source": {s: len(grouped[s]) for s in sorted(grouped.keys())},
+        }
+    )
+    return out, obs
+
+
 def _build_vector_query_counts(
     *,
     candidates_total: int,
@@ -986,6 +1123,8 @@ def query_project(
                 for c in trimmed_candidates[processed:]:
                     dropped.append({"id": c.get("id"), "reason": "budget"})
 
+            final_chunks, super_sort_obs = _super_sort_final_chunks(final_chunks)
+
             post_start = time.perf_counter()
             text_md, truncated = _format_final_text(final_chunks, char_limit=int(settings.vector_final_char_limit or 6000))
             post_ms = int((time.perf_counter() - post_start) * 1000)
@@ -1013,6 +1152,7 @@ def query_project(
                 overfilter=hybrid_out.get("overfilter"),
                 counts=hybrid_out.get("counts"),
                 rerank=rerank_obs,
+                super_sort=super_sort_obs,
             )
 
             return {
@@ -1026,6 +1166,7 @@ def query_project(
                 "dropped": dropped,
                 "counts": obs_counts,
                 "rerank": rerank_obs,
+                "super_sort": super_sort_obs,
                 "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},
                 "backend": "pgvector",
                 "hybrid": {
@@ -1172,6 +1313,8 @@ def query_project(
         for c in trimmed_candidates[processed:]:
             dropped.append({"id": c.get("id"), "reason": "budget"})
 
+    final_chunks, super_sort_obs = _super_sort_final_chunks(final_chunks)
+
     post_start = time.perf_counter()
     text_md, truncated = _format_final_text(final_chunks, char_limit=int(settings.vector_final_char_limit or 6000))
     post_ms = int((time.perf_counter() - post_start) * 1000)
@@ -1196,6 +1339,7 @@ def query_project(
         timings_ms=timings_ms,
         filters={"sources": sources},
         rerank=rerank_obs,
+        super_sort=super_sort_obs,
     )
 
     out: dict[str, Any] = {
@@ -1209,6 +1353,7 @@ def query_project(
         "dropped": dropped,
         "counts": obs_counts,
         "rerank": rerank_obs,
+        "super_sort": super_sort_obs,
         "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},
         "backend": "chroma",
     }

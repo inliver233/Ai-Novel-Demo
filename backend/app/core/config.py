@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     vector_final_char_limit: int = 6000
     vector_chunk_size: int = 800
     vector_chunk_overlap: int = 120
+    vector_source_order: str | None = None
+    vector_source_weights_json: str | None = None
 
     fractal_enabled: bool = True
     fractal_scene_window: int = 5
