@@ -12,11 +12,14 @@ from app.api.deps import (
     require_project_viewer,
     require_worldbook_entry_editor,
 )
-from app.core.errors import ok_payload
+from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id
 from app.models.project_settings import ProjectSettings
 from app.models.worldbook_entry import WorldBookEntry
 from app.schemas.worldbook import (
+    WorldBookBulkDeleteRequest,
+    WorldBookBulkUpdateRequest,
+    WorldBookDuplicateRequest,
     WorldBookEntryCreate,
     WorldBookEntryOut,
     WorldBookEntryUpdate,
@@ -26,6 +29,19 @@ from app.services.memory_query_service import normalize_query_text, parse_query_
 from app.services.worldbook_service import preview_worldbook_trigger
 
 router = APIRouter()
+
+def _dedupe_entry_ids(entry_ids: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in entry_ids:
+        value = str(raw or "").strip()
+        if not value:
+            raise AppError.validation("entry_ids 不能包含空值")
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
 
 
 def _parse_json_list(raw: str | None) -> list[str]:
@@ -73,6 +89,146 @@ def list_worldbook_entries(request: Request, db: DbDep, user_id: UserIdDep, proj
         .all()
     )
     return ok_payload(request_id=request_id, data={"worldbook_entries": [_to_out(r) for r in rows]})
+
+
+@router.post("/projects/{project_id}/worldbook_entries/bulk_update")
+def bulk_update_worldbook_entries(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    body: WorldBookBulkUpdateRequest,
+) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    entry_ids = _dedupe_entry_ids(body.entry_ids)
+    if (
+        body.enabled is None
+        and body.constant is None
+        and body.exclude_recursion is None
+        and body.prevent_recursion is None
+        and body.char_limit is None
+        and body.priority is None
+    ):
+        raise AppError.validation("至少提供一个更新字段")
+
+    rows = (
+        db.execute(select(WorldBookEntry).where(WorldBookEntry.project_id == project_id, WorldBookEntry.id.in_(entry_ids)))
+        .scalars()
+        .all()
+    )
+    by_id = {str(r.id): r for r in rows}
+    missing_ids = [eid for eid in entry_ids if eid not in by_id]
+    if missing_ids:
+        raise AppError.not_found("部分 worldbook_entries 不存在", details={"missing_ids": missing_ids})
+
+    for row in rows:
+        if body.enabled is not None:
+            row.enabled = bool(body.enabled)
+        if body.constant is not None:
+            row.constant = bool(body.constant)
+        if body.exclude_recursion is not None:
+            row.exclude_recursion = bool(body.exclude_recursion)
+        if body.prevent_recursion is not None:
+            row.prevent_recursion = bool(body.prevent_recursion)
+        if body.char_limit is not None:
+            row.char_limit = int(body.char_limit)
+        if body.priority is not None:
+            row.priority = str(body.priority)
+
+    db.commit()
+    for row in rows:
+        db.refresh(row)
+
+    return ok_payload(request_id=request_id, data={"worldbook_entries": [_to_out(by_id[eid]) for eid in entry_ids]})
+
+
+@router.post("/projects/{project_id}/worldbook_entries/bulk_delete")
+def bulk_delete_worldbook_entries(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    body: WorldBookBulkDeleteRequest,
+) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    entry_ids = _dedupe_entry_ids(body.entry_ids)
+    rows = (
+        db.execute(select(WorldBookEntry).where(WorldBookEntry.project_id == project_id, WorldBookEntry.id.in_(entry_ids)))
+        .scalars()
+        .all()
+    )
+    by_id = {str(r.id): r for r in rows}
+    missing_ids = [eid for eid in entry_ids if eid not in by_id]
+    if missing_ids:
+        raise AppError.not_found("部分 worldbook_entries 不存在", details={"missing_ids": missing_ids})
+
+    for row in rows:
+        db.delete(row)
+    db.commit()
+    return ok_payload(request_id=request_id, data={"deleted_ids": entry_ids})
+
+
+@router.post("/projects/{project_id}/worldbook_entries/duplicate")
+def duplicate_worldbook_entries(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    body: WorldBookDuplicateRequest,
+) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    entry_ids = _dedupe_entry_ids(body.entry_ids)
+    rows = (
+        db.execute(select(WorldBookEntry).where(WorldBookEntry.project_id == project_id, WorldBookEntry.id.in_(entry_ids)))
+        .scalars()
+        .all()
+    )
+    by_id = {str(r.id): r for r in rows}
+    missing_ids = [eid for eid in entry_ids if eid not in by_id]
+    if missing_ids:
+        raise AppError.not_found("部分 worldbook_entries 不存在", details={"missing_ids": missing_ids})
+
+    def _copy_title(title: str) -> str:
+        suffix = "（复制）"
+        base = (title or "").strip()
+        if not base:
+            base = "（无标题）"
+        max_len = 255
+        if len(base) + len(suffix) <= max_len:
+            return base + suffix
+        return base[: max(0, max_len - len(suffix))].rstrip() + suffix
+
+    created: list[WorldBookEntry] = []
+    for source_id in entry_ids:
+        src = by_id[source_id]
+        created.append(
+            WorldBookEntry(
+                id=new_id(),
+                project_id=project_id,
+                title=_copy_title(str(src.title or "")),
+                content_md=str(src.content_md or ""),
+                enabled=bool(src.enabled),
+                constant=bool(src.constant),
+                keywords_json=src.keywords_json,
+                exclude_recursion=bool(src.exclude_recursion),
+                prevent_recursion=bool(src.prevent_recursion),
+                char_limit=int(src.char_limit or 0),
+                priority=str(src.priority or "important"),
+            )
+        )
+
+    db.add_all(created)
+    db.commit()
+    for row in created:
+        db.refresh(row)
+
+    return ok_payload(request_id=request_id, data={"worldbook_entries": [_to_out(r) for r in created]})
 
 
 @router.post("/projects/{project_id}/worldbook_entries")

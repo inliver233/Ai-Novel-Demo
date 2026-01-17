@@ -82,6 +82,24 @@ class WorldBookEntryUpdate(BaseModel):
         return out
 
 
+class WorldBookBulkUpdateRequest(BaseModel):
+    entry_ids: list[str] = Field(min_length=1, max_length=200)
+    enabled: bool | None = None
+    constant: bool | None = None
+    exclude_recursion: bool | None = None
+    prevent_recursion: bool | None = None
+    char_limit: int | None = Field(default=None, ge=0, le=200000)
+    priority: WorldBookPriority | None = None
+
+
+class WorldBookBulkDeleteRequest(BaseModel):
+    entry_ids: list[str] = Field(min_length=1, max_length=200)
+
+
+class WorldBookDuplicateRequest(BaseModel):
+    entry_ids: list[str] = Field(min_length=1, max_length=200)
+
+
 class WorldBookTriggeredEntryOut(BaseModel):
     id: str
     title: str
