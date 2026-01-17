@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Header, Query, Request
 from pydantic import Field
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from app.api.deps import DbDep, UserIdDep, require_chapter_editor, require_project_editor, require_project_viewer
 from app.core.errors import AppError, ok_payload
@@ -108,6 +109,20 @@ def _safe_json(raw: str | None, default: object) -> object:
         return default
 
 
+def _parse_iso_dt(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+
 class MemoryAutoProposeRequest(RequestModel):
     idempotency_key: str | None = Field(default=None, max_length=64)
     focus: str | None = Field(default=None, max_length=4000)
@@ -120,32 +135,86 @@ def list_structured_memory(
     user_id: UserIdDep,
     project_id: str,
     include_deleted: bool = Query(default=False),
+    table: str | None = Query(default=None, max_length=32),
+    q: str | None = Query(default=None, max_length=200),
+    before: str | None = Query(default=None, max_length=64),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict:
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
 
-    entities_q = select(MemoryEntity).where(MemoryEntity.project_id == project_id)
-    relations_q = select(MemoryRelation).where(MemoryRelation.project_id == project_id)
-    events_q = select(MemoryEvent).where(MemoryEvent.project_id == project_id)
-    foreshadows_q = select(MemoryForeshadow).where(MemoryForeshadow.project_id == project_id)
-    evidence_q = select(MemoryEvidence).where(MemoryEvidence.project_id == project_id)
+    table_norm = str(table or "").strip().lower() or None
+    allowed_tables = {"entities", "relations", "events", "foreshadows", "evidence"}
+    if table_norm is not None and table_norm not in allowed_tables:
+        raise AppError.validation(details={"reason": "invalid_table", "table": table})
 
-    if not include_deleted:
-        entities_q = entities_q.where(MemoryEntity.deleted_at.is_(None))
-        relations_q = relations_q.where(MemoryRelation.deleted_at.is_(None))
-        events_q = events_q.where(MemoryEvent.deleted_at.is_(None))
-        foreshadows_q = foreshadows_q.where(MemoryForeshadow.deleted_at.is_(None))
-        evidence_q = evidence_q.where(MemoryEvidence.deleted_at.is_(None))
+    keyword = str(q or "").strip() or None
+    pattern = f"%{keyword}%" if keyword else None
 
-    entities = db.execute(entities_q.order_by(MemoryEntity.updated_at.desc()).limit(limit)).scalars().all()
-    relations = db.execute(relations_q.order_by(MemoryRelation.updated_at.desc()).limit(limit)).scalars().all()
-    events = db.execute(events_q.order_by(MemoryEvent.updated_at.desc()).limit(limit)).scalars().all()
-    foreshadows = db.execute(foreshadows_q.order_by(MemoryForeshadow.updated_at.desc()).limit(limit)).scalars().all()
-    evidence = db.execute(evidence_q.order_by(MemoryEvidence.created_at.desc()).limit(limit)).scalars().all()
+    before_dt: datetime | None = None
+    if table_norm is not None and before is not None:
+        before_dt = _parse_iso_dt(before)
+        if before_dt is None:
+            raise AppError.validation(details={"reason": "invalid_before", "before": before})
 
-    data = {
-        "entities": [
+    def _count(table_name: str) -> int:
+        if table_name == "entities":
+            cond = [MemoryEntity.project_id == project_id]
+            if not include_deleted:
+                cond.append(MemoryEntity.deleted_at.is_(None))
+            if pattern:
+                cond.append(or_(MemoryEntity.name.like(pattern), MemoryEntity.summary_md.like(pattern), MemoryEntity.entity_type.like(pattern)))
+            return int(db.execute(select(func.count()).select_from(MemoryEntity).where(*cond)).scalar_one())
+        if table_name == "relations":
+            cond = [MemoryRelation.project_id == project_id]
+            if not include_deleted:
+                cond.append(MemoryRelation.deleted_at.is_(None))
+            if pattern:
+                cond.append(or_(MemoryRelation.relation_type.like(pattern), MemoryRelation.description_md.like(pattern)))
+            return int(db.execute(select(func.count()).select_from(MemoryRelation).where(*cond)).scalar_one())
+        if table_name == "events":
+            cond = [MemoryEvent.project_id == project_id]
+            if not include_deleted:
+                cond.append(MemoryEvent.deleted_at.is_(None))
+            if pattern:
+                cond.append(or_(MemoryEvent.title.like(pattern), MemoryEvent.content_md.like(pattern), MemoryEvent.event_type.like(pattern)))
+            return int(db.execute(select(func.count()).select_from(MemoryEvent).where(*cond)).scalar_one())
+        if table_name == "foreshadows":
+            cond = [MemoryForeshadow.project_id == project_id]
+            if not include_deleted:
+                cond.append(MemoryForeshadow.deleted_at.is_(None))
+            if pattern:
+                cond.append(or_(MemoryForeshadow.title.like(pattern), MemoryForeshadow.content_md.like(pattern)))
+            return int(db.execute(select(func.count()).select_from(MemoryForeshadow).where(*cond)).scalar_one())
+        if table_name == "evidence":
+            cond = [MemoryEvidence.project_id == project_id]
+            if not include_deleted:
+                cond.append(MemoryEvidence.deleted_at.is_(None))
+            if pattern:
+                cond.append(or_(MemoryEvidence.quote_md.like(pattern), MemoryEvidence.source_type.like(pattern), MemoryEvidence.source_id.like(pattern)))
+            return int(db.execute(select(func.count()).select_from(MemoryEvidence).where(*cond)).scalar_one())
+        raise AppError.validation(details={"reason": "invalid_table", "table": table_name})
+
+    counts = {name: _count(name) for name in sorted(allowed_tables)}
+
+    data: dict[str, object] = {"counts": counts, "cursor": {}, "table": table_norm, "q": keyword}
+
+    cursors: dict[str, str | None] = {name: None for name in allowed_tables}
+
+    if table_norm in (None, "entities"):
+        cond = [MemoryEntity.project_id == project_id]
+        if not include_deleted:
+            cond.append(MemoryEntity.deleted_at.is_(None))
+        if pattern:
+            cond.append(or_(MemoryEntity.name.like(pattern), MemoryEntity.summary_md.like(pattern), MemoryEntity.entity_type.like(pattern)))
+        q_entities = select(MemoryEntity).where(*cond)
+        if table_norm == "entities" and before_dt is not None:
+            q_entities = q_entities.where(MemoryEntity.updated_at < before_dt)
+        rows = db.execute(q_entities.order_by(MemoryEntity.updated_at.desc(), MemoryEntity.id.desc()).limit(limit + 1)).scalars().all()
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        cursors["entities"] = rows[-1].updated_at.isoformat() if (has_more and rows) else None
+        data["entities"] = [
             {
                 "id": e.id,
                 "project_id": e.project_id,
@@ -157,9 +226,29 @@ def list_structured_memory(
                 "created_at": e.created_at.isoformat(),
                 "updated_at": e.updated_at.isoformat(),
             }
-            for e in entities
-        ],
-        "relations": [
+            for e in rows
+        ]
+    else:
+        data["entities"] = []
+
+    if table_norm in (None, "relations"):
+        cond = [MemoryRelation.project_id == project_id]
+        if not include_deleted:
+            cond.append(MemoryRelation.deleted_at.is_(None))
+        if pattern:
+            cond.append(or_(MemoryRelation.relation_type.like(pattern), MemoryRelation.description_md.like(pattern)))
+        q_relations = select(MemoryRelation).where(*cond)
+        if table_norm == "relations" and before_dt is not None:
+            q_relations = q_relations.where(MemoryRelation.updated_at < before_dt)
+        rows = (
+            db.execute(q_relations.order_by(MemoryRelation.updated_at.desc(), MemoryRelation.id.desc()).limit(limit + 1))
+            .scalars()
+            .all()
+        )
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        cursors["relations"] = rows[-1].updated_at.isoformat() if (has_more and rows) else None
+        data["relations"] = [
             {
                 "id": r.id,
                 "project_id": r.project_id,
@@ -172,9 +261,25 @@ def list_structured_memory(
                 "created_at": r.created_at.isoformat(),
                 "updated_at": r.updated_at.isoformat(),
             }
-            for r in relations
-        ],
-        "events": [
+            for r in rows
+        ]
+    else:
+        data["relations"] = []
+
+    if table_norm in (None, "events"):
+        cond = [MemoryEvent.project_id == project_id]
+        if not include_deleted:
+            cond.append(MemoryEvent.deleted_at.is_(None))
+        if pattern:
+            cond.append(or_(MemoryEvent.title.like(pattern), MemoryEvent.content_md.like(pattern), MemoryEvent.event_type.like(pattern)))
+        q_events = select(MemoryEvent).where(*cond)
+        if table_norm == "events" and before_dt is not None:
+            q_events = q_events.where(MemoryEvent.updated_at < before_dt)
+        rows = db.execute(q_events.order_by(MemoryEvent.updated_at.desc(), MemoryEvent.id.desc()).limit(limit + 1)).scalars().all()
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        cursors["events"] = rows[-1].updated_at.isoformat() if (has_more and rows) else None
+        data["events"] = [
             {
                 "id": ev.id,
                 "project_id": ev.project_id,
@@ -187,9 +292,29 @@ def list_structured_memory(
                 "created_at": ev.created_at.isoformat(),
                 "updated_at": ev.updated_at.isoformat(),
             }
-            for ev in events
-        ],
-        "foreshadows": [
+            for ev in rows
+        ]
+    else:
+        data["events"] = []
+
+    if table_norm in (None, "foreshadows"):
+        cond = [MemoryForeshadow.project_id == project_id]
+        if not include_deleted:
+            cond.append(MemoryForeshadow.deleted_at.is_(None))
+        if pattern:
+            cond.append(or_(MemoryForeshadow.title.like(pattern), MemoryForeshadow.content_md.like(pattern)))
+        q_foreshadows = select(MemoryForeshadow).where(*cond)
+        if table_norm == "foreshadows" and before_dt is not None:
+            q_foreshadows = q_foreshadows.where(MemoryForeshadow.updated_at < before_dt)
+        rows = (
+            db.execute(q_foreshadows.order_by(MemoryForeshadow.updated_at.desc(), MemoryForeshadow.id.desc()).limit(limit + 1))
+            .scalars()
+            .all()
+        )
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        cursors["foreshadows"] = rows[-1].updated_at.isoformat() if (has_more and rows) else None
+        data["foreshadows"] = [
             {
                 "id": f.id,
                 "project_id": f.project_id,
@@ -203,9 +328,27 @@ def list_structured_memory(
                 "created_at": f.created_at.isoformat(),
                 "updated_at": f.updated_at.isoformat(),
             }
-            for f in foreshadows
-        ],
-        "evidence": [
+            for f in rows
+        ]
+    else:
+        data["foreshadows"] = []
+
+    if table_norm in (None, "evidence"):
+        cond = [MemoryEvidence.project_id == project_id]
+        if not include_deleted:
+            cond.append(MemoryEvidence.deleted_at.is_(None))
+        if pattern:
+            cond.append(or_(MemoryEvidence.quote_md.like(pattern), MemoryEvidence.source_type.like(pattern), MemoryEvidence.source_id.like(pattern)))
+        q_evidence = select(MemoryEvidence).where(*cond)
+        if table_norm == "evidence" and before_dt is not None:
+            q_evidence = q_evidence.where(MemoryEvidence.created_at < before_dt)
+        rows = (
+            db.execute(q_evidence.order_by(MemoryEvidence.created_at.desc(), MemoryEvidence.id.desc()).limit(limit + 1)).scalars().all()
+        )
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        cursors["evidence"] = rows[-1].created_at.isoformat() if (has_more and rows) else None
+        data["evidence"] = [
             {
                 "id": ev.id,
                 "project_id": ev.project_id,
@@ -216,16 +359,12 @@ def list_structured_memory(
                 "deleted_at": ev.deleted_at.isoformat() if ev.deleted_at else None,
                 "created_at": ev.created_at.isoformat(),
             }
-            for ev in evidence
-        ],
-    }
-    data["counts"] = {
-        "entities": len(data["entities"]),
-        "relations": len(data["relations"]),
-        "events": len(data["events"]),
-        "foreshadows": len(data["foreshadows"]),
-        "evidence": len(data["evidence"]),
-    }
+            for ev in rows
+        ]
+    else:
+        data["evidence"] = []
+
+    data["cursor"] = cursors
     return ok_payload(request_id=request_id, data=data)
 
 
