@@ -14,6 +14,7 @@ from app.db.utils import new_id
 from app.models.chapter import Chapter
 from app.models.generation_run import GenerationRun
 from app.models.llm_preset import LLMPreset
+from app.models.memory_task import MemoryTask
 from app.models.project import Project
 from app.models.structured_memory import (
     MemoryChangeSet,
@@ -33,6 +34,8 @@ from app.services.memory_retrieval_service import retrieve_memory_context_pack
 from app.services.memory_update_service import (
     apply_memory_change_set,
     list_memory_change_sets,
+    list_memory_tasks,
+    memory_task_to_dict,
     propose_chapter_memory_change_set,
     rollback_memory_change_set,
 )
@@ -403,6 +406,37 @@ def list_project_memory_change_sets(
     require_project_viewer(db, project_id=project_id, user_id=user_id)
     out = list_memory_change_sets(db=db, project_id=project_id, status=status, before=before, limit=limit)
     return ok_payload(request_id=request_id, data=out)
+
+
+@router.get("/projects/{project_id}/memory_tasks")
+def list_project_memory_tasks(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    status: str | None = Query(default=None, max_length=16),
+    before: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    request_id = request.state.request_id
+    require_project_viewer(db, project_id=project_id, user_id=user_id)
+    out = list_memory_tasks(db=db, project_id=project_id, status=status, before=before, limit=limit)
+    return ok_payload(request_id=request_id, data=out)
+
+
+@router.get("/memory_tasks/{task_id}")
+def get_memory_task(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    task_id: str,
+) -> dict:
+    request_id = request.state.request_id
+    task = db.get(MemoryTask, task_id)
+    if task is None:
+        raise AppError.not_found()
+    require_project_viewer(db, project_id=str(task.project_id), user_id=user_id)
+    return ok_payload(request_id=request_id, data=memory_task_to_dict(task=task))
 
 
 @router.post("/memory_change_sets/{change_set_id}/rollback")

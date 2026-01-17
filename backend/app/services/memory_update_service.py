@@ -240,6 +240,95 @@ def list_memory_change_sets(
     return {"items": items, "next_before": next_before}
 
 
+_ALLOWED_TASK_STATUSES = {"queued", "running", "succeeded", "failed"}
+
+
+def _memory_task_status_to_public(status: str) -> str:
+    s = str(status or "").strip().lower()
+    return "done" if s == "succeeded" else s
+
+
+def _memory_task_error_fields(task: MemoryTask) -> tuple[str | None, str | None]:
+    value = _compact_json_loads(task.error_json) if task.error_json else None
+    if not isinstance(value, dict):
+        return None, None
+    error_type = str(value.get("error_type") or "").strip() or None
+    error_message = str(value.get("message") or "").strip() or None
+    return error_type, error_message
+
+
+def _memory_task_timings(task: MemoryTask) -> dict[str, Any]:
+    created_at = task.created_at
+    started_at = task.started_at
+    finished_at = task.finished_at
+
+    run_ms = int((finished_at - started_at).total_seconds() * 1000) if (started_at and finished_at) else None
+    queue_delay_ms = int((started_at - created_at).total_seconds() * 1000) if started_at else None
+    total_ms = int((finished_at - created_at).total_seconds() * 1000) if finished_at else None
+
+    return {
+        "created_at": _iso(created_at),
+        "started_at": _iso(started_at),
+        "finished_at": _iso(finished_at),
+        "updated_at": _iso(task.updated_at),
+        "queue_delay_ms": queue_delay_ms,
+        "run_ms": run_ms,
+        "total_ms": total_ms,
+    }
+
+
+def memory_task_to_dict(*, task: MemoryTask) -> dict[str, Any]:
+    error_type, error_message = _memory_task_error_fields(task)
+    return {
+        "id": str(task.id),
+        "project_id": str(task.project_id),
+        "change_set_id": str(task.change_set_id),
+        "actor_user_id": task.actor_user_id,
+        "kind": str(task.kind),
+        "status": _memory_task_status_to_public(str(task.status)),
+        "error_type": error_type,
+        "error_message": error_message,
+        "timings": _memory_task_timings(task),
+    }
+
+
+def list_memory_tasks(
+    *,
+    db: Session,
+    project_id: str,
+    status: str | None,
+    before: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    status_norm = str(status or "").strip().lower() or None
+    if status_norm is not None:
+        if status_norm == "done":
+            status_norm = "succeeded"
+        if status_norm not in _ALLOWED_TASK_STATUSES:
+            raise AppError.validation(details={"reason": "invalid_status", "status": status})
+
+    before_raw = str(before or "").strip()
+    before_dt = _parse_dt(before_raw) if before_raw else None
+    if before_raw and before_dt is None:
+        raise AppError.validation(details={"reason": "invalid_before", "before": before})
+
+    q = select(MemoryTask).where(MemoryTask.project_id == project_id)
+    if status_norm is not None:
+        q = q.where(MemoryTask.status == status_norm)
+    if before_dt is not None:
+        q = q.where(MemoryTask.created_at < before_dt)
+
+    rows = (
+        db.execute(q.order_by(MemoryTask.created_at.desc(), MemoryTask.id.desc()).limit(limit + 1)).scalars().all()
+    )
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+
+    items = [memory_task_to_dict(task=t) for t in rows]
+    next_before = _iso(rows[-1].created_at) if (has_more and rows) else None
+    return {"items": items, "next_before": next_before}
+
+
 def _item_to_dict(item: MemoryChangeSetItem) -> dict[str, Any]:
     return {
         "id": str(item.id),
