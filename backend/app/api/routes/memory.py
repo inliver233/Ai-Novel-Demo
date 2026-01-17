@@ -30,7 +30,12 @@ from app.schemas.memory_preview import MemoryPreviewRequest
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.memory_retrieval_service import retrieve_memory_context_pack
-from app.services.memory_update_service import apply_memory_change_set, propose_chapter_memory_change_set, rollback_memory_change_set
+from app.services.memory_update_service import (
+    apply_memory_change_set,
+    list_memory_change_sets,
+    propose_chapter_memory_change_set,
+    rollback_memory_change_set,
+)
 from app.services.output_contracts import contract_for_task
 from app.services.prompt_presets import _ensure_default_preset_from_resource, render_preset_for_task
 
@@ -381,6 +386,22 @@ def apply_memory_update(
             _require_chapter_done_for_memory_update(db=db, chapter=chapter, user_id=user_id, allow_draft=allow_draft)
 
     out = apply_memory_change_set(db=db, request_id=request_id, actor_user_id=user_id, change_set=change_set)
+    return ok_payload(request_id=request_id, data=out)
+
+
+@router.get("/projects/{project_id}/memory_change_sets")
+def list_project_memory_change_sets(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    status: str | None = Query(default=None, max_length=16),
+    before: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    request_id = request.state.request_id
+    require_project_viewer(db, project_id=project_id, user_id=user_id)
+    out = list_memory_change_sets(db=db, project_id=project_id, status=status, before=before, limit=limit)
     return ok_payload(request_id=request_id, data=out)
 
 

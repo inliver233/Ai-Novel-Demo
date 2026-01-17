@@ -178,6 +178,68 @@ def _change_set_to_dict(change_set: MemoryChangeSet) -> dict[str, Any]:
     }
 
 
+_ALLOWED_CHANGE_SET_STATUSES = {"proposed", "applied", "rolled_back", "failed"}
+
+
+def _change_set_summary_to_dict(*, change_set: MemoryChangeSet, chapter_id: str | None) -> dict[str, Any]:
+    updated_at = change_set.rolled_back_at or change_set.applied_at or change_set.created_at
+    return {
+        "id": str(change_set.id),
+        "chapter_id": chapter_id,
+        "summary_md": change_set.summary_md,
+        "status": str(change_set.status),
+        "created_at": _iso(change_set.created_at),
+        "updated_at": _iso(updated_at),
+    }
+
+
+def list_memory_change_sets(
+    *,
+    db: Session,
+    project_id: str,
+    status: str | None,
+    before: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    status_norm = str(status or "").strip().lower() or None
+    if status_norm is not None and status_norm not in _ALLOWED_CHANGE_SET_STATUSES:
+        raise AppError.validation(details={"reason": "invalid_status", "status": status})
+
+    before_raw = str(before or "").strip()
+    before_dt = _parse_dt(before_raw) if before_raw else None
+    if before_raw and before_dt is None:
+        raise AppError.validation(details={"reason": "invalid_before", "before": before})
+
+    q = (
+        select(MemoryChangeSet, GenerationRun.chapter_id)
+        .outerjoin(GenerationRun, GenerationRun.id == MemoryChangeSet.generation_run_id)
+        .where(MemoryChangeSet.project_id == project_id)
+    )
+    if status_norm is not None:
+        q = q.where(MemoryChangeSet.status == status_norm)
+    if before_dt is not None:
+        q = q.where(MemoryChangeSet.created_at < before_dt)
+
+    rows = (
+        db.execute(q.order_by(MemoryChangeSet.created_at.desc(), MemoryChangeSet.id.desc()).limit(limit + 1))
+        .all()
+    )
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+
+    items: list[dict[str, Any]] = []
+    for change_set, chapter_id in rows:
+        items.append(
+            _change_set_summary_to_dict(
+                change_set=change_set,
+                chapter_id=str(chapter_id) if chapter_id else None,
+            )
+        )
+
+    next_before = _iso(rows[-1][0].created_at) if (has_more and rows) else None
+    return {"items": items, "next_before": next_before}
+
+
 def _item_to_dict(item: MemoryChangeSetItem) -> dict[str, Any]:
     return {
         "id": str(item.id),
