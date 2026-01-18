@@ -17,6 +17,7 @@ from app.models.generation_run import GenerationRun
 from app.models.llm_preset import LLMPreset
 from app.models.memory_task import MemoryTask
 from app.models.project import Project
+from app.models.story_memory import StoryMemory
 from app.models.structured_memory import (
     MemoryChangeSet,
     MemoryEntity,
@@ -98,6 +99,108 @@ def preview_project_memory(
         budget_overrides=body.budget_overrides,
     )
     return ok_payload(request_id=request_id, data=pack.model_dump())
+
+
+class StoryMemoryForeshadowResolveRequest(RequestModel):
+    resolved_at_chapter_id: str | None = Field(default=None, max_length=64)
+
+
+@router.get("/projects/{project_id}/story_memories/foreshadows/open_loops")
+def list_story_memory_foreshadow_open_loops(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    request_id = request.state.request_id
+    require_project_viewer(db, project_id=project_id, user_id=user_id)
+
+    rows = (
+        db.execute(
+            select(StoryMemory)
+            .where(StoryMemory.project_id == project_id)
+            .where(StoryMemory.is_foreshadow == 1)  # noqa: E712
+            .where(StoryMemory.foreshadow_resolved_at_chapter_id.is_(None))
+            .order_by(StoryMemory.story_timeline.desc(), StoryMemory.importance_score.desc(), StoryMemory.updated_at.desc())
+            .limit(int(limit) + 1)
+        )
+        .scalars()
+        .all()
+    )
+    has_more = len(rows) > int(limit)
+    rows = rows[: int(limit)]
+
+    items = []
+    for m in rows:
+        content = str(m.content or "").strip()
+        preview = (content[:200].rstrip() + "…") if len(content) > 200 else content
+        items.append(
+            {
+                "id": m.id,
+                "chapter_id": m.chapter_id,
+                "memory_type": m.memory_type,
+                "title": m.title,
+                "importance_score": float(m.importance_score or 0.0),
+                "story_timeline": int(m.story_timeline or 0),
+                "is_foreshadow": bool(m.is_foreshadow),
+                "resolved_at_chapter_id": m.foreshadow_resolved_at_chapter_id,
+                "content_preview": preview,
+                "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+            }
+        )
+
+    return ok_payload(request_id=request_id, data={"items": items, "has_more": bool(has_more), "returned": len(items)})
+
+
+@router.post("/projects/{project_id}/story_memories/foreshadows/{story_memory_id}/resolve")
+def resolve_story_memory_foreshadow(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    story_memory_id: str,
+    body: StoryMemoryForeshadowResolveRequest,
+) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    m = db.get(StoryMemory, story_memory_id)
+    if m is None or str(m.project_id) != str(project_id):
+        raise AppError.not_found()
+    if not bool(getattr(m, "is_foreshadow", 0)):
+        raise AppError.validation(message="该 StoryMemory 不是 foreshadow", details={"story_memory_id": story_memory_id})
+
+    resolved_at_chapter_id = str(body.resolved_at_chapter_id or "").strip() or None
+    if resolved_at_chapter_id:
+        chapter = db.get(Chapter, resolved_at_chapter_id)
+        if chapter is None or str(getattr(chapter, "project_id", "")) != str(project_id):
+            raise AppError.validation(
+                message="resolved_at_chapter_id 无效或不属于该 project",
+                details={"resolved_at_chapter_id": resolved_at_chapter_id},
+            )
+
+    m.foreshadow_resolved_at_chapter_id = resolved_at_chapter_id
+    db.commit()
+    db.refresh(m)
+
+    return ok_payload(
+        request_id=request_id,
+        data={
+            "foreshadow": {
+                "id": m.id,
+                "project_id": m.project_id,
+                "chapter_id": m.chapter_id,
+                "memory_type": m.memory_type,
+                "title": m.title,
+                "importance_score": float(m.importance_score or 0.0),
+                "story_timeline": int(m.story_timeline or 0),
+                "is_foreshadow": bool(m.is_foreshadow),
+                "resolved_at_chapter_id": m.foreshadow_resolved_at_chapter_id,
+                "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+            }
+        },
+    )
 
 
 def _safe_json(raw: str | None, default: object) -> object:

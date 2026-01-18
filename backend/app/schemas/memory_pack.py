@@ -4,7 +4,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-MemoryContextSection = Literal["worldbook", "story_memory", "semantic_history", "structured", "vector_rag", "graph", "fractal"]
+MemoryContextSection = Literal[
+    "worldbook",
+    "story_memory",
+    "semantic_history",
+    "foreshadow_open_loops",
+    "structured",
+    "vector_rag",
+    "graph",
+    "fractal",
+]
 
 
 class MemoryContextSectionOut(BaseModel):
@@ -32,6 +41,7 @@ class MemoryContextPackOut(BaseModel):
     worldbook: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
     story_memory: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
     semantic_history: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
+    foreshadow_open_loops: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
     structured: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
     vector_rag: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
     graph: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
