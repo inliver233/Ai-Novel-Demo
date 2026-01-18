@@ -2817,6 +2817,13 @@
         },
         {
           "dflt_value": null,
+          "name": "category",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
           "name": "created_at",
           "notnull": 1,
           "pk": 0,

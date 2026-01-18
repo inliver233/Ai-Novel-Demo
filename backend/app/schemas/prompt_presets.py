@@ -12,6 +12,7 @@ class PromptPresetOut(BaseModel):
     id: str
     project_id: str
     name: str
+    category: str | None = None
     scope: str
     version: int
     active_for: list[str] = Field(default_factory=list)
@@ -21,6 +22,7 @@ class PromptPresetOut(BaseModel):
 
 class PromptPresetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    category: str | None = Field(default=None, max_length=64)
     scope: str = Field(default="project", min_length=1, max_length=32)
     version: int = Field(default=1, ge=1)
     active_for: list[str] = Field(default_factory=list, max_length=50)
@@ -28,6 +30,7 @@ class PromptPresetCreate(BaseModel):
 
 class PromptPresetUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    category: str | None = Field(default=None, max_length=64)
     scope: str | None = Field(default=None, min_length=1, max_length=32)
     version: int | None = Field(default=None, ge=1)
     active_for: list[str] | None = Field(default=None, max_length=50)
@@ -184,6 +187,7 @@ class PromptPresetExportBlock(BaseModel):
 
 class PromptPresetExportPreset(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    category: str | None = Field(default=None, max_length=64)
     scope: str = Field(default="project", min_length=1, max_length=32)
     version: int = Field(default=1, ge=1)
     active_for: list[str] = Field(default_factory=list, max_length=50)
@@ -197,3 +201,14 @@ class PromptPresetExportOut(BaseModel):
 class PromptPresetImportRequest(BaseModel):
     preset: PromptPresetExportPreset
     blocks: list[PromptPresetExportBlock] = Field(default_factory=list, max_length=200)
+
+
+class PromptPresetExportAllOut(BaseModel):
+    schema_version: str = Field(default="prompt_presets_export_all_v1", max_length=64)
+    presets: list[PromptPresetExportOut] = Field(default_factory=list, max_length=200)
+
+
+class PromptPresetImportAllRequest(BaseModel):
+    schema_version: str = Field(default="prompt_presets_export_all_v1", max_length=64)
+    dry_run: bool = False
+    presets: list[PromptPresetExportOut] = Field(default_factory=list, max_length=200)

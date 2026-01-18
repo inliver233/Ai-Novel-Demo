@@ -17,8 +17,10 @@ from app.schemas.prompt_presets import (
     PromptBlockReorderRequest,
     PromptBlockUpdate,
     PromptPresetCreate,
+    PromptPresetExportAllOut,
     PromptPresetExportOut,
     PromptPresetExportPreset,
+    PromptPresetImportAllRequest,
     PromptPresetImportRequest,
     PromptPresetOut,
     PromptPresetUpdate,
@@ -46,6 +48,7 @@ def _preset_to_out(row: PromptPreset) -> dict:
         id=row.id,
         project_id=row.project_id,
         name=row.name,
+        category=row.category,
         scope=row.scope,
         version=row.version,
         active_for=parse_json_list(row.active_for_json),
@@ -108,6 +111,7 @@ def create_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, projec
         id=new_id(),
         project_id=project_id,
         name=body.name,
+        category=body.category,
         scope=body.scope,
         version=body.version,
         active_for_json=json.dumps(body.active_for or [], ensure_ascii=False),
@@ -147,6 +151,8 @@ def update_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, preset
 
     if body.name is not None:
         preset.name = body.name
+    if "category" in body.model_fields_set:
+        preset.category = body.category
     if body.scope is not None:
         preset.scope = body.scope
     if body.version is not None:
@@ -330,6 +336,7 @@ def export_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, preset
     export_obj = PromptPresetExportOut(
         preset=PromptPresetExportPreset(
             name=preset.name,
+            category=preset.category,
             scope=preset.scope,
             version=preset.version,
             active_for=parse_json_list(preset.active_for_json),
@@ -366,6 +373,7 @@ def import_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, projec
         id=new_id(),
         project_id=project_id,
         name=body.preset.name,
+        category=body.preset.category,
         scope=body.preset.scope,
         version=body.preset.version,
         active_for_json=json.dumps(body.preset.active_for or [], ensure_ascii=False),
@@ -395,6 +403,172 @@ def import_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, projec
     db.commit()
     db.refresh(preset)
     return ok_payload(request_id=request_id, data={"preset": _preset_to_out(preset)})
+
+
+@router.get("/projects/{project_id}/prompt_presets/export_all")
+def export_all_prompt_presets(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    presets = (
+        db.execute(select(PromptPreset).where(PromptPreset.project_id == project_id).order_by(PromptPreset.updated_at.desc()))
+        .scalars()
+        .all()
+    )
+
+    export_presets: list[PromptPresetExportOut] = []
+    for preset in presets:
+        blocks = (
+            db.execute(select(PromptBlock).where(PromptBlock.preset_id == preset.id).order_by(PromptBlock.injection_order.asc()))
+            .scalars()
+            .all()
+        )
+        export_presets.append(
+            PromptPresetExportOut(
+                preset=PromptPresetExportPreset(
+                    name=preset.name,
+                    category=preset.category,
+                    scope=preset.scope,
+                    version=preset.version,
+                    active_for=parse_json_list(preset.active_for_json),
+                ),
+                blocks=[
+                    {
+                        "identifier": b.identifier,
+                        "name": b.name,
+                        "role": b.role,
+                        "enabled": b.enabled,
+                        "template": b.template,
+                        "marker_key": b.marker_key,
+                        "injection_position": b.injection_position,
+                        "injection_depth": b.injection_depth,
+                        "injection_order": b.injection_order,
+                        "triggers": parse_json_list(b.triggers_json),
+                        "forbid_overrides": b.forbid_overrides,
+                        "budget": parse_json_dict(b.budget_json),
+                        "cache": parse_json_dict(b.cache_json),
+                    }
+                    for b in blocks
+                ],
+            )
+        )
+
+    export_obj = PromptPresetExportAllOut(presets=export_presets).model_dump()
+    return ok_payload(request_id=request_id, data={"export": export_obj})
+
+
+@router.post("/projects/{project_id}/prompt_presets/import_all")
+def import_all_prompt_presets(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    body: PromptPresetImportAllRequest,
+) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    if str(body.schema_version or "").strip() != "prompt_presets_export_all_v1":
+        raise AppError.validation(details={"reason": "unsupported_schema_version", "schema_version": body.schema_version})
+
+    existing = (
+        db.execute(select(PromptPreset).where(PromptPreset.project_id == project_id).order_by(PromptPreset.updated_at.desc()))
+        .scalars()
+        .all()
+    )
+    by_key: dict[tuple[str, str], list[PromptPreset]] = {}
+    for row in existing:
+        key = (str(row.name or "").strip(), str(row.scope or "").strip())
+        by_key.setdefault(key, []).append(row)
+
+    actions: list[dict[str, object]] = []
+    conflicts: list[dict[str, object]] = []
+    created = 0
+    updated = 0
+    skipped = 0
+
+    for item in body.presets:
+        key = (str(item.preset.name or "").strip(), str(item.preset.scope or "").strip())
+        matches = by_key.get(key) or []
+        if len(matches) > 1:
+            skipped += 1
+            conflicts.append({"name": key[0], "scope": key[1], "reason": "multiple_existing", "existing_count": len(matches)})
+            actions.append({"name": key[0], "scope": key[1], "action": "skip", "reason": "multiple_existing"})
+            continue
+
+        if not matches:
+            created += 1
+            actions.append({"name": key[0], "scope": key[1], "action": "create", "blocks": len(item.blocks)})
+            if body.dry_run:
+                continue
+
+            preset = PromptPreset(
+                id=new_id(),
+                project_id=project_id,
+                name=item.preset.name,
+                category=item.preset.category,
+                scope=item.preset.scope,
+                version=item.preset.version,
+                active_for_json=json.dumps(item.preset.active_for or [], ensure_ascii=False),
+            )
+            db.add(preset)
+            db.flush()
+        else:
+            updated += 1
+            preset = matches[0]
+            actions.append({"name": key[0], "scope": key[1], "action": "update", "preset_id": preset.id, "blocks": len(item.blocks)})
+            if body.dry_run:
+                continue
+
+            preset.category = item.preset.category
+            preset.version = item.preset.version
+            preset.active_for_json = json.dumps(item.preset.active_for or [], ensure_ascii=False)
+            preset.updated_at = utc_now()
+
+            blocks = db.execute(select(PromptBlock).where(PromptBlock.preset_id == preset.id)).scalars().all()
+            for b in blocks:
+                db.delete(b)
+            db.flush()
+
+        if body.dry_run:
+            continue
+
+        ordered_blocks = sorted(list(item.blocks or []), key=lambda b: (int(b.injection_order or 0), str(b.identifier or "")))
+        for idx, b in enumerate(ordered_blocks):
+            db.add(
+                PromptBlock(
+                    id=new_id(),
+                    preset_id=preset.id,
+                    identifier=b.identifier,
+                    name=b.name,
+                    role=b.role,
+                    enabled=b.enabled,
+                    template=b.template,
+                    marker_key=b.marker_key,
+                    injection_position=b.injection_position,
+                    injection_depth=b.injection_depth,
+                    injection_order=int(b.injection_order) if b.injection_order is not None else idx,
+                    triggers_json=json.dumps(b.triggers or [], ensure_ascii=False),
+                    forbid_overrides=b.forbid_overrides,
+                    budget_json=json.dumps(b.budget or {}, ensure_ascii=False) if b.budget else None,
+                    cache_json=json.dumps(b.cache or {}, ensure_ascii=False) if b.cache else None,
+                )
+            )
+
+    if not body.dry_run:
+        db.commit()
+
+    return ok_payload(
+        request_id=request_id,
+        data={
+            "dry_run": bool(body.dry_run),
+            "created": int(created),
+            "updated": int(updated),
+            "skipped": int(skipped),
+            "conflicts": conflicts,
+            "actions": actions,
+        },
+    )
 
 
 @router.post("/projects/{project_id}/prompt_preview")
