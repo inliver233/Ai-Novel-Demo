@@ -18,12 +18,13 @@ from app.llm.http_client import get_llm_http_client
 from app.llm.utils import normalize_base_url
 from app.models.chapter import Chapter
 from app.models.outline import Outline
+from app.models.story_memory import StoryMemory
 from app.models.worldbook_entry import WorldBookEntry
 from app.services.rerank_service import rerank_candidates as rerank_candidates_with_providers
 
 logger = logging.getLogger("ainovel")
 
-VectorSource = Literal["worldbook", "outline", "chapter"]
+VectorSource = Literal["worldbook", "outline", "chapter", "story_memory"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +34,7 @@ class VectorChunk:
     metadata: dict[str, Any]
 
 
-_ALL_SOURCES: list[VectorSource] = ["worldbook", "outline", "chapter"]
+_ALL_SOURCES: list[VectorSource] = ["worldbook", "outline", "chapter", "story_memory"]
 _PGVECTOR_TABLE = "vector_chunks"
 
 
@@ -450,7 +451,7 @@ def _chunk_text(text: str, *, chunk_size: int, overlap: int) -> list[str]:
 
 
 def build_project_chunks(*, db: Session, project_id: str, sources: list[VectorSource] | None = None) -> list[VectorChunk]:
-    sources = sources or ["worldbook", "outline", "chapter"]
+    sources = sources or list(_ALL_SOURCES)
     chunk_size = int(settings.vector_chunk_size or 800)
     overlap = int(settings.vector_chunk_overlap or 120)
 
@@ -536,6 +537,38 @@ def build_project_chunks(*, db: Session, project_id: str, sources: list[VectorSo
                             "chapter_number": int(c.number),
                             "title": title,
                             "chunk_index": idx,
+                        },
+                    )
+                )
+
+    if "story_memory" in sources:
+        rows = (
+            db.execute(select(StoryMemory).where(StoryMemory.project_id == project_id).order_by(StoryMemory.updated_at.desc()))
+            .scalars()
+            .all()
+        )
+        for m in rows:
+            title = (m.title or "").strip()
+            content = (m.content or "").strip()
+            if not content:
+                continue
+            header = f"[{str(m.memory_type or '').strip() or 'story_memory'}] {title}".strip()
+            text = f"{header}\n\n{content}".strip() if header else content
+            for idx, chunk in enumerate(_chunk_text(text, chunk_size=chunk_size, overlap=overlap)):
+                out.append(
+                    VectorChunk(
+                        id=f"story_memory:{m.id}:{idx}",
+                        text=chunk,
+                        metadata={
+                            "project_id": project_id,
+                            "source": "story_memory",
+                            "source_id": m.id,
+                            "title": title,
+                            "chunk_index": idx,
+                            "memory_type": str(m.memory_type or "").strip(),
+                            "chapter_id": str(m.chapter_id or "") or None,
+                            "story_timeline": int(m.story_timeline or 0),
+                            "is_foreshadow": bool(int(m.is_foreshadow or 0)),
                         },
                     )
                 )
@@ -977,6 +1010,9 @@ def _format_final_text(chunks: list[dict[str, Any]], *, char_limit: int) -> tupl
             header = f"【章节 {n}：{title or meta.get('source_id') or 'chapter'}】"
         elif source == "outline":
             header = f"【大纲：{title or meta.get('source_id') or 'outline'}】"
+        elif source == "story_memory":
+            mtype = str(meta.get("memory_type") or "").strip() or "story_memory"
+            header = f"【记忆：{mtype}：{title or meta.get('source_id') or 'memory'}】".rstrip("：")
         else:
             header = f"【{source or 'chunk'}】"
         text = str(c.get("text") or "").strip()

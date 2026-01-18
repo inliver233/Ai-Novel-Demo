@@ -63,7 +63,7 @@ class TestVectorHybridRrf(unittest.TestCase):
 
             self.assertEqual(len(calls), 3)
             self.assertEqual(calls[0]["sources"], ["worldbook"])
-            self.assertEqual(calls[1]["sources"], ["worldbook", "outline", "chapter"])
+            self.assertEqual(calls[1]["sources"], ["worldbook", "outline", "chapter", "story_memory"])
             self.assertEqual(calls[2]["vector_k"], 60)
             self.assertEqual(calls[2]["fts_k"], 60)
         finally:
