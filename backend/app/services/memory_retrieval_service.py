@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.secrets import SecretCryptoError, decrypt_secret
+from app.models.chapter import Chapter
 from app.models.project_settings import ProjectSettings
 from app.models.story_memory import StoryMemory
 from app.models.structured_memory import MemoryEntity, MemoryEvent, MemoryForeshadow, MemoryRelation
@@ -20,7 +21,7 @@ from app.services.worldbook_service import preview_worldbook_trigger
 
 _MEMORY_TEXT_MD_CHAR_LIMIT = 6000
 _TRUNCATION_MARK = "\n…(truncated)\n"
-_ALLOWED_SECTIONS = {"worldbook", "story_memory", "structured", "vector_rag", "graph", "fractal"}
+_ALLOWED_SECTIONS = {"worldbook", "story_memory", "semantic_history", "structured", "vector_rag", "graph", "fractal"}
 _MAX_BUDGET_CHAR_LIMIT = 50000
 
 
@@ -138,6 +139,31 @@ def _format_story_memory_text_md(*, memories: list[StoryMemory], char_limit: int
     return _wrap_and_truncate_block(tag="StoryMemory", inner="\n\n".join(parts), char_limit=char_limit)
 
 
+def _format_semantic_history_text_md(
+    *,
+    memories: list[StoryMemory],
+    chapters_by_id: dict[str, Chapter],
+    char_limit: int,
+) -> tuple[str, bool]:
+    parts: list[str] = []
+    for m in memories:
+        chapter_id = str(m.chapter_id or "").strip()
+        chapter = chapters_by_id.get(chapter_id) if chapter_id else None
+        title = str(getattr(chapter, "title", "") or "").strip() or "Untitled"
+        number = getattr(chapter, "number", None)
+        try:
+            number_int = int(number) if number is not None else None
+        except Exception:
+            number_int = None
+
+        header = f"第 {number_int} 章：{title}".strip("：") if number_int is not None else f"章节：{title}".strip("：")
+        content = str(m.content or "").strip()
+        if len(content) > 1000:
+            content = content[:1000].rstrip() + "…"
+        parts.append(f"### {header}\n{content}".rstrip())
+    return _wrap_and_truncate_block(tag="SemanticHistory", inner="\n\n".join(parts), char_limit=char_limit)
+
+
 def _extract_query_tokens(query_text: str, *, limit: int) -> list[str]:
     q = (query_text or "").strip()
     if not q:
@@ -233,6 +259,7 @@ def retrieve_memory_context_pack(
     budgets = {str(k): v for k, v in budgets_raw.items() if str(k) in _ALLOWED_SECTIONS}
     worldbook_enabled = bool(enabled_map.get("worldbook", True))
     story_memory_enabled = bool(enabled_map.get("story_memory", True))
+    semantic_history_enabled = bool(enabled_map.get("semantic_history", False))
     structured_enabled = bool(enabled_map.get("structured", True))
     vector_rag_enabled = bool(enabled_map.get("vector_rag", True))
     graph_enabled = bool(enabled_map.get("graph", True))
@@ -242,6 +269,11 @@ def retrieve_memory_context_pack(
     story_memory_budget = (
         _clamp_char_limit(budgets.get("story_memory"), default=_MEMORY_TEXT_MD_CHAR_LIMIT)
         if "story_memory" in budgets
+        else _MEMORY_TEXT_MD_CHAR_LIMIT
+    )
+    semantic_history_budget = (
+        _clamp_char_limit(budgets.get("semantic_history"), default=_MEMORY_TEXT_MD_CHAR_LIMIT)
+        if "semantic_history" in budgets
         else _MEMORY_TEXT_MD_CHAR_LIMIT
     )
     structured_budget = (
@@ -339,6 +371,134 @@ def retrieve_memory_context_pack(
                 "text_md": "",
                 "error": "story_memory_query_failed",
             }
+
+    vector_query_text = (query_text or "").strip()
+    embedding_overrides = _vector_embedding_overrides(db=db, project_id=project_id)
+    rerank_config = _vector_rerank_config(db=db, project_id=project_id)
+
+    semantic_history: dict[str, Any] = {"enabled": False, "disabled_reason": "empty", "items": [], "text_md": ""}
+    if not semantic_history_enabled:
+        semantic_history = {"enabled": False, "disabled_reason": "disabled", "items": [], "text_md": ""}
+    elif not vector_query_text:
+        semantic_history = {"enabled": False, "disabled_reason": "empty_query", "items": [], "text_md": "", "query_text": ""}
+    else:
+        vector_out: dict[str, Any] | None = None
+        try:
+            out = query_project(
+                project_id=project_id,
+                query_text=vector_query_text,
+                sources=["story_memory"],
+                embedding=embedding_overrides,
+                rerank=rerank_config,
+            )
+            vector_out = out if isinstance(out, dict) else None
+        except Exception as exc:
+            vector_out = vector_rag_status(
+                project_id=project_id,
+                sources=["story_memory"],
+                embedding=embedding_overrides,
+                rerank=rerank_config,
+            )
+            vector_out["enabled"] = False
+            vector_out["disabled_reason"] = "error"
+            vector_out["query_text"] = vector_query_text
+            vector_out["error"] = f"semantic_history_vector_query_failed:{type(exc).__name__}"
+
+        if not vector_out or not bool(vector_out.get("enabled")):
+            semantic_history = {
+                "enabled": False,
+                "disabled_reason": (vector_out or {}).get("disabled_reason") or "vector_disabled",
+                "items": [],
+                "text_md": "",
+                "query_text": vector_query_text,
+            }
+        else:
+            candidates = vector_out.get("candidates") if isinstance(vector_out.get("candidates"), list) else []
+            picked_memory_ids: list[str] = []
+            seen: set[str] = set()
+            for c in candidates:
+                if not isinstance(c, dict):
+                    continue
+                meta = c.get("metadata") if isinstance(c.get("metadata"), dict) else {}
+                if str(meta.get("source") or "") != "story_memory":
+                    continue
+                if str(meta.get("memory_type") or "").strip() != "chapter_summary":
+                    continue
+                mem_id = str(meta.get("source_id") or "").strip()
+                chapter_id = str(meta.get("chapter_id") or "").strip()
+                if not mem_id or not chapter_id:
+                    continue
+                if mem_id in seen:
+                    continue
+                seen.add(mem_id)
+                picked_memory_ids.append(mem_id)
+                if len(picked_memory_ids) >= 8:
+                    break
+
+            if not picked_memory_ids:
+                has_any_summary = (
+                    db.execute(
+                        select(StoryMemory.id)
+                        .where(StoryMemory.project_id == project_id)
+                        .where(StoryMemory.memory_type == "chapter_summary")
+                        .limit(1)
+                    ).first()
+                    is not None
+                )
+                semantic_history = {
+                    "enabled": False,
+                    "disabled_reason": "index_not_built" if has_any_summary else "empty",
+                    "items": [],
+                    "hits": 0,
+                    "query_text": vector_query_text,
+                    "text_md": "",
+                }
+            else:
+                mem_rows = (
+                    db.execute(select(StoryMemory).where(StoryMemory.id.in_(picked_memory_ids))).scalars().all()
+                )
+                by_id = {str(m.id): m for m in mem_rows}
+                memories = [by_id[mid] for mid in picked_memory_ids if mid in by_id]
+
+                chapter_ids = [str(m.chapter_id) for m in memories if m.chapter_id]
+                chapter_rows = db.execute(select(Chapter).where(Chapter.id.in_(chapter_ids))).scalars().all() if chapter_ids else []
+                chapters_by_id = {str(c.id): c for c in chapter_rows}
+
+                items: list[dict[str, Any]] = []
+                for m in memories[:6]:
+                    chapter_id = str(m.chapter_id or "").strip() or None
+                    chapter = chapters_by_id.get(str(chapter_id or "")) if chapter_id else None
+                    title = str(getattr(chapter, "title", "") or "").strip() or None
+                    number = getattr(chapter, "number", None)
+                    try:
+                        number_int = int(number) if number is not None else None
+                    except Exception:
+                        number_int = None
+                    items.append(
+                        {
+                            "story_memory_id": m.id,
+                            "chapter_id": chapter_id,
+                            "chapter_number": number_int,
+                            "chapter_title": title,
+                            "story_timeline": int(m.story_timeline or 0),
+                        }
+                    )
+
+                text_md, text_truncated = _format_semantic_history_text_md(
+                    memories=memories[:6],
+                    chapters_by_id=chapters_by_id,
+                    char_limit=int(semantic_history_budget),
+                )
+                semantic_history = {
+                    "enabled": bool(memories),
+                    "disabled_reason": None if memories else "empty",
+                    "query_text": vector_query_text,
+                    "hits": len(memories[:6]),
+                    "items": items,
+                    "truncated": bool(text_truncated),
+                    "text_md": text_md,
+                }
+                semantic_history["text_chars"] = len(str(text_md or ""))
 
     structured: dict[str, Any] = {"enabled": False, "disabled_reason": "empty", "counts": {}, "text_md": ""}
     if not structured_enabled:
@@ -440,9 +600,6 @@ def retrieve_memory_context_pack(
             graph["prompt_block"] = pb
         graph["text_md"] = str(pb.get("text_md") or "")
 
-    vector_query_text = (query_text or "").strip()
-    embedding_overrides = _vector_embedding_overrides(db=db, project_id=project_id)
-    rerank_config = _vector_rerank_config(db=db, project_id=project_id)
     try:
         if not vector_rag_enabled:
             vector_rag = vector_rag_status(project_id=project_id, embedding=embedding_overrides, rerank=rerank_config)
@@ -517,6 +674,16 @@ def retrieve_memory_context_pack(
             "budget_source": "override" if "story_memory" in budgets else "default",
         },
         {
+            "section": "semantic_history",
+            "enabled": bool(semantic_history.get("enabled")),
+            "disabled_reason": semantic_history.get("disabled_reason"),
+            "note": "vector_rag_service.query_project(source=story_memory,memory_type=chapter_summary)",
+            "hits": int(semantic_history.get("hits") or 0),
+            "text_chars": int(semantic_history.get("text_chars") or len(str(semantic_history.get("text_md") or ""))),
+            "budget_char_limit": int(semantic_history_budget),
+            "budget_source": "override" if "semantic_history" in budgets else "default",
+        },
+        {
             "section": "structured",
             "enabled": bool(structured.get("enabled")),
             "disabled_reason": structured.get("disabled_reason"),
@@ -564,6 +731,7 @@ def retrieve_memory_context_pack(
         {
             "worldbook": worldbook,
             "story_memory": story_memory,
+            "semantic_history": semantic_history,
             "structured": structured,
             "vector_rag": vector_rag,
             "graph": graph,
