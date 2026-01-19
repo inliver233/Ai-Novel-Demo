@@ -57,6 +57,10 @@ test("ui: download debug bundle (history + context preview)", async ({ page, req
   await expect(firstRun).toBeVisible({ timeout: 60_000 });
   await firstRun.click();
 
+  await expect(history.getByText("memory_retrieval_log_json", { exact: true })).toBeVisible();
+  await expect(history.getByText("semantic_history", { exact: true })).toBeVisible();
+  await expect(history.getByText("foreshadow_open_loops", { exact: true })).toBeVisible();
+
   const [bundleDownload] = await Promise.all([
     page.waitForEvent("download"),
     history.getByRole("button", { name: "下载 debug bundle", exact: true }).click(),
@@ -102,4 +106,3 @@ test("ui: download debug bundle (history + context preview)", async ({ page, req
   expect(previewJson.schema_version).toBe("context_preview_bundle_v1");
   expect(previewJson.project_id).toBe(projectId);
 });
-

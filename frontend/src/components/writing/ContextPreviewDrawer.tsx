@@ -18,6 +18,8 @@ type Props = {
   genMemoryModules?: {
     worldbook: boolean;
     story_memory: boolean;
+    semantic_history?: boolean;
+    foreshadow_open_loops?: boolean;
     structured: boolean;
     vector_rag: boolean;
     graph: boolean;
@@ -91,6 +93,8 @@ type MemoryContextPackLogItem = {
 type MemorySectionEnabled = {
   worldbook: boolean;
   story_memory: boolean;
+  semantic_history: boolean;
+  foreshadow_open_loops: boolean;
   structured: boolean;
   vector_rag: boolean;
   graph: boolean;
@@ -100,6 +104,8 @@ type MemorySectionEnabled = {
 const DEFAULT_PREVIEW_SECTIONS: MemorySectionEnabled = {
   worldbook: true,
   story_memory: true,
+  semantic_history: false,
+  foreshadow_open_loops: false,
   structured: true,
   vector_rag: true,
   graph: true,
@@ -109,6 +115,8 @@ const DEFAULT_PREVIEW_SECTIONS: MemorySectionEnabled = {
 const DEFAULT_BUDGET_INPUTS: Record<string, string> = {
   worldbook: "",
   story_memory: "",
+  semantic_history: "",
+  foreshadow_open_loops: "",
   structured: "",
   vector_rag: "",
   graph: "",
@@ -118,6 +126,8 @@ const DEFAULT_BUDGET_INPUTS: Record<string, string> = {
 const EMPTY_PACK: MemoryContextPack = {
   worldbook: {},
   story_memory: {},
+  semantic_history: {},
+  foreshadow_open_loops: {},
   structured: {},
   vector_rag: {},
   graph: {},
@@ -554,7 +564,7 @@ export function ContextPreviewDrawer(props: Props) {
 
   const parsedBudgetOverrides = useMemo(() => {
     const out: Record<string, number> = {};
-    for (const key of ["worldbook", "story_memory", "structured", "vector_rag", "graph", "fractal"] as const) {
+    for (const key of ["worldbook", "story_memory", "semantic_history", "foreshadow_open_loops", "structured", "vector_rag", "graph", "fractal"] as const) {
       const raw = String(budgetOverrideInputs[key] ?? "").trim();
       if (!raw) continue;
       const parsed = Number(raw);
@@ -650,6 +660,8 @@ export function ContextPreviewDrawer(props: Props) {
     return (
       !getTextMd(effectivePack.worldbook) &&
       !getTextMd(effectivePack.story_memory) &&
+      !getTextMd(effectivePack.semantic_history) &&
+      !getTextMd(effectivePack.foreshadow_open_loops) &&
       !getTextMd(effectivePack.structured) &&
       !getTextMd(effectivePack.vector_rag) &&
       !getTextMd(effectivePack.graph) &&
@@ -748,7 +760,7 @@ export function ContextPreviewDrawer(props: Props) {
 
   const syncPreviewFromGenerate = useCallback(async () => {
     const queryText = computeEffectiveQueryTextFromGenerate();
-    const sections = genMemoryModules ?? DEFAULT_PREVIEW_SECTIONS;
+    const sections: MemorySectionEnabled = { ...DEFAULT_PREVIEW_SECTIONS, ...(genMemoryModules ?? {}) };
     setPreviewQueryText(queryText);
     setPreviewSections(sections);
     setBudgetOverrideInputs(DEFAULT_BUDGET_INPUTS);
@@ -901,6 +913,8 @@ export function ContextPreviewDrawer(props: Props) {
                   [
                     ["worldbook", "世界书（worldbook）"],
                     ["story_memory", "剧情记忆（story_memory）"],
+                    ["semantic_history", "语义历史（semantic_history）"],
+                    ["foreshadow_open_loops", "未回收伏笔（foreshadow_open_loops）"],
                     ["structured", "结构化记忆（structured）"],
                     ["vector_rag", "向量 RAG（vector_rag）"],
                     ["graph", "关系图（graph）"],
@@ -928,6 +942,8 @@ export function ContextPreviewDrawer(props: Props) {
                     [
                       ["worldbook", "worldbook char_limit"],
                       ["story_memory", "story_memory char_limit"],
+                      ["semantic_history", "semantic_history char_limit"],
+                      ["foreshadow_open_loops", "foreshadow_open_loops char_limit"],
                       ["structured", "structured char_limit"],
                       ["vector_rag", "vector_rag char_limit"],
                       ["graph", "graph char_limit"],
@@ -1002,7 +1018,7 @@ export function ContextPreviewDrawer(props: Props) {
         {memoryInjectionEnabled ? (
           <div className="panel p-4">
             <div className="text-sm text-ink">Memory text_md</div>
-            {(["story_memory", "structured", "graph", "fractal"] as const).map((key) => {
+            {(["story_memory", "semantic_history", "foreshadow_open_loops", "structured", "graph", "fractal"] as const).map((key) => {
               const raw = (effectivePack[key] ?? {}) as Record<string, unknown>;
               const textMd = typeof raw.text_md === "string" ? raw.text_md : "";
               return (
@@ -1010,12 +1026,76 @@ export function ContextPreviewDrawer(props: Props) {
                   <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
                     {key}.text_md
                   </summary>
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      className="btn btn-ghost px-2 py-1 text-xs"
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            await writeClipboardText(textMd || "");
+                            toast.toastSuccess("已复制 text_md");
+                          } catch {
+                            toast.toastError("复制失败");
+                          }
+                        })();
+                      }}
+                      type="button"
+                    >
+                      复制
+                    </button>
+                  </div>
                   <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
                     {textMd || "（空）"}
                   </pre>
                 </details>
               );
             })}
+          </div>
+        ) : null}
+
+        {memoryInjectionEnabled ? (
+          <div className="panel p-4">
+            <div className="text-sm text-ink">Items（semantic_history / foreshadow_open_loops）</div>
+            <div className="mt-3 grid gap-3">
+              {(["semantic_history", "foreshadow_open_loops"] as const).map((key) => {
+                const raw = (effectivePack[key] ?? {}) as Record<string, unknown>;
+                const enabled = Boolean(raw.enabled);
+                const disabledReason = typeof raw.disabled_reason === "string" ? raw.disabled_reason : null;
+                const items = Array.isArray(raw.items) ? raw.items : [];
+                return (
+                  <details key={key} className="rounded-atelier border border-border bg-surface p-3">
+                    <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                      {key}.items ({items.length}){enabled ? "" : ` — disabled:${disabledReason ?? "unknown"}`}
+                    </summary>
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        className="btn btn-ghost px-2 py-1 text-xs"
+                        onClick={() => {
+                          void (async () => {
+                            try {
+                              await writeClipboardText(JSON.stringify(items, null, 2));
+                              toast.toastSuccess("已复制 items JSON");
+                            } catch {
+                              toast.toastError("复制失败");
+                            }
+                          })();
+                        }}
+                        type="button"
+                      >
+                        复制 JSON
+                      </button>
+                    </div>
+                    {items.length === 0 ? (
+                      <div className="mt-2 text-sm text-subtext">（空）</div>
+                    ) : (
+                      <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
+                        {JSON.stringify(items, null, 2)}
+                      </pre>
+                    )}
+                  </details>
+                );
+              })}
+            </div>
           </div>
         ) : null}
 

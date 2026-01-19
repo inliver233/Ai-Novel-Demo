@@ -19,6 +19,15 @@ export function GenerationHistoryDrawer(props: Props) {
   const toast = useToast();
   const [downloading, setDownloading] = useState(false);
 
+  const selectedRun = props.selectedRun;
+  const paramsObj =
+    selectedRun?.params && typeof selectedRun.params === "object" ? (selectedRun.params as Record<string, unknown>) : null;
+  const memoryLogRaw = paramsObj?.memory_retrieval_log_json;
+  const memoryLog = memoryLogRaw && typeof memoryLogRaw === "object" ? (memoryLogRaw as Record<string, unknown>) : null;
+  const perSectionRaw = memoryLog?.per_section;
+  const perSection =
+    perSectionRaw && typeof perSectionRaw === "object" ? (perSectionRaw as Record<string, unknown>) : null;
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -30,7 +39,6 @@ export function GenerationHistoryDrawer(props: Props) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, open]);
 
-  const selectedRun = props.selectedRun;
   const downloadDebugBundle = useCallback(async () => {
     if (!selectedRun) return;
     if (downloading) return;
@@ -71,7 +79,7 @@ export function GenerationHistoryDrawer(props: Props) {
         </button>
       </div>
 
-      <div className="mt-5 grid gap-4">
+        <div className="mt-5 grid gap-4">
         {props.loading ? <div className="text-sm text-subtext">加载中...</div> : null}
 
         <div className="grid gap-3 md:grid-cols-2">
@@ -111,12 +119,12 @@ export function GenerationHistoryDrawer(props: Props) {
           <div className="rounded-atelier border border-border bg-surface p-4">
 	            {!selectedRun ? (
 	              <div className="text-sm text-subtext">选择一条记录查看详情。</div>
-	            ) : (
-	              <div className="grid gap-3">
-	                <div className="text-sm text-ink">{selectedRun.type}</div>
-	                <div className="text-xs text-subtext">
-	                  {selectedRun.provider ?? "unknown"} / {selectedRun.model ?? "unknown"}
-	                </div>
+            ) : (
+              <div className="grid gap-3">
+                <div className="text-sm text-ink">{selectedRun.type}</div>
+                <div className="text-xs text-subtext">
+                  {selectedRun.provider ?? "unknown"} / {selectedRun.model ?? "unknown"}
+                </div>
 	                <div className="flex items-center gap-2 text-xs text-subtext">
 	                  <span className="truncate">run_id: {selectedRun.id}</span>
 	                  <button
@@ -153,6 +161,53 @@ export function GenerationHistoryDrawer(props: Props) {
 	                    {downloading ? "下载中..." : "下载 debug bundle"}
 	                  </button>
 	                </div>
+
+                  {memoryLog ? (
+                    <details open>
+                      <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                        memory_retrieval_log_json
+                      </summary>
+                      <div className="mt-2 grid gap-2 text-xs text-subtext">
+                        <div>
+                          enabled: {String(memoryLog.enabled ?? "")} | phase: {String(memoryLog.phase ?? "")}
+                        </div>
+                        <div className="truncate">query_text: {String(memoryLog.query_text ?? "")}</div>
+                        {Array.isArray(memoryLog.errors) && memoryLog.errors.length ? (
+                          <div className="text-amber-600 dark:text-amber-400">errors: {memoryLog.errors.join(", ")}</div>
+                        ) : null}
+                      </div>
+
+                      {perSection ? (
+                        <div className="mt-3 grid gap-2">
+                          {Object.entries(perSection)
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([section, raw]) => {
+                            const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+                            const enabled = Boolean(o.enabled);
+                            const disabledReason = typeof o.disabled_reason === "string" ? o.disabled_reason : null;
+                            return (
+                              <div key={section} className="rounded-atelier border border-border bg-canvas p-2">
+                                <div className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="font-mono text-ink">{section}</span>
+                                  {enabled ? (
+                                    <span className="text-emerald-600 dark:text-emerald-400">enabled</span>
+                                  ) : (
+                                    <span className="text-amber-600 dark:text-amber-400">
+                                      disabled: {disabledReason ?? "unknown"}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <pre className="mt-2 max-h-40 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
+                          {JSON.stringify(memoryLog, null, 2)}
+                        </pre>
+                      )}
+                    </details>
+                  ) : null}
 
 	                <details open>
 	                  <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">

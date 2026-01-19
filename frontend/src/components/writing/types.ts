@@ -17,6 +17,8 @@ export type GenerateForm = {
   memory_modules: {
     worldbook: boolean;
     story_memory: boolean;
+    semantic_history: boolean;
+    foreshadow_open_loops: boolean;
     structured: boolean;
     vector_rag: boolean;
     graph: boolean;
@@ -37,6 +39,8 @@ export type GenerateForm = {
 export type MemoryContextPack = {
   worldbook: Record<string, unknown>;
   story_memory: Record<string, unknown>;
+  semantic_history: Record<string, unknown>;
+  foreshadow_open_loops: Record<string, unknown>;
   structured: Record<string, unknown>;
   vector_rag: Record<string, unknown>;
   graph: Record<string, unknown>;

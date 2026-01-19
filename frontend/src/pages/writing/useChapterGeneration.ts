@@ -42,6 +42,8 @@ const DEFAULT_GEN_FORM: GenerateForm = {
   memory_modules: {
     worldbook: true,
     story_memory: true,
+    semantic_history: false,
+    foreshadow_open_loops: false,
     structured: true,
     vector_rag: true,
     graph: true,
