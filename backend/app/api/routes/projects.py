@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Request
 from pydantic import Field
 from sqlalchemy import case, func, select
 
 from app.api.deps import DbDep, UserIdDep, require_outline_viewer, require_owned_llm_profile, require_project_owner, require_project_viewer
 from app.core.errors import AppError, ok_payload
+from app.core.logging import exception_log_fields, log_event
 from app.db.utils import new_id
 from app.llm.utils import default_max_tokens, is_default_like_max_tokens, normalize_base_url
 from app.models.chapter import Chapter
@@ -20,8 +23,10 @@ from app.models.user import User
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
 from app.schemas.base import RequestModel
 from app.services.prompt_presets import ensure_default_chapter_preset, ensure_default_outline_preset
+from app.services.vector_rag_service import purge_project_vectors
 
 router = APIRouter()
+logger = logging.getLogger("ainovel")
 
 PROJECTS_SUMMARY_OUTLINE_MAX_CHARS = 2048
 
@@ -388,6 +393,13 @@ def update_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
 def delete_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
     request_id = request.state.request_id
     project = require_project_owner(db, project_id=project_id, user_id=user_id)
+
+    try:
+        purge_out = purge_project_vectors(project_id=project_id)
+        log_event(logger, "info", event="PROJECT", action="delete_purge", project_id=project_id, vector=purge_out)
+    except Exception as exc:  # pragma: no cover - best-effort purge
+        log_event(logger, "warning", event="PROJECT", action="delete_purge", project_id=project_id, **exception_log_fields(exc))
+
     db.delete(project)
     db.commit()
     return ok_payload(request_id=request_id, data={})

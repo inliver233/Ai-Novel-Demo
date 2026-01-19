@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
-from app.api.deps import UserIdDep, require_project_editor, require_project_viewer
+from app.api.deps import UserIdDep, require_project_editor, require_project_owner, require_project_viewer
 from app.core.config import settings
 from app.core.errors import ok_payload
 from app.core.secrets import SecretCryptoError, decrypt_secret
@@ -15,6 +15,7 @@ from app.services.vector_rag_service import (
     VectorSource,
     build_project_chunks,
     ingest_chunks,
+    purge_project_vectors,
     query_project,
     rebuild_project,
     vector_rag_status,
@@ -151,6 +152,20 @@ def rebuild_vector_index(request: Request, user_id: UserIdDep, project_id: str, 
             db2.commit()
         finally:
             db2.close()
+    return ok_payload(request_id=request_id, data={"result": result})
+
+
+@router.post("/projects/{project_id}/vector/purge")
+def purge_vector_index(request: Request, user_id: UserIdDep, project_id: str) -> dict:
+    request_id = request.state.request_id
+
+    db = SessionLocal()
+    try:
+        require_project_owner(db, project_id=project_id, user_id=user_id)
+    finally:
+        db.close()
+
+    result = purge_project_vectors(project_id=project_id)
     return ok_payload(request_id=request_id, data={"result": result})
 
 

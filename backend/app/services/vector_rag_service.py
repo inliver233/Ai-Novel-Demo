@@ -997,6 +997,126 @@ def rebuild_project(
     return {"enabled": bool(out.get("enabled")), "skipped": bool(out.get("skipped")), "rebuilt": int(out.get("ingested") or 0), **out}
 
 
+def purge_project_vectors(*, project_id: str) -> dict[str, Any]:
+    """
+    Best-effort deletion of vector index data for the given project.
+
+    - Postgres: delete rows in vector_chunks (pgvector backend).
+    - SQLite: delete Chroma collection (if chromadb is installed).
+    """
+    t0 = time.perf_counter()
+
+    if _prefer_pgvector():
+        try:
+            _pgvector_delete_project(project_id=project_id)
+            out = {"enabled": True, "skipped": False, "deleted": True, "backend": "pgvector"}
+            log_event(
+                logger,
+                "info",
+                event="VECTOR_RAG",
+                action="purge",
+                project_id=project_id,
+                backend="pgvector",
+                deleted=True,
+                timings_ms={"total": int((time.perf_counter() - t0) * 1000)},
+            )
+            out["timings_ms"] = {"total": int((time.perf_counter() - t0) * 1000)}
+            return out
+        except Exception as exc:  # pragma: no cover - env dependent
+            log_event(
+                logger,
+                "warning",
+                event="VECTOR_RAG",
+                action="purge",
+                project_id=project_id,
+                backend="pgvector",
+                deleted=False,
+                error_type=type(exc).__name__,
+                timings_ms={"total": int((time.perf_counter() - t0) * 1000)},
+            )
+            return {
+                "enabled": True,
+                "skipped": True,
+                "deleted": False,
+                "backend": "pgvector",
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "timings_ms": {"total": int((time.perf_counter() - t0) * 1000)},
+            }
+
+    try:
+        chromadb = _import_chromadb()
+        persist_dir = settings.vector_chroma_persist_dir or _default_chroma_persist_dir()
+        client = chromadb.PersistentClient(path=persist_dir)
+        name = _sanitize_collection_name(project_id)
+        try:
+            client.delete_collection(name=name)
+            deleted = True
+            error = None
+            error_type = None
+        except Exception as exc:  # pragma: no cover - env dependent
+            msg = str(exc)
+            msg_lower = msg.lower()
+            deleted = "does not exist" in msg_lower or "not found" in msg_lower
+            error = msg
+            error_type = type(exc).__name__
+
+        out: dict[str, Any] = {
+            "enabled": True,
+            "skipped": False,
+            "deleted": bool(deleted),
+            "backend": "chroma",
+            "timings_ms": {"total": int((time.perf_counter() - t0) * 1000)},
+        }
+        if error:
+            out.update({"error": error, "error_type": error_type})
+            log_event(
+                logger,
+                "warning",
+                event="VECTOR_RAG",
+                action="purge",
+                project_id=project_id,
+                backend="chroma",
+                deleted=bool(deleted),
+                error_type=error_type,
+                timings_ms=out["timings_ms"],
+            )
+        else:
+            log_event(
+                logger,
+                "info",
+                event="VECTOR_RAG",
+                action="purge",
+                project_id=project_id,
+                backend="chroma",
+                deleted=True,
+                timings_ms=out["timings_ms"],
+            )
+        return out
+    except Exception as exc:  # pragma: no cover - env dependent
+        log_event(
+            logger,
+            "warning",
+            event="VECTOR_RAG",
+            action="purge",
+            project_id=project_id,
+            backend="chroma",
+            deleted=False,
+            error_type=type(exc).__name__,
+            timings_ms={"total": int((time.perf_counter() - t0) * 1000)},
+        )
+        return {
+            "enabled": False,
+            "skipped": True,
+            "deleted": False,
+            "backend": "chroma",
+            "disabled_reason": "chroma_unavailable",
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "timings_ms": {"total": int((time.perf_counter() - t0) * 1000)},
+        }
+
+
 def _format_final_text(chunks: list[dict[str, Any]], *, char_limit: int) -> tuple[str, bool]:
     parts: list[str] = []
     for c in chunks:
