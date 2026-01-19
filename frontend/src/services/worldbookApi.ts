@@ -32,6 +32,36 @@ export type WorldBookPreviewTriggerResult = {
   truncated: boolean;
 };
 
+export type WorldBookExportEntryV1 = {
+  title: string;
+  content_md: string;
+  enabled: boolean;
+  constant: boolean;
+  keywords: string[];
+  exclude_recursion: boolean;
+  prevent_recursion: boolean;
+  char_limit: number;
+  priority: WorldBookPriority;
+};
+
+export type WorldBookExportAllV1 = {
+  schema_version: string;
+  entries: WorldBookExportEntryV1[];
+};
+
+export type WorldBookImportMode = "merge" | "overwrite";
+
+export type WorldBookImportAllReport = {
+  dry_run: boolean;
+  mode: WorldBookImportMode;
+  created: number;
+  updated: number;
+  deleted: number;
+  skipped: number;
+  conflicts: Array<Record<string, unknown>>;
+  actions: Array<Record<string, unknown>>;
+};
+
 export async function listWorldBookEntries(projectId: string): Promise<WorldBookEntry[]> {
   const res = await apiJson<{ worldbook_entries: WorldBookEntry[] }>(`/api/projects/${projectId}/worldbook_entries`);
   return res.data.worldbook_entries ?? [];
@@ -123,4 +153,25 @@ export async function duplicateWorldBookEntries(projectId: string, entryIds: str
     body: JSON.stringify({ entry_ids: entryIds }),
   });
   return res.data.worldbook_entries ?? [];
+}
+
+export async function exportAllWorldBookEntries(projectId: string): Promise<WorldBookExportAllV1> {
+  const res = await apiJson<{ export: WorldBookExportAllV1 }>(`/api/projects/${projectId}/worldbook_entries/export_all`);
+  return res.data.export;
+}
+
+export async function importAllWorldBookEntries(
+  projectId: string,
+  body: {
+    schema_version: string;
+    dry_run: boolean;
+    mode: WorldBookImportMode;
+    entries: WorldBookExportEntryV1[];
+  },
+): Promise<WorldBookImportAllReport> {
+  const res = await apiJson<WorldBookImportAllReport>(`/api/projects/${projectId}/worldbook_entries/import_all`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return res.data;
 }
