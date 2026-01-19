@@ -130,6 +130,44 @@ test("api: prompt_preview contract", async ({ request }) => {
     expect(b.token_estimate).toBeGreaterThanOrEqual(0);
   }
 
+  // render_log observability: context optimizer + unified budget summary must exist and stay shape-stable.
+  expect(json.data.render_log).toBeTruthy();
+  const renderLog = json.data.render_log as { context_optimizer?: unknown; unified_context_budget?: unknown };
+  expect(renderLog).toHaveProperty("context_optimizer");
+  expect(renderLog).toHaveProperty("unified_context_budget");
+
+  const ctxOpt = (renderLog as { context_optimizer: unknown }).context_optimizer as unknown;
+  expect(Boolean(ctxOpt) && typeof ctxOpt === "object").toBe(true);
+  expect(typeof (ctxOpt as { enabled?: unknown }).enabled).toBe("boolean");
+
+  const unified = (renderLog as { unified_context_budget: unknown }).unified_context_budget as unknown;
+  expect(Boolean(unified) && typeof unified === "object").toBe(true);
+
+  const unifiedObj = unified as {
+    enabled?: unknown;
+    before?: unknown;
+    after?: unknown;
+    budget_tokens?: unknown;
+    dropped_blocks?: unknown;
+    trimmed_blocks?: unknown;
+  };
+  expect(typeof unifiedObj.enabled).toBe("boolean");
+  expect(unifiedObj.budget_tokens === null || typeof unifiedObj.budget_tokens === "number").toBe(true);
+  expect(Number.isInteger(unifiedObj.dropped_blocks)).toBe(true);
+  expect(Number.isInteger(unifiedObj.trimmed_blocks)).toBe(true);
+
+  expect(Boolean(unifiedObj.before) && typeof unifiedObj.before === "object").toBe(true);
+  expect(Boolean(unifiedObj.after) && typeof unifiedObj.after === "object").toBe(true);
+
+  const before = unifiedObj.before as { smart_context?: unknown; memory_pack?: unknown; total?: unknown };
+  const after = unifiedObj.after as { smart_context?: unknown; memory_pack?: unknown; total?: unknown };
+  expect(Number.isInteger(before.smart_context)).toBe(true);
+  expect(Number.isInteger(before.memory_pack)).toBe(true);
+  expect(Number.isInteger(before.total)).toBe(true);
+  expect(Number.isInteger(after.smart_context)).toBe(true);
+  expect(Number.isInteger(after.memory_pack)).toBe(true);
+  expect(Number.isInteger(after.total)).toBe(true);
+
   // Must not leak api keys or secrets (bootstrapProject uses "test-key").
   const raw = JSON.stringify(json);
   expect(raw).not.toContain("test-key");
