@@ -2550,6 +2550,13 @@
           "type": "TEXT"
         },
         {
+          "dflt_value": "0",
+          "name": "context_optimizer_enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
           "dflt_value": null,
           "name": "last_vector_build_at",
           "notnull": 0,

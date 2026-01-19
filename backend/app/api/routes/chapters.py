@@ -463,6 +463,7 @@ def plan_chapter(
             "previous_chapter_ending": prev_ending,
         }
         values["user"] = {"instruction": body.instruction.strip()}
+        values["context_optimizer_enabled"] = bool(getattr(settings_row, "context_optimizer_enabled", False))
 
         prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
             db,
@@ -569,6 +570,8 @@ def generate_chapter(
             body=body,
             user_id=user_id,
         )
+        settings_row = db.get(ProjectSettings, project_id)
+        values["context_optimizer_enabled"] = bool(getattr(settings_row, "context_optimizer_enabled", False))
         pack = None
         pack_errors = None
         memory_query_text = ""
@@ -598,7 +601,6 @@ def generate_chapter(
             }
 
             raw_query_text = memory_query_text
-            settings_row = db.get(ProjectSettings, project_id)
             qp_cfg = parse_query_preprocessing_config(
                 (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
             )
@@ -698,6 +700,7 @@ def generate_chapter(
         plan_text = str((plan_out or {}).get("plan") or "").strip()
         if plan_text:
             render_values = inject_plan_into_render_values(render_values, plan_text=plan_text)
+            render_values["context_optimizer_enabled"] = bool(getattr(settings_row, "context_optimizer_enabled", False))
 
         # Render chapter prompt after plan injection.
         with SessionLocal() as db2:

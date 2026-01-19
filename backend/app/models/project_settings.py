@@ -34,5 +34,7 @@ class ProjectSettings(Base):
 
     query_preprocessing_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    context_optimizer_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     vector_index_dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_vector_build_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, nullable=True)

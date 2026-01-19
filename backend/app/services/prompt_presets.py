@@ -14,6 +14,7 @@ from app.llm.messages import ChatMessage, flatten_messages, normalize_role
 from app.models.llm_preset import LLMPreset
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
+from app.services.context_optimizer import ContextOptimizer
 from app.services.prompt_budget import estimate_tokens, trim_text_to_tokens
 from app.services.prompt_preset_resources import load_preset_resource
 from app.services.prompting import render_template
@@ -455,6 +456,9 @@ def render_preset_for_task(
 
         effective_index_by_identifier[b.identifier] = len(block_states) - 1
 
+    optimizer_enabled = bool(values.get("context_optimizer_enabled", False))
+    optimizer_log = ContextOptimizer(enabled=optimizer_enabled).optimize_prompt_block_states(block_states)
+
     total_tokens = sum(int(s["tokens_after"]) for s in block_states)
     if budget_tokens is not None and total_tokens > budget_tokens:
         candidates = [s for s in block_states if s["priority"] in ("drop_first", "optional", "important")]
@@ -533,6 +537,7 @@ def render_preset_for_task(
     render_log = {
         "task": task,
         "preset_id": preset.id,
+        "context_optimizer": optimizer_log,
         "prompt_budget_tokens": budget_tokens,
         "prompt_budget_source": budget_source,
         "prompt_budget_calc": budget_calc,
