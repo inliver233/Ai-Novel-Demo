@@ -5,12 +5,18 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import UserIdDep, require_project_editor, require_project_owner, require_project_viewer
 from app.core.config import settings
-from app.core.errors import ok_payload
+from app.core.errors import AppError, ok_payload
 from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.db.session import SessionLocal
 from app.db.utils import utc_now
+from app.models.knowledge_base import KnowledgeBase
 from app.models.project_settings import ProjectSettings
 from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
+from app.services.vector_kb_service import create_kb as create_vector_kb
+from app.services.vector_kb_service import delete_kb as delete_vector_kb
+from app.services.vector_kb_service import list_kbs as list_vector_kbs
+from app.services.vector_kb_service import reorder_kbs as reorder_vector_kbs
+from app.services.vector_kb_service import update_kb as update_vector_kb
 from app.services.vector_rag_service import (
     VectorSource,
     build_project_chunks,
@@ -89,6 +95,20 @@ def _vector_rerank_config(row: ProjectSettings | None) -> dict[str, object]:
     return {"enabled": bool(enabled), "method": method, "top_k": int(top_k)}
 
 
+def _kb_public(row: KnowledgeBase) -> dict[str, object]:
+    created_at = getattr(row, "created_at", None)
+    updated_at = getattr(row, "updated_at", None)
+    return {
+        "kb_id": row.kb_id,
+        "name": row.name,
+        "enabled": bool(row.enabled),
+        "weight": float(row.weight),
+        "order": int(row.order_index),
+        "created_at": created_at.isoformat() if created_at else None,
+        "updated_at": updated_at.isoformat() if updated_at else None,
+    }
+
+
 class VectorIngestRequest(BaseModel):
     kb_id: str | None = Field(default=None, max_length=64)
     sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
@@ -103,6 +123,23 @@ class VectorQueryRequest(BaseModel):
 class VectorStatusRequest(BaseModel):
     kb_id: str | None = Field(default=None, max_length=64)
     sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
+
+
+class VectorKbCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    kb_id: str | None = Field(default=None, max_length=64)
+    enabled: bool = Field(default=True)
+    weight: float = Field(default=1.0)
+
+
+class VectorKbUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+    enabled: bool | None = Field(default=None)
+    weight: float | None = Field(default=None)
+
+
+class VectorKbReorderRequest(BaseModel):
+    kb_ids: list[str] = Field(default_factory=list, max_length=200)
 
 
 @router.post("/projects/{project_id}/vector/status")
@@ -227,3 +264,89 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
             "preprocess_obs": preprocess_obs,
         },
     )
+
+
+@router.get("/projects/{project_id}/vector/kbs")
+def list_vector_knowledge_bases(request: Request, user_id: UserIdDep, project_id: str) -> dict:
+    request_id = request.state.request_id
+
+    db = SessionLocal()
+    try:
+        require_project_viewer(db, project_id=project_id, user_id=user_id)
+        rows = list_vector_kbs(db, project_id=project_id)
+        return ok_payload(request_id=request_id, data={"kbs": [_kb_public(r) for r in rows]})
+    finally:
+        db.close()
+
+
+@router.post("/projects/{project_id}/vector/kbs")
+def create_vector_knowledge_base(request: Request, user_id: UserIdDep, project_id: str, body: VectorKbCreateRequest) -> dict:
+    request_id = request.state.request_id
+
+    db = SessionLocal()
+    try:
+        require_project_editor(db, project_id=project_id, user_id=user_id)
+        row = create_vector_kb(
+            db,
+            project_id=project_id,
+            name=body.name,
+            kb_id=body.kb_id,
+            enabled=body.enabled,
+            weight=body.weight,
+        )
+        return ok_payload(request_id=request_id, data={"kb": _kb_public(row)})
+    finally:
+        db.close()
+
+
+@router.put("/projects/{project_id}/vector/kbs/{kb_id}")
+def update_vector_knowledge_base(request: Request, user_id: UserIdDep, project_id: str, kb_id: str, body: VectorKbUpdateRequest) -> dict:
+    request_id = request.state.request_id
+    kb = str(kb_id or "").strip()
+    if not kb:
+        raise AppError.validation("kb_id 不能为空")
+
+    db = SessionLocal()
+    try:
+        require_project_editor(db, project_id=project_id, user_id=user_id)
+        row = update_vector_kb(
+            db,
+            project_id=project_id,
+            kb_id=kb,
+            name=body.name,
+            enabled=body.enabled,
+            weight=body.weight,
+        )
+        return ok_payload(request_id=request_id, data={"kb": _kb_public(row)})
+    finally:
+        db.close()
+
+
+@router.post("/projects/{project_id}/vector/kbs/reorder")
+def reorder_vector_knowledge_bases(request: Request, user_id: UserIdDep, project_id: str, body: VectorKbReorderRequest) -> dict:
+    request_id = request.state.request_id
+
+    db = SessionLocal()
+    try:
+        require_project_editor(db, project_id=project_id, user_id=user_id)
+        rows = reorder_vector_kbs(db, project_id=project_id, ordered_kb_ids=body.kb_ids)
+        return ok_payload(request_id=request_id, data={"kbs": [_kb_public(r) for r in rows]})
+    finally:
+        db.close()
+
+
+@router.delete("/projects/{project_id}/vector/kbs/{kb_id}")
+def delete_vector_knowledge_base(request: Request, user_id: UserIdDep, project_id: str, kb_id: str) -> dict:
+    request_id = request.state.request_id
+    kb = str(kb_id or "").strip()
+    if not kb:
+        raise AppError.validation("kb_id 不能为空")
+
+    db = SessionLocal()
+    try:
+        require_project_owner(db, project_id=project_id, user_id=user_id)
+        purge_out = purge_project_vectors(project_id=project_id, kb_id=kb)
+        delete_vector_kb(db, project_id=project_id, kb_id=kb)
+        return ok_payload(request_id=request_id, data={"deleted": True, "vector_purge": purge_out})
+    finally:
+        db.close()
