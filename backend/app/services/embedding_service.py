@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib.util
+import threading
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -17,6 +19,13 @@ EmbeddingProvider = Literal[
     "sentence_transformers",
 ]
 
+_ST_MODEL_LOCK = threading.Lock()
+_ST_MODELS: dict[tuple[str, str | None, str | None], object] = {}
+
+
+def _sentence_transformers_available() -> bool:
+    return importlib.util.find_spec("sentence_transformers") is not None
+
 
 class EmbeddingConfig(BaseModel):
     provider: EmbeddingProvider = "openai_compatible"
@@ -28,6 +37,8 @@ class EmbeddingConfig(BaseModel):
     azure_api_version: str | None = None
 
     sentence_transformers_model: str | None = None
+    sentence_transformers_cache_dir: str | None = None
+    sentence_transformers_device: str | None = None
 
     timeout_seconds: float = Field(default=60.0, ge=1.0, le=120.0)
 
@@ -62,6 +73,8 @@ class EmbeddingConfig(BaseModel):
         "azure_deployment",
         "azure_api_version",
         "sentence_transformers_model",
+        "sentence_transformers_cache_dir",
+        "sentence_transformers_device",
         mode="before",
     )
     @classmethod
@@ -92,6 +105,10 @@ def resolve_embedding_config(embedding: dict[str, Any] | None = None) -> Embeddi
     st_model = (embedding or {}).get("sentence_transformers_model") or getattr(
         settings, "vector_embedding_sentence_transformers_model", None
     )
+    st_cache_dir = (embedding or {}).get("sentence_transformers_cache_dir") or getattr(
+        settings, "vector_embedding_sentence_transformers_cache_dir", None
+    )
+    st_device = (embedding or {}).get("sentence_transformers_device") or getattr(settings, "vector_embedding_sentence_transformers_device", None)
 
     timeout_seconds = (embedding or {}).get("timeout_seconds")
 
@@ -104,6 +121,8 @@ def resolve_embedding_config(embedding: dict[str, Any] | None = None) -> Embeddi
         "azure_deployment": azure_deployment,
         "azure_api_version": azure_api_version,
         "sentence_transformers_model": st_model,
+        "sentence_transformers_cache_dir": st_cache_dir,
+        "sentence_transformers_device": st_device,
     }
     if timeout_seconds is not None:
         payload["timeout_seconds"] = timeout_seconds
@@ -144,6 +163,8 @@ def embedding_enabled_reason(config: EmbeddingConfig) -> tuple[bool, str | None]
     if config.provider == "sentence_transformers":
         if not config.sentence_transformers_model:
             return False, "embedding_sentence_transformers_model_missing"
+        if not _sentence_transformers_available():
+            return False, "dependency_missing"
         return True, None
 
     return False, "embedding_provider_unsupported"
@@ -291,8 +312,47 @@ def _embed_sentence_transformers(texts: list[str], *, config: EmbeddingConfig) -
     if not model_name:
         raise RuntimeError("sentence-transformers model missing")
 
-    model = SentenceTransformer(model_name)
-    vectors = model.encode(texts)  # type: ignore[no-any-return]
+    cache_dir = str(config.sentence_transformers_cache_dir or "").strip() or None
+    requested_device = str(config.sentence_transformers_device or "").strip() or "cpu"
+
+    def get_cached(device: str) -> object | None:
+        key = (model_name, cache_dir, device)
+        with _ST_MODEL_LOCK:
+            return _ST_MODELS.get(key)
+
+    def set_cached(device: str, model: object) -> None:
+        key = (model_name, cache_dir, device)
+        with _ST_MODEL_LOCK:
+            _ST_MODELS[key] = model
+
+    def load_model(device: str) -> object:
+        cached = get_cached(device)
+        if cached is not None:
+            return cached
+        kwargs: dict[str, Any] = {}
+        if cache_dir:
+            kwargs["cache_folder"] = cache_dir
+        if device:
+            kwargs["device"] = device
+        model = SentenceTransformer(model_name, **kwargs)
+        set_cached(device, model)
+        return model
+
+    try:
+        model = load_model(requested_device)
+    except Exception as exc:
+        if requested_device != "cpu":
+            model = load_model("cpu")
+        else:
+            raise RuntimeError("sentence-transformers model load failed") from exc
+
+    try:
+        vectors = model.encode(texts, normalize_embeddings=True)  # type: ignore[no-any-return]
+    except TypeError:
+        vectors = model.encode(texts)  # type: ignore[no-any-return]
+
+    if hasattr(vectors, "tolist"):
+        vectors = vectors.tolist()
     return [[float(x) for x in v] for v in vectors]
 
 

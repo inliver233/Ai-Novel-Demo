@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import unittest
 from unittest.mock import patch
@@ -108,7 +109,21 @@ class TestEmbeddingService(unittest.TestCase):
         self.assertEqual(out.get("disabled_reason"), "embedding_base_url_missing")
         self.assertEqual(out.get("vectors"), [])
 
+    def test_sentence_transformers_optional_dependency_is_fail_soft(self) -> None:
+        if importlib.util.find_spec("sentence_transformers") is not None:
+            self.skipTest("sentence_transformers already installed in this environment")
+
+        out = embed_texts(
+            ["hello"],
+            embedding={
+                "provider": "sentence_transformers",
+                "sentence_transformers_model": "all-MiniLM-L6-v2",
+            },
+        )
+        self.assertFalse(out.get("enabled"))
+        self.assertEqual(out.get("disabled_reason"), "dependency_missing")
+        self.assertEqual(out.get("vectors"), [])
+
 
 if __name__ == "__main__":
     unittest.main()
-

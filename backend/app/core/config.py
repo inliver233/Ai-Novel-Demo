@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     vector_embedding_azure_deployment: str | None = None
     vector_embedding_azure_api_version: str | None = None
     vector_embedding_sentence_transformers_model: str | None = None
+    vector_embedding_sentence_transformers_cache_dir: str | None = None
+    vector_embedding_sentence_transformers_device: str | None = None
     vector_backend: VectorBackend = "auto"
     vector_hybrid_enabled: bool = True
     vector_rerank_enabled: bool = False
@@ -362,6 +364,23 @@ class Settings(BaseSettings):
     @field_validator("vector_embedding_sentence_transformers_model", mode="before")
     @classmethod
     def _normalize_vector_embedding_sentence_transformers_model(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("vector_embedding_sentence_transformers_cache_dir", mode="before")
+    @classmethod
+    def _normalize_vector_embedding_sentence_transformers_cache_dir(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        if _is_abs_path(raw):
+            return raw
+        abs_path = (_backend_dir() / raw).resolve()
+        return abs_path.as_posix()
+
+    @field_validator("vector_embedding_sentence_transformers_device", mode="before")
+    @classmethod
+    def _normalize_vector_embedding_sentence_transformers_device(cls, value: object) -> str | None:
         raw = str(value or "").strip()
         return raw or None
 

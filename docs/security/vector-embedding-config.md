@@ -20,7 +20,7 @@ Embedding 配置由两部分组成：
 - `google`：Google Gemini embeddings（`/v1beta/models/{model}:embedContent` / `:batchEmbedContents`；API key 使用 `x-goog-api-key` header）。
 - `custom`：自定义 HTTP provider（当前按 OpenAI-compatible embeddings 处理）。
 - `local_proxy`：本地代理/网关（当前按 OpenAI-compatible embeddings 处理）。
-- `sentence_transformers`：本地 sentence-transformers（可选依赖；未安装依赖时会被判定为不可用）。
+- `sentence_transformers`：本地 sentence-transformers（可选依赖；未安装依赖时会被判定为不可用；模型会缓存到本地目录）。
 
 ## Env 变量（默认值）
 
@@ -33,6 +33,14 @@ Embedding 配置由两部分组成：
 - `VECTOR_EMBEDDING_AZURE_DEPLOYMENT`
 - `VECTOR_EMBEDDING_AZURE_API_VERSION`
 - `VECTOR_EMBEDDING_SENTENCE_TRANSFORMERS_MODEL`
+- `VECTOR_EMBEDDING_SENTENCE_TRANSFORMERS_CACHE_DIR`
+- `VECTOR_EMBEDDING_SENTENCE_TRANSFORMERS_DEVICE`
+
+## 本地模型部署体积与风险（sentence-transformers）
+
+- 依赖体积：`sentence-transformers` 通常会拉入 `torch/transformers` 等依赖，安装包体积与运行内存占用明显增加。
+- 模型体积：首次使用可能触发下载（或从本地路径加载），建议提前在部署环境准备好模型文件并设置缓存目录，避免运行时下载失败导致降级。
+- 资源风险：低配 CPU 环境推理速度较慢；如需 GPU 请显式配置 device，但必须确保 CUDA/驱动环境可用（否则会自动回退到 CPU）。
 
 ## 加密与安全
 
