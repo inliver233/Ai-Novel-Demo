@@ -202,3 +202,31 @@ def reorder_kbs(db: Session, *, project_id: str, ordered_kb_ids: list[str]) -> l
     db.commit()
     return list_kbs(db, project_id=project_id)
 
+
+def resolve_query_kbs(db: Session, *, project_id: str, requested_kb_ids: list[str] | None) -> list[KnowledgeBase]:
+    rows = list_kbs(db, project_id=project_id)
+    by_id = {r.kb_id: r for r in rows}
+
+    requested = [str(x or "").strip() for x in (requested_kb_ids or []) if str(x or "").strip()]
+    requested_unique: list[str] = []
+    seen: set[str] = set()
+    for kb_id in requested:
+        if kb_id in seen:
+            continue
+        seen.add(kb_id)
+        requested_unique.append(kb_id)
+
+    if requested_unique:
+        missing = [kb_id for kb_id in requested_unique if kb_id not in by_id]
+        if missing:
+            raise AppError.not_found("KB 不存在", details={"missing_kb_ids": missing})
+        return [by_id[kb_id] for kb_id in requested_unique]
+
+    enabled = [r for r in rows if bool(r.enabled)]
+    if enabled:
+        return enabled
+
+    default_kb = by_id.get(_DEFAULT_KB_ID)
+    if default_kb is None:
+        default_kb = ensure_default_kb(db, project_id=project_id)
+    return [default_kb]

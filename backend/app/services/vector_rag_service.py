@@ -1431,11 +1431,32 @@ def query_project(
     *,
     project_id: str,
     kb_id: str | None = None,
+    kb_ids: list[str] | None = None,
     query_text: str,
     sources: list[VectorSource] | None = None,
     embedding: dict[str, str | None] | None = None,
     rerank: dict[str, Any] | None = None,
+    kb_weights: dict[str, float] | None = None,
+    kb_orders: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    raw_kb_ids = kb_ids if kb_ids is not None else ([kb_id] if kb_id is not None else [])
+    selected_kb_ids: list[str] = []
+    seen_kb: set[str] = set()
+    for raw in raw_kb_ids:
+        normalized = _normalize_kb_id(str(raw or "").strip() or None)
+        if normalized in seen_kb:
+            continue
+        seen_kb.add(normalized)
+        selected_kb_ids.append(normalized)
+    if not selected_kb_ids:
+        selected_kb_ids = [_normalize_kb_id(None)]
+
+    if _prefer_pgvector() and len(selected_kb_ids) > 1:
+        selected_kb_ids = [selected_kb_ids[0]]
+
+    weights_by_kb = {kb: float((kb_weights or {}).get(kb, 1.0)) for kb in selected_kb_ids}
+    orders_by_kb = {kb: int((kb_orders or {}).get(kb, 999)) for kb in selected_kb_ids}
+
     sources = sources or list(_ALL_SOURCES)
     enabled, disabled_reason = _vector_enabled_reason(embedding=embedding)
     rerank_enabled, rerank_method, rerank_top_k = _resolve_rerank_config(rerank)
@@ -1467,6 +1488,7 @@ def query_project(
             "counts": _build_vector_query_counts(candidates_total=0, returned_candidates=[], final_selected=0, dropped=[]),
             "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
             "rerank": rerank_obs,
+            "kbs": {"selected": selected_kb_ids, "weights": weights_by_kb, "orders": orders_by_kb, "per_kb": {}},
         }
 
     start = time.perf_counter()
@@ -1504,6 +1526,7 @@ def query_project(
             "counts": _build_vector_query_counts(candidates_total=0, returned_candidates=[], final_selected=0, dropped=[]),
             "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
             "rerank": rerank_obs,
+            "kbs": {"selected": selected_kb_ids, "weights": weights_by_kb, "orders": orders_by_kb, "per_kb": {}},
         }
 
     qvec = (embed_out.get("vectors") or [[]])[0]
@@ -1648,13 +1671,73 @@ def query_project(
         except Exception as exc:  # pragma: no cover - env dependent
             pgvector_error = type(exc).__name__
 
-    try:
-        collection = _get_collection(project_id=project_id, kb_id=kb_id)
-    except Exception as exc:  # pragma: no cover - env dependent
+    per_kb: dict[str, Any] = {}
+    per_kb_candidates: dict[str, list[dict[str, Any]]] = {}
+    query_ms = 0
+
+    for kid in selected_kb_ids:
+        try:
+            collection = _get_collection(project_id=project_id, kb_id=kid)
+        except Exception as exc:  # pragma: no cover - env dependent
+            per_kb[kid] = {
+                "enabled": False,
+                "disabled_reason": "chroma_unavailable",
+                "error": str(exc),
+                "counts": _build_vector_query_counts(candidates_total=0, returned_candidates=[], final_selected=0, dropped=[]),
+                "overfilter": None,
+                "weight": float(weights_by_kb.get(kid, 1.0)),
+                "order": int(orders_by_kb.get(kid, 999)),
+            }
+            continue
+
+        query_start = time.perf_counter()
+        where: dict[str, Any] | None = None
+        if len(sources) == 1:
+            where = {"source": sources[0]}
+        result = collection.query(
+            query_embeddings=[qvec],
+            n_results=top_k,
+            where=where,
+            include=["documents", "metadatas", "distances"],
+        )
+        query_ms += int((time.perf_counter() - query_start) * 1000)
+
+        ids = (result.get("ids") or [[]])[0]
+        docs = (result.get("documents") or [[]])[0]
+        metas = (result.get("metadatas") or [[]])[0]
+        dists = (result.get("distances") or [[]])[0]
+
+        candidates: list[dict[str, Any]] = []
+        for idx in range(min(len(ids), len(docs), len(metas), len(dists))):
+            meta = metas[idx] if isinstance(metas[idx], dict) else {}
+            if sources and str(meta.get("source") or "") not in sources:
+                continue
+            m = dict(meta)
+            m.setdefault("kb_id", kid)
+            candidates.append(
+                {
+                    "id": str(ids[idx]),
+                    "distance": float(dists[idx]),
+                    "text": str(docs[idx] or ""),
+                    "metadata": m,
+                }
+            )
+
+        per_kb_candidates[kid] = candidates
+        per_kb[kid] = {
+            "enabled": True,
+            "disabled_reason": None,
+            "counts": _build_vector_query_counts(candidates_total=len(candidates), returned_candidates=candidates[:top_k], final_selected=0, dropped=[]),
+            "overfilter": None,
+            "weight": float(weights_by_kb.get(kid, 1.0)),
+            "order": int(orders_by_kb.get(kid, 999)),
+        }
+
+    if not per_kb_candidates:
         out: dict[str, Any] = {
             "enabled": False,
             "disabled_reason": "chroma_unavailable",
-            "error": str(exc),
+            "error": "no_collections",
             "query_text": query_text,
             "filters": {"project_id": project_id, "sources": sources},
             "timings_ms": {"embed": embed_ms, "rerank": 0},
@@ -1678,41 +1761,43 @@ def query_project(
                 "timing_ms": 0,
                 "errors": [],
             },
+            "kbs": {"selected": selected_kb_ids, "weights": weights_by_kb, "orders": orders_by_kb, "per_kb": per_kb},
         }
         if pgvector_error:
             out["fallback"] = {"from": "pgvector", "to": "chroma", "error": pgvector_error}
         return out
 
-    query_start = time.perf_counter()
-    where: dict[str, Any] | None = None
-    if len(sources) == 1:
-        where = {"source": sources[0]}
-    result = collection.query(
-        query_embeddings=[qvec],
-        n_results=top_k,
-        where=where,
-        include=["documents", "metadatas", "distances"],
-    )
-    query_ms = int((time.perf_counter() - query_start) * 1000)
-
-    ids = (result.get("ids") or [[]])[0]
-    docs = (result.get("documents") or [[]])[0]
-    metas = (result.get("metadatas") or [[]])[0]
-    dists = (result.get("distances") or [[]])[0]
-
     candidates: list[dict[str, Any]] = []
-    for idx in range(min(len(ids), len(docs), len(metas), len(dists))):
-        meta = metas[idx] if isinstance(metas[idx], dict) else {}
-        if sources and str(meta.get("source") or "") not in sources:
-            continue
-        candidates.append(
-            {
-                "id": str(ids[idx]),
-                "distance": float(dists[idx]),
-                "text": str(docs[idx] or ""),
-                "metadata": meta,
-            }
-        )
+    if len(selected_kb_ids) <= 1:
+        only = selected_kb_ids[0]
+        candidates = list(per_kb_candidates.get(only) or [])
+    else:
+        rrf_k = int(settings.vector_hybrid_rrf_k or 60)
+        scored: dict[str, dict[str, Any]] = {}
+        for kid in selected_kb_ids:
+            cand_list = per_kb_candidates.get(kid) or []
+            weight = float(weights_by_kb.get(kid, 1.0))
+            kb_order = int(orders_by_kb.get(kid, 999))
+            for rank, c in enumerate(cand_list, start=1):
+                cid = str(c.get("id") or "")
+                if not cid:
+                    continue
+                contrib = float(weight) * _rrf_contrib(rank, k=rrf_k)
+                dist = float(c.get("distance") or 0.0)
+                entry = scored.get(cid)
+                if entry is None:
+                    scored[cid] = {"candidate": c, "score": contrib, "distance": dist, "kb_order": kb_order, "id": cid}
+                else:
+                    entry["score"] = float(entry.get("score") or 0.0) + contrib
+                    if dist < float(entry.get("distance") or dist):
+                        entry["candidate"] = c
+                        entry["distance"] = dist
+                    entry["kb_order"] = min(int(entry.get("kb_order") or kb_order), kb_order)
+        merged = list(scored.values())
+        merged.sort(key=lambda x: (-float(x.get("score") or 0.0), int(x.get("kb_order") or 999), float(x.get("distance") or 0.0), str(x.get("id") or "")))
+        candidates = [dict(x.get("candidate") or {}) for x in merged]
+        for c in candidates:
+            c.pop("_rrf_score", None)
 
     trimmed_candidates = candidates[:top_k]
     if not rerank_enabled:
@@ -1825,6 +1910,7 @@ def query_project(
         "super_sort": super_sort_obs,
         "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},
         "backend": "chroma",
+        "kbs": {"selected": selected_kb_ids, "weights": weights_by_kb, "orders": orders_by_kb, "per_kb": per_kb},
     }
     if pgvector_error:
         out["fallback"] = {"from": "pgvector", "to": "chroma", "error": pgvector_error}

@@ -14,7 +14,10 @@ from app.models.project_settings import ProjectSettings
 from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
 from app.services.vector_kb_service import create_kb as create_vector_kb
 from app.services.vector_kb_service import delete_kb as delete_vector_kb
+from app.services.vector_kb_service import ensure_default_kb as ensure_default_vector_kb
+from app.services.vector_kb_service import get_kb as get_vector_kb
 from app.services.vector_kb_service import list_kbs as list_vector_kbs
+from app.services.vector_kb_service import resolve_query_kbs as resolve_vector_query_kbs
 from app.services.vector_kb_service import reorder_kbs as reorder_vector_kbs
 from app.services.vector_kb_service import update_kb as update_vector_kb
 from app.services.vector_rag_service import (
@@ -111,12 +114,14 @@ def _kb_public(row: KnowledgeBase) -> dict[str, object]:
 
 class VectorIngestRequest(BaseModel):
     kb_id: str | None = Field(default=None, max_length=64)
+    kb_ids: list[str] = Field(default_factory=list, max_length=200)
     sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
 
 
 class VectorQueryRequest(BaseModel):
     query_text: str = Field(default="", max_length=8000)
     kb_id: str | None = Field(default=None, max_length=64)
+    kb_ids: list[str] = Field(default_factory=list, max_length=200)
     sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
 
 
@@ -169,6 +174,16 @@ def ingest_vector_index(request: Request, user_id: UserIdDep, project_id: str, b
     request_id = request.state.request_id
 
     kb_id = str(body.kb_id or "").strip() or None
+    kb_ids = [str(x or "").strip() for x in (body.kb_ids or []) if str(x or "").strip()]
+    kb_ids_unique: list[str] = []
+    seen: set[str] = set()
+    for kid in kb_ids:
+        if kid in seen:
+            continue
+        seen.add(kid)
+        kb_ids_unique.append(kid)
+    if not kb_ids_unique:
+        kb_ids_unique = [kb_id] if kb_id else ["default"]
 
     db = SessionLocal()
     embedding: dict[str, str | None] = {}
@@ -176,10 +191,33 @@ def ingest_vector_index(request: Request, user_id: UserIdDep, project_id: str, b
         require_project_editor(db, project_id=project_id, user_id=user_id)
         chunks = build_project_chunks(db=db, project_id=project_id, sources=body.sources)
         embedding = _vector_embedding_overrides(db.get(ProjectSettings, project_id))
+        ensure_default_vector_kb(db, project_id=project_id)
+        for kid in kb_ids_unique:
+            get_vector_kb(db, project_id=project_id, kb_id=kid)
     finally:
         db.close()
 
-    result = ingest_chunks(project_id=project_id, kb_id=kb_id, chunks=chunks, embedding=embedding)
+    per_kb: dict[str, dict] = {}
+    for kid in kb_ids_unique:
+        per_kb[kid] = ingest_chunks(project_id=project_id, kb_id=kid, chunks=chunks, embedding=embedding)
+
+    results = list(per_kb.values())
+    enabled = all(bool(r.get("enabled")) for r in results) if results else False
+    skipped = all(bool(r.get("skipped")) for r in results) if results else True
+    ingested = sum(int(r.get("ingested") or 0) for r in results)
+    disabled_reason = next((r.get("disabled_reason") for r in results if r.get("disabled_reason")), None)
+    backend = next((r.get("backend") for r in results if r.get("backend")), None)
+    error = next((r.get("error") for r in results if r.get("error")), None)
+
+    result = {
+        "enabled": bool(enabled),
+        "skipped": bool(skipped),
+        "disabled_reason": disabled_reason,
+        "ingested": int(ingested),
+        "backend": backend,
+        "error": error,
+        "kbs": {"selected": list(kb_ids_unique), "per_kb": per_kb},
+    }
     return ok_payload(request_id=request_id, data={"result": result})
 
 
@@ -188,6 +226,16 @@ def rebuild_vector_index(request: Request, user_id: UserIdDep, project_id: str, 
     request_id = request.state.request_id
 
     kb_id = str(body.kb_id or "").strip() or None
+    kb_ids = [str(x or "").strip() for x in (body.kb_ids or []) if str(x or "").strip()]
+    kb_ids_unique: list[str] = []
+    seen: set[str] = set()
+    for kid in kb_ids:
+        if kid in seen:
+            continue
+        seen.add(kid)
+        kb_ids_unique.append(kid)
+    if not kb_ids_unique:
+        kb_ids_unique = [kb_id] if kb_id else ["default"]
 
     db = SessionLocal()
     embedding: dict[str, str | None] = {}
@@ -195,11 +243,35 @@ def rebuild_vector_index(request: Request, user_id: UserIdDep, project_id: str, 
         require_project_editor(db, project_id=project_id, user_id=user_id)
         chunks = build_project_chunks(db=db, project_id=project_id, sources=body.sources)
         embedding = _vector_embedding_overrides(db.get(ProjectSettings, project_id))
+        ensure_default_vector_kb(db, project_id=project_id)
+        for kid in kb_ids_unique:
+            get_vector_kb(db, project_id=project_id, kb_id=kid)
     finally:
         db.close()
 
-    result = rebuild_project(project_id=project_id, kb_id=kb_id, chunks=chunks, embedding=embedding)
-    if bool(result.get("enabled")) and not bool(result.get("skipped")):
+    per_kb: dict[str, dict] = {}
+    for kid in kb_ids_unique:
+        per_kb[kid] = rebuild_project(project_id=project_id, kb_id=kid, chunks=chunks, embedding=embedding)
+
+    results = list(per_kb.values())
+    enabled = all(bool(r.get("enabled")) for r in results) if results else False
+    skipped = all(bool(r.get("skipped")) for r in results) if results else True
+    rebuilt = sum(int(r.get("rebuilt") or 0) for r in results)
+    disabled_reason = next((r.get("disabled_reason") for r in results if r.get("disabled_reason")), None)
+    backend = next((r.get("backend") for r in results if r.get("backend")), None)
+    error = next((r.get("error") for r in results if r.get("error")), None)
+
+    result = {
+        "enabled": bool(enabled),
+        "skipped": bool(skipped),
+        "disabled_reason": disabled_reason,
+        "rebuilt": int(rebuilt),
+        "backend": backend,
+        "error": error,
+        "kbs": {"selected": list(kb_ids_unique), "per_kb": per_kb},
+    }
+
+    if bool(enabled) and not bool(skipped):
         db2 = SessionLocal()
         try:
             settings_row = _ensure_settings_row(db2, project_id=project_id)
@@ -230,30 +302,47 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
     request_id = request.state.request_id
 
     kb_id = str(body.kb_id or "").strip() or None
+    kb_ids = [str(x or "").strip() for x in (body.kb_ids or []) if str(x or "").strip()]
+    kb_ids_unique: list[str] = []
+    seen: set[str] = set()
+    for kid in kb_ids:
+        if kid in seen:
+            continue
+        seen.add(kid)
+        kb_ids_unique.append(kid)
+    requested_kb_ids = kb_ids_unique if kb_ids_unique else ([kb_id] if kb_id else None)
 
     db = SessionLocal()
     embedding: dict[str, str | None] = {}
     rerank: dict[str, object] = {}
     qp_cfg = None
+    selected_kbs: list[KnowledgeBase] = []
     try:
         require_project_viewer(db, project_id=project_id, user_id=user_id)
         settings_row = db.get(ProjectSettings, project_id)
         embedding = _vector_embedding_overrides(settings_row)
         rerank = _vector_rerank_config(settings_row)
+        selected_kbs = resolve_vector_query_kbs(db, project_id=project_id, requested_kb_ids=requested_kb_ids)
         qp_cfg = parse_query_preprocessing_config(
             (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
         )
     finally:
         db.close()
 
+    selected_kb_ids = [r.kb_id for r in selected_kbs]
+    kb_weights = {r.kb_id: float(r.weight) for r in selected_kbs}
+    kb_orders = {r.kb_id: int(r.order_index) for r in selected_kbs}
+
     normalized, preprocess_obs = normalize_query_text(query_text=body.query_text, config=qp_cfg)
     result = query_project(
         project_id=project_id,
-        kb_id=kb_id,
+        kb_ids=selected_kb_ids,
         query_text=normalized,
         sources=body.sources,
         embedding=embedding,
         rerank=rerank,
+        kb_weights=kb_weights,
+        kb_orders=kb_orders,
     )
     return ok_payload(
         request_id=request_id,
