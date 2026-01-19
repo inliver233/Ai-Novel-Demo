@@ -30,6 +30,16 @@ from app.services.worldbook_service import preview_worldbook_trigger
 
 router = APIRouter()
 
+
+def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
+    row = db.get(ProjectSettings, project_id)
+    if row is None:
+        row = ProjectSettings(project_id=project_id)
+        db.add(row)
+        db.flush()
+    row.vector_index_dirty = True
+
+
 def _dedupe_entry_ids(entry_ids: list[str]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
@@ -137,6 +147,7 @@ def bulk_update_worldbook_entries(
         if body.priority is not None:
             row.priority = str(body.priority)
 
+    _mark_vector_index_dirty(db, project_id=project_id)
     db.commit()
     for row in rows:
         db.refresh(row)
@@ -168,6 +179,7 @@ def bulk_delete_worldbook_entries(
 
     for row in rows:
         db.delete(row)
+    _mark_vector_index_dirty(db, project_id=project_id)
     db.commit()
     return ok_payload(request_id=request_id, data={"deleted_ids": entry_ids})
 
@@ -224,6 +236,7 @@ def duplicate_worldbook_entries(
         )
 
     db.add_all(created)
+    _mark_vector_index_dirty(db, project_id=project_id)
     db.commit()
     for row in created:
         db.refresh(row)
@@ -254,6 +267,7 @@ def create_worldbook_entry(
         priority=str(body.priority),
     )
     db.add(row)
+    _mark_vector_index_dirty(db, project_id=project_id)
     db.commit()
     db.refresh(row)
     return ok_payload(request_id=request_id, data={"worldbook_entry": _to_out(row)})
@@ -286,6 +300,7 @@ def update_worldbook_entry(
     if body.priority is not None:
         row.priority = str(body.priority)
 
+    _mark_vector_index_dirty(db, project_id=str(row.project_id))
     db.commit()
     db.refresh(row)
     return ok_payload(request_id=request_id, data={"worldbook_entry": _to_out(row)})
@@ -296,6 +311,7 @@ def delete_worldbook_entry(request: Request, db: DbDep, user_id: UserIdDep, entr
     request_id = request.state.request_id
     row = require_worldbook_entry_editor(db, entry_id=entry_id, user_id=user_id)
     db.delete(row)
+    _mark_vector_index_dirty(db, project_id=str(row.project_id))
     db.commit()
     return ok_payload(request_id=request_id, data={})
 

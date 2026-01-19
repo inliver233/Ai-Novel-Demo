@@ -899,6 +899,14 @@ def run_memory_task(*, task_id: str) -> str:
                 else:
                     chunks = build_project_chunks(db=db2, project_id=project_id)
                     result = rebuild_project(project_id=project_id, chunks=chunks, embedding=embedding)
+                    if bool(result.get("enabled")) and not bool(result.get("skipped")):
+                        settings_row = db2.get(ProjectSettings, project_id)
+                        if settings_row is None:
+                            settings_row = ProjectSettings(project_id=project_id)
+                            db2.add(settings_row)
+                        settings_row.vector_index_dirty = False
+                        settings_row.last_vector_build_at = utc_now()
+                        db2.commit()
             finally:
                 db2.close()
         else:

@@ -40,6 +40,15 @@ router = APIRouter()
 logger = logging.getLogger("ainovel")
 
 
+def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
+    row = db.get(ProjectSettings, project_id)
+    if row is None:
+        row = ProjectSettings(project_id=project_id)
+        db.add(row)
+        db.flush()
+    row.vector_index_dirty = True
+
+
 @router.get("/projects/{project_id}/outline")
 def get_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
     request_id = request.state.request_id
@@ -84,6 +93,7 @@ def put_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str
     if body.structure is not None:
         row.structure_json = json.dumps(body.structure, ensure_ascii=False)
 
+    _mark_vector_index_dirty(db, project_id=project_id)
     db.commit()
     db.refresh(row)
     structure = None

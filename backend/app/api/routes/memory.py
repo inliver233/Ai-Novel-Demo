@@ -17,6 +17,7 @@ from app.models.generation_run import GenerationRun
 from app.models.llm_preset import LLMPreset
 from app.models.memory_task import MemoryTask
 from app.models.project import Project
+from app.models.project_settings import ProjectSettings
 from app.models.story_memory import StoryMemory
 from app.models.structured_memory import (
     MemoryChangeSet,
@@ -181,6 +182,14 @@ def resolve_story_memory_foreshadow(
             )
 
     m.foreshadow_resolved_at_chapter_id = resolved_at_chapter_id
+
+    settings_row = db.get(ProjectSettings, project_id)
+    if settings_row is None:
+        settings_row = ProjectSettings(project_id=project_id)
+        db.add(settings_row)
+        db.flush()
+    settings_row.vector_index_dirty = True
+
     db.commit()
     db.refresh(m)
 

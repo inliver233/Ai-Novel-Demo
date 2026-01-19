@@ -11,6 +11,7 @@ from app.core.errors import AppError
 from app.db.utils import new_id, utc_now
 from app.models.generation_run import GenerationRun
 from app.models.plot_analysis import PlotAnalysis
+from app.models.project_settings import ProjectSettings
 from app.models.story_memory import StoryMemory
 
 _MANAGED_MEMORY_TYPES = {"chapter_summary", "hook", "plot_point", "foreshadow", "character_state"}
@@ -445,6 +446,12 @@ def apply_chapter_analysis(
                 created_at=now,
             )
         )
+
+        settings_row = db.get(ProjectSettings, project_id)
+        if settings_row is None:
+            settings_row = ProjectSettings(project_id=project_id)
+            db.add(settings_row)
+        settings_row.vector_index_dirty = True
 
         db.commit()
         return {

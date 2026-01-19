@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.errors import ok_payload
 from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.db.session import SessionLocal
+from app.db.utils import utc_now
 from app.models.project_settings import ProjectSettings
 from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
 from app.services.vector_rag_service import (
@@ -20,6 +21,25 @@ from app.services.vector_rag_service import (
 )
 
 router = APIRouter()
+
+
+def _ensure_settings_row(db, *, project_id: str) -> ProjectSettings:
+    row = db.get(ProjectSettings, project_id)
+    if row is None:
+        row = ProjectSettings(project_id=project_id)
+        db.add(row)
+        db.flush()
+    return row
+
+
+def _index_state(row: ProjectSettings | None) -> dict[str, object]:
+    if row is None:
+        return {"dirty": False, "last_build_at": None}
+    last_build_at = getattr(row, "last_vector_build_at", None)
+    return {
+        "dirty": bool(getattr(row, "vector_index_dirty", False)),
+        "last_build_at": last_build_at.isoformat() if last_build_at else None,
+    }
 
 
 def _vector_embedding_overrides(row: ProjectSettings | None) -> dict[str, str | None]:
@@ -76,15 +96,18 @@ def get_vector_status(request: Request, user_id: UserIdDep, project_id: str, bod
     db = SessionLocal()
     embedding: dict[str, str | None] = {}
     rerank: dict[str, object] = {}
+    index_state: dict[str, object] = {"dirty": False, "last_build_at": None}
     try:
         require_project_viewer(db, project_id=project_id, user_id=user_id)
         settings_row = db.get(ProjectSettings, project_id)
         embedding = _vector_embedding_overrides(settings_row)
         rerank = _vector_rerank_config(settings_row)
+        index_state = _index_state(settings_row)
     finally:
         db.close()
 
     result = vector_rag_status(project_id=project_id, sources=body.sources, embedding=embedding, rerank=rerank)
+    result["index"] = index_state
     return ok_payload(request_id=request_id, data={"result": result})
 
 
@@ -119,6 +142,15 @@ def rebuild_vector_index(request: Request, user_id: UserIdDep, project_id: str, 
         db.close()
 
     result = rebuild_project(project_id=project_id, chunks=chunks, embedding=embedding)
+    if bool(result.get("enabled")) and not bool(result.get("skipped")):
+        db2 = SessionLocal()
+        try:
+            settings_row = _ensure_settings_row(db2, project_id=project_id)
+            settings_row.vector_index_dirty = False
+            settings_row.last_vector_build_at = utc_now()
+            db2.commit()
+        finally:
+            db2.close()
     return ok_payload(request_id=request_id, data={"result": result})
 
 

@@ -65,6 +65,15 @@ PREVIOUS_CHAPTER_ENDING_CHARS = 1000
 CURRENT_DRAFT_TAIL_CHARS = 1200
 
 
+def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
+    row = db.get(ProjectSettings, project_id)
+    if row is None:
+        row = ProjectSettings(project_id=project_id)
+        db.add(row)
+        db.flush()
+    row.vector_index_dirty = True
+
+
 def _find_missing_prereq_numbers(
     db: Session,
     *,
@@ -204,6 +213,7 @@ def create_chapter(
     )
     db.add(row)
     try:
+        _mark_vector_index_dirty(db, project_id=project_id)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -245,6 +255,7 @@ def bulk_create(
 
     if replace:
         db.execute(delete(Chapter).where(Chapter.project_id == project_id, Chapter.outline_id == target_outline_id))
+        _mark_vector_index_dirty(db, project_id=project_id)
         db.commit()
 
     created: list[Chapter] = [
@@ -261,6 +272,7 @@ def bulk_create(
     ]
     db.add_all(created)
     try:
+        _mark_vector_index_dirty(db, project_id=project_id)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -297,6 +309,7 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
     if body.status is not None:
         row.status = body.status
 
+    _mark_vector_index_dirty(db, project_id=str(row.project_id))
     db.commit()
     db.refresh(row)
 
@@ -322,6 +335,7 @@ def delete_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
     request_id = request.state.request_id
     row = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
     db.delete(row)
+    _mark_vector_index_dirty(db, project_id=str(row.project_id))
     db.commit()
     return ok_payload(request_id=request_id, data={})
 

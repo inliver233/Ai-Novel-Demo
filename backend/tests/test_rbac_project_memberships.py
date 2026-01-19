@@ -19,6 +19,7 @@ from app.models.chapter import Chapter
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.project_membership import ProjectMembership
+from app.models.project_settings import ProjectSettings
 from app.models.user import User
 
 
@@ -66,6 +67,7 @@ class TestProjectMembershipRbac(unittest.TestCase):
                 Outline.__table__,
                 Chapter.__table__,
                 ProjectMembership.__table__,
+                ProjectSettings.__table__,
             ],
         )
         self.SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

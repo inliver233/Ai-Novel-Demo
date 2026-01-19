@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -27,3 +29,6 @@ class ProjectSettings(Base):
     vector_rerank_top_k: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     query_preprocessing_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    vector_index_dirty: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_vector_build_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, nullable=True)

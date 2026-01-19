@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.errors import AppError
 from app.models.generation_run import GenerationRun
 from app.models.plot_analysis import PlotAnalysis
+from app.models.project_settings import ProjectSettings
 from app.models.story_memory import StoryMemory
 from app.services.plot_analysis_service import (
     apply_chapter_analysis,
@@ -32,6 +33,7 @@ class TestPlotAnalysisApply(unittest.TestCase):
 
         GenerationRun.__table__.create(engine)
         PlotAnalysis.__table__.create(engine)
+        ProjectSettings.__table__.create(engine)
         StoryMemory.__table__.create(engine)
         return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 

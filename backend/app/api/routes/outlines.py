@@ -17,9 +17,19 @@ from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id
 from app.models.chapter import Chapter
 from app.models.outline import Outline
+from app.models.project_settings import ProjectSettings
 from app.schemas.outline import OutlineCreate, OutlineListItem, OutlineOut, OutlineUpdate
 
 router = APIRouter()
+
+
+def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
+    row = db.get(ProjectSettings, project_id)
+    if row is None:
+        row = ProjectSettings(project_id=project_id)
+        db.add(row)
+        db.flush()
+    row.vector_index_dirty = True
 
 
 def _parse_structure(value: str | None) -> object | None:
@@ -85,6 +95,7 @@ def create_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
     )
     db.add(row)
     project.active_outline_id = row.id
+    _mark_vector_index_dirty(db, project_id=project_id)
     db.commit()
     db.refresh(row)
     return ok_payload(request_id=request_id, data={"outline": _outline_out(row)})
@@ -120,6 +131,7 @@ def update_outline_item(
     if body.structure is not None:
         row.structure_json = json.dumps(body.structure, ensure_ascii=False)
 
+    _mark_vector_index_dirty(db, project_id=project_id)
     db.commit()
     db.refresh(row)
     return ok_payload(request_id=request_id, data={"outline": _outline_out(row)})
@@ -149,5 +161,6 @@ def delete_outline_item(request: Request, db: DbDep, user_id: UserIdDep, project
         )
         project.active_outline_id = next_outline.id if next_outline else None
 
+    _mark_vector_index_dirty(db, project_id=project_id)
     db.commit()
     return ok_payload(request_id=request_id, data={})
