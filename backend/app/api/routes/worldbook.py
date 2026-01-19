@@ -13,7 +13,7 @@ from app.api.deps import (
     require_worldbook_entry_editor,
 )
 from app.core.errors import AppError, ok_payload
-from app.db.utils import new_id
+from app.db.utils import new_id, utc_now
 from app.models.project_settings import ProjectSettings
 from app.models.worldbook_entry import WorldBookEntry
 from app.schemas.worldbook import (
@@ -23,6 +23,9 @@ from app.schemas.worldbook import (
     WorldBookEntryCreate,
     WorldBookEntryOut,
     WorldBookEntryUpdate,
+    WorldBookExportAllOut,
+    WorldBookExportEntryV1,
+    WorldBookImportAllRequest,
     WorldBookPreviewTriggerRequest,
 )
 from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
@@ -99,6 +102,163 @@ def list_worldbook_entries(request: Request, db: DbDep, user_id: UserIdDep, proj
         .all()
     )
     return ok_payload(request_id=request_id, data={"worldbook_entries": [_to_out(r) for r in rows]})
+
+
+@router.get("/projects/{project_id}/worldbook_entries/export_all")
+def export_all_worldbook_entries(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    rows = (
+        db.execute(select(WorldBookEntry).where(WorldBookEntry.project_id == project_id).order_by(WorldBookEntry.updated_at.desc()))
+        .scalars()
+        .all()
+    )
+
+    export_obj = WorldBookExportAllOut(
+        entries=[
+            WorldBookExportEntryV1(
+                title=r.title,
+                content_md=r.content_md or "",
+                enabled=bool(r.enabled),
+                constant=bool(r.constant),
+                keywords=_parse_json_list(r.keywords_json),
+                exclude_recursion=bool(r.exclude_recursion),
+                prevent_recursion=bool(r.prevent_recursion),
+                char_limit=int(r.char_limit or 0),
+                priority=str(r.priority or "important"),  # type: ignore[arg-type]
+            )
+            for r in rows
+        ]
+    ).model_dump()
+    return ok_payload(request_id=request_id, data={"export": export_obj})
+
+
+@router.post("/projects/{project_id}/worldbook_entries/import_all")
+def import_all_worldbook_entries(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    body: WorldBookImportAllRequest,
+) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    if str(body.schema_version or "").strip() != "worldbook_export_all_v1":
+        raise AppError.validation(details={"reason": "unsupported_schema_version", "schema_version": body.schema_version})
+
+    existing = (
+        db.execute(select(WorldBookEntry).where(WorldBookEntry.project_id == project_id).order_by(WorldBookEntry.updated_at.desc()))
+        .scalars()
+        .all()
+    )
+    by_title: dict[str, list[WorldBookEntry]] = {}
+    for row in existing:
+        key = str(row.title or "").strip()
+        by_title.setdefault(key, []).append(row)
+
+    actions: list[dict[str, object]] = []
+    conflicts: list[dict[str, object]] = []
+    created = 0
+    updated = 0
+    skipped = 0
+    deleted = 0
+
+    mode = str(body.mode or "merge").strip()
+    if mode == "overwrite":
+        deleted = len(existing)
+        actions.append({"action": "delete_all", "existing": int(deleted), "incoming": len(body.entries or [])})
+        if not body.dry_run:
+            for row in existing:
+                db.delete(row)
+            db.flush()
+        by_title = {}
+
+    for item in body.entries or []:
+        key = str(item.title or "").strip()
+        matches = by_title.get(key) or []
+        if len(matches) > 1:
+            skipped += 1
+            conflicts.append({"title": key, "reason": "multiple_existing", "existing_count": len(matches)})
+            actions.append({"title": key, "action": "skip", "reason": "multiple_existing"})
+            continue
+
+        keywords = [k.strip() for k in (item.keywords or []) if isinstance(k, str) and k.strip()]
+        keywords_json = json.dumps(keywords, ensure_ascii=False) if keywords else "[]"
+
+        if not matches:
+            created += 1
+            actions.append({"title": key, "action": "create"})
+            if body.dry_run:
+                continue
+
+            row = WorldBookEntry(
+                id=new_id(),
+                project_id=project_id,
+                title=item.title,
+                content_md=item.content_md or "",
+                enabled=bool(item.enabled),
+                constant=bool(item.constant),
+                keywords_json=keywords_json,
+                exclude_recursion=bool(item.exclude_recursion),
+                prevent_recursion=bool(item.prevent_recursion),
+                char_limit=int(item.char_limit),
+                priority=str(item.priority),
+            )
+            db.add(row)
+            db.flush()
+        else:
+            row = matches[0]
+            updated += 1
+            actions.append({"title": key, "action": "update", "entry_id": row.id})
+            if body.dry_run:
+                continue
+
+            row.content_md = item.content_md or ""
+            row.enabled = bool(item.enabled)
+            row.constant = bool(item.constant)
+            row.keywords_json = keywords_json
+            row.exclude_recursion = bool(item.exclude_recursion)
+            row.prevent_recursion = bool(item.prevent_recursion)
+            row.char_limit = int(item.char_limit)
+            row.priority = str(item.priority)
+            row.updated_at = utc_now()
+
+        by_title[key] = [row]
+
+    if body.dry_run:
+        return ok_payload(
+            request_id=request_id,
+            data={
+                "dry_run": True,
+                "mode": mode,
+                "created": int(created),
+                "updated": int(updated),
+                "deleted": int(deleted),
+                "skipped": int(skipped),
+                "conflicts": conflicts,
+                "actions": actions,
+            },
+        )
+
+    if created or updated or deleted:
+        _mark_vector_index_dirty(db, project_id=project_id)
+
+    db.commit()
+    return ok_payload(
+        request_id=request_id,
+        data={
+            "dry_run": False,
+            "mode": mode,
+            "created": int(created),
+            "updated": int(updated),
+            "deleted": int(deleted),
+            "skipped": int(skipped),
+            "conflicts": conflicts,
+            "actions": actions,
+        },
+    )
 
 
 @router.post("/projects/{project_id}/worldbook_entries/bulk_update")
