@@ -26,6 +26,7 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 TaskQueueBackend = Literal["rq", "inline"]
 CookieSameSite = Literal["lax", "strict", "none"]
 VectorBackend = Literal["auto", "chroma", "pgvector"]
+VectorChromaCollectionNaming = Literal["legacy", "hash"]
 
 
 class Settings(BaseSettings):
@@ -54,6 +55,7 @@ class Settings(BaseSettings):
     rq_queue_name: str = "default"
 
     vector_chroma_persist_dir: str | None = None
+    vector_chroma_collection_naming: VectorChromaCollectionNaming = "hash"
     vector_embedding_base_url: str | None = None
     vector_embedding_model: str | None = None
     vector_embedding_api_key: str | None = None
@@ -265,6 +267,16 @@ class Settings(BaseSettings):
             return raw
         abs_path = (_backend_dir() / raw).resolve()
         return abs_path.as_posix()
+
+    @field_validator("vector_chroma_collection_naming", mode="before")
+    @classmethod
+    def _normalize_vector_chroma_collection_naming(cls, value: object) -> str:
+        raw = str(value or "").strip().lower()
+        if not raw:
+            return "hash"
+        if raw in ("legacy", "hash"):
+            return raw
+        raise ValueError("VECTOR_CHROMA_COLLECTION_NAMING must be legacy|hash")
 
     @field_validator("vector_embedding_base_url", mode="before")
     @classmethod

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import re
 import time
@@ -413,7 +414,12 @@ def _import_chromadb() -> Any:
         raise RuntimeError("chromadb is not installed") from exc
 
 
-def _sanitize_collection_name(project_id: str) -> str:
+def _normalize_kb_id(kb_id: str | None) -> str:
+    raw = str(kb_id or "").strip()
+    return raw or "default"
+
+
+def _legacy_collection_name(project_id: str) -> str:
     raw = f"ainovel_{project_id}"
     safe = re.sub(r"[^A-Za-z0-9_\\-]+", "_", raw).strip("_")
     if not safe:
@@ -421,12 +427,130 @@ def _sanitize_collection_name(project_id: str) -> str:
     return safe[:60]
 
 
-def _get_collection(*, project_id: str):
+def _hash_collection_name(project_id: str, kb_id: str | None = None) -> str:
+    kb = _normalize_kb_id(kb_id)
+    digest = hashlib.sha256(f"{project_id}:{kb}".encode("utf-8")).hexdigest()[:24]
+    return f"ainovel_{digest}"
+
+
+def _chroma_collection_naming() -> str:
+    raw = str(getattr(settings, "vector_chroma_collection_naming", "legacy") or "legacy").strip().lower()
+    return raw if raw in ("legacy", "hash") else "legacy"
+
+
+def _migrate_chroma_collection(*, source: Any, target: Any) -> int:
+    migrated = 0
+    offset = 0
+    limit = 1000
+    while True:
+        batch = source.get(
+            include=["documents", "metadatas", "embeddings"],
+            limit=limit,
+            offset=offset,
+        )
+        ids = batch.get("ids") or []
+        if not ids:
+            break
+        target.upsert(
+            ids=ids,
+            documents=batch.get("documents"),
+            metadatas=batch.get("metadatas"),
+            embeddings=batch.get("embeddings"),
+        )
+        migrated += len(ids)
+        offset += len(ids)
+    return migrated
+
+
+def _get_collection(*, project_id: str, kb_id: str | None = None):
     chromadb = _import_chromadb()
     persist_dir = settings.vector_chroma_persist_dir or _default_chroma_persist_dir()
     client = chromadb.PersistentClient(path=persist_dir)
-    name = _sanitize_collection_name(project_id)
-    return client.get_or_create_collection(name=name, metadata={"project_id": project_id})
+
+    kb = _normalize_kb_id(kb_id)
+    legacy_name = _legacy_collection_name(project_id)
+    hash_name = _hash_collection_name(project_id, kb)
+
+    naming = _chroma_collection_naming()
+    if naming == "legacy":
+        return client.get_or_create_collection(
+            name=legacy_name,
+            metadata={"project_id": project_id, "kb_id": kb, "naming": "legacy"},
+        )
+
+    try:
+        return client.get_collection(name=hash_name)
+    except Exception:
+        pass
+
+    try:
+        legacy_collection = client.get_collection(name=legacy_name)
+    except Exception:
+        legacy_collection = None
+
+    if legacy_collection is None:
+        return client.get_or_create_collection(
+            name=hash_name,
+            metadata={"project_id": project_id, "kb_id": kb, "naming": "hash"},
+        )
+
+    t0 = time.perf_counter()
+    migrated = 0
+    try:
+        hash_collection = client.get_or_create_collection(
+            name=hash_name,
+            metadata={"project_id": project_id, "kb_id": kb, "naming": "hash", "migrated_from": legacy_name},
+        )
+        migrated = _migrate_chroma_collection(source=legacy_collection, target=hash_collection)
+        try:
+            client.delete_collection(name=legacy_name)
+        except Exception as exc:  # pragma: no cover - env dependent
+            log_event(
+                logger,
+                "warning",
+                event="VECTOR_RAG",
+                action="collection_migrate_cleanup",
+                project_id=project_id,
+                backend="chroma",
+                from_collection=legacy_name,
+                to_collection=hash_name,
+                migrated=migrated,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+        log_event(
+            logger,
+            "info",
+            event="VECTOR_RAG",
+            action="collection_migrate",
+            project_id=project_id,
+            backend="chroma",
+            from_collection=legacy_name,
+            to_collection=hash_name,
+            migrated=migrated,
+            timings_ms={"total": int((time.perf_counter() - t0) * 1000)},
+        )
+        return hash_collection
+    except Exception as exc:  # pragma: no cover - env dependent
+        try:
+            client.delete_collection(name=hash_name)
+        except Exception:
+            pass
+        log_event(
+            logger,
+            "warning",
+            event="VECTOR_RAG",
+            action="collection_migrate",
+            project_id=project_id,
+            backend="chroma",
+            from_collection=legacy_name,
+            to_collection=hash_name,
+            migrated=migrated,
+            error=str(exc),
+            error_type=type(exc).__name__,
+            timings_ms={"total": int((time.perf_counter() - t0) * 1000)},
+        )
+        return legacy_collection
 
 
 def _chunk_text(text: str, *, chunk_size: int, overlap: int) -> list[str]:
@@ -985,11 +1109,15 @@ def rebuild_project(
         chromadb = _import_chromadb()
         persist_dir = settings.vector_chroma_persist_dir or _default_chroma_persist_dir()
         client = chromadb.PersistentClient(path=persist_dir)
-        name = _sanitize_collection_name(project_id)
-        try:
-            client.delete_collection(name=name)
-        except Exception:
-            pass
+        legacy_name = _legacy_collection_name(project_id)
+        hash_name = _hash_collection_name(project_id)
+        naming = _chroma_collection_naming()
+        names = {legacy_name} if naming == "legacy" else {hash_name, legacy_name}
+        for name in names:
+            try:
+                client.delete_collection(name=name)
+            except Exception:
+                pass
     except Exception as exc:  # pragma: no cover - env dependent
         return {"enabled": False, "skipped": True, "disabled_reason": "chroma_unavailable", "error": str(exc), "rebuilt": 0}
 
@@ -1048,18 +1176,24 @@ def purge_project_vectors(*, project_id: str) -> dict[str, Any]:
         chromadb = _import_chromadb()
         persist_dir = settings.vector_chroma_persist_dir or _default_chroma_persist_dir()
         client = chromadb.PersistentClient(path=persist_dir)
-        name = _sanitize_collection_name(project_id)
-        try:
-            client.delete_collection(name=name)
-            deleted = True
-            error = None
-            error_type = None
-        except Exception as exc:  # pragma: no cover - env dependent
-            msg = str(exc)
-            msg_lower = msg.lower()
-            deleted = "does not exist" in msg_lower or "not found" in msg_lower
-            error = msg
-            error_type = type(exc).__name__
+        names = [_hash_collection_name(project_id), _legacy_collection_name(project_id)]
+        delete_errors: list[str] = []
+        delete_error_type: str | None = None
+        deleted = True
+        for name in names:
+            try:
+                client.delete_collection(name=name)
+            except Exception as exc:  # pragma: no cover - env dependent
+                msg = str(exc)
+                msg_lower = msg.lower()
+                if "does not exist" in msg_lower or "not found" in msg_lower:
+                    continue
+                deleted = False
+                delete_errors.append(f"{name}: {msg}")
+                delete_error_type = delete_error_type or type(exc).__name__
+
+        error = "; ".join(delete_errors) if delete_errors else None
+        error_type = delete_error_type
 
         out: dict[str, Any] = {
             "enabled": True,
