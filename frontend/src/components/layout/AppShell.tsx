@@ -16,6 +16,7 @@ import {
   Share2,
   Settings,
   Sparkles,
+  Table2,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -37,6 +38,7 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
   ["/wizard", "开工向导"],
   ["/writing", "写作"],
   ["/tasks", "任务中心"],
+  ["/structured-memory", "结构化记忆"],
   ["/graph", "图谱"],
   ["/styles", "风格"],
   ["/chapter-analysis", "标注回溯"],
@@ -257,6 +259,13 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={false}
+                          icon={<Table2 size={18} />}
+                          label="结构化记忆"
+                          to={`/projects/${projectId}/structured-memory`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
                           icon={<Share2 size={18} />}
                           label="图谱"
                           to={`/projects/${projectId}/graph`}
@@ -383,6 +392,12 @@ export function AppShell() {
                     icon={<ListTodo size={18} />}
                     label="任务中心"
                     to={`/projects/${projectId}/tasks`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Table2 size={18} />}
+                    label="结构化记忆"
+                    to={`/projects/${projectId}/structured-memory`}
                   />
                   <SidebarLink
                     collapsed={collapsed}

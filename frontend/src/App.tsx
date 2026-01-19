@@ -15,6 +15,7 @@ import { CharactersPage } from "./pages/CharactersPage";
 import { OutlinePage } from "./pages/OutlinePage";
 import { WritingPage } from "./pages/WritingPage";
 import { TaskCenterPage } from "./pages/TaskCenterPage";
+import { StructuredMemoryPage } from "./pages/StructuredMemoryPage";
 import { ChapterAnalysisPage } from "./pages/ChapterAnalysisPage";
 import { PreviewPage } from "./pages/PreviewPage";
 import { PromptsPage } from "./pages/PromptsPage";
@@ -79,6 +80,10 @@ const router = createBrowserRouter([
               {
                 path: "tasks",
                 element: <TaskCenterPage />,
+              },
+              {
+                path: "structured-memory",
+                element: <StructuredMemoryPage />,
               },
               {
                 path: "chapter-analysis",
