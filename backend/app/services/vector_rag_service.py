@@ -16,12 +16,15 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.logging import log_event
 from app.db.session import SessionLocal, engine
-from app.llm.http_client import get_llm_http_client
-from app.llm.utils import normalize_base_url
 from app.models.chapter import Chapter
 from app.models.outline import Outline
 from app.models.story_memory import StoryMemory
 from app.models.worldbook_entry import WorldBookEntry
+from app.services.embedding_service import (
+    embed_texts as embed_texts_with_providers,
+    embedding_enabled_reason,
+    resolve_embedding_config,
+)
 from app.services.rerank_service import rerank_candidates as rerank_candidates_with_providers
 
 logger = logging.getLogger("ainovel")
@@ -307,25 +310,9 @@ def _default_chroma_persist_dir() -> str:
     return str((_backend_dir() / ".chroma").resolve().as_posix())
 
 
-def _resolve_embedding_values(embedding: dict[str, str | None] | None) -> tuple[str | None, str | None, str | None]:
-    if not embedding:
-        return settings.vector_embedding_base_url, settings.vector_embedding_model, settings.vector_embedding_api_key
-    return (
-        (embedding.get("base_url") or settings.vector_embedding_base_url),
-        (embedding.get("model") or settings.vector_embedding_model),
-        (embedding.get("api_key") or settings.vector_embedding_api_key),
-    )
-
-
 def _vector_enabled_reason(*, embedding: dict[str, str | None] | None = None) -> tuple[bool, str | None]:
-    base_url, model, api_key = _resolve_embedding_values(embedding)
-    if not base_url:
-        return False, "embedding_base_url_missing"
-    if not model:
-        return False, "embedding_model_missing"
-    if not api_key:
-        return False, "embedding_api_key_missing"
-    return True, None
+    config = resolve_embedding_config(embedding)
+    return embedding_enabled_reason(config)
 
 
 def _resolve_rerank_config(rerank: dict[str, Any] | None) -> tuple[bool, str, int]:
@@ -857,41 +844,6 @@ def build_project_chunks(*, db: Session, project_id: str, sources: list[VectorSo
     return out
 
 
-def _embed_texts(texts: list[str], *, embedding: dict[str, str | None] | None = None) -> list[list[float]]:
-    base_url_raw, model_raw, api_key_raw = _resolve_embedding_values(embedding)
-    base_url = normalize_base_url(str(base_url_raw or ""))
-    model = str(model_raw or "")
-    api_key = str(api_key_raw or "")
-
-    url = base_url.rstrip("/") + "/embeddings"
-    client = get_llm_http_client()
-    resp = client.post(
-        url,
-        headers={"Authorization": f"Bearer {api_key}"},
-        json={"model": model, "input": texts},
-        timeout=60.0,
-    )
-    resp.raise_for_status()
-    payload = resp.json()
-    data = payload.get("data")
-    if not isinstance(data, list):
-        raise RuntimeError("bad embeddings response: missing data")
-
-    vectors: list[list[float]] = []
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        emb = item.get("embedding")
-        if not isinstance(emb, list):
-            continue
-        vec = [float(x) for x in emb]
-        vectors.append(vec)
-
-    if len(vectors) != len(texts):
-        raise RuntimeError("bad embeddings response: length mismatch")
-    return vectors
-
-
 def _pgvector_upsert_chunks(*, project_id: str, chunks: list[VectorChunk], embeddings: list[list[float]]) -> dict[str, Any]:
     sql = text(
         """
@@ -1182,7 +1134,26 @@ def ingest_chunks(
 
     embeddings: list[list[float]] = []
     if texts:
-        embeddings = _embed_texts(texts, embedding=embedding)
+        embed_out = embed_texts_with_providers(texts, embedding=embedding)
+        if not bool(embed_out.get("enabled")):
+            disabled = str(embed_out.get("disabled_reason") or "error")
+            log_event(
+                logger,
+                "warning",
+                event="VECTOR_RAG",
+                action="ingest",
+                project_id=project_id,
+                disabled_reason=disabled,
+                error_type="EmbeddingError",
+            )
+            return {
+                "enabled": False,
+                "skipped": True,
+                "disabled_reason": disabled,
+                "error": embed_out.get("error"),
+                "ingested": 0,
+            }
+        embeddings = embed_out.get("vectors") or []
 
     embed_ms = int((time.perf_counter() - start) * 1000)
 
@@ -1483,8 +1454,43 @@ def query_project(
         }
 
     start = time.perf_counter()
-    qvec = _embed_texts([query_text.strip() or " "], embedding=embedding)[0]
+    embed_out = embed_texts_with_providers([query_text.strip() or " "], embedding=embedding)
     embed_ms = int((time.perf_counter() - start) * 1000)
+    if not bool(embed_out.get("enabled")):
+        disabled = str(embed_out.get("disabled_reason") or "error")
+        error = embed_out.get("error")
+        rerank_obs = {
+            "enabled": bool(rerank_enabled),
+            "applied": False,
+            "requested_method": rerank_method,
+            "method": None,
+            "provider": None,
+            "model": None,
+            "top_k": int(rerank_top_k),
+            "reason": "vector_error" if disabled == "error" else "vector_disabled",
+            "error_type": "EmbeddingError" if error else None,
+            "before": [],
+            "after": [],
+            "timing_ms": 0,
+            "errors": [],
+        }
+        return {
+            "enabled": False,
+            "disabled_reason": disabled,
+            "error": error,
+            "error_type": "EmbeddingError" if error else None,
+            "query_text": query_text,
+            "filters": {"project_id": project_id, "sources": sources},
+            "timings_ms": {"embed": embed_ms, "rerank": 0},
+            "candidates": [],
+            "final": {"chunks": [], "text_md": "", "truncated": False},
+            "dropped": [],
+            "counts": _build_vector_query_counts(candidates_total=0, returned_candidates=[], final_selected=0, dropped=[]),
+            "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
+            "rerank": rerank_obs,
+        }
+
+    qvec = (embed_out.get("vectors") or [[]])[0]
 
     top_k = int(settings.vector_max_candidates or 20)
     pgvector_error: str | None = None
