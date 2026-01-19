@@ -8,8 +8,11 @@ import { useProjectData } from "../hooks/useProjectData";
 import { UI_COPY } from "../lib/uiCopy";
 import type { ApiError } from "../services/apiClient";
 import {
+  bulkDeleteWorldBookEntries,
+  bulkUpdateWorldBookEntries,
   createWorldBookEntry,
   deleteWorldBookEntry,
+  duplicateWorldBookEntries,
   listWorldBookEntries,
   previewWorldBookTrigger,
   type WorldBookEntry,
@@ -86,6 +89,20 @@ export function WorldBookPage() {
   const [sortMode, setSortMode] = useState<"updated_desc" | "updated_asc" | "priority_desc" | "priority_asc" | "enabled_desc" | "enabled_asc">(
     "updated_desc",
   );
+
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkPriority, setBulkPriority] = useState<WorldBookPriority>("important");
+  const [bulkCharLimit, setBulkCharLimit] = useState(12000);
+
+  const bulkSelectedSet = useMemo(() => new Set(bulkSelectedIds), [bulkSelectedIds]);
+
+  useEffect(() => {
+    if (!bulkMode || bulkSelectedIds.length === 0) return;
+    const idSet = new Set(entries.map((e) => e.id));
+    setBulkSelectedIds((prev) => prev.filter((id) => idSet.has(id)));
+  }, [bulkMode, bulkSelectedIds.length, entries]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -329,6 +346,140 @@ export function WorldBookPage() {
     }
   }, [previewCharLimit, previewEnableRecursion, previewIncludeConstant, previewQueryText, projectId]);
 
+  const setBulkModeSafe = useCallback((next: boolean) => {
+    setBulkMode(next);
+    setBulkSelectedIds([]);
+  }, []);
+
+  const toggleBulkSelected = useCallback((entryId: string) => {
+    setBulkSelectedIds((prev) => {
+      if (prev.includes(entryId)) return prev.filter((id) => id !== entryId);
+      return [...prev, entryId];
+    });
+  }, []);
+
+  const bulkSelectAll = useCallback(() => {
+    setBulkSelectedIds(filteredEntries.map((e) => e.id));
+  }, [filteredEntries]);
+
+  const bulkClearSelection = useCallback(() => setBulkSelectedIds([]), []);
+
+  const bulkUpdate = useCallback(
+    async (opts: { title: string; description: string; patch: { enabled?: boolean; priority?: WorldBookPriority; char_limit?: number } }) => {
+      if (!projectId) return;
+      if (bulkSelectedIds.length === 0) {
+        toast.toastError(UI_COPY.worldbook.bulkNoSelection);
+        return;
+      }
+
+      const ok = await confirm.confirm({
+        title: opts.title,
+        description: opts.description,
+        confirmText: "确认",
+        cancelText: "取消",
+      });
+      if (!ok) return;
+
+      setBulkLoading(true);
+      try {
+        const updated = await bulkUpdateWorldBookEntries(projectId, { entry_ids: bulkSelectedIds, ...opts.patch });
+        setEntries((prev) => {
+          const list = prev ?? [];
+          const byId = new Map(updated.map((e) => [e.id, e]));
+          return list.map((e) => byId.get(e.id) ?? e);
+        });
+        toast.toastSuccess("已批量更新");
+      } catch (e) {
+        const err = e as ApiError;
+        toast.toastError(`批量更新失败（${bulkSelectedIds.length}条）：${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setBulkLoading(false);
+      }
+    },
+    [bulkSelectedIds, confirm, projectId, setEntries, toast],
+  );
+
+  const bulkDelete = useCallback(async () => {
+    if (!projectId) return;
+    if (bulkSelectedIds.length === 0) {
+      toast.toastError(UI_COPY.worldbook.bulkNoSelection);
+      return;
+    }
+
+    const ok = await confirm.confirm({
+      title: UI_COPY.worldbook.bulkDeleteTitle,
+      description:
+        UI_COPY.worldbook.bulkDeleteDescPrefix +
+        bulkSelectedIds.length +
+        UI_COPY.worldbook.bulkDeleteDescSuffix,
+      confirmText: UI_COPY.worldbook.deleteConfirm,
+      cancelText: UI_COPY.worldbook.deleteCancel,
+      danger: true,
+    });
+    if (!ok) return;
+
+    setBulkLoading(true);
+    try {
+      const deletedIds = await bulkDeleteWorldBookEntries(projectId, bulkSelectedIds);
+      const deletedSet = new Set(deletedIds);
+      setEntries((prev) => (prev ?? []).filter((e) => !deletedSet.has(e.id)));
+      toast.toastSuccess("已批量删除");
+      setBulkSelectedIds([]);
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`批量删除失败（${bulkSelectedIds.length}条）：${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setBulkLoading(false);
+    }
+  }, [bulkSelectedIds, confirm, projectId, setEntries, toast]);
+
+  const duplicateAndEdit = useCallback(
+    async (entryId: string) => {
+      if (!projectId) return;
+
+      const ok = await confirm.confirm({
+        title: UI_COPY.worldbook.bulkDuplicateTitle,
+        description: UI_COPY.worldbook.bulkDuplicateDescPrefix + "1" + UI_COPY.worldbook.bulkDuplicateDescSuffix,
+        confirmText: "复制",
+        cancelText: "取消",
+      });
+      if (!ok) return;
+
+      setBulkLoading(true);
+      try {
+        const created = await duplicateWorldBookEntries(projectId, [entryId]);
+        if (created.length === 0) {
+          toast.toastError("复制失败：返回为空");
+          return;
+        }
+        const createdSet = new Set(created.map((e) => e.id));
+        setEntries((prev) => {
+          const list = prev ?? [];
+          const rest = list.filter((e) => !createdSet.has(e.id));
+          return [...created, ...rest];
+        });
+        setBulkMode(false);
+        setBulkSelectedIds([]);
+        openEdit(created[0]);
+        toast.toastSuccess("已复制并进入编辑");
+      } catch (e) {
+        const err = e as ApiError;
+        toast.toastError(`复制失败：${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setBulkLoading(false);
+      }
+    },
+    [confirm, openEdit, projectId, setEntries, toast],
+  );
+
+  const bulkDuplicateEdit = useCallback(async () => {
+    if (bulkSelectedIds.length !== 1) {
+      toast.toastError("复制并编辑需要选择 1 条条目");
+      return;
+    }
+    await duplicateAndEdit(bulkSelectedIds[0]);
+  }, [bulkSelectedIds, duplicateAndEdit, toast]);
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -382,39 +533,234 @@ export function WorldBookPage() {
                 <option value="enabled_asc">enabled ↑</option>
               </select>
             </label>
+            <label className="flex items-center justify-between gap-2 text-sm text-ink">
+              <span>{UI_COPY.worldbook.bulkMode}</span>
+              <input
+                className="checkbox"
+                checked={bulkMode}
+                disabled={bulkLoading}
+                onChange={(e) => setBulkModeSafe(e.target.checked)}
+                aria-label="worldbook_bulk_mode"
+                type="checkbox"
+              />
+            </label>
           </div>
+
+          {bulkMode ? (
+            <div className="mt-4 rounded-atelier border border-border bg-canvas p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs text-subtext">
+                  {UI_COPY.worldbook.bulkSelectedPrefix}
+                  {bulkSelectedIds.length}
+                  {UI_COPY.worldbook.bulkSelectedSuffix}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={bulkLoading || loading}
+                    onClick={bulkSelectAll}
+                    aria-label="worldbook_bulk_select_all"
+                    type="button"
+                  >
+                    {UI_COPY.worldbook.bulkSelectAll}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={bulkLoading || loading}
+                    onClick={bulkClearSelection}
+                    aria-label="worldbook_bulk_clear_selection"
+                    type="button"
+                  >
+                    {UI_COPY.worldbook.bulkClearSelection}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  className="btn btn-secondary"
+                  disabled={bulkLoading || loading || drawerOpen}
+                  onClick={() =>
+                    void bulkUpdate({
+                      title: UI_COPY.worldbook.bulkEnableTitle,
+                      description:
+                        UI_COPY.worldbook.bulkEnableDescPrefix +
+                        bulkSelectedIds.length +
+                        UI_COPY.worldbook.bulkEnableDescSuffix,
+                      patch: { enabled: true },
+                    })
+                  }
+                  aria-label="worldbook_bulk_enable"
+                  type="button"
+                >
+                  {UI_COPY.worldbook.bulkEnable}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  disabled={bulkLoading || loading || drawerOpen}
+                  onClick={() =>
+                    void bulkUpdate({
+                      title: UI_COPY.worldbook.bulkDisableTitle,
+                      description:
+                        UI_COPY.worldbook.bulkDisableDescPrefix +
+                        bulkSelectedIds.length +
+                        UI_COPY.worldbook.bulkDisableDescSuffix,
+                      patch: { enabled: false },
+                    })
+                  }
+                  aria-label="worldbook_bulk_disable"
+                  type="button"
+                >
+                  {UI_COPY.worldbook.bulkDisable}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  disabled={bulkLoading || loading || drawerOpen || bulkSelectedIds.length !== 1}
+                  onClick={() => void bulkDuplicateEdit()}
+                  aria-label="worldbook_bulk_duplicate_edit"
+                  type="button"
+                >
+                  {UI_COPY.worldbook.bulkDuplicateEdit}
+                </button>
+                <button
+                  className="btn btn-danger"
+                  disabled={bulkLoading || loading || drawerOpen}
+                  onClick={() => void bulkDelete()}
+                  aria-label="worldbook_bulk_delete"
+                  type="button"
+                >
+                  {UI_COPY.worldbook.bulkDelete}
+                </button>
+              </div>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="flex items-end gap-2">
+                  <label className="grid flex-1 gap-1">
+                    <span className="text-xs text-subtext">{UI_COPY.worldbook.bulkPriority}</span>
+                    <select
+                      className="select"
+                      value={bulkPriority}
+                      onChange={(e) => setBulkPriority(e.target.value as WorldBookPriority)}
+                      disabled={bulkLoading || loading}
+                      aria-label="worldbook_bulk_priority"
+                    >
+                      <option value="must">must</option>
+                      <option value="important">important</option>
+                      <option value="optional">optional</option>
+                      <option value="drop_first">drop_first</option>
+                    </select>
+                  </label>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={bulkLoading || loading || drawerOpen}
+                    onClick={() =>
+                      void bulkUpdate({
+                        title: UI_COPY.worldbook.bulkUpdateTitle,
+                        description:
+                          UI_COPY.worldbook.bulkUpdateDescPrefix +
+                          bulkSelectedIds.length +
+                          UI_COPY.worldbook.bulkUpdateDescSuffix,
+                        patch: { priority: bulkPriority },
+                      })
+                    }
+                    aria-label="worldbook_bulk_apply_priority"
+                    type="button"
+                  >
+                    {UI_COPY.worldbook.bulkApply}
+                  </button>
+                </div>
+
+                <div className="flex items-end gap-2">
+                  <label className="grid flex-1 gap-1">
+                    <span className="text-xs text-subtext">{UI_COPY.worldbook.bulkCharLimit}</span>
+                    <input
+                      className="input"
+                      min={0}
+                      type="number"
+                      value={bulkCharLimit}
+                      onChange={(e) => setBulkCharLimit(e.currentTarget.valueAsNumber)}
+                      disabled={bulkLoading || loading}
+                      aria-label="worldbook_bulk_char_limit"
+                    />
+                  </label>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={bulkLoading || loading || drawerOpen}
+                    onClick={() => {
+                      const safeCharLimit = Number.isFinite(bulkCharLimit) ? Math.max(0, Math.floor(bulkCharLimit)) : 12000;
+                      void bulkUpdate({
+                        title: UI_COPY.worldbook.bulkUpdateTitle,
+                        description:
+                          UI_COPY.worldbook.bulkUpdateDescPrefix +
+                          bulkSelectedIds.length +
+                          UI_COPY.worldbook.bulkUpdateDescSuffix,
+                        patch: { char_limit: safeCharLimit },
+                      });
+                    }}
+                    aria-label="worldbook_bulk_apply_char_limit"
+                    type="button"
+                  >
+                    {UI_COPY.worldbook.bulkApply}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-4 grid gap-3">
             {filteredEntries.length === 0 ? (
               <div className="text-sm text-subtext">{UI_COPY.worldbook.empty}</div>
             ) : (
-              filteredEntries.map((e) => (
-                <button
-                  key={e.id}
-                  className="panel-interactive ui-focus-ring p-4 text-left"
-                  onClick={() => openEdit(e)}
-                  type="button"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate font-content text-lg text-ink">{e.title}</div>
-                      <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-subtext">
-                        <span>{e.enabled ? UI_COPY.worldbook.tagEnabled : UI_COPY.worldbook.tagDisabled}</span>
-                        <span>{e.constant ? UI_COPY.worldbook.tagBlue : UI_COPY.worldbook.tagGreen}</span>
-                        <span>{UI_COPY.worldbook.tagPriorityPrefix + e.priority}</span>
-                        <span>{UI_COPY.worldbook.tagCharLimitPrefix + e.char_limit}</span>
+              filteredEntries.map((e) => {
+                const selected = bulkSelectedSet.has(e.id);
+                return (
+                  <button
+                    key={e.id}
+                    className={
+                      bulkMode && selected
+                        ? "panel-interactive ui-focus-ring border-accent/60 bg-surface-hover p-4 text-left"
+                        : "panel-interactive ui-focus-ring p-4 text-left"
+                    }
+                    disabled={bulkMode && bulkLoading}
+                    onClick={() => (bulkMode ? toggleBulkSelected(e.id) : openEdit(e))}
+                    type="button"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        {bulkMode ? (
+                          <div className="mt-1 shrink-0" aria-hidden="true">
+                            <div
+                              className={
+                                selected
+                                  ? "flex h-5 w-5 items-center justify-center rounded-atelier border border-accent bg-accent text-xs text-white"
+                                  : "h-5 w-5 rounded-atelier border border-border bg-canvas"
+                              }
+                            >
+                              {selected ? "✓" : null}
+                            </div>
+                          </div>
+                        ) : null}
+                        <div className="min-w-0">
+                          <div className="truncate font-content text-lg text-ink">{e.title}</div>
+                          <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-subtext">
+                            <span>{e.enabled ? UI_COPY.worldbook.tagEnabled : UI_COPY.worldbook.tagDisabled}</span>
+                            <span>{e.constant ? UI_COPY.worldbook.tagBlue : UI_COPY.worldbook.tagGreen}</span>
+                            <span>{UI_COPY.worldbook.tagPriorityPrefix + e.priority}</span>
+                            <span>{UI_COPY.worldbook.tagCharLimitPrefix + e.char_limit}</span>
+                          </div>
+                        </div>
                       </div>
+                      <div className="shrink-0 text-[11px] text-subtext">{e.updated_at}</div>
                     </div>
-                    <div className="shrink-0 text-[11px] text-subtext">{e.updated_at}</div>
-                  </div>
-                  {e.constant ? null : (
-                    <div className="mt-2 line-clamp-2 text-xs text-subtext">
-                      {UI_COPY.worldbook.keywordsPrefix}
-                      {(e.keywords ?? []).slice(0, 6).join("、") || UI_COPY.worldbook.keywordsNone}
-                    </div>
-                  )}
-                </button>
-              ))
+                    {e.constant ? null : (
+                      <div className="mt-2 line-clamp-2 text-xs text-subtext">
+                        {UI_COPY.worldbook.keywordsPrefix}
+                        {(e.keywords ?? []).slice(0, 6).join("、") || UI_COPY.worldbook.keywordsNone}
+                      </div>
+                    )}
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
@@ -560,6 +906,16 @@ export function WorldBookPage() {
             {editing ? (
               <button className="btn btn-secondary" disabled={saving} onClick={() => void deleteEntry()} type="button">
                 {UI_COPY.worldbook.delete}
+              </button>
+            ) : null}
+            {editing ? (
+              <button
+                className="btn btn-secondary"
+                disabled={saving || bulkLoading}
+                onClick={() => void duplicateAndEdit(editing.id)}
+                type="button"
+              >
+                {UI_COPY.worldbook.bulkDuplicateEdit}
               </button>
             ) : null}
             <button className="btn btn-secondary" onClick={() => void closeDrawer()} type="button">

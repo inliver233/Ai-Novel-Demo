@@ -89,3 +89,38 @@ export async function previewWorldBookTrigger(projectId: string, body: WorldBook
     body: JSON.stringify(body),
   });
 }
+
+export async function bulkUpdateWorldBookEntries(
+  projectId: string,
+  body: {
+    entry_ids: string[];
+    enabled?: boolean;
+    constant?: boolean;
+    exclude_recursion?: boolean;
+    prevent_recursion?: boolean;
+    char_limit?: number;
+    priority?: WorldBookPriority;
+  },
+): Promise<WorldBookEntry[]> {
+  const res = await apiJson<{ worldbook_entries: WorldBookEntry[] }>(`/api/projects/${projectId}/worldbook_entries/bulk_update`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return res.data.worldbook_entries ?? [];
+}
+
+export async function bulkDeleteWorldBookEntries(projectId: string, entryIds: string[]): Promise<string[]> {
+  const res = await apiJson<{ deleted_ids: string[] }>(`/api/projects/${projectId}/worldbook_entries/bulk_delete`, {
+    method: "POST",
+    body: JSON.stringify({ entry_ids: entryIds }),
+  });
+  return res.data.deleted_ids ?? [];
+}
+
+export async function duplicateWorldBookEntries(projectId: string, entryIds: string[]): Promise<WorldBookEntry[]> {
+  const res = await apiJson<{ worldbook_entries: WorldBookEntry[] }>(`/api/projects/${projectId}/worldbook_entries/duplicate`, {
+    method: "POST",
+    body: JSON.stringify({ entry_ids: entryIds }),
+  });
+  return res.data.worldbook_entries ?? [];
+}

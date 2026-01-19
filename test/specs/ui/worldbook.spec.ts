@@ -169,3 +169,78 @@ test("ui: worldbook supports search + sort", async ({ page, request }) => {
   const first2 = page.locator("button.panel-interactive").first();
   await expect(first2).toContainText("Gamma");
 });
+
+test("ui: worldbook supports bulk actions + duplicate", async ({ page, request }) => {
+  const state = loadState();
+  const { projectId } = await bootstrapProject(request);
+
+  const makeEntry = async (title: string, keyword: string) => {
+    const res = await request.post(`${state.backendUrl}/api/projects/${projectId}/worldbook_entries`, {
+      data: {
+        title,
+        content_md: `${title} content ${keyword}`,
+        enabled: true,
+        constant: false,
+        keywords: [keyword],
+        exclude_recursion: false,
+        prevent_recursion: false,
+        char_limit: 12000,
+        priority: "important",
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+  };
+
+  await makeEntry("Alpha", "alpha");
+  await makeEntry("Beta", "beta");
+
+  await page.goto(`/projects/${projectId}/worldbook`);
+  await expect(page.getByText("条目列表", { exact: true })).toBeVisible();
+
+  await page.getByLabel("worldbook_bulk_mode", { exact: true }).check();
+  await page.getByLabel("worldbook_bulk_select_all", { exact: true }).click();
+
+  await page.getByLabel("worldbook_bulk_disable", { exact: true }).click();
+  const confirmDisable = page.getByRole("dialog", { name: "批量停用条目？", exact: true });
+  await expect(confirmDisable).toBeVisible();
+  await confirmDisable.getByRole("button", { name: "确认", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: /Alpha/ }).getByText("停用", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Beta/ }).getByText("停用", { exact: true })).toBeVisible();
+
+  await page.getByLabel("worldbook_bulk_priority", { exact: true }).selectOption("must");
+  await page.getByLabel("worldbook_bulk_apply_priority", { exact: true }).click();
+  const confirmUpdate1 = page.getByRole("dialog", { name: "批量更新条目？", exact: true });
+  await expect(confirmUpdate1).toBeVisible();
+  await confirmUpdate1.getByRole("button", { name: "确认", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Alpha/ }).getByText("priority:must", { exact: true })).toBeVisible();
+
+  await page.getByLabel("worldbook_bulk_char_limit", { exact: true }).fill("123");
+  await page.getByLabel("worldbook_bulk_apply_char_limit", { exact: true }).click();
+  const confirmUpdate2 = page.getByRole("dialog", { name: "批量更新条目？", exact: true });
+  await expect(confirmUpdate2).toBeVisible();
+  await confirmUpdate2.getByRole("button", { name: "确认", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Alpha/ }).getByText("limit:123", { exact: true })).toBeVisible();
+
+  await page.getByLabel("worldbook_bulk_clear_selection", { exact: true }).click();
+  await page.getByRole("button", { name: /Alpha/ }).click();
+  await page.getByLabel("worldbook_bulk_duplicate_edit", { exact: true }).click();
+  const confirmDuplicate = page.getByRole("dialog", { name: "复制条目？", exact: true });
+  await expect(confirmDuplicate).toBeVisible();
+  await confirmDuplicate.getByRole("button", { name: "复制", exact: true }).click();
+
+  const drawer = page.getByRole("dialog", { name: "编辑世界书条目", exact: true });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByLabel("标题", { exact: true })).toHaveValue(/Alpha.*复制/);
+  await drawer.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(drawer).toBeHidden();
+
+  await page.getByLabel("worldbook_bulk_mode", { exact: true }).check();
+  await page.getByLabel("worldbook_bulk_select_all", { exact: true }).click();
+  await page.getByLabel("worldbook_bulk_delete", { exact: true }).click();
+  const confirmDelete = page.getByRole("dialog", { name: "批量删除条目？", exact: true });
+  await expect(confirmDelete).toBeVisible();
+  await confirmDelete.getByRole("button", { name: "删除", exact: true }).click();
+
+  await expect(page.getByText("暂无条目", { exact: true })).toBeVisible();
+});
