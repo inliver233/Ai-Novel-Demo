@@ -8,6 +8,11 @@ import type { ProjectSettings } from "../types";
 
 type VectorSource = "worldbook" | "outline" | "chapter";
 
+type VectorIndexState = {
+  dirty: boolean;
+  last_build_at: string | null;
+};
+
 type VectorRagCounts = {
   candidates_total: number;
   candidates_returned: number;
@@ -43,6 +48,7 @@ type VectorRagResult = {
   disabled_reason?: string | null;
   query_text: string;
   filters?: { project_id: string; sources: VectorSource[] };
+  index?: VectorIndexState;
   timings_ms?: Record<string, number>;
   candidates?: Array<{ id: string; distance?: number; text?: string; metadata?: Record<string, unknown> }>;
   final?: { chunks: unknown[]; text_md: string; truncated: boolean };
@@ -63,6 +69,13 @@ function safeJson(obj: unknown): string {
   } catch {
     return String(obj);
   }
+}
+
+function formatIsoToLocal(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString();
 }
 
 function normalizeRerankObs(raw: unknown): VectorRerankObs | null {
@@ -191,6 +204,11 @@ export function RagPage() {
 
   const busy = statusLoading || ingestLoading || rebuildLoading || queryLoading || rerankSaving;
 
+  const vectorIndexDirty = status?.index ? Boolean(status.index.dirty) : null;
+  const lastVectorBuildAt = status?.index ? status.index.last_build_at ?? null : null;
+  const vectorEnabled = status ? Boolean(status.enabled) : null;
+  const vectorDisabledReason = status && typeof status.disabled_reason === "string" ? status.disabled_reason : null;
+
   useEffect(() => {
     if (!settingsQuery.data) return;
     setRerankEnabled(Boolean(settingsQuery.data.vector_rerank_effective_enabled));
@@ -258,6 +276,12 @@ export function RagPage() {
     }
   }, [projectId, sortedSources, toast]);
 
+  useEffect(() => {
+    if (!projectId) return;
+    if (sortedSources.length === 0) return;
+    void runStatus();
+  }, [projectId, runStatus, sortedSources]);
+
   const runIngest = useCallback(async () => {
     if (!projectId) return;
     if (sortedSources.length === 0) {
@@ -295,8 +319,23 @@ export function RagPage() {
         method: "POST",
         body: JSON.stringify({ sources: sortedSources }),
       });
-      setRebuildResult(res.data?.result ?? null);
-      toast.toastSuccess("rebuild 已触发", res.request_id);
+      const result = res.data?.result ?? null;
+      setRebuildResult(result);
+      if (result && typeof result === "object") {
+        const out = result as Record<string, unknown>;
+        const enabled = Boolean(out.enabled);
+        const skipped = Boolean(out.skipped);
+        const disabledReason = typeof out.disabled_reason === "string" ? out.disabled_reason : null;
+        const error = typeof out.error === "string" ? out.error : null;
+        if (!enabled || skipped) {
+          toast.toastError(`rebuild 未执行：${disabledReason ?? error ?? "unknown"}`, res.request_id);
+        } else {
+          toast.toastSuccess("rebuild 已触发", res.request_id);
+        }
+      } else {
+        toast.toastSuccess("rebuild 已触发", res.request_id);
+      }
+      await runStatus();
     } catch (e) {
       const err =
         e instanceof ApiError
@@ -306,7 +345,7 @@ export function RagPage() {
     } finally {
       setRebuildLoading(false);
     }
-  }, [projectId, sortedSources, toast]);
+  }, [projectId, runStatus, sortedSources, toast]);
 
   const runQuery = useCallback(async () => {
     if (!projectId) return;
@@ -403,18 +442,47 @@ export function RagPage() {
             {ingestLoading ? "执行中…" : "Ingest"}
           </button>
           <button
-            className="btn btn-secondary"
+            className={vectorIndexDirty ? "btn btn-primary" : "btn btn-secondary"}
             disabled={rebuildLoading}
             onClick={() => void runRebuild()}
             type="button"
           >
-            {rebuildLoading ? "执行中…" : "Rebuild"}
+            {rebuildLoading
+              ? "执行中…"
+              : vectorIndexDirty && vectorEnabled === false
+                ? "Rebuild（需配置）"
+                : vectorIndexDirty
+                  ? "Rebuild（建议）"
+                  : "Rebuild"}
           </button>
           {projectId ? (
             <Link className="btn btn-secondary" to={`/projects/${projectId}/settings`}>
               Settings
             </Link>
           ) : null}
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-atelier border border-border bg-canvas p-3 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-subtext">
+            vector_index_dirty: {vectorIndexDirty === null ? "loading…" : String(vectorIndexDirty)} | last_vector_build_at:{" "}
+            {lastVectorBuildAt ?? "-"}
+            {lastVectorBuildAt ? ` (${formatIsoToLocal(lastVectorBuildAt)})` : ""}
+          </div>
+          {vectorIndexDirty === null ? (
+            <div className="text-subtext">索引状态加载中…</div>
+          ) : vectorIndexDirty ? (
+            vectorEnabled === false ? (
+              <div className="text-ink">
+                索引已过期，但向量服务未启用（disabled_reason: {vectorDisabledReason ?? "-"}）。请先在 Settings 配置 embedding，再 rebuild。
+              </div>
+            ) : (
+              <div className="text-ink">索引已过期：建议点击右上角 “Rebuild（建议）” 重新构建。</div>
+            )
+          ) : (
+            <div className="text-subtext">索引为 clean，无需重建。</div>
+          )}
         </div>
       </div>
 
