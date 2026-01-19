@@ -23,18 +23,31 @@ type BlockDraft = {
 
 const RECOMMENDED_OUTLINE_PRESET_NAME = "默认·大纲生成 v3（推荐）";
 const RECOMMENDED_CHAPTER_PRESET_NAME = "默认·章节生成 v3（推荐）";
+const TRIGGER_TOKEN_RE = /^[a-z][a-z0-9_]*$/;
 
 function formatTriggers(value: string[]): string {
   return (value ?? []).join(", ");
 }
 
-function parseTriggers(value: string): string[] {
+function parseTriggersWithValidation(value: string): { triggers: string[]; invalid: string[] } {
   const trimmed = value.trim();
-  if (!trimmed) return [];
-  return trimmed
+  if (!trimmed) return { triggers: [], invalid: [] };
+
+  const raw = trimmed
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  const seen = new Set<string>();
+  const invalidSet = new Set<string>();
+  const triggers: string[] = [];
+
+  for (const item of raw) {
+    if (!TRIGGER_TOKEN_RE.test(item) || item.length > 64) invalidSet.add(item);
+    if (seen.has(item)) continue;
+    seen.add(item);
+    triggers.push(item);
+  }
+  return { triggers, invalid: [...invalidSet] };
 }
 
 function formatCharacters(chars: Character[]): string {
@@ -416,6 +429,13 @@ export function PromptStudioPage() {
     async (blockId: string) => {
       const draft = drafts[blockId];
       if (!draft) return;
+
+      const triggerValidation = parseTriggersWithValidation(draft.triggers);
+      if (triggerValidation.invalid.length) {
+        toast.toastError(`triggers 无效：${triggerValidation.invalid.join(", ")}`);
+        return;
+      }
+
       setBusy(true);
       try {
         const res = await apiJson<{ block: PromptBlock }>(`/api/prompt_blocks/${blockId}`, {
@@ -427,7 +447,7 @@ export function PromptStudioPage() {
             enabled: draft.enabled,
             template: draft.template,
             marker_key: draft.marker_key.trim() || null,
-            triggers: parseTriggers(draft.triggers),
+            triggers: triggerValidation.triggers,
           }),
         });
         setBlocks((prev) => prev.map((b) => (b.id === blockId ? res.data.block : b)));
@@ -701,6 +721,7 @@ export function PromptStudioPage() {
     ],
     [],
   );
+  const taskKeySet = useMemo(() => new Set(tasks.map((t) => t.key)), [tasks]);
 
   const presetCategoryGroups = useMemo(() => {
     const groups = new Map<string, PromptPreset[]>();
@@ -998,6 +1019,10 @@ export function PromptStudioPage() {
                 const identifier = d?.identifier ?? b.identifier;
                 const name = d?.name ?? b.name;
                 const triggers = d?.triggers ?? formatTriggers(b.triggers ?? []);
+                const triggerValidation = parseTriggersWithValidation(triggers);
+                const triggerTokens = triggerValidation.triggers;
+                const invalidTriggers = triggerValidation.invalid;
+                const customTriggers = triggerTokens.filter((t) => !taskKeySet.has(t));
                 const markerKey = d?.marker_key ?? b.marker_key ?? "";
                 const template = d?.template ?? b.template ?? "";
 
@@ -1059,7 +1084,7 @@ export function PromptStudioPage() {
                         <button
                           className="btn btn-secondary px-3 py-1 text-sm"
                           onClick={() => void saveBlock(b.id)}
-                          disabled={busy}
+                          disabled={busy || invalidTriggers.length > 0}
                           type="button"
                         >
                           保存
@@ -1152,28 +1177,83 @@ export function PromptStudioPage() {
                       </div>
 
                       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                        <div className="grid gap-1">
-                          <div className="text-xs text-subtext">triggers（逗号分隔，可空）</div>
-                          <input
-                            className="input"
-                            value={triggers}
-                            disabled={busy}
-                            onChange={(e) =>
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [b.id]: {
-                                  identifier,
-                                  name,
-                                  role,
-                                  enabled,
-                                  template,
-                                  marker_key: markerKey,
-                                  triggers: e.target.value,
-                                },
-                              }))
-                            }
-                            placeholder="chapter_generate, outline_generate"
-                          />
+                        <div className="grid gap-2">
+                          <div className="text-xs text-subtext">triggers（按任务触发；不勾选=所有任务）</div>
+                          <div className="flex flex-wrap gap-2">
+                            {tasks.map((t) => {
+                              const checked = triggerTokens.includes(t.key);
+                              return (
+                                <label
+                                  key={t.key}
+                                  className={clsx(
+                                    "ui-transition-fast flex items-center gap-2 rounded-atelier border px-3 py-2 text-sm",
+                                    checked
+                                      ? "border-accent/40 bg-accent/10 text-ink"
+                                      : "border-border bg-canvas text-subtext hover:bg-surface hover:text-ink",
+                                    busy ? "opacity-60" : "cursor-pointer",
+                                  )}
+                                >
+                                  <input
+                                    className="checkbox"
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={busy}
+                                    onChange={(e) => {
+                                      const next = new Set(triggerTokens);
+                                      if (e.target.checked) next.add(t.key);
+                                      else next.delete(t.key);
+                                      const nextOrdered = [
+                                        ...tasks.filter((x) => next.has(x.key)).map((x) => x.key),
+                                        ...customTriggers.filter((x) => next.has(x)),
+                                      ];
+                                      setDrafts((prev) => ({
+                                        ...prev,
+                                        [b.id]: {
+                                          identifier,
+                                          name,
+                                          role,
+                                          enabled,
+                                          template,
+                                          marker_key: markerKey,
+                                          triggers: formatTriggers(nextOrdered),
+                                        },
+                                      }));
+                                    }}
+                                  />
+                                  <span>{t.key}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <div className="grid gap-1">
+                            <div className="text-xs text-subtext">triggers（高级：逗号分隔；可自定义）</div>
+                            <input
+                              className="input"
+                              value={triggers}
+                              disabled={busy}
+                              onChange={(e) =>
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [b.id]: {
+                                    identifier,
+                                    name,
+                                    role,
+                                    enabled,
+                                    template,
+                                    marker_key: markerKey,
+                                    triggers: e.target.value,
+                                  },
+                                }))
+                              }
+                              placeholder="chapter_generate, outline_generate"
+                            />
+                            {customTriggers.length ? (
+                              <div className="text-xs text-subtext">自定义：{customTriggers.join(", ")}</div>
+                            ) : null}
+                            {invalidTriggers.length ? (
+                              <div className="text-xs text-accent">无效 triggers：{invalidTriggers.join(", ")}</div>
+                            ) : null}
+                          </div>
                         </div>
                         <div className="grid gap-1">
                           <div className="text-xs text-subtext">marker_key（可空）</div>
