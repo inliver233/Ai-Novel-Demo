@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { ApiError, apiJson } from "../../services/apiClient";
 import { Drawer } from "../ui/Drawer";
@@ -125,6 +126,7 @@ function safeParseJsonField(raw: string | null | undefined): unknown {
 }
 
 export function MemoryUpdateDrawer(props: Props) {
+  const navigate = useNavigate();
   const toast = useToast();
   const [inputJson, setInputJson] = useState(EXAMPLE_OPS);
   const [autoFocus, setAutoFocus] = useState("");
@@ -368,6 +370,14 @@ export function MemoryUpdateDrawer(props: Props) {
     }
   }, [props.projectId, toast]);
 
+  const openTaskCenter = useCallback(() => {
+    if (!props.projectId) return;
+    const qs = new URLSearchParams();
+    if (props.chapterId) qs.set("chapterId", props.chapterId);
+    navigate(`/projects/${props.projectId}/tasks${qs.toString() ? `?${qs.toString()}` : ""}`);
+    props.onClose();
+  }, [navigate, props.chapterId, props.onClose, props.projectId]);
+
   return (
     <Drawer
       open={props.open}
@@ -383,9 +393,14 @@ export function MemoryUpdateDrawer(props: Props) {
               Propose（生成 diff）→ 人在环审核 → Apply（单事务）
             </div>
           </div>
-          <button className="btn btn-secondary" onClick={props.onClose} type="button">
-            关闭
-          </button>
+          <div className="flex items-center gap-2">
+            <button className="btn btn-secondary" disabled={!props.projectId} onClick={openTaskCenter} type="button">
+              任务中心
+            </button>
+            <button className="btn btn-secondary" onClick={props.onClose} type="button">
+              关闭
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-auto p-4">

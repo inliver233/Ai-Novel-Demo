@@ -186,6 +186,9 @@ def _change_set_summary_to_dict(*, change_set: MemoryChangeSet, chapter_id: str 
     return {
         "id": str(change_set.id),
         "chapter_id": chapter_id,
+        "request_id": change_set.request_id,
+        "idempotency_key": change_set.idempotency_key,
+        "title": change_set.title,
         "summary_md": change_set.summary_md,
         "status": str(change_set.status),
         "created_at": _iso(change_set.created_at),
@@ -277,12 +280,13 @@ def _memory_task_timings(task: MemoryTask) -> dict[str, Any]:
     }
 
 
-def memory_task_to_dict(*, task: MemoryTask) -> dict[str, Any]:
+def memory_task_to_dict(*, task: MemoryTask, change_set_request_id: str | None = None) -> dict[str, Any]:
     error_type, error_message = _memory_task_error_fields(task)
     return {
         "id": str(task.id),
         "project_id": str(task.project_id),
         "change_set_id": str(task.change_set_id),
+        "request_id": change_set_request_id,
         "actor_user_id": task.actor_user_id,
         "kind": str(task.kind),
         "status": _memory_task_status_to_public(str(task.status)),
@@ -312,20 +316,20 @@ def list_memory_tasks(
     if before_raw and before_dt is None:
         raise AppError.validation(details={"reason": "invalid_before", "before": before})
 
-    q = select(MemoryTask).where(MemoryTask.project_id == project_id)
+    q = select(MemoryTask, MemoryChangeSet.request_id).join(MemoryChangeSet, MemoryChangeSet.id == MemoryTask.change_set_id).where(
+        MemoryTask.project_id == project_id
+    )
     if status_norm is not None:
         q = q.where(MemoryTask.status == status_norm)
     if before_dt is not None:
         q = q.where(MemoryTask.created_at < before_dt)
 
-    rows = (
-        db.execute(q.order_by(MemoryTask.created_at.desc(), MemoryTask.id.desc()).limit(limit + 1)).scalars().all()
-    )
+    rows = db.execute(q.order_by(MemoryTask.created_at.desc(), MemoryTask.id.desc()).limit(limit + 1)).all()
     has_more = len(rows) > limit
     rows = rows[:limit]
 
-    items = [memory_task_to_dict(task=t) for t in rows]
-    next_before = _iso(rows[-1].created_at) if (has_more and rows) else None
+    items = [memory_task_to_dict(task=t, change_set_request_id=req_id) for t, req_id in rows]
+    next_before = _iso(rows[-1][0].created_at) if (has_more and rows) else None
     return {"items": items, "next_before": next_before}
 
 

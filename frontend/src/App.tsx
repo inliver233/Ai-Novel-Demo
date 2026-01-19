@@ -14,6 +14,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { CharactersPage } from "./pages/CharactersPage";
 import { OutlinePage } from "./pages/OutlinePage";
 import { WritingPage } from "./pages/WritingPage";
+import { TaskCenterPage } from "./pages/TaskCenterPage";
 import { ChapterAnalysisPage } from "./pages/ChapterAnalysisPage";
 import { PreviewPage } from "./pages/PreviewPage";
 import { PromptsPage } from "./pages/PromptsPage";
@@ -74,6 +75,10 @@ const router = createBrowserRouter([
               {
                 path: "writing",
                 element: <WritingPage />,
+              },
+              {
+                path: "tasks",
+                element: <TaskCenterPage />,
               },
               {
                 path: "chapter-analysis",

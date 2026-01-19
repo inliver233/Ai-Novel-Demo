@@ -14,6 +14,7 @@ export function WritingToolbar(props: {
   onOpenHistory: () => void;
   onOpenContextPreview: () => void;
   onOpenMemoryUpdate: () => void;
+  onOpenTaskCenter: () => void;
   onOpenForeshadow: () => void;
   onCreateChapter: () => void;
 }) {
@@ -51,6 +52,9 @@ export function WritingToolbar(props: {
           </button>
           <button className="btn btn-secondary" onClick={props.onOpenMemoryUpdate} type="button">
             Memory Update
+          </button>
+          <button className="btn btn-secondary" onClick={props.onOpenTaskCenter} type="button">
+            任务中心
           </button>
           <button className="btn btn-secondary" onClick={props.onOpenForeshadow} type="button">
             伏笔面板

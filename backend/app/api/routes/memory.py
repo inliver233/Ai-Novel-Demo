@@ -687,7 +687,8 @@ def get_memory_task(
     if task is None:
         raise AppError.not_found()
     require_project_viewer(db, project_id=str(task.project_id), user_id=user_id)
-    return ok_payload(request_id=request_id, data=memory_task_to_dict(task=task))
+    change_set = db.get(MemoryChangeSet, str(task.change_set_id))
+    return ok_payload(request_id=request_id, data=memory_task_to_dict(task=task, change_set_request_id=change_set.request_id if change_set else None))
 
 
 @router.post("/memory_change_sets/{change_set_id}/rollback")

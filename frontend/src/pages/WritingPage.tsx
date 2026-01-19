@@ -294,6 +294,12 @@ export function WritingPage() {
           }
           setMemoryUpdateOpen(true);
         }}
+        onOpenTaskCenter={() => {
+          if (!projectId) return;
+          const qs = new URLSearchParams();
+          if (activeId) qs.set("chapterId", activeId);
+          navigate(`/projects/${projectId}/tasks${qs.toString() ? `?${qs.toString()}` : ""}`);
+        }}
         onOpenForeshadow={() => setForeshadowOpen(true)}
         onOpenContextPreview={() => setContextPreviewOpen(true)}
         onCreateChapter={chapterCrud.openCreate}

@@ -8,6 +8,7 @@ import {
   FileDown,
   LayoutDashboard,
   ListChecks,
+  ListTodo,
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
@@ -35,6 +36,7 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
   ["/outline", "大纲"],
   ["/wizard", "开工向导"],
   ["/writing", "写作"],
+  ["/tasks", "任务中心"],
   ["/graph", "图谱"],
   ["/styles", "风格"],
   ["/chapter-analysis", "标注回溯"],
@@ -248,6 +250,13 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={false}
+                          icon={<ListTodo size={18} />}
+                          label="任务中心"
+                          to={`/projects/${projectId}/tasks`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
                           icon={<Share2 size={18} />}
                           label="图谱"
                           to={`/projects/${projectId}/graph`}
@@ -368,6 +377,12 @@ export function AppShell() {
                     icon={<PenLine size={18} />}
                     label="写作"
                     to={`/projects/${projectId}/writing`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<ListTodo size={18} />}
+                    label="任务中心"
+                    to={`/projects/${projectId}/tasks`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
