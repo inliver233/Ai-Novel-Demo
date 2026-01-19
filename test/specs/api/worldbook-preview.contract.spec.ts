@@ -53,6 +53,7 @@ test("api: worldbook preview_trigger contract + memory/retrieve includes reasons
     triggered: Array<{ id: string; title: string; reason: string; priority: string }>;
     text_md: string;
     truncated: boolean;
+    match_config?: { alias_enabled?: boolean };
   }>;
   expect(previewJson.ok).toBe(true);
   expect(typeof previewJson.request_id).toBe("string");
@@ -63,6 +64,40 @@ test("api: worldbook preview_trigger contract + memory/retrieve includes reasons
   expect(typeof previewJson.data.truncated).toBe("boolean");
   expect(previewJson.data.triggered.some((t) => t.reason === "constant")).toBe(true);
   expect(previewJson.data.triggered.some((t) => t.reason.includes("keyword:dragon"))).toBe(true);
+
+  // Minimal enhanced matching coverage: alias match (enabled in test/global-setup.ts).
+  expect(Boolean(previewJson.data.match_config?.alias_enabled)).toBe(true);
+
+  const aliasRes = await request.post(`${state.backendUrl}/api/projects/${projectId}/worldbook_entries`, {
+    data: {
+      title: "E2E WB Alias",
+      content_md: "E2E_ALIAS_CONTENT",
+      enabled: true,
+      constant: false,
+      keywords: ["alias:drake"],
+      exclude_recursion: false,
+      prevent_recursion: false,
+      char_limit: 12000,
+      priority: "important",
+    },
+  });
+  expect(aliasRes.ok()).toBeTruthy();
+
+  const aliasPreviewRes = await request.post(`${state.backendUrl}/api/projects/${projectId}/worldbook_entries/preview_trigger`, {
+    data: {
+      query_text: "drake",
+      include_constant: false,
+      enable_recursion: true,
+      char_limit: 2000,
+    },
+  });
+  expect(aliasPreviewRes.ok()).toBeTruthy();
+  const aliasPreviewJson = (await aliasPreviewRes.json()) as ApiOk<{
+    triggered: Array<{ id: string; title: string; reason: string; priority: string }>;
+    match_config?: { alias_enabled?: boolean };
+  }>;
+  expect(Boolean(aliasPreviewJson.data.match_config?.alias_enabled)).toBe(true);
+  expect(aliasPreviewJson.data.triggered.some((t) => t.reason === "alias:drake")).toBe(true);
 
   const retrieveRes = await request.get(`${state.backendUrl}/api/projects/${projectId}/memory/retrieve`);
   expect(retrieveRes.ok()).toBeTruthy();
@@ -80,4 +115,3 @@ test("api: worldbook preview_trigger contract + memory/retrieve includes reasons
   expect(raw).not.toContain("test-key");
   expect(raw).not.toMatch(/sk-[a-zA-Z0-9]{10,}/);
 });
-

@@ -99,6 +99,7 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
         AUTH_ADMIN_USER_ID: "admin",
         AUTH_ADMIN_PASSWORD: "admin-pass",
         VECTOR_PER_SOURCE_ID_MAX_CHUNKS: "3",
+        WORLDBOOK_MATCH_ALIAS_ENABLED: "true",
         PYTHONUNBUFFERED: "1",
       },
       logFile: path.join(artifactsDir, "backend.log"),
