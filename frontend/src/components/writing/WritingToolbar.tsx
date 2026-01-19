@@ -14,6 +14,7 @@ export function WritingToolbar(props: {
   onOpenHistory: () => void;
   onOpenContextPreview: () => void;
   onOpenMemoryUpdate: () => void;
+  onOpenForeshadow: () => void;
   onCreateChapter: () => void;
 }) {
   return (
@@ -50,6 +51,9 @@ export function WritingToolbar(props: {
           </button>
           <button className="btn btn-secondary" onClick={props.onOpenMemoryUpdate} type="button">
             Memory Update
+          </button>
+          <button className="btn btn-secondary" onClick={props.onOpenForeshadow} type="button">
+            伏笔面板
           </button>
           <button className="btn btn-secondary" onClick={props.onOpenContextPreview} type="button">
             {UI_COPY.writing.contextPreview}

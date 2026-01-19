@@ -67,7 +67,7 @@ function chooseOutputText(payload) {
       {
         chapter_summary: "这是章节分析摘要（E2E）",
         hooks: [{ excerpt: "…", note: "钩子不错" }],
-        foreshadows: [],
+        foreshadows: [{ excerpt: "E2E FORESHADOW EXCERPT", note: "E2E 伏笔" }],
         plot_points: [],
         suggestions: [],
         overall_notes: "整体节奏 OK。",

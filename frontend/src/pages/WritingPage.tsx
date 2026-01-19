@@ -11,6 +11,7 @@ import { ChapterListPanel } from "../components/writing/ChapterListPanel";
 import { CreateChapterDialog } from "../components/writing/CreateChapterDialog";
 import { ChapterAnalysisModal } from "../components/writing/ChapterAnalysisModal";
 import { ContextPreviewDrawer } from "../components/writing/ContextPreviewDrawer";
+import { ForeshadowDrawer } from "../components/writing/ForeshadowDrawer";
 import { GenerationHistoryDrawer } from "../components/writing/GenerationHistoryDrawer";
 import { MemoryUpdateDrawer } from "../components/writing/MemoryUpdateDrawer";
 import { WritingToolbar } from "../components/writing/WritingToolbar";
@@ -98,6 +99,7 @@ export function WritingPage() {
   const [aiOpen, setAiOpen] = useState(false);
   const [contextPreviewOpen, setContextPreviewOpen] = useState(false);
   const [memoryUpdateOpen, setMemoryUpdateOpen] = useState(false);
+  const [foreshadowOpen, setForeshadowOpen] = useState(false);
   const autoGenerateNextRef = useRef<{ chapterId: string; mode: "replace" | "append" } | null>(null);
   const editedDoneAutoRevertedRef = useRef(false);
 
@@ -292,6 +294,7 @@ export function WritingPage() {
           }
           setMemoryUpdateOpen(true);
         }}
+        onOpenForeshadow={() => setForeshadowOpen(true)}
         onOpenContextPreview={() => setContextPreviewOpen(true)}
         onCreateChapter={chapterCrud.openCreate}
       />
@@ -603,6 +606,13 @@ export function WritingPage() {
         onClose={() => setMemoryUpdateOpen(false)}
         projectId={projectId}
         chapterId={activeId ?? undefined}
+      />
+
+      <ForeshadowDrawer
+        open={foreshadowOpen}
+        onClose={() => setForeshadowOpen(false)}
+        projectId={projectId}
+        activeChapterId={activeId ?? undefined}
       />
 
       {generating && genForm.stream && !aiOpen ? (
