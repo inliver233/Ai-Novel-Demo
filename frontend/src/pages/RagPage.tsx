@@ -60,7 +60,32 @@ type VectorRagResult = {
   backend?: string;
   hybrid?: VectorHybridObs;
   rerank?: VectorRerankObs;
+  kbs?: {
+    selected?: string[];
+    per_kb?: Record<
+      string,
+      {
+        enabled?: boolean;
+        disabled_reason?: string | null;
+        error?: string;
+        counts?: VectorRagCounts;
+        overfilter?: unknown;
+        weight?: number;
+        order?: number;
+      }
+    >;
+  };
   error?: string;
+};
+
+type KnowledgeBase = {
+  kb_id: string;
+  name: string;
+  enabled: boolean;
+  weight: number;
+  order: number;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 function safeJson(obj: unknown): string {
@@ -188,6 +213,18 @@ export function RagPage() {
   const [sources, setSources] = useState<VectorSource[]>(["worldbook", "outline", "chapter"]);
   const [queryText, setQueryText] = useState("");
 
+  const [kbLoading, setKbLoading] = useState(false);
+  const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
+  const [selectedKbIds, setSelectedKbIds] = useState<string[]>([]);
+  const [kbDraftById, setKbDraftById] = useState<Record<string, Pick<KnowledgeBase, "name" | "enabled" | "weight">>>({});
+  const [kbDirtyById, setKbDirtyById] = useState<Record<string, boolean>>({});
+  const [kbOrderDirty, setKbOrderDirty] = useState(false);
+  const [kbDragId, setKbDragId] = useState<string | null>(null);
+  const [kbCreateName, setKbCreateName] = useState("");
+  const [kbCreateLoading, setKbCreateLoading] = useState(false);
+  const [kbSaveLoadingId, setKbSaveLoadingId] = useState<string | null>(null);
+  const [kbDeleteLoadingId, setKbDeleteLoadingId] = useState<string | null>(null);
+
   const [statusLoading, setStatusLoading] = useState(false);
   const [ingestLoading, setIngestLoading] = useState(false);
   const [rebuildLoading, setRebuildLoading] = useState(false);
@@ -252,6 +289,191 @@ export function RagPage() {
     [sources],
   );
 
+  const loadKbs = useCallback(async () => {
+    if (!projectId) return;
+    setKbLoading(true);
+    try {
+      const res = await apiJson<{ kbs: KnowledgeBase[] }>(`/api/projects/${projectId}/vector/kbs`);
+      const list = Array.isArray(res.data?.kbs) ? res.data.kbs : [];
+      setKbs(list);
+      setKbDraftById((prev) => {
+        const next = { ...prev };
+        for (const kb of list) {
+          if (!next[kb.kb_id]) next[kb.kb_id] = { name: kb.name, enabled: kb.enabled, weight: kb.weight };
+        }
+        return next;
+      });
+      setKbDirtyById((prev) => {
+        const next = { ...prev };
+        for (const kb of list) {
+          if (!(kb.kb_id in next)) next[kb.kb_id] = false;
+        }
+        return next;
+      });
+      setSelectedKbIds((prev) => {
+        const valid = prev.filter((id) => list.some((kb) => kb.kb_id === id));
+        if (valid.length) return valid;
+        const enabledIds = list.filter((kb) => kb.enabled).map((kb) => kb.kb_id);
+        return enabledIds.length ? enabledIds : list.length ? [list[0].kb_id] : [];
+      });
+      setKbOrderDirty(false);
+    } catch (e) {
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setKbLoading(false);
+    }
+  }, [projectId, toast]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    void loadKbs();
+  }, [loadKbs, projectId]);
+
+  const toggleKbSelected = useCallback((kbId: string) => {
+    const kid = String(kbId || "").trim();
+    if (!kid) return;
+    setSelectedKbIds((prev) => (prev.includes(kid) ? prev.filter((v) => v !== kid) : [...prev, kid]));
+  }, []);
+
+  const updateKbDraft = useCallback(
+    (kbId: string, patch: Partial<Pick<KnowledgeBase, "name" | "enabled" | "weight">>) => {
+      const kid = String(kbId || "").trim();
+      if (!kid) return;
+      setKbDraftById((prev) => ({ ...prev, [kid]: { ...prev[kid], ...patch } }));
+      setKbDirtyById((prev) => ({ ...prev, [kid]: true }));
+    },
+    [],
+  );
+
+  const createKb = useCallback(async () => {
+    if (!projectId) return;
+    const name = kbCreateName.trim();
+    if (!name) {
+      toast.toastError("KB 名称不能为空");
+      return;
+    }
+    setKbCreateLoading(true);
+    try {
+      const res = await apiJson<{ kb: KnowledgeBase }>(`/api/projects/${projectId}/vector/kbs`, {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      toast.toastSuccess("已创建 KB", res.request_id);
+      setKbCreateName("");
+      await loadKbs();
+    } catch (e) {
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setKbCreateLoading(false);
+    }
+  }, [kbCreateName, loadKbs, projectId, toast]);
+
+  const saveKb = useCallback(
+    async (kbId: string) => {
+      if (!projectId) return;
+      const kid = String(kbId || "").trim();
+      if (!kid) return;
+      const draft = kbDraftById[kid];
+      if (!draft) {
+        toast.toastError("KB 未加载");
+        return;
+      }
+      setKbSaveLoadingId(kid);
+      try {
+        const res = await apiJson<{ kb: KnowledgeBase }>(`/api/projects/${projectId}/vector/kbs/${encodeURIComponent(kid)}`, {
+          method: "PUT",
+          body: JSON.stringify({ name: draft.name, enabled: draft.enabled, weight: draft.weight }),
+        });
+        setKbs((prev) => prev.map((kb) => (kb.kb_id === kid ? res.data.kb : kb)));
+        setKbDraftById((prev) => ({ ...prev, [kid]: { name: res.data.kb.name, enabled: res.data.kb.enabled, weight: res.data.kb.weight } }));
+        setKbDirtyById((prev) => ({ ...prev, [kid]: false }));
+        toast.toastSuccess("已保存 KB", res.request_id);
+      } catch (e) {
+        const err =
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setKbSaveLoadingId(null);
+      }
+    },
+    [kbDraftById, projectId, toast],
+  );
+
+  const deleteKb = useCallback(
+    async (kbId: string) => {
+      if (!projectId) return;
+      const kid = String(kbId || "").trim();
+      if (!kid) return;
+      setKbDeleteLoadingId(kid);
+      try {
+        const res = await apiJson<{ deleted: boolean }>(`/api/projects/${projectId}/vector/kbs/${encodeURIComponent(kid)}`, {
+          method: "DELETE",
+        });
+        toast.toastSuccess("已删除 KB", res.request_id);
+        await loadKbs();
+      } catch (e) {
+        const err =
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setKbDeleteLoadingId(null);
+      }
+    },
+    [loadKbs, projectId, toast],
+  );
+
+  const saveKbOrder = useCallback(async () => {
+    if (!projectId) return;
+    const ids = kbs.map((kb) => kb.kb_id);
+    if (!ids.length) return;
+    setKbLoading(true);
+    try {
+      const res = await apiJson<{ kbs: KnowledgeBase[] }>(`/api/projects/${projectId}/vector/kbs/reorder`, {
+        method: "POST",
+        body: JSON.stringify({ kb_ids: ids }),
+      });
+      setKbs(res.data.kbs ?? []);
+      setKbOrderDirty(false);
+      toast.toastSuccess("已保存 KB 排序", res.request_id);
+    } catch (e) {
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setKbLoading(false);
+    }
+  }, [kbs, projectId, toast]);
+
+  const moveKb = useCallback((fromKbId: string, toKbId: string) => {
+    const from = String(fromKbId || "").trim();
+    const to = String(toKbId || "").trim();
+    if (!from || !to || from === to) return;
+    setKbs((prev) => {
+      const items = [...prev];
+      const fromIdx = items.findIndex((kb) => kb.kb_id === from);
+      const toIdx = items.findIndex((kb) => kb.kb_id === to);
+      if (fromIdx < 0 || toIdx < 0) return prev;
+      const [item] = items.splice(fromIdx, 1);
+      items.splice(toIdx, 0, item);
+      return items.map((kb, idx) => ({ ...kb, order: idx }));
+    });
+    setKbOrderDirty(true);
+  }, []);
+
   const runStatus = useCallback(async () => {
     if (!projectId) return;
     if (sortedSources.length === 0) {
@@ -274,7 +496,7 @@ export function RagPage() {
     } finally {
       setStatusLoading(false);
     }
-  }, [projectId, sortedSources, toast]);
+  }, [projectId, selectedKbIds, sortedSources, toast]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -292,7 +514,7 @@ export function RagPage() {
     try {
       const res = await apiJson<{ result: unknown }>(`/api/projects/${projectId}/vector/ingest`, {
         method: "POST",
-        body: JSON.stringify({ sources: sortedSources }),
+        body: JSON.stringify({ sources: sortedSources, kb_ids: selectedKbIds }),
       });
       setIngestResult(res.data?.result ?? null);
       toast.toastSuccess("ingest 已触发", res.request_id);
@@ -317,7 +539,7 @@ export function RagPage() {
     try {
       const res = await apiJson<{ result: unknown }>(`/api/projects/${projectId}/vector/rebuild`, {
         method: "POST",
-        body: JSON.stringify({ sources: sortedSources }),
+        body: JSON.stringify({ sources: sortedSources, kb_ids: selectedKbIds }),
       });
       const result = res.data?.result ?? null;
       setRebuildResult(result);
@@ -345,7 +567,7 @@ export function RagPage() {
     } finally {
       setRebuildLoading(false);
     }
-  }, [projectId, runStatus, sortedSources, toast]);
+  }, [projectId, runStatus, selectedKbIds, sortedSources, toast]);
 
   const runQuery = useCallback(async () => {
     if (!projectId) return;
@@ -362,7 +584,7 @@ export function RagPage() {
         preprocess_obs?: unknown;
       }>(`/api/projects/${projectId}/vector/query`, {
         method: "POST",
-        body: JSON.stringify({ query_text: queryText, sources: sortedSources }),
+        body: JSON.stringify({ query_text: queryText, sources: sortedSources, kb_ids: selectedKbIds }),
       });
       setQueryResult(res.data?.result ?? null);
       setQueryRequestId(res.request_id ?? null);
@@ -378,7 +600,7 @@ export function RagPage() {
     } finally {
       setQueryLoading(false);
     }
-  }, [projectId, queryText, sortedSources, toast]);
+  }, [projectId, queryText, selectedKbIds, sortedSources, toast]);
 
   const injectionText = (queryResult?.prompt_block?.text_md ?? "").trim();
 
@@ -483,6 +705,161 @@ export function RagPage() {
           ) : (
             <div className="text-subtext">索引为 clean，无需重建。</div>
           )}
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-atelier border border-border bg-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm font-medium text-ink">Knowledge Bases</div>
+          <div className="flex gap-2">
+            <button className="btn btn-secondary" disabled={!projectId || kbLoading} onClick={() => void loadKbs()} type="button">
+              {kbLoading ? "加载中…" : "刷新 KB"}
+            </button>
+            <button className="btn btn-primary" disabled={!projectId || kbLoading || !kbOrderDirty} onClick={() => void saveKbOrder()} type="button">
+              保存排序
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-2 text-xs text-subtext">
+          selected_kb_ids: {selectedKbIds.length ? selectedKbIds.join(", ") : "（空：query 默认用 enabled 集合）"}
+          {queryResult?.kbs?.selected?.length ? (
+            <span className="ml-2">
+              | query_selected: {queryResult.kbs.selected.join(", ")}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="mt-3 grid gap-2">
+          {kbs.length ? (
+            kbs.map((kb) => {
+              const draft = kbDraftById[kb.kb_id] ?? { name: kb.name, enabled: kb.enabled, weight: kb.weight };
+              const dirty = Boolean(kbDirtyById[kb.kb_id]);
+              const perKb = queryResult?.kbs?.per_kb?.[kb.kb_id];
+              const counts = perKb?.counts;
+              const isDragging = kbDragId === kb.kb_id;
+
+              return (
+                <div
+                  key={kb.kb_id}
+                  className={isDragging ? "rounded-atelier border border-border bg-canvas p-3 opacity-80" : "rounded-atelier border border-border bg-canvas p-3"}
+                  draggable
+                  onDragStart={() => setKbDragId(kb.kb_id)}
+                  onDragEnd={() => setKbDragId(null)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={() => {
+                    if (!kbDragId) return;
+                    moveKb(kbDragId, kb.kb_id);
+                    setKbDragId(null);
+                  }}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <label className="flex items-center gap-2 text-sm text-ink">
+                        <input
+                          type="checkbox"
+                          checked={selectedKbIds.includes(kb.kb_id)}
+                          onChange={() => toggleKbSelected(kb.kb_id)}
+                          aria-label={`选择 KB ${kb.kb_id}`}
+                        />
+                        <span className="font-medium">{kb.kb_id}</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-ink">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(draft.enabled)}
+                          onChange={(e) => updateKbDraft(kb.kb_id, { enabled: e.target.checked })}
+                          aria-label={`启用 KB ${kb.kb_id}`}
+                        />
+                        启用
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-ink">
+                        <span className="text-xs text-subtext">weight</span>
+                        <input
+                          className="input w-24"
+                          type="number"
+                          step="0.1"
+                          value={String(draft.weight ?? 1)}
+                          onChange={(e) => {
+                            const next = Number(e.target.value);
+                            if (!Number.isFinite(next)) return;
+                            updateKbDraft(kb.kb_id, { weight: next });
+                          }}
+                          aria-label={`KB 权重 ${kb.kb_id}`}
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-ink">
+                        <span className="text-xs text-subtext">name</span>
+                        <input
+                          className="input w-56"
+                          value={draft.name}
+                          onChange={(e) => updateKbDraft(kb.kb_id, { name: e.target.value })}
+                          aria-label={`KB 名称 ${kb.kb_id}`}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="btn btn-primary"
+                        disabled={!projectId || kbSaveLoadingId === kb.kb_id || !dirty}
+                        onClick={() => void saveKb(kb.kb_id)}
+                        aria-label={`保存 KB ${kb.kb_id}`}
+                        type="button"
+                      >
+                        {kbSaveLoadingId === kb.kb_id ? "保存中…" : dirty ? "保存" : "已保存"}
+                      </button>
+                      <button
+                        className="btn btn-danger"
+                        disabled={!projectId || kbDeleteLoadingId === kb.kb_id || Boolean(draft.enabled) || kb.kb_id === "default"}
+                        onClick={() => void deleteKb(kb.kb_id)}
+                        aria-label={`删除 KB ${kb.kb_id}`}
+                        type="button"
+                      >
+                        {kbDeleteLoadingId === kb.kb_id ? "删除中…" : "删除"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-subtext">
+                    <div>order: {kb.order}</div>
+                    <div>enabled: {String(Boolean(draft.enabled))}</div>
+                    <div>weight: {String(draft.weight)}</div>
+                    {counts ? (
+                      <div>
+                        query_counts: {counts.candidates_total}/{counts.candidates_returned} | final:{counts.final_selected} | dropped:{counts.dropped_total}
+                      </div>
+                    ) : (
+                      <div>query_counts: -</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-xs text-subtext">暂无 KB（将自动创建 default）。</div>
+          )}
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-4">
+          <label className="grid gap-1 sm:col-span-3">
+            <span className="text-xs text-subtext">new kb name</span>
+            <input
+              className="input"
+              value={kbCreateName}
+              onChange={(e) => setKbCreateName(e.target.value)}
+              aria-label="kb_create_name"
+              placeholder="My KB"
+            />
+          </label>
+          <div className="flex items-end">
+            <button className="btn btn-primary w-full" disabled={!projectId || kbCreateLoading} onClick={() => void createKb()} type="button">
+              {kbCreateLoading ? "创建中…" : "创建 KB"}
+            </button>
+          </div>
         </div>
       </div>
 
