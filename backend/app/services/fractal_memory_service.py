@@ -4,21 +4,30 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.errors import AppError
 from app.core.logging import log_event
 from app.db.utils import new_id
 from app.models.chapter import Chapter
 from app.models.fractal_memory import FractalMemory
 from app.models.story_memory import StoryMemory
+from app.services.output_parsers import parse_tag_output
+from app.services.prompt_preset_resources import load_preset_resource
+from app.services.prompting import render_template
+
+if TYPE_CHECKING:
+    from app.services.generation_service import PreparedLlmCall
 
 logger = logging.getLogger("ainovel")
 
 _MAX_DONE_CHAPTERS_PER_REBUILD = 200
+_FRACTAL_V2_RESOURCE_KEY = "fractal_v2_v1"
+_FRACTAL_V2_TAG = "fractal_v2"
 
 T = TypeVar("T")
 
@@ -163,16 +172,221 @@ def get_fractal_context(*, db: Session, project_id: str, enabled: bool) -> dict[
     latest = sagas[-1]["summary_md"] if isinstance(sagas, list) and sagas and isinstance(sagas[-1], dict) else ""
     text_md = f"<FractalMemory>\n{latest.strip()}\n</FractalMemory>" if isinstance(latest, str) and latest.strip() else ""
 
+    v2_cfg = cfg.get("v2") if isinstance(cfg, dict) else None
+    v2_summary_md = str(v2_cfg.get("summary_md") or "").strip() if isinstance(v2_cfg, dict) else ""
+    v2_text_md = f"<FractalMemoryV2>\n{v2_summary_md}\n</FractalMemoryV2>" if v2_summary_md else ""
+
     return {
         "enabled": True,
         "disabled_reason": None,
         "config": cfg if isinstance(cfg, dict) else {},
+        "v2": v2_cfg if isinstance(v2_cfg, dict) else {},
         "scenes": scenes if isinstance(scenes, list) else [],
         "arcs": arcs if isinstance(arcs, list) else [],
         "sagas": sagas if isinstance(sagas, list) else [],
         "prompt_block": {"identifier": "sys.memory.fractal", "role": "system", "text_md": text_md},
+        "prompt_block_v2": {"identifier": "sys.memory.fractal_v2", "role": "system", "text_md": v2_text_md},
         "updated_at": row.updated_at.isoformat().replace("+00:00", "Z"),
     }
+
+
+def _render_fractal_v2_prompt(
+    *,
+    summary_md: str,
+    char_limit: int,
+    macro_seed: str,
+) -> tuple[str, str, list[dict[str, Any]]]:
+    resource = load_preset_resource(_FRACTAL_V2_RESOURCE_KEY)
+    values: dict[str, Any] = {
+        "deterministic_summary_md": summary_md,
+        "char_limit": int(char_limit),
+    }
+
+    blocks_log: list[dict[str, Any]] = []
+    system_parts: list[str] = []
+    user_parts: list[str] = []
+
+    for block in resource.blocks:
+        if not block.enabled:
+            continue
+        if block.triggers and _FRACTAL_V2_TAG not in block.triggers:
+            continue
+
+        text, missing, error = render_template(block.template, values, macro_seed=macro_seed)
+        blocks_log.append(
+            {
+                "identifier": block.identifier,
+                "role": block.role,
+                "missing": missing,
+                "render_error": error,
+                "chars": len(text or ""),
+            }
+        )
+        if not text.strip():
+            continue
+        role = str(block.role or "").strip().lower()
+        if role == "system":
+            system_parts.append(text)
+        else:
+            user_parts.append(text)
+
+    return "\n\n".join(system_parts).strip(), "\n\n".join(user_parts).strip(), blocks_log
+
+
+def rebuild_fractal_memory_v2(
+    *,
+    db: Session,
+    project_id: str,
+    reason: str,
+    request_id: str,
+    actor_user_id: str,
+    api_key: str,
+    llm_call: PreparedLlmCall | None,
+) -> dict[str, Any]:
+    """
+    LLM rebuild (v2): stores deterministic fractal as baseline and optionally writes a v2 summary.
+    Any LLM failure must fallback to deterministic output and record reason in config.v2.
+    """
+    base = rebuild_fractal_memory(db=db, project_id=project_id, reason=reason)
+
+    row = db.execute(select(FractalMemory).where(FractalMemory.project_id == project_id)).scalars().first()
+    if row is None:
+        return base
+
+    cfg_obj = _safe_json_loads(row.config_json, default={})
+    cfg_dict: dict[str, Any] = cfg_obj if isinstance(cfg_obj, dict) else {}
+
+    sagas = base.get("sagas") if isinstance(base, dict) else None
+    latest_summary = ""
+    if isinstance(sagas, list) and sagas and isinstance(sagas[-1], dict):
+        latest_summary = str(sagas[-1].get("summary_md") or "").strip()
+
+    if not latest_summary:
+        cfg_dict["v2"] = {
+            "enabled": False,
+            "status": "skipped",
+            "disabled_reason": "no_content",
+        }
+        row.config_json = _compact_json_dumps(cfg_dict)
+        db.commit()
+        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+
+    if llm_call is None:
+        cfg_dict["v2"] = {
+            "enabled": False,
+            "status": "fallback",
+            "disabled_reason": "llm_preset_missing",
+        }
+        row.config_json = _compact_json_dumps(cfg_dict)
+        db.commit()
+        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+
+    if not str(api_key or "").strip():
+        cfg_dict["v2"] = {
+            "enabled": False,
+            "status": "fallback",
+            "disabled_reason": "api_key_missing",
+        }
+        row.config_json = _compact_json_dumps(cfg_dict)
+        db.commit()
+        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+
+    char_limit = int(cfg_dict.get("char_limit") or 6000)
+    system, user, render_blocks = _render_fractal_v2_prompt(summary_md=latest_summary, char_limit=char_limit, macro_seed=request_id)
+    render_log = {"task": _FRACTAL_V2_TAG, "resource": _FRACTAL_V2_RESOURCE_KEY, "blocks": render_blocks}
+    render_log_json = json.dumps(render_log, ensure_ascii=False)
+
+    from app.services.generation_service import call_llm_and_record, with_param_overrides
+
+    llm_v2_call = with_param_overrides(llm_call, {"temperature": 0.3, "max_tokens": 1024})
+    try:
+        result = call_llm_and_record(
+            logger=logger,
+            request_id=request_id,
+            actor_user_id=actor_user_id,
+            project_id=project_id,
+            chapter_id=None,
+            run_type=_FRACTAL_V2_TAG,
+            api_key=str(api_key),
+            prompt_system=system,
+            prompt_user=user,
+            prompt_messages=None,
+            prompt_render_log_json=render_log_json,
+            llm_call=llm_v2_call,
+            memory_retrieval_log_json=None,
+            run_params_extra_json={
+                "fractal_v2": {
+                    "char_limit": int(char_limit),
+                    "deterministic_summary_chars": len(latest_summary),
+                }
+            },
+        )
+    except AppError as exc:
+        cfg_dict["v2"] = {
+            "enabled": False,
+            "status": "fallback",
+            "disabled_reason": "llm_error",
+            "error_code": exc.code,
+        }
+        row.config_json = _compact_json_dumps(cfg_dict)
+        db.commit()
+        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+    except Exception as exc:
+        cfg_dict["v2"] = {
+            "enabled": False,
+            "status": "fallback",
+            "disabled_reason": "internal_error",
+            "error_type": type(exc).__name__,
+        }
+        row.config_json = _compact_json_dumps(cfg_dict)
+        db.commit()
+        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+
+    parsed, warnings, parse_error = parse_tag_output(result.text, tag=_FRACTAL_V2_TAG, output_key="summary_md")
+    summary_v2 = str(parsed.get("summary_md") or "").strip()
+    if parse_error is not None or not summary_v2:
+        cfg_dict["v2"] = {
+            "enabled": False,
+            "status": "fallback",
+            "disabled_reason": "parse_error",
+            "run_id": result.run_id,
+            "finish_reason": result.finish_reason,
+            "warnings": warnings,
+            "parse_error": parse_error,
+        }
+        row.config_json = _compact_json_dumps(cfg_dict)
+        db.commit()
+        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+
+    if char_limit > 0 and len(summary_v2) > char_limit:
+        summary_v2 = summary_v2[:char_limit].rstrip() + "…"
+
+    cfg_dict["v2"] = {
+        "enabled": True,
+        "status": "ok",
+        "summary_md": summary_v2,
+        "provider": llm_call.provider,
+        "model": llm_call.model,
+        "run_id": result.run_id,
+        "finish_reason": result.finish_reason,
+        "latency_ms": int(result.latency_ms),
+        "dropped_params": list(result.dropped_params),
+        "warnings": warnings,
+    }
+    row.config_json = _compact_json_dumps(cfg_dict)
+    db.commit()
+    out = get_fractal_context(db=db, project_id=project_id, enabled=True)
+
+    log_event(
+        logger,
+        "info",
+        event="FRACTAL_MEMORY",
+        action="rebuild_v2",
+        project_id=project_id,
+        reason=reason,
+        v2={"enabled": True, "provider": llm_call.provider, "model": llm_call.model},
+    )
+    return out
 
 
 def rebuild_fractal_memory(*, db: Session, project_id: str, reason: str) -> dict[str, Any]:

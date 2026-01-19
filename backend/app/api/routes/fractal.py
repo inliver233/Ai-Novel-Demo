@@ -1,18 +1,25 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from typing import Literal
+
+from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel, Field
 
 from app.api.deps import UserIdDep, require_project_editor, require_project_viewer
-from app.core.errors import ok_payload
+from app.core.errors import AppError, ok_payload
 from app.db.session import SessionLocal
-from app.services.fractal_memory_service import get_fractal_context, rebuild_fractal_memory
+from app.models.llm_preset import LLMPreset
+from app.models.project import Project
+from app.services.fractal_memory_service import get_fractal_context, rebuild_fractal_memory, rebuild_fractal_memory_v2
+from app.services.generation_service import prepare_llm_call
+from app.services.llm_key_resolver import resolve_api_key_for_project
 
 router = APIRouter()
 
 
 class FractalRebuildRequest(BaseModel):
     reason: str = Field(default="manual_rebuild", max_length=64)
+    mode: Literal["deterministic", "llm_v2"] = Field(default="deterministic")
 
 
 @router.get("/projects/{project_id}/fractal")
@@ -28,13 +35,38 @@ def get_fractal(request: Request, user_id: UserIdDep, project_id: str) -> dict:
 
 
 @router.post("/projects/{project_id}/fractal/rebuild")
-def rebuild_fractal(request: Request, user_id: UserIdDep, project_id: str, body: FractalRebuildRequest) -> dict:
+def rebuild_fractal(
+    request: Request,
+    user_id: UserIdDep,
+    project_id: str,
+    body: FractalRebuildRequest,
+    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
+) -> dict:
     request_id = request.state.request_id
     db = SessionLocal()
     try:
         require_project_editor(db, project_id=project_id, user_id=user_id)
-        out = rebuild_fractal_memory(db=db, project_id=project_id, reason=body.reason)
+        if body.mode == "llm_v2":
+            project = db.get(Project, project_id)
+            resolved_api_key = ""
+            if project is not None:
+                try:
+                    resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
+                except AppError:
+                    resolved_api_key = ""
+            preset = db.get(LLMPreset, project_id)
+            llm_call = prepare_llm_call(preset) if preset is not None else None
+            out = rebuild_fractal_memory_v2(
+                db=db,
+                project_id=project_id,
+                reason=body.reason,
+                request_id=request_id,
+                actor_user_id=user_id,
+                api_key=str(resolved_api_key),
+                llm_call=llm_call,
+            )
+        else:
+            out = rebuild_fractal_memory(db=db, project_id=project_id, reason=body.reason)
     finally:
         db.close()
     return ok_payload(request_id=request_id, data={"result": out})
-

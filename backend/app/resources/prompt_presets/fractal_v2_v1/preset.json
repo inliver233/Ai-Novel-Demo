@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "name": "Fractal v2 摘要 v1（可选）",
+  "scope": "project",
+  "version": 1,
+  "activation_tasks": [],
+  "upgrade_add_identifiers": [],
+  "blocks": [
+    {
+      "identifier": "sys.fractal_v2.role",
+      "name": "Fractal v2：任务说明",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.fractal_v2.role.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 10,
+      "triggers": ["fractal_v2"],
+      "forbid_overrides": false,
+      "budget": { "priority": "must" },
+      "cache": null
+    },
+    {
+      "identifier": "user.fractal_v2.input",
+      "name": "Fractal v2：输入与输出格式",
+      "role": "user",
+      "enabled": true,
+      "template_file": "templates/user.fractal_v2.input.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 20,
+      "triggers": ["fractal_v2"],
+      "forbid_overrides": false,
+      "budget": { "priority": "must" },
+      "cache": null
+    }
+  ]
+}
+
