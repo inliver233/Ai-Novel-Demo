@@ -47,6 +47,7 @@ class ProjectSettingsOut(BaseModel):
     world_setting: str
     style_guide: str
     constraints: str
+    context_optimizer_enabled: bool = False
 
     query_preprocessing: QueryPreprocessingConfig | None
     query_preprocessing_default: QueryPreprocessingConfig
@@ -85,6 +86,7 @@ class ProjectSettingsUpdate(BaseModel):
     world_setting: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
     style_guide: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
     constraints: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
+    context_optimizer_enabled: bool | None = None
 
     query_preprocessing: QueryPreprocessingConfig | None = None
 

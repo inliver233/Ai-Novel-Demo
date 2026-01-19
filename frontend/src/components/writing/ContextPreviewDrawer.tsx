@@ -101,6 +101,28 @@ type MemorySectionEnabled = {
   fractal: boolean;
 };
 
+type ContextOptimizerBlockLog = {
+  identifier: string;
+  changed: boolean;
+  before_tokens: number;
+  after_tokens: number;
+  before_chars: number;
+  after_chars: number;
+  details: unknown;
+};
+
+type ContextOptimizerLog = {
+  enabled: boolean;
+  saved_tokens_estimate: number;
+  blocks: ContextOptimizerBlockLog[];
+};
+
+type OptimizerCompare = {
+  baseline: { worldbook: string; structured: string };
+  optimized: { worldbook: string; structured: string };
+  optimizerLog: ContextOptimizerLog | null;
+};
+
 const DEFAULT_PREVIEW_SECTIONS: MemorySectionEnabled = {
   worldbook: true,
   story_memory: true,
@@ -137,6 +159,100 @@ const EMPTY_PACK: MemoryContextPack = {
 
 function hasOwn<K extends string>(obj: unknown, key: K): obj is Record<K, unknown> {
   return typeof obj === "object" && obj !== null && Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function normalizeContextOptimizerLog(renderLog: unknown): ContextOptimizerLog | null {
+  if (!renderLog || typeof renderLog !== "object") return null;
+  const o = renderLog as Record<string, unknown>;
+  const ctx = o.context_optimizer;
+  if (!ctx || typeof ctx !== "object") return null;
+  const c = ctx as Record<string, unknown>;
+  const savedRaw = c.saved_tokens_estimate;
+  const saved = typeof savedRaw === "number" ? savedRaw : Number(savedRaw);
+  const blocksRaw = Array.isArray(c.blocks) ? c.blocks : [];
+  const blocks: ContextOptimizerBlockLog[] = [];
+  for (const b of blocksRaw) {
+    if (!b || typeof b !== "object") continue;
+    const it = b as Record<string, unknown>;
+    const identifier = typeof it.identifier === "string" ? it.identifier : "";
+    if (!identifier) continue;
+    const beforeTokensRaw = it.before_tokens;
+    const afterTokensRaw = it.after_tokens;
+    const beforeCharsRaw = it.before_chars;
+    const afterCharsRaw = it.after_chars;
+    const beforeTokens = typeof beforeTokensRaw === "number" ? beforeTokensRaw : Number(beforeTokensRaw);
+    const afterTokens = typeof afterTokensRaw === "number" ? afterTokensRaw : Number(afterTokensRaw);
+    const beforeChars = typeof beforeCharsRaw === "number" ? beforeCharsRaw : Number(beforeCharsRaw);
+    const afterChars = typeof afterCharsRaw === "number" ? afterCharsRaw : Number(afterCharsRaw);
+    blocks.push({
+      identifier,
+      changed: Boolean(it.changed),
+      before_tokens: Number.isFinite(beforeTokens) ? beforeTokens : 0,
+      after_tokens: Number.isFinite(afterTokens) ? afterTokens : 0,
+      before_chars: Number.isFinite(beforeChars) ? beforeChars : 0,
+      after_chars: Number.isFinite(afterChars) ? afterChars : 0,
+      details: hasOwn(it, "details") ? it.details : null,
+    });
+  }
+
+  return {
+    enabled: Boolean(c.enabled),
+    saved_tokens_estimate: Number.isFinite(saved) ? saved : 0,
+    blocks,
+  };
+}
+
+function getPromptPreviewBlockText(preview: unknown, identifier: string): string {
+  if (!preview || typeof preview !== "object") return "";
+  const o = preview as Record<string, unknown>;
+  const blocks = Array.isArray(o.blocks) ? o.blocks : [];
+  for (const b of blocks) {
+    if (!b || typeof b !== "object") continue;
+    const it = b as Record<string, unknown>;
+    if (typeof it.identifier !== "string") continue;
+    if (it.identifier !== identifier) continue;
+    return typeof it.text === "string" ? it.text : "";
+  }
+  return "";
+}
+
+function formatContextOptimizerDetails(details: unknown): string | null {
+  if (!details || typeof details !== "object") return null;
+  const o = details as Record<string, unknown>;
+  const changed = Boolean(o.changed);
+  const reason = typeof o.reason === "string" ? o.reason : null;
+  if (!changed && reason) return reason;
+
+  const entriesInRaw = o.entries_in;
+  const rowsOutRaw = o.rows_out;
+  const entriesIn = typeof entriesInRaw === "number" ? entriesInRaw : Number(entriesInRaw);
+  const rowsOut = typeof rowsOutRaw === "number" ? rowsOutRaw : Number(rowsOutRaw);
+  if (Number.isFinite(entriesIn) && Number.isFinite(rowsOut)) {
+    const parsedRaw = o.entries_parsed;
+    const parsed = typeof parsedRaw === "number" ? parsedRaw : Number(parsedRaw);
+    return `entries:${entriesIn} → rows:${rowsOut}` + (Number.isFinite(parsed) ? ` | parsed:${parsed}` : "");
+  }
+
+  const sectionsRaw = o.sections;
+  if (Array.isArray(sectionsRaw)) {
+    let sections = 0;
+    let itemsIn = 0;
+    let rowsOut = 0;
+    for (const s of sectionsRaw) {
+      if (!s || typeof s !== "object") continue;
+      const it = s as Record<string, unknown>;
+      const itemsInRaw = it.items_in;
+      const rowsOutRaw2 = it.rows_out;
+      const itemsInNum = typeof itemsInRaw === "number" ? itemsInRaw : Number(itemsInRaw);
+      const rowsOutNum = typeof rowsOutRaw2 === "number" ? rowsOutRaw2 : Number(rowsOutRaw2);
+      if (Number.isFinite(itemsInNum)) itemsIn += itemsInNum;
+      if (Number.isFinite(rowsOutNum)) rowsOut += rowsOutNum;
+      sections++;
+    }
+    if (sections > 0) return `sections:${sections} | items:${itemsIn} → rows:${rowsOut}`;
+  }
+
+  return null;
 }
 
 function normalizeRerankObs(raw: unknown): VectorRerankObs | null {
@@ -451,6 +567,17 @@ export function ContextPreviewDrawer(props: Props) {
   const [pack, setPack] = useState<MemoryContextPack>(EMPTY_PACK);
   const [error, setError] = useState<{ code: string; message: string; requestId?: string } | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
+  const [contextOptimizerEnabled, setContextOptimizerEnabled] = useState<boolean | null>(null);
+  const [contextOptimizerSettingsLoading, setContextOptimizerSettingsLoading] = useState(false);
+  const [contextOptimizerSettingsError, setContextOptimizerSettingsError] = useState<{
+    code: string;
+    message: string;
+    requestId?: string;
+  } | null>(null);
+  const [optimizerCompareLoading, setOptimizerCompareLoading] = useState(false);
+  const [optimizerCompareError, setOptimizerCompareError] = useState<{ code: string; message: string; requestId?: string } | null>(null);
+  const [optimizerCompare, setOptimizerCompare] = useState<OptimizerCompare | null>(null);
+  const lastOptimizerCompareKeyRef = useRef<string | null>(null);
 
   const syncedOnceRef = useRef(false);
 
@@ -674,6 +801,73 @@ export function ContextPreviewDrawer(props: Props) {
     return rawLogs.map(normalizePackLogItem).filter((v): v is MemoryContextPackLogItem => Boolean(v));
   }, [effectivePack.logs]);
 
+  const loadContextOptimizerSetting = useCallback(async () => {
+    if (!projectId) return;
+    setContextOptimizerSettingsLoading(true);
+    setContextOptimizerSettingsError(null);
+    try {
+      const res = await apiJson<{ settings: { context_optimizer_enabled?: unknown } }>(`/api/projects/${projectId}/settings`);
+      setContextOptimizerEnabled(Boolean(res.data?.settings?.context_optimizer_enabled));
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setContextOptimizerSettingsError({ code: e.code, message: e.message, requestId: e.requestId });
+      } else {
+        setContextOptimizerSettingsError({ code: "UNKNOWN", message: "加载失败" });
+      }
+      setContextOptimizerEnabled(null);
+    } finally {
+      setContextOptimizerSettingsLoading(false);
+    }
+  }, [projectId]);
+
+  const fetchOptimizerCompare = useCallback(async () => {
+    if (!projectId) return;
+    if (!memoryInjectionEnabled) return;
+
+    const values: Record<string, unknown> = {
+      memory: effectivePack,
+      memory_injection_enabled: Boolean(memoryInjectionEnabled),
+    };
+
+    setOptimizerCompareLoading(true);
+    setOptimizerCompareError(null);
+    try {
+      const baselineRes = await apiJson<{ preview: unknown; render_log?: unknown }>(`/api/projects/${projectId}/prompt_preview`, {
+        method: "POST",
+        body: JSON.stringify({ task: "chapter_generate", values: { ...values, context_optimizer_enabled: false } }),
+      });
+      const optimizedRes = await apiJson<{ preview: unknown; render_log?: unknown }>(`/api/projects/${projectId}/prompt_preview`, {
+        method: "POST",
+        body: JSON.stringify({ task: "chapter_generate", values: { ...values, context_optimizer_enabled: true } }),
+      });
+
+      const baselinePreview = baselineRes.data?.preview;
+      const optimizedPreview = optimizedRes.data?.preview;
+      const optimizerLog = normalizeContextOptimizerLog(optimizedRes.data?.render_log ?? null);
+
+      setOptimizerCompare({
+        baseline: {
+          worldbook: getPromptPreviewBlockText(baselinePreview, "sys.memory.worldbook"),
+          structured: getPromptPreviewBlockText(baselinePreview, "sys.memory.structured"),
+        },
+        optimized: {
+          worldbook: getPromptPreviewBlockText(optimizedPreview, "sys.memory.worldbook"),
+          structured: getPromptPreviewBlockText(optimizedPreview, "sys.memory.structured"),
+        },
+        optimizerLog,
+      });
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setOptimizerCompareError({ code: e.code, message: e.message, requestId: e.requestId });
+      } else {
+        setOptimizerCompareError({ code: "UNKNOWN", message: "加载失败" });
+      }
+      setOptimizerCompare(null);
+    } finally {
+      setOptimizerCompareLoading(false);
+    }
+  }, [effectivePack, memoryInjectionEnabled, projectId]);
+
   const worldbookPreview = useMemo(() => {
     const raw = (effectivePack.worldbook ?? {}) as Record<string, unknown>;
     const triggered = Array.isArray(raw.triggered) ? raw.triggered : [];
@@ -785,6 +979,27 @@ export function ContextPreviewDrawer(props: Props) {
   }, [memoryInjectionEnabled, open, syncPreviewFromGenerate]);
 
   useEffect(() => {
+    if (!open) return;
+    void loadContextOptimizerSetting();
+  }, [loadContextOptimizerSetting, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!memoryInjectionEnabled) return;
+    if (!contextOptimizerEnabled) {
+      lastOptimizerCompareKeyRef.current = null;
+      setOptimizerCompare(null);
+      setOptimizerCompareError(null);
+      setOptimizerCompareLoading(false);
+      return;
+    }
+    const key = `${projectId ?? ""}:${requestId ?? ""}:${contextOptimizerEnabled ? "1" : "0"}`;
+    if (!key.trim() || lastOptimizerCompareKeyRef.current === key) return;
+    lastOptimizerCompareKeyRef.current = key;
+    void fetchOptimizerCompare();
+  }, [contextOptimizerEnabled, fetchOptimizerCompare, memoryInjectionEnabled, open, projectId, requestId]);
+
+  useEffect(() => {
     if (open) return;
     syncedOnceRef.current = false;
   }, [open]);
@@ -805,6 +1020,10 @@ export function ContextPreviewDrawer(props: Props) {
     setVectorRequestId(null);
     setVectorResult(null);
     setVectorLoading(false);
+    setOptimizerCompare(null);
+    setOptimizerCompareError(null);
+    setOptimizerCompareLoading(false);
+    lastOptimizerCompareKeyRef.current = null;
   }, [open, projectId]);
 
   useEffect(() => {
@@ -1011,6 +1230,124 @@ export function ContextPreviewDrawer(props: Props) {
               </div>
             ) : (
               <div className="mt-2 text-sm text-subtext">No logs available.</div>
+            )}
+          </div>
+        ) : null}
+
+        {memoryInjectionEnabled ? (
+          <div className="panel p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm text-ink">Context Optimizer</div>
+              <button
+                className="btn btn-ghost px-2 py-1 text-xs"
+                disabled={contextOptimizerSettingsLoading}
+                onClick={() => void loadContextOptimizerSetting()}
+                type="button"
+              >
+                刷新状态
+              </button>
+            </div>
+            <div className="mt-1 text-[11px] text-subtext">
+              status:{" "}
+              {contextOptimizerSettingsLoading
+                ? "loading…"
+                : contextOptimizerEnabled === null
+                  ? "unknown"
+                  : contextOptimizerEnabled
+                    ? "enabled"
+                    : "disabled"}
+            </div>
+            {contextOptimizerSettingsError ? (
+              <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                settings 加载失败：{contextOptimizerSettingsError.message} ({contextOptimizerSettingsError.code})
+                {contextOptimizerSettingsError.requestId ? (
+                  <span className="ml-2">request_id: {contextOptimizerSettingsError.requestId}</span>
+                ) : null}
+              </div>
+            ) : null}
+
+            {contextOptimizerEnabled ? (
+              <div className="mt-3 grid gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-subtext">基于后端 prompt_preview 对比（sys.memory.*）</div>
+                  <button
+                    className="btn btn-ghost px-2 py-1 text-xs"
+                    disabled={optimizerCompareLoading}
+                    onClick={() => {
+                      lastOptimizerCompareKeyRef.current = null;
+                      void fetchOptimizerCompare();
+                    }}
+                    type="button"
+                  >
+                    刷新对比
+                  </button>
+                </div>
+
+                {optimizerCompareLoading ? <div className="text-xs text-subtext">{UI_COPY.common.loading}</div> : null}
+                {optimizerCompareError ? (
+                  <div className="text-xs text-amber-600 dark:text-amber-400">
+                    对比失败：{optimizerCompareError.message} ({optimizerCompareError.code})
+                    {optimizerCompareError.requestId ? <span className="ml-2">request_id: {optimizerCompareError.requestId}</span> : null}
+                  </div>
+                ) : null}
+
+                {optimizerCompare?.optimizerLog ? (
+                  <div className="rounded-atelier border border-border bg-surface p-3">
+                    <div className="text-xs text-ink">
+                      saved_tokens_estimate:{" "}
+                      <span className="font-mono">{optimizerCompare.optimizerLog.saved_tokens_estimate}</span>
+                    </div>
+                    <div className="mt-1 text-[11px] text-subtext">
+                      changed_blocks:{" "}
+                      <span className="font-mono">
+                        {optimizerCompare.optimizerLog.blocks.filter((b) => b.changed).length}/{optimizerCompare.optimizerLog.blocks.length}
+                      </span>
+                    </div>
+                    <div className="mt-2 grid gap-2">
+                      {optimizerCompare.optimizerLog.blocks.map((b) => (
+                        <div key={b.identifier} className="rounded-atelier border border-border bg-surface p-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="font-mono text-ink">{b.identifier}</span>
+                            <span className="font-mono text-subtext">
+                              {b.before_tokens} → {b.after_tokens}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-subtext">
+                            {b.changed ? "changed" : "unchanged"}
+                            {formatContextOptimizerDetails(b.details) ? (
+                              <span className="ml-2 font-mono">{formatContextOptimizerDetails(b.details)}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {optimizerCompare ? (
+                  <details className="rounded-atelier border border-border bg-surface p-3">
+                    <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                      diff（sys.memory.worldbook / sys.memory.structured）
+                    </summary>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <div>
+                        <div className="text-[11px] text-subtext">baseline</div>
+                        <pre className="mt-1 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                          {`${optimizerCompare.baseline.worldbook || "（worldbook 为空）"}\n\n${optimizerCompare.baseline.structured || "（structured 为空）"}`}
+                        </pre>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-subtext">optimized</div>
+                        <pre className="mt-1 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                          {`${optimizerCompare.optimized.worldbook || "（worldbook 为空）"}\n\n${optimizerCompare.optimized.structured || "（structured 为空）"}`}
+                        </pre>
+                      </div>
+                    </div>
+                  </details>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-3 text-xs text-subtext">未启用时不会执行对比请求。可在 SettingsPage 开启后再查看摘要与 diff。</div>
             )}
           </div>
         ) : null}

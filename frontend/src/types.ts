@@ -25,6 +25,7 @@ export interface ProjectSettings {
   world_setting: string;
   style_guide: string;
   constraints: string;
+  context_optimizer_enabled: boolean;
 
   query_preprocessing?: QueryPreprocessingConfig | null;
   query_preprocessing_default?: QueryPreprocessingConfig;

@@ -62,6 +62,7 @@ def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> 
     world_setting = (row.world_setting or "") if row is not None else ""
     style_guide = (row.style_guide or "") if row is not None else ""
     constraints = (row.constraints or "") if row is not None else ""
+    context_optimizer_enabled = bool(getattr(row, "context_optimizer_enabled", False)) if row is not None else False
 
     qp_default = QueryPreprocessingConfig()
     qp_override = _parse_query_preprocessing_json((row.query_preprocessing_json or "").strip() if row is not None else None)
@@ -182,6 +183,7 @@ def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> 
         world_setting=world_setting,
         style_guide=style_guide,
         constraints=constraints,
+        context_optimizer_enabled=context_optimizer_enabled,
         query_preprocessing=qp_override,
         query_preprocessing_default=qp_default,
         query_preprocessing_effective=qp_effective,
@@ -239,6 +241,9 @@ def put_settings(request: Request, db: DbDep, user_id: UserIdDep, project_id: st
         row.style_guide = body.style_guide
     if body.constraints is not None:
         row.constraints = body.constraints
+
+    if "context_optimizer_enabled" in body.model_fields_set:
+        row.context_optimizer_enabled = bool(body.context_optimizer_enabled)
 
     if "query_preprocessing" in body.model_fields_set:
         if body.query_preprocessing is None:

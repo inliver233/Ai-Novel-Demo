@@ -20,6 +20,7 @@ type SettingsForm = {
   world_setting: string;
   style_guide: string;
   constraints: string;
+  context_optimizer_enabled: boolean;
   query_preprocessing_enabled: boolean;
   query_preprocessing_tags: string;
   query_preprocessing_exclusion_rules: string;
@@ -67,6 +68,7 @@ export function SettingsPage() {
     world_setting: "",
     style_guide: "",
     constraints: "",
+    context_optimizer_enabled: false,
     query_preprocessing_enabled: false,
     query_preprocessing_tags: "",
     query_preprocessing_exclusion_rules: "",
@@ -106,6 +108,7 @@ export function SettingsPage() {
       world_setting: settings.world_setting ?? "",
       style_guide: settings.style_guide ?? "",
       constraints: settings.constraints ?? "",
+      context_optimizer_enabled: Boolean(settings.context_optimizer_enabled),
       query_preprocessing_enabled: Boolean(settings.query_preprocessing_effective?.enabled),
       query_preprocessing_tags: Array.isArray(settings.query_preprocessing_effective?.tags)
         ? settings.query_preprocessing_effective?.tags.join("\n")
@@ -354,6 +357,7 @@ export function SettingsPage() {
       settingsForm.world_setting !== baselineSettings.world_setting ||
       settingsForm.style_guide !== baselineSettings.style_guide ||
       settingsForm.constraints !== baselineSettings.constraints ||
+      settingsForm.context_optimizer_enabled !== baselineSettings.context_optimizer_enabled ||
       qpDirty ||
       settingsForm.vector_rerank_enabled !== baselineSettings.vector_rerank_effective_enabled ||
       settingsForm.vector_rerank_method.trim() !== baselineSettings.vector_rerank_effective_method ||
@@ -414,6 +418,7 @@ export function SettingsPage() {
         nextSettingsForm.world_setting !== baselineSettings.world_setting ||
         nextSettingsForm.style_guide !== baselineSettings.style_guide ||
         nextSettingsForm.constraints !== baselineSettings.constraints ||
+        nextSettingsForm.context_optimizer_enabled !== baselineSettings.context_optimizer_enabled ||
         qpDirty ||
         Boolean(nextSettingsForm.vector_rerank_enabled) !== Boolean(baselineSettings.vector_rerank_effective_enabled) ||
         rerankMethod !== baselineSettings.vector_rerank_effective_method ||
@@ -472,6 +477,7 @@ export function SettingsPage() {
                   world_setting: nextSettingsForm.world_setting,
                   style_guide: nextSettingsForm.style_guide,
                   constraints: nextSettingsForm.constraints,
+                  context_optimizer_enabled: Boolean(nextSettingsForm.context_optimizer_enabled),
                   ...(qpDirty ? { query_preprocessing: queryPreprocessFromForm(nextSettingsForm) } : {}),
                   vector_rerank_enabled: Boolean(nextSettingsForm.vector_rerank_enabled),
                   vector_rerank_method: rerankMethod,
@@ -558,6 +564,7 @@ export function SettingsPage() {
       settingsForm.world_setting,
       settingsForm.style_guide,
       settingsForm.constraints,
+      settingsForm.context_optimizer_enabled,
       settingsForm.query_preprocessing_enabled,
       settingsForm.query_preprocessing_tags,
       settingsForm.query_preprocessing_exclusion_rules,
@@ -1000,6 +1007,30 @@ export function SettingsPage() {
               </div>
             ) : null}
           </div>
+        </div>
+      </section>
+
+      <section className="panel p-6">
+        <div className="font-content text-xl">上下文优化（Context Optimizer）</div>
+        <div className="mt-1 text-xs text-subtext">
+          对 StructuredMemory / WORLD_BOOK 注入做去重、排序、表格化合并，用于节省 tokens 并提升可读性（默认关闭）。
+        </div>
+
+        <div className="mt-3 text-xs text-subtext">
+          status: {baselineSettings.context_optimizer_enabled ? "enabled" : "disabled"}
+        </div>
+
+        <div className="mt-4 grid gap-2">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={settingsForm.context_optimizer_enabled}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, context_optimizer_enabled: e.target.checked }))}
+              type="checkbox"
+            />
+            启用 ContextOptimizer（影响 Prompt 预览与生成）
+          </label>
+          <div className="text-[11px] text-subtext">提示：写作页「上下文预览」会显示优化摘要与 diff。</div>
         </div>
       </section>
 
