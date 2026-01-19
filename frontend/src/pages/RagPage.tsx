@@ -50,8 +50,8 @@ type VectorRagResult = {
   filters?: { project_id: string; sources: VectorSource[] };
   index?: VectorIndexState;
   timings_ms?: Record<string, number>;
-  candidates?: Array<{ id: string; distance?: number; text?: string; metadata?: Record<string, unknown> }>;
-  final?: { chunks: unknown[]; text_md: string; truncated: boolean };
+  candidates?: VectorChunk[];
+  final?: { chunks: VectorChunk[]; text_md: string; truncated: boolean };
   dropped?: Array<{ id?: string; reason: string }>;
   counts?: VectorRagCounts;
   prompt_block?: { identifier: string; role: string; text_md: string };
@@ -76,6 +76,13 @@ type VectorRagResult = {
     >;
   };
   error?: string;
+};
+
+type VectorChunk = {
+  id: string;
+  distance?: number;
+  text?: string;
+  metadata?: Record<string, unknown>;
 };
 
 type KnowledgeBase = {
@@ -603,6 +610,85 @@ export function RagPage() {
   }, [projectId, queryText, selectedKbIds, sortedSources, toast]);
 
   const injectionText = (queryResult?.prompt_block?.text_md ?? "").trim();
+  const finalChunks = queryResult?.final?.chunks ?? [];
+
+  const groupedFinalChunks = useMemo(() => {
+    type GroupChunk = {
+      id: string;
+      distance: number | null;
+      text: string;
+      source: string;
+      sourceId: string;
+      title: string;
+      chapterNumber: number | null;
+      chunkIndex: number;
+      metadata: Record<string, unknown>;
+    };
+
+    type ChapterGroup = {
+      key: string;
+      sourceId: string;
+      title: string;
+      chapterNumber: number | null;
+      chunks: GroupChunk[];
+    };
+
+    const bySource = new Map<string, Map<string, ChapterGroup>>();
+
+    for (const raw of finalChunks) {
+      const meta = (raw.metadata ?? {}) as Record<string, unknown>;
+      const source = typeof meta.source === "string" ? meta.source : "unknown";
+      const sourceId = typeof meta.source_id === "string" ? meta.source_id : "";
+      const title = typeof meta.title === "string" ? meta.title : "";
+      const chapterRaw = meta.chapter_number;
+      const chapterNumber = typeof chapterRaw === "number" ? chapterRaw : Number(chapterRaw);
+      const chapter = Number.isFinite(chapterNumber) ? chapterNumber : null;
+      const chunkRaw = meta.chunk_index;
+      const chunkIndex = typeof chunkRaw === "number" ? chunkRaw : Number(chunkRaw);
+      const idx = Number.isFinite(chunkIndex) ? chunkIndex : 0;
+
+      const groupKey = `${chapter ?? "-"}::${sourceId || title || raw.id}`;
+      const chunk: GroupChunk = {
+        id: raw.id,
+        distance: typeof raw.distance === "number" && Number.isFinite(raw.distance) ? raw.distance : null,
+        text: String(raw.text ?? ""),
+        source,
+        sourceId,
+        title,
+        chapterNumber: chapter,
+        chunkIndex: idx,
+        metadata: meta,
+      };
+
+      let sourceMap = bySource.get(source);
+      if (!sourceMap) {
+        sourceMap = new Map<string, ChapterGroup>();
+        bySource.set(source, sourceMap);
+      }
+      let chapterGroup = sourceMap.get(groupKey);
+      if (!chapterGroup) {
+        chapterGroup = { key: groupKey, sourceId, title, chapterNumber: chapter, chunks: [] };
+        sourceMap.set(groupKey, chapterGroup);
+      }
+      chapterGroup.chunks.push(chunk);
+    }
+
+    const sources = [...bySource.entries()].map(([source, chapters]) => {
+      const chapterGroups = [...chapters.values()];
+      chapterGroups.sort((a, b) => {
+        if (a.chapterNumber != null && b.chapterNumber != null) return a.chapterNumber - b.chapterNumber;
+        const at = a.title || a.sourceId || a.key;
+        const bt = b.title || b.sourceId || b.key;
+        return at.localeCompare(bt);
+      });
+      for (const g of chapterGroups) {
+        g.chunks.sort((a, b) => a.chunkIndex - b.chunkIndex || a.id.localeCompare(b.id));
+      }
+      return { source, chapterGroups };
+    });
+    sources.sort((a, b) => a.source.localeCompare(b.source));
+    return sources;
+  }, [finalChunks]);
 
   const copyInjectionText = useCallback(async () => {
     if (!injectionText) {
@@ -1087,6 +1173,56 @@ export function RagPage() {
                 <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap text-[11px] leading-4 text-subtext">
                   {injectionText || "(empty)"}
                 </pre>
+              </details>
+
+              <details className="mt-3 rounded-atelier border border-border bg-canvas p-3">
+                <summary className="cursor-pointer select-none text-xs">final.chunks（按 source/chapter 分组）</summary>
+                <div className="mt-2 grid gap-2">
+                  {finalChunks.length === 0 ? (
+                    <div className="text-[11px] text-subtext">（空）</div>
+                  ) : (
+                    groupedFinalChunks.map((src) => (
+                      <details key={src.source} className="rounded-atelier border border-border bg-surface p-2" open>
+                        <summary className="cursor-pointer select-none text-xs text-subtext hover:text-ink">
+                          source: {src.source}（{src.chapterGroups.reduce((acc, g) => acc + g.chunks.length, 0)}）
+                        </summary>
+                        <div className="mt-2 grid gap-2">
+                          {src.chapterGroups.map((g) => (
+                            <details key={g.key} className="rounded-atelier border border-border bg-canvas p-2" open>
+                              <summary className="cursor-pointer select-none text-xs text-subtext hover:text-ink">
+                                {g.chapterNumber != null ? `chapter ${g.chapterNumber}` : "entry"}
+                                {g.title ? ` | ${g.title}` : ""}
+                                {g.sourceId ? ` | ${g.sourceId}` : ""}（{g.chunks.length}）
+                              </summary>
+                              <div className="mt-2 grid gap-2">
+                                {g.chunks.map((c) => (
+                                  <details key={c.id} className="rounded-atelier border border-border bg-surface p-2">
+                                    <summary className="cursor-pointer select-none text-xs text-subtext hover:text-ink">
+                                      chunk_index:{c.chunkIndex}
+                                      {c.distance != null ? ` | distance:${c.distance.toFixed(4)}` : ""}
+                                      {c.title ? ` | ${c.title}` : ""}
+                                    </summary>
+                                    <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-atelier border border-border bg-canvas p-2 text-[11px] leading-4 text-subtext">
+                                      {(c.text || "").trim() || "（空）"}
+                                    </pre>
+                                    <details className="mt-2">
+                                      <summary className="cursor-pointer select-none text-[11px] text-subtext hover:text-ink">
+                                        metadata
+                                      </summary>
+                                      <pre className="mt-2 max-h-48 overflow-auto rounded-atelier border border-border bg-canvas p-2 text-[11px] leading-4 text-subtext">
+                                        {safeJson(c.metadata)}
+                                      </pre>
+                                    </details>
+                                  </details>
+                                ))}
+                              </div>
+                            </details>
+                          ))}
+                        </div>
+                      </details>
+                    ))
+                  )}
+                </div>
               </details>
 
               <details className="mt-3 rounded-atelier border border-border bg-canvas p-3">
