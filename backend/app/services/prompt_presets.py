@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import time
+from collections import OrderedDict
 from dataclasses import dataclass
+from threading import Lock
 from typing import Any
 
 from sqlalchemy import select
@@ -27,6 +31,45 @@ DEFAULT_OUTLINE_PRESET_NAME = "默认·大纲生成 v3（推荐）"
 DEFAULT_CHAPTER_PRESET_NAME = "默认·章节生成 v3（推荐）"
 DEFAULT_CHAPTER_ANALYZE_PRESET_NAME = "默认·章节分析 v1（推荐）"
 DEFAULT_CHAPTER_REWRITE_PRESET_NAME = "默认·章节重写 v1（推荐）"
+
+_PROMPT_BLOCK_RENDER_CACHE_MAX_ENTRIES = 512
+_prompt_block_render_cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
+_prompt_block_render_cache_lock = Lock()
+
+
+def _hash_json(value: Any) -> str | None:
+    try:
+        raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    except Exception:
+        return None
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _hash_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _prompt_block_cache_get(key: str, *, ttl_seconds: int | None) -> tuple[dict[str, Any] | None, str]:
+    now = time.time()
+    with _prompt_block_render_cache_lock:
+        entry = _prompt_block_render_cache.get(key)
+        if entry is None:
+            return None, "miss"
+        created_at, payload = entry
+        if isinstance(ttl_seconds, int) and ttl_seconds > 0 and now - created_at > ttl_seconds:
+            del _prompt_block_render_cache[key]
+            return None, "expired"
+        _prompt_block_render_cache.move_to_end(key, last=True)
+        return payload, "hit"
+
+
+def _prompt_block_cache_set(key: str, *, payload: dict[str, Any]) -> None:
+    now = time.time()
+    with _prompt_block_render_cache_lock:
+        _prompt_block_render_cache[key] = (now, payload)
+        _prompt_block_render_cache.move_to_end(key, last=True)
+        while len(_prompt_block_render_cache) > _PROMPT_BLOCK_RENDER_CACHE_MAX_ENTRIES:
+            _prompt_block_render_cache.popitem(last=False)
 
 
 def parse_json_list(raw: str | None) -> list[str]:
@@ -338,6 +381,8 @@ def render_preset_for_task(
     all_missing: set[str] = set()
     block_states: list[dict] = []
     effective_index_by_identifier: dict[str, int] = {}
+    cache_hit: list[dict[str, Any]] = []
+    cache_miss: list[dict[str, Any]] = []
 
     def _try_get_marker_value(values_obj: dict[str, Any], marker_key: str) -> tuple[bool, Any]:
         if marker_key in values_obj:
@@ -378,14 +423,72 @@ def render_preset_for_task(
             reason_parts.append("override_forbidden")
         else:
             render_values = values
+            base_text: str | None = None
             if prev_state is not None:
                 original_text = str(prev_state.get("text_after") or prev_state.get("text_before") or "")
+                base_text = original_text
                 render_values = dict(values)
                 render_values["original"] = original_text
                 render_values["base"] = original_text
 
+            cache_cfg = parse_json_dict(b.cache_json)
+            cache_enabled = bool(cache_cfg.get("enabled", False))
+            cache_ttl_seconds = cache_cfg.get("ttl_seconds", cache_cfg.get("ttl", cache_cfg.get("max_age_seconds")))
+            ttl_seconds: int | None = cache_ttl_seconds if isinstance(cache_ttl_seconds, int) and cache_ttl_seconds > 0 else None
+
             if b.template:
-                text, missing, render_error = render_template(b.template, render_values, macro_seed=macro_seed)
+                cache_key: str | None = None
+                cache_status: str | None = None
+                cache_reason: str | None = None
+                if cache_enabled:
+                    strategy = str(cache_cfg.get("key_strategy", cache_cfg.get("strategy") or "")).strip().lower() or "marker_or_values"
+                    marker_key_for_cache = cache_cfg.get("marker_key")
+                    marker_key = (
+                        str(marker_key_for_cache).strip()
+                        if isinstance(marker_key_for_cache, str) and str(marker_key_for_cache).strip()
+                        else (str(b.marker_key).strip() if b.marker_key else None)
+                    )
+
+                    values_hash: str | None
+                    if marker_key is not None and strategy in ("marker", "marker_key", "marker_or_values"):
+                        found, marker_value = _try_get_marker_value(values, marker_key)
+                        marker_hash = _hash_json(marker_value) if found else "missing"
+                        values_hash = marker_hash if marker_hash is not None else None
+                    else:
+                        values_hash = _hash_json(values)
+
+                    base_hash = _hash_text(base_text) if isinstance(base_text, str) else None
+                    template_hash = _hash_text(str(b.template or ""))
+                    seed_hash = _hash_text(str(macro_seed or ""))
+
+                    if values_hash is None:
+                        cache_status = "skip"
+                        cache_reason = "unhashable_values"
+                    else:
+                        cache_key = f"v1|{b.id}|{task}|{template_hash}|{seed_hash}|{values_hash}|{base_hash or '-'}"
+                        cached, cache_status = _prompt_block_cache_get(cache_key, ttl_seconds=ttl_seconds)
+                        if cached is not None:
+                            text = str(cached.get("text") or "")
+                            missing = list(cached.get("missing") or [])
+                            render_error = str(cached.get("render_error") or "") or None
+                        else:
+                            cache_reason = cache_status
+
+                if cache_key is not None and cache_status == "hit":
+                    cache_hit.append({"id": b.id, "identifier": b.identifier})
+                elif cache_enabled:
+                    cache_miss.append(
+                        {
+                            "id": b.id,
+                            "identifier": b.identifier,
+                            "reason": cache_reason or cache_status or "miss",
+                        }
+                    )
+
+                if cache_key is None or cache_status != "hit":
+                    text, missing, render_error = render_template(b.template, render_values, macro_seed=macro_seed)
+                    if cache_key is not None and (render_error is None):
+                        _prompt_block_cache_set(cache_key, payload={"text": text, "missing": missing, "render_error": render_error})
                 if render_error:
                     reason_parts.append("template_error")
             elif b.marker_key:
@@ -655,6 +758,8 @@ def render_preset_for_task(
         "preset_id": preset.id,
         "context_optimizer": optimizer_log,
         "unified_context_budget": unified_log,
+        "cache_hit": cache_hit,
+        "cache_miss": cache_miss,
         "prompt_budget_tokens": budget_tokens,
         "prompt_budget_source": budget_source,
         "prompt_budget_calc": budget_calc,
