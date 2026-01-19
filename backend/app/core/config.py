@@ -27,6 +27,14 @@ TaskQueueBackend = Literal["rq", "inline"]
 CookieSameSite = Literal["lax", "strict", "none"]
 VectorBackend = Literal["auto", "chroma", "pgvector"]
 VectorChromaCollectionNaming = Literal["legacy", "hash"]
+VectorEmbeddingProvider = Literal[
+    "openai_compatible",
+    "azure_openai",
+    "google",
+    "custom",
+    "local_proxy",
+    "sentence_transformers",
+]
 
 
 class Settings(BaseSettings):
@@ -56,9 +64,13 @@ class Settings(BaseSettings):
 
     vector_chroma_persist_dir: str | None = None
     vector_chroma_collection_naming: VectorChromaCollectionNaming = "hash"
+    vector_embedding_provider: VectorEmbeddingProvider = "openai_compatible"
     vector_embedding_base_url: str | None = None
     vector_embedding_model: str | None = None
     vector_embedding_api_key: str | None = None
+    vector_embedding_azure_deployment: str | None = None
+    vector_embedding_azure_api_version: str | None = None
+    vector_embedding_sentence_transformers_model: str | None = None
     vector_backend: VectorBackend = "auto"
     vector_hybrid_enabled: bool = True
     vector_rerank_enabled: bool = False
@@ -284,6 +296,39 @@ class Settings(BaseSettings):
             return raw
         raise ValueError("VECTOR_CHROMA_COLLECTION_NAMING must be legacy|hash")
 
+    @field_validator("vector_embedding_provider", mode="before")
+    @classmethod
+    def _normalize_vector_embedding_provider(cls, value: object) -> str:
+        raw = str(value or "").strip().lower().replace("-", "_")
+        if not raw:
+            return "openai_compatible"
+        aliases = {
+            "openai": "openai_compatible",
+            "openai_compat": "openai_compatible",
+            "azure": "azure_openai",
+            "azure_openai": "azure_openai",
+            "google": "google",
+            "gemini": "google",
+            "custom": "custom",
+            "local_proxy": "local_proxy",
+            "sentence_transformers": "sentence_transformers",
+            "sentence_transformer": "sentence_transformers",
+            "st": "sentence_transformers",
+        }
+        normalized = aliases.get(raw, raw)
+        if normalized not in (
+            "openai_compatible",
+            "azure_openai",
+            "google",
+            "custom",
+            "local_proxy",
+            "sentence_transformers",
+        ):
+            raise ValueError(
+                "VECTOR_EMBEDDING_PROVIDER must be openai_compatible|azure_openai|google|custom|local_proxy|sentence_transformers"
+            )
+        return normalized
+
     @field_validator("vector_embedding_base_url", mode="before")
     @classmethod
     def _normalize_vector_embedding_base_url(cls, value: object) -> str | None:
@@ -299,6 +344,24 @@ class Settings(BaseSettings):
     @field_validator("vector_embedding_api_key", mode="before")
     @classmethod
     def _normalize_vector_embedding_api_key(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("vector_embedding_azure_deployment", mode="before")
+    @classmethod
+    def _normalize_vector_embedding_azure_deployment(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("vector_embedding_azure_api_version", mode="before")
+    @classmethod
+    def _normalize_vector_embedding_azure_api_version(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("vector_embedding_sentence_transformers_model", mode="before")
+    @classmethod
+    def _normalize_vector_embedding_sentence_transformers_model(cls, value: object) -> str | None:
         raw = str(value or "").strip()
         return raw or None
 
