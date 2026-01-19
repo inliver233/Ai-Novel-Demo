@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { Drawer } from "../components/ui/Drawer";
@@ -81,6 +81,88 @@ export function WorldBookPage() {
 
   const [baseline, setBaseline] = useState<WorldBookEntryForm | null>(null);
   const [form, setForm] = useState<WorldBookEntryForm>(() => toForm(null));
+
+  const [searchText, setSearchText] = useState("");
+  const [sortMode, setSortMode] = useState<"updated_desc" | "updated_asc" | "priority_desc" | "priority_asc" | "enabled_desc" | "enabled_asc">(
+    "updated_desc",
+  );
+
+  useEffect(() => {
+    if (!projectId) return;
+    try {
+      const raw = localStorage.getItem(`ainovel:worldbook:filter:${projectId}`) || "";
+      const parsed = JSON.parse(raw) as { searchText?: unknown; sortMode?: unknown } | null;
+      if (parsed && typeof parsed === "object") {
+        if (typeof parsed.searchText === "string") setSearchText(parsed.searchText);
+        if (typeof parsed.sortMode === "string") {
+          const v = parsed.sortMode;
+          if (
+            v === "updated_desc" ||
+            v === "updated_asc" ||
+            v === "priority_desc" ||
+            v === "priority_asc" ||
+            v === "enabled_desc" ||
+            v === "enabled_asc"
+          ) {
+            setSortMode(v);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    try {
+      localStorage.setItem(`ainovel:worldbook:filter:${projectId}`, JSON.stringify({ searchText, sortMode }));
+    } catch {
+      // ignore
+    }
+  }, [projectId, searchText, sortMode]);
+
+  const filteredEntries = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    const tokens = q ? q.split(/\s+/g).filter(Boolean) : [];
+    const priorityRank: Record<WorldBookPriority, number> = {
+      must: 3,
+      important: 2,
+      optional: 1,
+      drop_first: 0,
+    };
+
+    const filtered = tokens.length
+      ? entries.filter((e) => {
+          const title = String(e.title || "").toLowerCase();
+          const keywords = (e.keywords ?? []).map((k) => String(k || "").toLowerCase());
+          return tokens.every((t) => title.includes(t) || keywords.some((k) => k.includes(t)));
+        })
+      : entries;
+
+    const out = [...filtered];
+    const byUpdatedAt = (a: WorldBookEntry, b: WorldBookEntry) => {
+      const at = Date.parse(a.updated_at);
+      const bt = Date.parse(b.updated_at);
+      const av = Number.isFinite(at) ? at : 0;
+      const bv = Number.isFinite(bt) ? bt : 0;
+      return av - bv;
+    };
+    const byPriority = (a: WorldBookEntry, b: WorldBookEntry) => priorityRank[a.priority] - priorityRank[b.priority];
+    const byEnabled = (a: WorldBookEntry, b: WorldBookEntry) => Number(Boolean(a.enabled)) - Number(Boolean(b.enabled));
+
+    out.sort((a, b) => {
+      if (sortMode === "updated_asc") return byUpdatedAt(a, b) || a.id.localeCompare(b.id);
+      if (sortMode === "updated_desc") return byUpdatedAt(b, a) || a.id.localeCompare(b.id);
+      if (sortMode === "priority_asc") return byPriority(a, b) || byUpdatedAt(b, a) || a.id.localeCompare(b.id);
+      if (sortMode === "priority_desc") return byPriority(b, a) || byUpdatedAt(b, a) || a.id.localeCompare(b.id);
+      if (sortMode === "enabled_asc") return byEnabled(a, b) || byUpdatedAt(b, a) || a.id.localeCompare(b.id);
+      if (sortMode === "enabled_desc") return byEnabled(b, a) || byUpdatedAt(b, a) || a.id.localeCompare(b.id);
+      return byUpdatedAt(b, a) || a.id.localeCompare(b.id);
+    });
+
+    return out;
+  }, [entries, searchText, sortMode]);
 
   const dirty = useMemo(() => {
     if (!baseline) return false;
@@ -252,7 +334,8 @@ export function WorldBookPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm text-subtext">
           {UI_COPY.worldbook.entriesCountPrefix}
-          {entries.length}
+          {filteredEntries.length}
+          {filteredEntries.length === entries.length ? "" : ` / ${entries.length}`}
           {UI_COPY.worldbook.entriesCountSuffix}
         </div>
         <div className="flex gap-2">
@@ -272,11 +355,40 @@ export function WorldBookPage() {
 
           {loading ? <div className="mt-3 text-sm text-subtext">{UI_COPY.common.loading}</div> : null}
 
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1 sm:col-span-2">
+              <span className="text-xs text-subtext">搜索（title / keyword）</span>
+              <input
+                className="input"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                aria-label="worldbook_search"
+                placeholder="dragon"
+              />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">排序</span>
+              <select
+                className="select"
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
+                aria-label="worldbook_sort"
+              >
+                <option value="updated_desc">updated_at ↓</option>
+                <option value="updated_asc">updated_at ↑</option>
+                <option value="priority_desc">priority ↓</option>
+                <option value="priority_asc">priority ↑</option>
+                <option value="enabled_desc">enabled ↓</option>
+                <option value="enabled_asc">enabled ↑</option>
+              </select>
+            </label>
+          </div>
+
           <div className="mt-4 grid gap-3">
-            {entries.length === 0 ? (
+            {filteredEntries.length === 0 ? (
               <div className="text-sm text-subtext">{UI_COPY.worldbook.empty}</div>
             ) : (
-              entries.map((e) => (
+              filteredEntries.map((e) => (
                 <button
                   key={e.id}
                   className="panel-interactive ui-focus-ring p-4 text-left"

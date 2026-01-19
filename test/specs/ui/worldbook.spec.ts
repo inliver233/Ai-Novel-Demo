@@ -1,6 +1,7 @@
 import { test, expect } from "../../lib/ui-test";
 
 import { bootstrapProject } from "../../lib/bootstrap";
+import { loadState } from "../../lib/state";
 
 test("ui: worldbook CRUD + preview_trigger", async ({ page, request }) => {
   const { projectId } = await bootstrapProject(request);
@@ -126,4 +127,45 @@ test("ui: worldbook keyword boundary avoids substring false positive", async ({ 
   await previewPanel.getByRole("button", { name: "预览", exact: true }).click();
   await expect(previewPanel.getByText("触发 1 条")).toBeVisible();
   await expect(previewPanel.getByText("keyword:word:he | priority:important", { exact: true })).toBeVisible();
+});
+
+test("ui: worldbook supports search + sort", async ({ page, request }) => {
+  const state = loadState();
+  const { projectId } = await bootstrapProject(request);
+
+  const makeEntry = async (title: string, keyword: string, priority: "drop_first" | "optional" | "important" | "must", enabled: boolean) => {
+    const res = await request.post(`${state.backendUrl}/api/projects/${projectId}/worldbook_entries`, {
+      data: {
+        title,
+        content_md: `${title} content ${keyword}`,
+        enabled,
+        constant: false,
+        keywords: [keyword],
+        exclude_recursion: false,
+        prevent_recursion: false,
+        char_limit: 12000,
+        priority,
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+  };
+
+  await makeEntry("Alpha", "alpha", "optional", true);
+  await makeEntry("Beta", "dragon", "must", false);
+  await makeEntry("Gamma", "dragon", "important", true);
+
+  await page.goto(`/projects/${projectId}/worldbook`);
+  await expect(page.getByText("条目列表", { exact: true })).toBeVisible();
+
+  const sort = page.getByLabel("worldbook_sort", { exact: true });
+  const search = page.getByLabel("worldbook_search", { exact: true });
+
+  await sort.selectOption("priority_desc");
+  const first1 = page.locator("button.panel-interactive").first();
+  await expect(first1).toContainText("Beta");
+
+  await search.fill("dragon");
+  await sort.selectOption("enabled_desc");
+  const first2 = page.locator("button.panel-interactive").first();
+  await expect(first2).toContainText("Gamma");
 });
