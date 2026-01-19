@@ -27,8 +27,12 @@ type SettingsForm = {
   vector_rerank_enabled: boolean;
   vector_rerank_method: string;
   vector_rerank_top_k: number;
+  vector_embedding_provider: string;
   vector_embedding_base_url: string;
   vector_embedding_model: string;
+  vector_embedding_azure_deployment: string;
+  vector_embedding_azure_api_version: string;
+  vector_embedding_sentence_transformers_model: string;
 };
 type SettingsLoaded = { project: Project; settings: ProjectSettings };
 type SaveSnapshot = { projectForm: ProjectForm; settingsForm: SettingsForm };
@@ -70,8 +74,12 @@ export function SettingsPage() {
     vector_rerank_enabled: false,
     vector_rerank_method: "auto",
     vector_rerank_top_k: 20,
+    vector_embedding_provider: "",
     vector_embedding_base_url: "",
     vector_embedding_model: "",
+    vector_embedding_azure_deployment: "",
+    vector_embedding_azure_api_version: "",
+    vector_embedding_sentence_transformers_model: "",
   });
   const [vectorApiKeyDraft, setVectorApiKeyDraft] = useState("");
   const [vectorApiKeyClearRequested, setVectorApiKeyClearRequested] = useState(false);
@@ -109,8 +117,12 @@ export function SettingsPage() {
       vector_rerank_enabled: Boolean(settings.vector_rerank_effective_enabled),
       vector_rerank_method: String(settings.vector_rerank_effective_method ?? "auto") || "auto",
       vector_rerank_top_k: Number(settings.vector_rerank_effective_top_k ?? 20) || 20,
+      vector_embedding_provider: settings.vector_embedding_provider ?? "",
       vector_embedding_base_url: settings.vector_embedding_base_url ?? "",
       vector_embedding_model: settings.vector_embedding_model ?? "",
+      vector_embedding_azure_deployment: settings.vector_embedding_azure_deployment ?? "",
+      vector_embedding_azure_api_version: settings.vector_embedding_azure_api_version ?? "",
+      vector_embedding_sentence_transformers_model: settings.vector_embedding_sentence_transformers_model ?? "",
     });
     setVectorApiKeyDraft("");
     setVectorApiKeyClearRequested(false);
@@ -347,8 +359,12 @@ export function SettingsPage() {
       settingsForm.vector_rerank_method.trim() !== baselineSettings.vector_rerank_effective_method ||
       Math.max(1, Math.min(1000, Math.floor(settingsForm.vector_rerank_top_k))) !==
         baselineSettings.vector_rerank_effective_top_k ||
+      settingsForm.vector_embedding_provider !== baselineSettings.vector_embedding_provider ||
       settingsForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
       settingsForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
+      settingsForm.vector_embedding_azure_deployment !== baselineSettings.vector_embedding_azure_deployment ||
+      settingsForm.vector_embedding_azure_api_version !== baselineSettings.vector_embedding_azure_api_version ||
+      settingsForm.vector_embedding_sentence_transformers_model !== baselineSettings.vector_embedding_sentence_transformers_model ||
       vectorApiKeyDirty
     );
   }, [
@@ -402,8 +418,13 @@ export function SettingsPage() {
         Boolean(nextSettingsForm.vector_rerank_enabled) !== Boolean(baselineSettings.vector_rerank_effective_enabled) ||
         rerankMethod !== baselineSettings.vector_rerank_effective_method ||
         rerankTopK !== baselineSettings.vector_rerank_effective_top_k ||
+        nextSettingsForm.vector_embedding_provider !== baselineSettings.vector_embedding_provider ||
         nextSettingsForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
         nextSettingsForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
+        nextSettingsForm.vector_embedding_azure_deployment !== baselineSettings.vector_embedding_azure_deployment ||
+        nextSettingsForm.vector_embedding_azure_api_version !== baselineSettings.vector_embedding_azure_api_version ||
+        nextSettingsForm.vector_embedding_sentence_transformers_model !==
+          baselineSettings.vector_embedding_sentence_transformers_model ||
         vectorApiKeyDirty;
       if (!projectDirty && !settingsDirty) return true;
 
@@ -455,8 +476,12 @@ export function SettingsPage() {
                   vector_rerank_enabled: Boolean(nextSettingsForm.vector_rerank_enabled),
                   vector_rerank_method: rerankMethod,
                   vector_rerank_top_k: rerankTopK,
+                  vector_embedding_provider: nextSettingsForm.vector_embedding_provider,
                   vector_embedding_base_url: nextSettingsForm.vector_embedding_base_url,
                   vector_embedding_model: nextSettingsForm.vector_embedding_model,
+                  vector_embedding_azure_deployment: nextSettingsForm.vector_embedding_azure_deployment,
+                  vector_embedding_azure_api_version: nextSettingsForm.vector_embedding_azure_api_version,
+                  vector_embedding_sentence_transformers_model: nextSettingsForm.vector_embedding_sentence_transformers_model,
                   ...(vectorApiKeyDirty
                     ? { vector_embedding_api_key: vectorApiKeyClearRequested ? "" : vectorApiKeyDraft }
                     : {}),
@@ -540,14 +565,24 @@ export function SettingsPage() {
       settingsForm.vector_rerank_enabled,
       settingsForm.vector_rerank_method,
       settingsForm.vector_rerank_top_k,
+      settingsForm.vector_embedding_provider,
       settingsForm.vector_embedding_base_url,
       settingsForm.vector_embedding_model,
+      settingsForm.vector_embedding_azure_deployment,
+      settingsForm.vector_embedding_azure_api_version,
+      settingsForm.vector_embedding_sentence_transformers_model,
     ],
   });
 
   const loading = settingsQuery.loading;
   if (loading) return <div className="text-subtext">加载中...</div>;
   if (!baselineProject || !baselineSettings) return <div className="text-subtext">项目加载失败</div>;
+
+  const embeddingProviderPreview = (
+    settingsForm.vector_embedding_provider.trim() ||
+    baselineSettings.vector_embedding_effective_provider ||
+    "openai_compatible"
+  ).trim();
 
   return (
     <div className="grid gap-6">
@@ -638,7 +673,8 @@ export function SettingsPage() {
         </div>
 
         <div className="mt-3 text-xs text-subtext">
-          status: {baselineSettings.vector_embedding_effective_disabled_reason ?? "enabled"} | source:{" "}
+          provider: {baselineSettings.vector_embedding_effective_provider || "openai_compatible"} | status:{" "}
+          {baselineSettings.vector_embedding_effective_disabled_reason ?? "enabled"} | source:{" "}
           {baselineSettings.vector_embedding_effective_source}
         </div>
         <div className="mt-1 text-xs text-subtext">
@@ -688,6 +724,73 @@ export function SettingsPage() {
               />
             </label>
           </div>
+
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">Provider（项目覆盖；留空=env fallback）</span>
+            <select
+              className="select"
+              value={settingsForm.vector_embedding_provider}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, vector_embedding_provider: e.target.value }))}
+            >
+              <option value="">（env fallback）</option>
+              <option value="openai_compatible">openai_compatible</option>
+              <option value="azure_openai">azure_openai</option>
+              <option value="google">google</option>
+              <option value="custom">custom</option>
+              <option value="local_proxy">local_proxy</option>
+              <option value="sentence_transformers">sentence_transformers</option>
+            </select>
+            <div className="text-[11px] text-subtext">
+              当前有效：{baselineSettings.vector_embedding_effective_provider || "openai_compatible"}
+            </div>
+          </label>
+
+          {embeddingProviderPreview === "azure_openai" ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1">
+                <span className="text-xs text-subtext">Azure deployment（项目覆盖；留空=env fallback）</span>
+                <input
+                  className="input"
+                  value={settingsForm.vector_embedding_azure_deployment}
+                  onChange={(e) =>
+                    setSettingsForm((v) => ({ ...v, vector_embedding_azure_deployment: e.target.value }))
+                  }
+                />
+                <div className="text-[11px] text-subtext">
+                  当前有效：{baselineSettings.vector_embedding_effective_azure_deployment || "（空）"}
+                </div>
+              </label>
+              <label className="grid gap-1">
+                <span className="text-xs text-subtext">Azure api_version（项目覆盖；留空=env fallback）</span>
+                <input
+                  className="input"
+                  value={settingsForm.vector_embedding_azure_api_version}
+                  onChange={(e) =>
+                    setSettingsForm((v) => ({ ...v, vector_embedding_azure_api_version: e.target.value }))
+                  }
+                />
+                <div className="text-[11px] text-subtext">
+                  当前有效：{baselineSettings.vector_embedding_effective_azure_api_version || "（空）"}
+                </div>
+              </label>
+            </div>
+          ) : null}
+
+          {embeddingProviderPreview === "sentence_transformers" ? (
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">SentenceTransformers 模型（项目覆盖；留空=env fallback）</span>
+              <input
+                className="input"
+                value={settingsForm.vector_embedding_sentence_transformers_model}
+                onChange={(e) =>
+                  setSettingsForm((v) => ({ ...v, vector_embedding_sentence_transformers_model: e.target.value }))
+                }
+              />
+              <div className="text-[11px] text-subtext">
+                当前有效：{baselineSettings.vector_embedding_effective_sentence_transformers_model || "（空）"}
+              </div>
+            </label>
+          ) : null}
 
           <label className="grid gap-1">
             <span className="text-xs text-subtext">Base URL（项目覆盖；留空=env fallback）</span>
@@ -759,7 +862,15 @@ export function SettingsPage() {
               className="btn btn-secondary"
               disabled={saving}
               onClick={() => {
-                setSettingsForm((v) => ({ ...v, vector_embedding_base_url: "", vector_embedding_model: "" }));
+                setSettingsForm((v) => ({
+                  ...v,
+                  vector_embedding_provider: "",
+                  vector_embedding_base_url: "",
+                  vector_embedding_model: "",
+                  vector_embedding_azure_deployment: "",
+                  vector_embedding_azure_api_version: "",
+                  vector_embedding_sentence_transformers_model: "",
+                }));
                 setVectorApiKeyDraft("");
                 setVectorApiKeyClearRequested(true);
               }}

@@ -10,6 +10,7 @@ from app.core.errors import AppError, ok_payload
 from app.core.secrets import SecretCryptoError, decrypt_secret, encrypt_secret, mask_api_key
 from app.models.project_settings import ProjectSettings
 from app.schemas.settings import ProjectSettingsOut, ProjectSettingsUpdate, QueryPreprocessingConfig
+from app.services.embedding_service import embedding_enabled_reason, resolve_embedding_config
 
 router = APIRouter()
 
@@ -32,14 +33,29 @@ def _parse_query_preprocessing_json(raw: str | None) -> QueryPreprocessingConfig
         return None
 
 
-def _vector_effective_disabled_reason(*, base_url: str, model: str, has_api_key: bool) -> str | None:
-    if not base_url.strip():
-        return _VECTOR_DISABLED_BASE_URL_MISSING
-    if not model.strip():
-        return _VECTOR_DISABLED_MODEL_MISSING
-    if not has_api_key:
-        return _VECTOR_DISABLED_API_KEY_MISSING
-    return None
+def _vector_effective_disabled_reason(
+    *,
+    provider: str,
+    base_url: str,
+    model: str,
+    has_api_key: bool,
+    azure_deployment: str,
+    azure_api_version: str,
+    sentence_transformers_model: str,
+) -> str | None:
+    cfg = resolve_embedding_config(
+        {
+            "provider": provider,
+            "base_url": base_url,
+            "model": model,
+            "api_key": "present" if has_api_key else None,
+            "azure_deployment": azure_deployment,
+            "azure_api_version": azure_api_version,
+            "sentence_transformers_model": sentence_transformers_model,
+        }
+    )
+    enabled, disabled_reason = embedding_enabled_reason(cfg)
+    return None if enabled else disabled_reason
 
 
 def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> dict:
@@ -82,14 +98,22 @@ def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> 
     else:
         rerank_effective_source = "default"
 
+    override_provider = (row.vector_embedding_provider or "").strip() if row is not None else ""
     override_base_url = (row.vector_embedding_base_url or "").strip() if row is not None else ""
     override_model = (row.vector_embedding_model or "").strip() if row is not None else ""
+    override_azure_deployment = (row.vector_embedding_azure_deployment or "").strip() if row is not None else ""
+    override_azure_api_version = (row.vector_embedding_azure_api_version or "").strip() if row is not None else ""
+    override_st_model = (row.vector_embedding_sentence_transformers_model or "").strip() if row is not None else ""
     override_ciphertext = row.vector_embedding_api_key_ciphertext if row is not None else None
     override_masked = (row.vector_embedding_api_key_masked or "").strip() if row is not None else ""
     override_has_api_key = bool(override_ciphertext)
 
+    env_provider = str(getattr(settings, "vector_embedding_provider", "openai_compatible") or "openai_compatible").strip()
     env_base_url = str(settings.vector_embedding_base_url or "").strip()
     env_model = str(settings.vector_embedding_model or "").strip()
+    env_azure_deployment = str(getattr(settings, "vector_embedding_azure_deployment", "") or "").strip()
+    env_azure_api_version = str(getattr(settings, "vector_embedding_azure_api_version", "") or "").strip()
+    env_st_model = str(getattr(settings, "vector_embedding_sentence_transformers_model", "") or "").strip()
     env_api_key = str(settings.vector_embedding_api_key or "").strip()
     env_has_api_key = bool(env_api_key)
     env_masked = mask_api_key(env_api_key) if env_api_key else ""
@@ -102,34 +126,53 @@ def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> 
         except SecretCryptoError:
             override_api_key_ok = False
 
+    effective_provider = override_provider or env_provider or "openai_compatible"
     effective_base_url = override_base_url or env_base_url
     effective_model = override_model or env_model
+    effective_azure_deployment = override_azure_deployment or env_azure_deployment
+    effective_azure_api_version = override_azure_api_version or env_azure_api_version
+    effective_st_model = override_st_model or env_st_model
     effective_has_api_key = override_api_key_ok or env_has_api_key
     effective_masked = override_masked if override_api_key_ok else env_masked
 
-    source_project_fields = {
-        "base_url": bool(override_base_url),
-        "model": bool(override_model),
-        "api_key": bool(override_api_key_ok),
-    }
-    source_env_fields = {
-        "base_url": (not override_base_url) and bool(env_base_url),
-        "model": (not override_model) and bool(env_model),
-        "api_key": (not override_api_key_ok) and bool(env_has_api_key),
-    }
-    if any(source_project_fields.values()) and any(source_env_fields.values()):
+    project_fields: list[str] = []
+    env_fields: list[str] = []
+
+    if override_provider:
+        project_fields.append("provider")
+    elif env_provider and env_provider != "openai_compatible":
+        env_fields.append("provider")
+
+    if effective_base_url:
+        (project_fields if override_base_url else env_fields).append("base_url")
+    if effective_model:
+        (project_fields if override_model else env_fields).append("model")
+    if effective_azure_deployment:
+        (project_fields if override_azure_deployment else env_fields).append("azure_deployment")
+    if effective_azure_api_version:
+        (project_fields if override_azure_api_version else env_fields).append("azure_api_version")
+    if effective_st_model:
+        (project_fields if override_st_model else env_fields).append("sentence_transformers_model")
+    if effective_has_api_key:
+        (project_fields if override_api_key_ok else env_fields).append("api_key")
+
+    if project_fields and env_fields:
         effective_source = "mixed"
-    elif any(source_project_fields.values()):
+    elif project_fields:
         effective_source = "project"
-    elif any(source_env_fields.values()):
+    elif env_fields:
         effective_source = "env"
     else:
         effective_source = "none"
 
     disabled_reason = _vector_effective_disabled_reason(
+        provider=effective_provider,
         base_url=effective_base_url,
         model=effective_model,
         has_api_key=effective_has_api_key,
+        azure_deployment=effective_azure_deployment,
+        azure_api_version=effective_azure_api_version,
+        sentence_transformers_model=effective_st_model,
     )
     if disabled_reason is None and override_has_api_key and not override_api_key_ok and not env_has_api_key:
         disabled_reason = _VECTOR_DISABLED_API_KEY_DECRYPT_FAILED
@@ -150,12 +193,20 @@ def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> 
         vector_rerank_effective_method=rerank_effective_method,
         vector_rerank_effective_top_k=rerank_effective_top_k,
         vector_rerank_effective_source=rerank_effective_source,
+        vector_embedding_provider=override_provider,
         vector_embedding_base_url=override_base_url,
         vector_embedding_model=override_model,
+        vector_embedding_azure_deployment=override_azure_deployment,
+        vector_embedding_azure_api_version=override_azure_api_version,
+        vector_embedding_sentence_transformers_model=override_st_model,
         vector_embedding_has_api_key=override_has_api_key,
         vector_embedding_masked_api_key=override_masked,
+        vector_embedding_effective_provider=effective_provider,
         vector_embedding_effective_base_url=effective_base_url,
         vector_embedding_effective_model=effective_model,
+        vector_embedding_effective_azure_deployment=effective_azure_deployment,
+        vector_embedding_effective_azure_api_version=effective_azure_api_version,
+        vector_embedding_effective_sentence_transformers_model=effective_st_model,
         vector_embedding_effective_has_api_key=effective_has_api_key,
         vector_embedding_effective_masked_api_key=effective_masked,
         vector_embedding_effective_disabled_reason=disabled_reason,
@@ -211,10 +262,18 @@ def put_settings(request: Request, db: DbDep, user_id: UserIdDep, project_id: st
     if "vector_rerank_top_k" in body.model_fields_set:
         row.vector_rerank_top_k = int(body.vector_rerank_top_k) if body.vector_rerank_top_k is not None else None
 
+    if body.vector_embedding_provider is not None:
+        row.vector_embedding_provider = body.vector_embedding_provider.strip() or None
     if body.vector_embedding_base_url is not None:
         row.vector_embedding_base_url = body.vector_embedding_base_url.strip() or None
     if body.vector_embedding_model is not None:
         row.vector_embedding_model = body.vector_embedding_model.strip() or None
+    if body.vector_embedding_azure_deployment is not None:
+        row.vector_embedding_azure_deployment = body.vector_embedding_azure_deployment.strip() or None
+    if body.vector_embedding_azure_api_version is not None:
+        row.vector_embedding_azure_api_version = body.vector_embedding_azure_api_version.strip() or None
+    if body.vector_embedding_sentence_transformers_model is not None:
+        row.vector_embedding_sentence_transformers_model = body.vector_embedding_sentence_transformers_model.strip() or None
     if body.vector_embedding_api_key is not None:
         raw = body.vector_embedding_api_key.strip()
         if not raw:

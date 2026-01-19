@@ -2461,6 +2461,20 @@
         },
         {
           "dflt_value": null,
+          "name": "vector_embedding_azure_api_version",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_embedding_azure_deployment",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
           "name": "vector_embedding_base_url",
           "notnull": 0,
           "pk": 0,
@@ -2469,6 +2483,20 @@
         {
           "dflt_value": null,
           "name": "vector_embedding_model",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_embedding_provider",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_embedding_sentence_transformers_model",
           "notnull": 0,
           "pk": 0,
           "type": "VARCHAR(255)"

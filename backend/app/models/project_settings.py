@@ -19,8 +19,12 @@ class ProjectSettings(Base):
     style_guide: Mapped[str | None] = mapped_column(Text, nullable=True)
     constraints: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    vector_embedding_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     vector_embedding_base_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     vector_embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    vector_embedding_azure_deployment: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    vector_embedding_azure_api_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    vector_embedding_sentence_transformers_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     vector_embedding_api_key_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
     vector_embedding_api_key_masked: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
