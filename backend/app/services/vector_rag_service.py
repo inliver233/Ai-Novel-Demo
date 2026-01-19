@@ -616,10 +616,16 @@ def _get_collection(*, project_id: str, kb_id: str | None = None):
     hash_name = _hash_collection_name(project_id, kb)
 
     naming = _chroma_collection_naming()
-    if naming == "legacy":
+    if naming == "legacy" and kb == "default":
         return client.get_or_create_collection(
             name=legacy_name,
             metadata={"project_id": project_id, "kb_id": kb, "naming": "legacy"},
+        )
+
+    if kb != "default":
+        return client.get_or_create_collection(
+            name=hash_name,
+            metadata={"project_id": project_id, "kb_id": kb, "naming": "hash"},
         )
 
     try:
@@ -1120,6 +1126,7 @@ def _pgvector_hybrid_query(*, project_id: str, query_text: str, query_vec: list[
 def ingest_chunks(
     *,
     project_id: str,
+    kb_id: str | None = None,
     chunks: list[VectorChunk],
     embedding: dict[str, str | None] | None = None,
 ) -> dict[str, Any]:
@@ -1186,7 +1193,7 @@ def ingest_chunks(
             )
 
     try:
-        collection = _get_collection(project_id=project_id)
+        collection = _get_collection(project_id=project_id, kb_id=kb_id)
     except Exception as exc:  # pragma: no cover - env dependent
         return {"enabled": False, "skipped": True, "disabled_reason": "chroma_unavailable", "error": str(exc), "ingested": 0}
 
@@ -1210,6 +1217,7 @@ def ingest_chunks(
 def rebuild_project(
     *,
     project_id: str,
+    kb_id: str | None = None,
     chunks: list[VectorChunk],
     embedding: dict[str, str | None] | None = None,
 ) -> dict[str, Any]:
@@ -1230,17 +1238,21 @@ def rebuild_project(
                 backend="pgvector",
                 error_type=type(exc).__name__,
             )
-        out = ingest_chunks(project_id=project_id, chunks=chunks, embedding=embedding)
+        out = ingest_chunks(project_id=project_id, kb_id=kb_id, chunks=chunks, embedding=embedding)
         return {"enabled": bool(out.get("enabled")), "skipped": bool(out.get("skipped")), "rebuilt": int(out.get("ingested") or 0), **out}
 
     try:
         chromadb = _import_chromadb()
         persist_dir = settings.vector_chroma_persist_dir or _default_chroma_persist_dir()
         client = chromadb.PersistentClient(path=persist_dir)
+        kb = _normalize_kb_id(kb_id)
         legacy_name = _legacy_collection_name(project_id)
-        hash_name = _hash_collection_name(project_id)
+        hash_name = _hash_collection_name(project_id, kb)
         naming = _chroma_collection_naming()
-        names = {legacy_name} if naming == "legacy" else {hash_name, legacy_name}
+        if kb != "default":
+            names = {hash_name}
+        else:
+            names = {legacy_name} if naming == "legacy" else {hash_name, legacy_name}
         for name in names:
             try:
                 client.delete_collection(name=name)
@@ -1249,11 +1261,11 @@ def rebuild_project(
     except Exception as exc:  # pragma: no cover - env dependent
         return {"enabled": False, "skipped": True, "disabled_reason": "chroma_unavailable", "error": str(exc), "rebuilt": 0}
 
-    out = ingest_chunks(project_id=project_id, chunks=chunks, embedding=embedding)
+    out = ingest_chunks(project_id=project_id, kb_id=kb_id, chunks=chunks, embedding=embedding)
     return {"enabled": bool(out.get("enabled")), "skipped": bool(out.get("skipped")), "rebuilt": int(out.get("ingested") or 0), **out}
 
 
-def purge_project_vectors(*, project_id: str) -> dict[str, Any]:
+def purge_project_vectors(*, project_id: str, kb_id: str | None = None) -> dict[str, Any]:
     """
     Best-effort deletion of vector index data for the given project.
 
@@ -1304,7 +1316,10 @@ def purge_project_vectors(*, project_id: str) -> dict[str, Any]:
         chromadb = _import_chromadb()
         persist_dir = settings.vector_chroma_persist_dir or _default_chroma_persist_dir()
         client = chromadb.PersistentClient(path=persist_dir)
-        names = [_hash_collection_name(project_id), _legacy_collection_name(project_id)]
+        kb = _normalize_kb_id(kb_id)
+        names = [_hash_collection_name(project_id, kb)]
+        if kb == "default":
+            names.append(_legacy_collection_name(project_id))
         delete_errors: list[str] = []
         delete_error_type: str | None = None
         deleted = True
@@ -1415,6 +1430,7 @@ def _format_final_text(chunks: list[dict[str, Any]], *, char_limit: int) -> tupl
 def query_project(
     *,
     project_id: str,
+    kb_id: str | None = None,
     query_text: str,
     sources: list[VectorSource] | None = None,
     embedding: dict[str, str | None] | None = None,
@@ -1633,7 +1649,7 @@ def query_project(
             pgvector_error = type(exc).__name__
 
     try:
-        collection = _get_collection(project_id=project_id)
+        collection = _get_collection(project_id=project_id, kb_id=kb_id)
     except Exception as exc:  # pragma: no cover - env dependent
         out: dict[str, Any] = {
             "enabled": False,

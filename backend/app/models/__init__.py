@@ -3,6 +3,7 @@ from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.generation_run import GenerationRun
 from app.models.fractal_memory import FractalMemory
+from app.models.knowledge_base import KnowledgeBase
 from app.models.llm_profile import LLMProfile
 from app.models.llm_preset import LLMPreset
 from app.models.memory_task import MemoryTask
@@ -36,6 +37,7 @@ __all__ = [
     "Character",
     "FractalMemory",
     "GenerationRun",
+    "KnowledgeBase",
     "LLMProfile",
     "LLMPreset",
     "MemoryTask",

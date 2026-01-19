@@ -90,15 +90,18 @@ def _vector_rerank_config(row: ProjectSettings | None) -> dict[str, object]:
 
 
 class VectorIngestRequest(BaseModel):
+    kb_id: str | None = Field(default=None, max_length=64)
     sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
 
 
 class VectorQueryRequest(BaseModel):
     query_text: str = Field(default="", max_length=8000)
+    kb_id: str | None = Field(default=None, max_length=64)
     sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
 
 
 class VectorStatusRequest(BaseModel):
+    kb_id: str | None = Field(default=None, max_length=64)
     sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
 
 
@@ -128,6 +131,8 @@ def get_vector_status(request: Request, user_id: UserIdDep, project_id: str, bod
 def ingest_vector_index(request: Request, user_id: UserIdDep, project_id: str, body: VectorIngestRequest) -> dict:
     request_id = request.state.request_id
 
+    kb_id = str(body.kb_id or "").strip() or None
+
     db = SessionLocal()
     embedding: dict[str, str | None] = {}
     try:
@@ -137,7 +142,7 @@ def ingest_vector_index(request: Request, user_id: UserIdDep, project_id: str, b
     finally:
         db.close()
 
-    result = ingest_chunks(project_id=project_id, chunks=chunks, embedding=embedding)
+    result = ingest_chunks(project_id=project_id, kb_id=kb_id, chunks=chunks, embedding=embedding)
     return ok_payload(request_id=request_id, data={"result": result})
 
 
@@ -145,6 +150,8 @@ def ingest_vector_index(request: Request, user_id: UserIdDep, project_id: str, b
 def rebuild_vector_index(request: Request, user_id: UserIdDep, project_id: str, body: VectorIngestRequest) -> dict:
     request_id = request.state.request_id
 
+    kb_id = str(body.kb_id or "").strip() or None
+
     db = SessionLocal()
     embedding: dict[str, str | None] = {}
     try:
@@ -154,7 +161,7 @@ def rebuild_vector_index(request: Request, user_id: UserIdDep, project_id: str, 
     finally:
         db.close()
 
-    result = rebuild_project(project_id=project_id, chunks=chunks, embedding=embedding)
+    result = rebuild_project(project_id=project_id, kb_id=kb_id, chunks=chunks, embedding=embedding)
     if bool(result.get("enabled")) and not bool(result.get("skipped")):
         db2 = SessionLocal()
         try:
@@ -185,6 +192,8 @@ def purge_vector_index(request: Request, user_id: UserIdDep, project_id: str) ->
 def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, body: VectorQueryRequest) -> dict:
     request_id = request.state.request_id
 
+    kb_id = str(body.kb_id or "").strip() or None
+
     db = SessionLocal()
     embedding: dict[str, str | None] = {}
     rerank: dict[str, object] = {}
@@ -201,7 +210,14 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
         db.close()
 
     normalized, preprocess_obs = normalize_query_text(query_text=body.query_text, config=qp_cfg)
-    result = query_project(project_id=project_id, query_text=normalized, sources=body.sources, embedding=embedding, rerank=rerank)
+    result = query_project(
+        project_id=project_id,
+        kb_id=kb_id,
+        query_text=normalized,
+        sources=body.sources,
+        embedding=embedding,
+        rerank=rerank,
+    )
     return ok_payload(
         request_id=request_id,
         data={

@@ -13,6 +13,7 @@ from app.db.utils import new_id
 from app.llm.utils import default_max_tokens, is_default_like_max_tokens, normalize_base_url
 from app.models.chapter import Chapter
 from app.models.character import Character
+from app.models.knowledge_base import KnowledgeBase
 from app.models.llm_profile import LLMProfile
 from app.models.llm_preset import LLMPreset
 from app.models.outline import Outline
@@ -212,6 +213,31 @@ def create_project(request: Request, db: DbDep, user_id: UserIdDep, body: Projec
     # New projects should default to the recommended Prompt Engine presets.
     ensure_default_outline_preset(db, project_id=project.id, activate=True)
     ensure_default_chapter_preset(db, project_id=project.id, activate=True)
+
+    default_kb_exists = (
+        db.execute(
+            select(KnowledgeBase.id).where(
+                KnowledgeBase.project_id == project.id,
+                KnowledgeBase.kb_id == "default",
+            )
+        )
+        .scalars()
+        .first()
+        is not None
+    )
+    if not default_kb_exists:
+        db.add(
+            KnowledgeBase(
+                id=new_id(),
+                project_id=project.id,
+                kb_id="default",
+                name="Default",
+                enabled=True,
+                weight=1.0,
+                order_index=0,
+            )
+        )
+        db.commit()
 
     return ok_payload(request_id=request_id, data={"project": ProjectOut.model_validate(project).model_dump()})
 
