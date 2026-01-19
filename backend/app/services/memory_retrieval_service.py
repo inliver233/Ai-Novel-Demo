@@ -742,12 +742,24 @@ def retrieve_memory_context_pack(
             fractal["truncated"] = bool(fractal.get("truncated") or was_truncated)
         fractal["text_md"] = text_md
 
+    worldbook_triggered = worldbook.get("triggered") if isinstance(worldbook, dict) else None
+    worldbook_triggered_list = worldbook_triggered if isinstance(worldbook_triggered, list) else []
+    worldbook_triggered_sample: list[dict[str, Any]] = []
+    for t in worldbook_triggered_list[:10]:
+        if not isinstance(t, dict):
+            continue
+        title = t.get("title")
+        reason = t.get("reason")
+        worldbook_triggered_sample.append({"title": title, "reason": reason})
+
     logs: list[dict[str, Any]] = [
         {
             "section": "worldbook",
             "enabled": bool(worldbook.get("enabled")),
             "disabled_reason": worldbook.get("disabled_reason"),
             "note": "preview_worldbook_trigger",
+            "triggered_count": len(worldbook_triggered_list),
+            "triggered_sample": worldbook_triggered_sample,
             "budget_char_limit": int(worldbook_budget),
             "budget_source": "override" if "worldbook" in budgets else "default",
         },

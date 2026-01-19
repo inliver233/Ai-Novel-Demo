@@ -12,6 +12,7 @@ from app.api.deps import (
     require_project_viewer,
     require_worldbook_entry_editor,
 )
+from app.core.config import settings
 from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id, utc_now
 from app.models.project_settings import ProjectSettings
@@ -499,4 +500,11 @@ def preview_trigger(request: Request, db: DbDep, user_id: UserIdDep, project_id:
     payload["raw_query_text"] = body.query_text
     payload["normalized_query_text"] = normalized
     payload["preprocess_obs"] = preprocess_obs
+    payload["match_config"] = {
+        "alias_enabled": bool(getattr(settings, "worldbook_match_alias_enabled", False)),
+        "pinyin_enabled": bool(getattr(settings, "worldbook_match_pinyin_enabled", False)),
+        "regex_enabled": bool(getattr(settings, "worldbook_match_regex_enabled", False)),
+        "regex_allowlist_size": len(_parse_json_list(getattr(settings, "worldbook_match_regex_allowlist_json", None))),
+        "max_triggered_entries": int(getattr(settings, "worldbook_match_max_triggered_entries", 0) or 0),
+    }
     return ok_payload(request_id=request_id, data=payload)

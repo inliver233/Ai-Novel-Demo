@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.config import settings
 from app.models.worldbook_entry import WorldBookEntry
 from app.services.worldbook_service import preview_worldbook_trigger
 
@@ -278,3 +279,153 @@ class TestWorldBookServiceTrigger(unittest.TestCase):
         ids_word = {t.id for t in out_word.triggered}
         self.assertIn("S1", ids_word)
         self.assertIn("W1", ids_word)
+
+    def test_preview_trigger_alias_matching_feature_flag(self) -> None:
+        SessionLocal = self._make_db()
+        now = datetime.now(timezone.utc)
+
+        orig_alias_enabled = getattr(settings, "worldbook_match_alias_enabled", False)
+        try:
+            with SessionLocal() as db:
+                db.add(
+                    WorldBookEntry(
+                        id="A",
+                        project_id="project-1",
+                        title="Alias Entry",
+                        content_md="Alias content",
+                        enabled=True,
+                        constant=False,
+                        keywords_json=json.dumps(["alpha|beta"]),
+                        exclude_recursion=False,
+                        prevent_recursion=False,
+                        char_limit=9999,
+                        priority="important",
+                        updated_at=now,
+                    )
+                )
+                db.commit()
+
+                settings.worldbook_match_alias_enabled = False
+                out_disabled = preview_worldbook_trigger(
+                    db=db,
+                    project_id="project-1",
+                    query_text="beta",
+                    include_constant=False,
+                    enable_recursion=False,
+                    char_limit=200000,
+                )
+                self.assertEqual([t.id for t in out_disabled.triggered], [])
+
+                settings.worldbook_match_alias_enabled = True
+                out_enabled = preview_worldbook_trigger(
+                    db=db,
+                    project_id="project-1",
+                    query_text="beta",
+                    include_constant=False,
+                    enable_recursion=False,
+                    char_limit=200000,
+                )
+
+            reason_by_id = {t.id: t.reason for t in out_enabled.triggered}
+            self.assertEqual(reason_by_id.get("A"), "alias:beta")
+        finally:
+            settings.worldbook_match_alias_enabled = orig_alias_enabled
+
+    def test_preview_trigger_regex_allowlist(self) -> None:
+        SessionLocal = self._make_db()
+        now = datetime.now(timezone.utc)
+
+        orig_enabled = getattr(settings, "worldbook_match_regex_enabled", False)
+        orig_allowlist = getattr(settings, "worldbook_match_regex_allowlist_json", None)
+        try:
+            with SessionLocal() as db:
+                db.add(
+                    WorldBookEntry(
+                        id="R1",
+                        project_id="project-1",
+                        title="Regex Entry",
+                        content_md="Regex content",
+                        enabled=True,
+                        constant=False,
+                        keywords_json=json.dumps([r"re:dragon\d+"]),
+                        exclude_recursion=False,
+                        prevent_recursion=False,
+                        char_limit=9999,
+                        priority="important",
+                        updated_at=now,
+                    )
+                )
+                db.commit()
+
+                settings.worldbook_match_regex_enabled = True
+                settings.worldbook_match_regex_allowlist_json = json.dumps([])
+                out_blocked = preview_worldbook_trigger(
+                    db=db,
+                    project_id="project-1",
+                    query_text="dragon12",
+                    include_constant=False,
+                    enable_recursion=False,
+                    char_limit=200000,
+                )
+                self.assertEqual([t.id for t in out_blocked.triggered], [])
+
+                settings.worldbook_match_regex_allowlist_json = json.dumps([r"dragon\d+"])
+                out_allowed = preview_worldbook_trigger(
+                    db=db,
+                    project_id="project-1",
+                    query_text="dragon12",
+                    include_constant=False,
+                    enable_recursion=False,
+                    char_limit=200000,
+                )
+
+            reason_by_id = {t.id: t.reason for t in out_allowed.triggered}
+            self.assertEqual(reason_by_id.get("R1"), r"regex:dragon\d+")
+        finally:
+            settings.worldbook_match_regex_enabled = orig_enabled
+            settings.worldbook_match_regex_allowlist_json = orig_allowlist
+
+    def test_preview_trigger_pinyin_matching_optional_dependency(self) -> None:
+        try:
+            import pypinyin  # noqa: F401  # type: ignore[import-not-found]
+        except Exception:
+            self.skipTest("pypinyin not installed")
+
+        SessionLocal = self._make_db()
+        now = datetime.now(timezone.utc)
+
+        orig_enabled = getattr(settings, "worldbook_match_pinyin_enabled", False)
+        try:
+            with SessionLocal() as db:
+                db.add(
+                    WorldBookEntry(
+                        id="P1",
+                        project_id="project-1",
+                        title="Pinyin Entry",
+                        content_md="Pinyin content",
+                        enabled=True,
+                        constant=False,
+                        keywords_json=json.dumps(["世界书"]),
+                        exclude_recursion=False,
+                        prevent_recursion=False,
+                        char_limit=9999,
+                        priority="important",
+                        updated_at=now,
+                    )
+                )
+                db.commit()
+
+                settings.worldbook_match_pinyin_enabled = True
+                out = preview_worldbook_trigger(
+                    db=db,
+                    project_id="project-1",
+                    query_text="sjs",
+                    include_constant=False,
+                    enable_recursion=False,
+                    char_limit=200000,
+                )
+
+            reason_by_id = {t.id: t.reason for t in out.triggered}
+            self.assertEqual(reason_by_id.get("P1"), "pinyin:世界书")
+        finally:
+            settings.worldbook_match_pinyin_enabled = orig_enabled

@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     vector_source_order: str | None = None
     vector_source_weights_json: str | None = None
 
+    worldbook_match_alias_enabled: bool = False
+    worldbook_match_pinyin_enabled: bool = False
+    worldbook_match_regex_enabled: bool = False
+    worldbook_match_regex_allowlist_json: str | None = None
+    worldbook_match_max_triggered_entries: int = 40
+
     fractal_enabled: bool = True
     fractal_scene_window: int = 5
     fractal_arc_window: int = 5
