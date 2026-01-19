@@ -83,3 +83,49 @@ test("ui: rag page supports KB manage + multi-kb rebuild/query", async ({ page, 
   await expect(rawDetails).toContainText(newKbId);
   await expect(rawDetails).toContainText('"kbs"');
 });
+
+test("ui: rag page displays grouped multi-chunk final.chunks for chapters", async ({ page, request }) => {
+  const state = loadState();
+  const { projectId } = await bootstrapProject(request);
+
+  const settingsRes = await request.put(`${state.backendUrl}/api/projects/${projectId}/settings`, {
+    data: {
+      vector_embedding_base_url: state.mockLlmBaseUrl,
+      vector_embedding_model: "text-embedding-mock",
+      vector_embedding_api_key: "test-key",
+    },
+  });
+  expect(settingsRes.ok()).toBeTruthy();
+
+  const create = await request.post(`${state.backendUrl}/api/projects/${projectId}/chapters`, {
+    data: { number: 1, title: "E2E Long Chapter", plan: "" },
+  });
+  expect(create.ok()).toBeTruthy();
+  const createJson = (await create.json()) as { ok: boolean; data: { chapter: { id: string } } };
+  const chapterId = createJson.data.chapter.id;
+
+  const longContent = Array.from({ length: 120 }, (_, i) => `段落 ${i}: dragon dragon dragon dragon dragon`).join("\n\n");
+  const update = await request.put(`${state.backendUrl}/api/chapters/${chapterId}`, {
+    data: { content_md: longContent, status: "done" },
+  });
+  expect(update.ok()).toBeTruthy();
+
+  const rebuild = await request.post(`${state.backendUrl}/api/projects/${projectId}/vector/rebuild`, {
+    data: { sources: ["chapter"] },
+  });
+  expect(rebuild.ok()).toBeTruthy();
+
+  await page.goto(`/projects/${projectId}/rag`);
+  await expect(page.getByText("Vector RAG 管理", { exact: true })).toBeVisible();
+
+  await page.getByLabel("query_text", { exact: true }).fill("dragon");
+  await page.getByRole("button", { name: "查询", exact: true }).click();
+
+  const summary = page.locator("summary", { hasText: "final.chunks（按 source/chapter 分组）" });
+  await summary.click();
+  const details = summary.locator("..");
+  await expect(details).toHaveAttribute("open", "");
+  await expect(details).toContainText("source: chapter");
+  const chunkSummaries = details.locator("summary", { hasText: "chunk_index:" });
+  await expect.poll(async () => await chunkSummaries.count(), { timeout: 30_000 }).toBeGreaterThan(1);
+});

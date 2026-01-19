@@ -98,6 +98,7 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
         CORS_ORIGINS: `http://localhost:${frontendPort},http://127.0.0.1:${frontendPort}`,
         AUTH_ADMIN_USER_ID: "admin",
         AUTH_ADMIN_PASSWORD: "admin-pass",
+        VECTOR_PER_SOURCE_ID_MAX_CHUNKS: "3",
         PYTHONUNBUFFERED: "1",
       },
       logFile: path.join(artifactsDir, "backend.log"),
