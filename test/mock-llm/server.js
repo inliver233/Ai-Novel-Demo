@@ -1,4 +1,5 @@
 /* eslint-disable no-console */
+const crypto = require("node:crypto");
 const http = require("node:http");
 
 function readJson(req) {
@@ -118,6 +119,36 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function makeEmbeddingVector(input, dims = 64) {
+  const text = typeof input === "string" ? input : JSON.stringify(input ?? "");
+  const hash = crypto.createHash("sha256").update(text).digest();
+  const out = [];
+  for (let i = 0; i < dims; i += 1) {
+    // Map bytes to [-1, 1] floats.
+    const b = hash[i % hash.length];
+    out.push(((b / 255) - 0.5) * 2);
+  }
+  return out;
+}
+
+async function handleEmbeddings(req, res) {
+  const body = await readJson(req);
+  const input = body?.input;
+  const inputs = Array.isArray(input) ? input : [input];
+  const data = inputs.map((v, idx) => ({
+    object: "embedding",
+    index: idx,
+    embedding: makeEmbeddingVector(v, 64),
+  }));
+
+  writeJson(res, 200, {
+    object: "list",
+    data,
+    model: body?.model ?? "text-embedding-mock",
+    usage: { prompt_tokens: 0, total_tokens: 0 },
+  });
+}
+
 async function streamOpenAICompat(res, fullText) {
   writeSseHeaders(res);
 
@@ -231,6 +262,10 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
     if (req.method === "GET" && url.pathname === "/health") {
       writeJson(res, 200, { ok: true });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/v1/embeddings") {
+      await handleEmbeddings(req, res);
       return;
     }
     if (req.method === "POST" && url.pathname === "/v1/chat/completions") {
