@@ -168,7 +168,10 @@ export function PromptStudioPage() {
 
   const [newPresetName, setNewPresetName] = useState("");
   const [importBusy, setImportBusy] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const importAllInputRef = useRef<HTMLInputElement | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string>("__all__");
 
   const [previewTask, setPreviewTask] = useState<string>("chapter_generate");
   const [preview, setPreview] = useState<PromptPreview | null>(null);
@@ -505,6 +508,37 @@ export function PromptStudioPage() {
 
   const dragIdRef = useRef<string | null>(null);
 
+  type ImportAllReport = {
+    dry_run: boolean;
+    created: number;
+    updated: number;
+    skipped: number;
+    conflicts: unknown[];
+    actions: unknown[];
+  };
+
+  const formatImportAllReport = useCallback((report: ImportAllReport): string => {
+    const conflicts = Array.isArray(report.conflicts) ? report.conflicts : [];
+    const actions = Array.isArray(report.actions) ? report.actions : [];
+
+    const lines = [
+      `dry_run: ${Boolean(report.dry_run)}`,
+      `created: ${Number(report.created) || 0}`,
+      `updated: ${Number(report.updated) || 0}`,
+      `skipped: ${Number(report.skipped) || 0}`,
+      `conflicts: ${conflicts.length}`,
+      "",
+      "conflicts sample:",
+      ...(conflicts.slice(0, 10).map((c) => JSON.stringify(c)) || ["(none)"]),
+      "",
+      "actions sample:",
+      ...(actions.slice(0, 20).map((a) => JSON.stringify(a)) || ["(none)"]),
+      actions.length > 20 ? `...(${actions.length - 20} more actions)` : "",
+    ].filter((v) => typeof v === "string");
+
+    return lines.join("\n").trim();
+  }, []);
+
   const exportPreset = useCallback(async () => {
     if (!selectedPresetId || !selectedPreset) return;
     setBusy(true);
@@ -527,6 +561,30 @@ export function PromptStudioPage() {
       setBusy(false);
     }
   }, [selectedPreset, selectedPresetId, toast]);
+
+  const exportAllPresets = useCallback(async () => {
+    if (!projectId) return;
+    setBulkBusy(true);
+    try {
+      const res = await apiJson<{ export: unknown }>(`/api/projects/${projectId}/prompt_presets/export_all`);
+      const jsonText = JSON.stringify(res.data.export, null, 2);
+      const blob = new Blob([jsonText], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeName = sanitizeFilename(project?.name || "prompt_presets_all") || "prompt_presets_all";
+      const stamp = new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-");
+      a.download = `${safeName}_${stamp}.json`;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.toastSuccess("已导出整套");
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [project?.name, projectId, toast]);
 
   const importPreset = useCallback(
     async (file: File) => {
@@ -553,6 +611,52 @@ export function PromptStudioPage() {
       }
     },
     [projectId, reloadAll, toast],
+  );
+
+  const importAllPresets = useCallback(
+    async (file: File) => {
+      if (!projectId) return;
+      setBulkBusy(true);
+      try {
+        const text = await file.text();
+        const obj = JSON.parse(text) as Record<string, unknown>;
+
+        const dryRunRes = await apiJson<ImportAllReport>(`/api/projects/${projectId}/prompt_presets/import_all`, {
+          method: "POST",
+          body: JSON.stringify({ ...obj, dry_run: true }),
+        });
+
+        const report = dryRunRes.data;
+        const ok = await confirm.confirm({
+          title: "导入整套 PromptPresets（dry_run）",
+          description: formatImportAllReport(report),
+          confirmText: "应用导入",
+          cancelText: "取消",
+          danger: Array.isArray(report.conflicts) && report.conflicts.length > 0,
+        });
+        if (!ok) return;
+
+        const applyRes = await apiJson<ImportAllReport>(`/api/projects/${projectId}/prompt_presets/import_all`, {
+          method: "POST",
+          body: JSON.stringify({ ...obj, dry_run: false }),
+        });
+
+        toast.toastSuccess(
+          `已导入整套 created:${applyRes.data.created} updated:${applyRes.data.updated} skipped:${applyRes.data.skipped}`,
+        );
+        await reloadAll();
+      } catch (e) {
+        if (e instanceof SyntaxError) {
+          toast.toastError("导入失败：不是合法 JSON");
+          return;
+        }
+        const err = e as ApiError;
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [confirm, formatImportAllReport, projectId, reloadAll, toast],
   );
 
   const runPreview = useCallback(async () => {
@@ -598,6 +702,32 @@ export function PromptStudioPage() {
     [],
   );
 
+  const presetCategoryGroups = useMemo(() => {
+    const groups = new Map<string, PromptPreset[]>();
+    for (const p of presets) {
+      const key = String(p.category ?? "").trim() || "（未分类）";
+      const list = groups.get(key) ?? [];
+      list.push(p);
+      groups.set(key, list);
+    }
+    const ordered = [...groups.entries()];
+    ordered.sort((a, b) => a[0].localeCompare(b[0]));
+    return ordered;
+  }, [presets]);
+
+  const visiblePresetCategoryGroups = useMemo(() => {
+    if (categoryFilter === "__all__") return presetCategoryGroups;
+    return presetCategoryGroups.filter(([key]) => key === categoryFilter);
+  }, [categoryFilter, presetCategoryGroups]);
+
+  useEffect(() => {
+    if (categoryFilter === "__all__") return;
+    if (presetCategoryGroups.some(([key]) => key === categoryFilter)) return;
+    setCategoryFilter("__all__");
+  }, [categoryFilter, presetCategoryGroups]);
+
+  const showCategoryHeaders = categoryFilter === "__all__";
+
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
   if (loading) return <div className="text-subtext">加载中...</div>;
 
@@ -614,7 +744,7 @@ export function PromptStudioPage() {
               </Link>
             </div>
           </div>
-          <div className="text-xs text-subtext">{busy || importBusy ? "处理中…" : ""}</div>
+          <div className="text-xs text-subtext">{busy || importBusy || bulkBusy ? "处理中…" : ""}</div>
         </div>
 
         <div className="mt-3 grid gap-1 text-sm text-subtext">
@@ -670,6 +800,17 @@ export function PromptStudioPage() {
                   if (importInputRef.current) importInputRef.current.value = "";
                 }}
               />
+              <input
+                ref={importAllInputRef}
+                type="file"
+                accept="application/json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void importAllPresets(file);
+                  if (importAllInputRef.current) importAllInputRef.current.value = "";
+                }}
+              />
               <button
                 className="btn btn-secondary w-full"
                 onClick={() => importInputRef.current?.click()}
@@ -686,36 +827,76 @@ export function PromptStudioPage() {
               </button>
             </div>
 
+            <div className="flex gap-2">
+              <button
+                className="btn btn-secondary w-full"
+                onClick={() => importAllInputRef.current?.click()}
+                disabled={bulkBusy || importBusy || busy}
+                type="button"
+              >
+                导入整套
+              </button>
+              <button className="btn btn-secondary w-full" onClick={() => void exportAllPresets()} disabled={bulkBusy || busy} type="button">
+                导出整套
+              </button>
+            </div>
+
+            <div className="grid gap-1">
+              <div className="text-xs text-subtext">分类</div>
+              <select
+                className="input"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.currentTarget.value)}
+                disabled={busy || bulkBusy}
+              >
+                <option value="__all__">全部分类</option>
+                {presetCategoryGroups.map(([key]) => (
+                  <option key={key} value={key}>
+                    {key}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <LayoutGroup id="promptstudio-presets">
-              <div className="mt-2 grid gap-1">
-                {presets.map((p) => {
-                  const active = p.id === selectedPresetId;
-                  return (
-                    <button
-                      key={p.id}
-                      className={clsx(
-                        "ui-focus-ring ui-transition-fast group relative w-full overflow-hidden rounded-atelier border px-3 py-2 text-left text-sm motion-safe:active:scale-[0.99]",
-                        active
-                          ? "border-accent/40 text-ink"
-                          : "border-border text-subtext hover:bg-canvas hover:text-ink",
-                      )}
-                      onClick={() => setSelectedPresetId(p.id)}
-                      type="button"
-                    >
-                      {active ? (
-                        <motion.span
-                          layoutId="promptstudio-preset-active"
-                          className="absolute inset-0 rounded-atelier bg-canvas"
-                          transition={reduceMotion ? { duration: 0.01 } : transition.fast}
-                        />
-                      ) : null}
-                      <div className="relative z-10 truncate">{p.name}</div>
-                      <div className="relative z-10 mt-1 text-xs opacity-80">
-                        {(p.active_for ?? []).join(", ") || "—"}
+              <div className="mt-2 grid gap-3">
+                {visiblePresetCategoryGroups.length ? (
+                  visiblePresetCategoryGroups.map(([category, items]) => (
+                    <div key={category}>
+                      {showCategoryHeaders ? <div className="text-xs text-subtext">{category}</div> : null}
+                      <div className={clsx("grid gap-1", showCategoryHeaders ? "mt-1" : null)}>
+                        {items.map((p) => {
+                          const active = p.id === selectedPresetId;
+                          return (
+                            <button
+                              key={p.id}
+                              className={clsx(
+                                "ui-focus-ring ui-transition-fast group relative w-full overflow-hidden rounded-atelier border px-3 py-2 text-left text-sm motion-safe:active:scale-[0.99]",
+                                active
+                                  ? "border-accent/40 text-ink"
+                                  : "border-border text-subtext hover:bg-canvas hover:text-ink",
+                              )}
+                              onClick={() => setSelectedPresetId(p.id)}
+                              type="button"
+                            >
+                              {active ? (
+                                <motion.span
+                                  layoutId="promptstudio-preset-active"
+                                  className="absolute inset-0 rounded-atelier bg-canvas"
+                                  transition={reduceMotion ? { duration: 0.01 } : transition.fast}
+                                />
+                              ) : null}
+                              <div className="relative z-10 truncate">{p.name}</div>
+                              <div className="relative z-10 mt-1 text-xs opacity-80">{(p.active_for ?? []).join(", ") || "—"}</div>
+                            </button>
+                          );
+                        })}
                       </div>
-                    </button>
-                  );
-                })}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-xs text-subtext">暂无预设</div>
+                )}
               </div>
             </LayoutGroup>
 

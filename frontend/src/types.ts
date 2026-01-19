@@ -112,6 +112,7 @@ export interface PromptPreset {
   id: string;
   project_id: string;
   name: string;
+  category?: string | null;
   scope: string;
   version: number;
   active_for: string[];
