@@ -29,7 +29,7 @@ test("ui: prompt studio export -> import -> new preset appears", async ({ page, 
 
   const importResp = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith(`/api/projects/${projectId}/prompt_presets/import`));
 
-  const fileInput = page.locator('input[type="file"][accept="application/json"]');
+  const fileInput = page.getByTestId("prompt-studio-import-file");
   await fileInput.setInputFiles({
     name: "preset.json",
     mimeType: "application/json",

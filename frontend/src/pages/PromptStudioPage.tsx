@@ -815,6 +815,7 @@ export function PromptStudioPage() {
                 type="file"
                 accept="application/json"
                 className="hidden"
+                data-testid="prompt-studio-import-file"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) void importPreset(file);
@@ -826,6 +827,7 @@ export function PromptStudioPage() {
                 type="file"
                 accept="application/json"
                 className="hidden"
+                data-testid="prompt-studio-import-all-file"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) void importAllPresets(file);

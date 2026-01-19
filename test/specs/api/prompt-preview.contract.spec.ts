@@ -132,9 +132,16 @@ test("api: prompt_preview contract", async ({ request }) => {
 
   // render_log observability: context optimizer + unified budget summary must exist and stay shape-stable.
   expect(json.data.render_log).toBeTruthy();
-  const renderLog = json.data.render_log as { context_optimizer?: unknown; unified_context_budget?: unknown };
+  const renderLog = json.data.render_log as {
+    context_optimizer?: unknown;
+    unified_context_budget?: unknown;
+    cache_hit?: unknown;
+    cache_miss?: unknown;
+  };
   expect(renderLog).toHaveProperty("context_optimizer");
   expect(renderLog).toHaveProperty("unified_context_budget");
+  expect(Array.isArray(renderLog.cache_hit)).toBe(true);
+  expect(Array.isArray(renderLog.cache_miss)).toBe(true);
 
   const ctxOpt = (renderLog as { context_optimizer: unknown }).context_optimizer as unknown;
   expect(Boolean(ctxOpt) && typeof ctxOpt === "object").toBe(true);
