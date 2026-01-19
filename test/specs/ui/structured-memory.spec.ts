@@ -16,6 +16,7 @@ test("ui: structured memory page tabs + search + memory update drawer", async ({
 
   // Seed at least one entity via Memory Update.
   await page.goto(`/projects/${projectId}/writing?chapterId=${chapterId}`);
+  await expect(page.getByRole("textbox", { name: "标题", exact: true })).toHaveValue("E2E 第一章", { timeout: 60_000 });
   await page.getByRole("button", { name: "Memory Update", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Memory Update" });
   await expect(dialog).toBeVisible();
