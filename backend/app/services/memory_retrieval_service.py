@@ -15,6 +15,7 @@ from app.models.structured_memory import MemoryEntity, MemoryEvent, MemoryForesh
 from app.schemas.memory_pack import MemoryContextPackOut
 from app.services.fractal_memory_service import get_fractal_context
 from app.services.graph_context_service import query_graph_context
+from app.services.prompt_budget import estimate_tokens
 from app.services.vector_rag_service import query_project, vector_rag_status
 from app.services.worldbook_service import preview_worldbook_trigger
 
@@ -772,6 +773,8 @@ def retrieve_memory_context_pack(
             "note": "preview_worldbook_trigger",
             "triggered_count": len(worldbook_triggered_list),
             "triggered_sample": worldbook_triggered_sample,
+            "token_estimate": estimate_tokens(str(worldbook.get("text_md") or "")),
+            "truncated": bool(worldbook.get("truncated")) if "truncated" in worldbook else None,
             "budget_char_limit": int(worldbook_budget),
             "budget_source": "override" if "worldbook" in budgets else "default",
         },
@@ -780,6 +783,8 @@ def retrieve_memory_context_pack(
             "enabled": bool(story_memory.get("enabled")),
             "disabled_reason": story_memory.get("disabled_reason"),
             "note": "story_memories (top by importance)",
+            "token_estimate": estimate_tokens(str(story_memory.get("text_md") or "")),
+            "truncated": bool(story_memory.get("truncated")) if "truncated" in story_memory else None,
             "budget_char_limit": int(story_memory_budget),
             "budget_source": "override" if "story_memory" in budgets else "default",
         },
@@ -790,6 +795,8 @@ def retrieve_memory_context_pack(
             "note": "vector_rag_service.query_project(source=story_memory,memory_type=chapter_summary)",
             "hits": int(semantic_history.get("hits") or 0),
             "text_chars": int(semantic_history.get("text_chars") or len(str(semantic_history.get("text_md") or ""))),
+            "token_estimate": estimate_tokens(str(semantic_history.get("text_md") or "")),
+            "truncated": bool(semantic_history.get("truncated")) if "truncated" in semantic_history else None,
             "budget_char_limit": int(semantic_history_budget),
             "budget_source": "override" if "semantic_history" in budgets else "default",
         },
@@ -800,6 +807,8 @@ def retrieve_memory_context_pack(
             "note": "story_memories (is_foreshadow=1 AND resolved_at IS NULL)",
             "open_count": int(foreshadow_open_loops.get("open_count") or 0),
             "text_chars": int(foreshadow_open_loops.get("text_chars") or len(str(foreshadow_open_loops.get("text_md") or ""))),
+            "token_estimate": estimate_tokens(str(foreshadow_open_loops.get("text_md") or "")),
+            "truncated": bool(foreshadow_open_loops.get("truncated")) if "truncated" in foreshadow_open_loops else None,
             "budget_char_limit": int(foreshadow_open_loops_budget),
             "budget_source": "override" if "foreshadow_open_loops" in budgets else "default",
         },
@@ -808,6 +817,8 @@ def retrieve_memory_context_pack(
             "enabled": bool(structured.get("enabled")),
             "disabled_reason": structured.get("disabled_reason"),
             "note": "entities/relations/events/foreshadows summary",
+            "token_estimate": estimate_tokens(str(structured.get("text_md") or "")),
+            "truncated": bool(structured.get("truncated")) if "truncated" in structured else None,
             "budget_char_limit": int(structured_budget),
             "budget_source": "override" if "structured" in budgets else "default",
         },
@@ -826,6 +837,8 @@ def retrieve_memory_context_pack(
             "hybrid_enabled": bool(vector_rag.get("hybrid_enabled"))
             if "hybrid_enabled" in vector_rag
             else bool(vector_rag.get("hybrid", {}).get("enabled")) if isinstance(vector_rag.get("hybrid"), dict) else None,
+            "token_estimate": estimate_tokens(str(vector_rag.get("text_md") or "")),
+            "truncated": bool(vector_rag.get("truncated")) if "truncated" in vector_rag else None,
             "budget_char_limit": int(vector_rag_budget),
             "budget_source": "override" if "vector_rag" in budgets else "default",
         },
@@ -834,6 +847,8 @@ def retrieve_memory_context_pack(
             "enabled": bool(graph.get("enabled")),
             "disabled_reason": graph.get("disabled_reason"),
             "note": "graph_context_service.query_graph_context",
+            "token_estimate": estimate_tokens(str(graph.get("text_md") or "")),
+            "truncated": bool(graph.get("truncated")) if "truncated" in graph else None,
             "budget_char_limit": int(graph_budget),
             "budget_source": "override" if "graph" in budgets else "default",
         },
@@ -842,6 +857,8 @@ def retrieve_memory_context_pack(
             "enabled": bool(fractal.get("enabled")),
             "disabled_reason": fractal.get("disabled_reason"),
             "note": "Phase 6.2: use /api/projects/{project_id}/fractal/rebuild to rebuild deterministically",
+            "token_estimate": estimate_tokens(str(fractal.get("text_md") or "")),
+            "truncated": bool(fractal.get("truncated")) if "truncated" in fractal else None,
             "budget_char_limit": int(fractal_budget),
             "budget_source": "override" if "fractal" in budgets else "default",
         },

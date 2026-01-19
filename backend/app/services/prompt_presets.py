@@ -459,6 +459,122 @@ def render_preset_for_task(
     optimizer_enabled = bool(values.get("context_optimizer_enabled", False))
     optimizer_log = ContextOptimizer(enabled=optimizer_enabled).optimize_prompt_block_states(block_states)
 
+    def _context_group(identifier: str) -> str | None:
+        if identifier.startswith("sys.story.smart_context."):
+            return "smart_context"
+        if identifier.startswith("sys.memory."):
+            return "memory_pack"
+        return None
+
+    def _sum_context_tokens() -> dict[str, int]:
+        smart = 0
+        memory = 0
+        for s in block_states:
+            identifier = str(s.get("identifier") or "")
+            tokens = int(s.get("tokens_after") or 0)
+            if tokens <= 0:
+                continue
+            group = _context_group(identifier)
+            if group == "smart_context":
+                smart += tokens
+            elif group == "memory_pack":
+                memory += tokens
+        return {"smart_context": int(smart), "memory_pack": int(memory), "total": int(smart + memory)}
+
+    unified_cfg = values.get("unified_context_budget")
+    unified_enabled = False
+    unified_budget_tokens: int | None = None
+    unified_budget_source = "disabled"
+    if isinstance(unified_cfg, dict):
+        unified_enabled = bool(unified_cfg.get("enabled"))
+        raw_tokens = unified_cfg.get("budget_tokens", unified_cfg.get("total_tokens"))
+        if isinstance(raw_tokens, int) and raw_tokens > 0:
+            unified_budget_tokens = int(raw_tokens)
+            unified_budget_source = "explicit"
+        else:
+            ratio_raw = unified_cfg.get("ratio")
+            try:
+                ratio = float(ratio_raw)  # type: ignore[arg-type]
+            except Exception:
+                ratio = 0.0
+            if unified_enabled and ratio > 0 and ratio <= 1 and isinstance(budget_tokens, int) and budget_tokens > 0:
+                unified_budget_tokens = max(0, int(int(budget_tokens) * ratio))
+                if unified_budget_tokens > 0:
+                    unified_budget_source = "ratio"
+
+    unified_log: dict[str, Any] = {
+        "enabled": bool(unified_enabled and isinstance(unified_budget_tokens, int) and unified_budget_tokens > 0),
+        "budget_tokens": unified_budget_tokens,
+        "budget_source": unified_budget_source,
+        "before": _sum_context_tokens(),
+        "after": None,
+        "applied": False,
+        "dropped_blocks": 0,
+        "trimmed_blocks": 0,
+    }
+
+    if unified_log["enabled"] and isinstance(unified_budget_tokens, int) and unified_budget_tokens > 0:
+        before_total = int((unified_log.get("before") or {}).get("total") or 0)
+        if before_total > unified_budget_tokens:
+            ctx_total = before_total
+            dropped = 0
+            trimmed = 0
+
+            candidates = [
+                s
+                for s in block_states
+                if _context_group(str(s.get("identifier") or "")) is not None
+                and int(s.get("tokens_after") or 0) > 0
+                and str(s.get("text_after") or "").strip()
+            ]
+
+            drop_candidates = [s for s in candidates if str(s.get("priority") or "") in ("drop_first", "optional", "important")]
+            drop_candidates.sort(key=lambda s: (priority_rank.get(str(s.get("priority") or ""), 2), -int(s.get("order") or 0)))
+            for s in drop_candidates:
+                if ctx_total <= unified_budget_tokens:
+                    break
+                current = int(s.get("tokens_after") or 0)
+                if current <= 0:
+                    continue
+                ctx_total -= current
+                s["text_after"] = ""
+                s["tokens_after"] = 0
+                s["dropped"] = True
+                s["reason"] = (str(s.get("reason") or "") + ";" if s.get("reason") else "") + "dropped_for_unified_context_budget"
+                dropped += 1
+
+            if ctx_total > unified_budget_tokens:
+                trim_candidates = [
+                    s for s in candidates if int(s.get("tokens_after") or 0) > 0 and str(s.get("text_after") or "").strip()
+                ]
+                trim_candidates.sort(
+                    key=lambda s: (priority_rank.get(str(s.get("priority") or ""), 2), -int(s.get("order") or 0))
+                )
+                for s in trim_candidates:
+                    if ctx_total <= unified_budget_tokens:
+                        break
+                    current = int(s.get("tokens_after") or 0)
+                    if current <= 0:
+                        continue
+                    need = ctx_total - unified_budget_tokens
+                    target = max(0, current - need)
+                    trimmed_text = trim_text_to_tokens(str(s.get("text_after") or ""), target)
+                    new_tokens = estimate_tokens(trimmed_text)
+                    if new_tokens >= current:
+                        continue
+                    ctx_total -= current - new_tokens
+                    s["text_after"] = trimmed_text
+                    s["tokens_after"] = new_tokens
+                    s["trimmed"] = True
+                    s["reason"] = (str(s.get("reason") or "") + ";" if s.get("reason") else "") + f"trim_for_unified_context_budget:{target}"
+                    trimmed += 1
+
+            unified_log["applied"] = True
+            unified_log["dropped_blocks"] = int(dropped)
+            unified_log["trimmed_blocks"] = int(trimmed)
+
+    unified_log["after"] = _sum_context_tokens()
+
     total_tokens = sum(int(s["tokens_after"]) for s in block_states)
     if budget_tokens is not None and total_tokens > budget_tokens:
         candidates = [s for s in block_states if s["priority"] in ("drop_first", "optional", "important")]
@@ -538,6 +654,7 @@ def render_preset_for_task(
         "task": task,
         "preset_id": preset.id,
         "context_optimizer": optimizer_log,
+        "unified_context_budget": unified_log,
         "prompt_budget_tokens": budget_tokens,
         "prompt_budget_source": budget_source,
         "prompt_budget_calc": budget_calc,
