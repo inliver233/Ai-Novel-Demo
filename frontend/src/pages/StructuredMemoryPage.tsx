@@ -113,6 +113,32 @@ function toCountMap(value: unknown): Counts {
   return base;
 }
 
+function toRowItems(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((x): x is Record<string, unknown> => !!x && typeof x === "object") as Array<Record<string, unknown>>;
+}
+
+function readStringField(row: Record<string, unknown>, key: string): string {
+  const value = row[key];
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (value == null) return "";
+  return String(value);
+}
+
+function readTextField(row: Record<string, unknown>, key: string): string | null | undefined {
+  const value = row[key];
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return value;
+  return String(value);
+}
+
+function readBoolField(row: Record<string, unknown>, key: string): boolean {
+  const value = row[key];
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
 export function StructuredMemoryPage() {
   const { projectId } = useParams();
   const [searchParams] = useSearchParams();
@@ -139,7 +165,7 @@ export function StructuredMemoryPage() {
       const data = res.data as unknown as StructuredMemoryResponse;
       const counts = toCountMap(data.counts);
       const cursor = (data.cursor?.[activeTable] ?? null) as string | null;
-      const items = ((data as any)[activeTable] ?? []) as Array<Record<string, unknown>>;
+      const items = toRowItems(data[activeTable]);
 
       return { table: activeTable, q: queryText.trim(), include_deleted: includeDeleted, counts, cursor, items };
     },
@@ -161,10 +187,6 @@ export function StructuredMemoryPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-  useEffect(() => {
-    setSelectedIds([]);
-  }, [activeTable, queryText, includeDeleted]);
-
   const loadMore = useCallback(async () => {
     if (!projectId) return;
     if (!cursor) return;
@@ -178,7 +200,7 @@ export function StructuredMemoryPage() {
     try {
       const res = await apiJson<StructuredMemoryResponse>(`/api/projects/${projectId}/memory/structured?${params.toString()}`);
       const data = res.data as unknown as StructuredMemoryResponse;
-      const nextItems = ((data as any)[activeTable] ?? []) as Array<Record<string, unknown>>;
+      const nextItems = toRowItems(data[activeTable]);
       const nextCursor = (data.cursor?.[activeTable] ?? null) as string | null;
       pageQuery.setData((prev) => {
         const prevCounts = prev?.counts ?? counts;
@@ -232,13 +254,14 @@ export function StructuredMemoryPage() {
   }, []);
 
   const selectAll = useCallback(() => {
-    const ids = items.map((x) => String((x as any).id || "")).filter(Boolean);
+    const ids = items.map((row) => readStringField(row, "id")).filter(Boolean);
     setSelectedIds(ids);
   }, [items]);
 
   const clearSelected = useCallback(() => setSelectedIds([]), []);
 
   const applySearch = useCallback(() => {
+    setSelectedIds([]);
     setQueryText(searchText.trim());
   }, [searchText]);
 
@@ -268,7 +291,10 @@ export function StructuredMemoryPage() {
               <button
                 key={t}
                 className={`btn ${activeTable === t ? "btn-primary" : "btn-secondary"}`}
-                onClick={() => setActiveTable(t)}
+                onClick={() => {
+                  setSelectedIds([]);
+                  setActiveTable(t);
+                }}
                 type="button"
               >
                 {tableLabel(t)} <span className="text-xs opacity-80">({counts[t] ?? 0})</span>
@@ -278,14 +304,17 @@ export function StructuredMemoryPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-2 text-sm text-ink">
-              <input
-                className="checkbox"
-                checked={includeDeleted}
-                onChange={(e) => setIncludeDeleted(e.target.checked)}
-                aria-label="structured_include_deleted"
-                type="checkbox"
-              />
-              include_deleted
+                <input
+                  className="checkbox"
+                  checked={includeDeleted}
+                  onChange={(e) => {
+                    setSelectedIds([]);
+                    setIncludeDeleted(e.target.checked);
+                  }}
+                  aria-label="structured_include_deleted"
+                  type="checkbox"
+                />
+                include_deleted
             </label>
             <button
               className="btn btn-secondary"
@@ -388,27 +417,27 @@ export function StructuredMemoryPage() {
                 </thead>
                 <tbody>
                   {items.map((row) => {
-                    const id = String((row as any).id || "");
-                    const deletedAt = String((row as any).deleted_at || "");
+                    const id = readStringField(row, "id");
+                    const deletedAt = readStringField(row, "deleted_at");
                     const checked = selectedSet.has(id);
 
                     let primary = id;
                     let summary = "-";
                     if (activeTable === "entities") {
-                      primary = `${(row as any).entity_type}:${(row as any).name}`;
-                      summary = safeSnippet((row as any).summary_md);
+                      primary = `${readStringField(row, "entity_type")}:${readStringField(row, "name")}`;
+                      summary = safeSnippet(readTextField(row, "summary_md"));
                     } else if (activeTable === "relations") {
-                      primary = `${(row as any).relation_type}:${(row as any).from_entity_id}→${(row as any).to_entity_id}`;
-                      summary = safeSnippet((row as any).description_md);
+                      primary = `${readStringField(row, "relation_type")}:${readStringField(row, "from_entity_id")}→${readStringField(row, "to_entity_id")}`;
+                      summary = safeSnippet(readTextField(row, "description_md"));
                     } else if (activeTable === "events") {
-                      primary = `${(row as any).event_type}:${(row as any).title || id}`;
-                      summary = safeSnippet((row as any).content_md);
+                      primary = `${readStringField(row, "event_type")}:${readStringField(row, "title") || id}`;
+                      summary = safeSnippet(readTextField(row, "content_md"));
                     } else if (activeTable === "foreshadows") {
-                      primary = `${(row as any).resolved ? "resolved" : "open"}:${(row as any).title || id}`;
-                      summary = safeSnippet((row as any).content_md);
+                      primary = `${readBoolField(row, "resolved") ? "resolved" : "open"}:${readStringField(row, "title") || id}`;
+                      summary = safeSnippet(readTextField(row, "content_md"));
                     } else if (activeTable === "evidence") {
-                      primary = `${(row as any).source_type}:${(row as any).source_id || "-"}`;
-                      summary = safeSnippet((row as any).quote_md);
+                      primary = `${readStringField(row, "source_type")}:${readStringField(row, "source_id") || "-"}`;
+                      summary = safeSnippet(readTextField(row, "quote_md"));
                     }
 
                     return (
@@ -467,4 +496,3 @@ export function StructuredMemoryPage() {
     </div>
   );
 }
-
