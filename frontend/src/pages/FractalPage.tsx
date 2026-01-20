@@ -54,7 +54,9 @@ export function FractalPage() {
       setResult(res.data?.result ?? null);
     } catch (e) {
       const err =
-        e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       setError(err);
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
@@ -76,7 +78,9 @@ export function FractalPage() {
         setResult(res.data?.result ?? null);
       } catch (e) {
         const err =
-          e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
         setError(err);
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       } finally {
@@ -111,7 +115,12 @@ export function FractalPage() {
             <button className="btn btn-secondary" onClick={() => void loadFractal()} disabled={loading} type="button">
               {loading ? "刷新..." : "刷新"}
             </button>
-            <button className="btn btn-secondary" onClick={() => void rebuild("deterministic")} disabled={loading} type="button">
+            <button
+              className="btn btn-secondary"
+              onClick={() => void rebuild("deterministic")}
+              disabled={loading}
+              type="button"
+            >
               {loading ? "重建中..." : "重建（deterministic）"}
             </button>
             <button className="btn btn-primary" onClick={() => void rebuild("llm_v2")} disabled={loading} type="button">
@@ -172,4 +181,3 @@ export function FractalPage() {
     </div>
   );
 }
-

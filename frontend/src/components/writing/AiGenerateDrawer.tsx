@@ -137,7 +137,9 @@ export function AiGenerateDrawer(props: Props) {
           </label>
 
           {props.preset && props.genForm.stream && !streamProviderSupported ? (
-            <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">不支持流式，生成时会自动回退非流式生成</div>
+            <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+              不支持流式，生成时会自动回退非流式生成
+            </div>
           ) : null}
 
           <label className="mt-2 flex items-center justify-between gap-3 text-sm text-ink">

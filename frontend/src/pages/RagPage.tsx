@@ -136,7 +136,12 @@ function normalizeRerankObs(raw: unknown): VectorRerankObs | null {
   };
 }
 
-function rerankDelta(obs: VectorRerankObs): { compared: number; changedPositions: number; entered: number; left: number } {
+function rerankDelta(obs: VectorRerankObs): {
+  compared: number;
+  changedPositions: number;
+  entered: number;
+  left: number;
+} {
   const compared = Math.min(obs.top_k || 0, obs.before.length, obs.after.length);
   if (compared <= 0) return { compared: 0, changedPositions: 0, entered: 0, left: 0 };
   let changedPositions = 0;
@@ -163,7 +168,9 @@ function formatRerankSummary(obs: VectorRerankObs): string {
   const reqText = obs.requested_method || "-";
   const reasonText = obs.reason ?? "-";
   const errText = obs.error_type ? ` | error:${obs.error_type}` : "";
-  const changesText = delta.compared ? ` | changed_in_top_k:${comparedText} | entered:${delta.entered} | left:${delta.left}` : "";
+  const changesText = delta.compared
+    ? ` | changed_in_top_k:${comparedText} | entered:${delta.entered} | left:${delta.left}`
+    : "";
   return `enabled:${String(obs.enabled)} | applied:${String(obs.applied)} | reason:${reasonText} | requested:${reqText} | method:${methodText} | top_k:${obs.top_k} | timing_ms:${obs.timing_ms}${changesText}${errText}`;
 }
 
@@ -225,7 +232,9 @@ export function RagPage() {
   const [kbLoading, setKbLoading] = useState(false);
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
   const [selectedKbIds, setSelectedKbIds] = useState<string[]>([]);
-  const [kbDraftById, setKbDraftById] = useState<Record<string, Pick<KnowledgeBase, "name" | "enabled" | "weight">>>({});
+  const [kbDraftById, setKbDraftById] = useState<Record<string, Pick<KnowledgeBase, "name" | "enabled" | "weight">>>(
+    {},
+  );
   const [kbDirtyById, setKbDirtyById] = useState<Record<string, boolean>>({});
   const [kbOrderDirty, setKbOrderDirty] = useState(false);
   const [kbDragId, setKbDragId] = useState<string | null>(null);
@@ -251,7 +260,7 @@ export function RagPage() {
   const busy = statusLoading || ingestLoading || rebuildLoading || queryLoading || rerankSaving;
 
   const vectorIndexDirty = status?.index ? Boolean(status.index.dirty) : null;
-  const lastVectorBuildAt = status?.index ? status.index.last_build_at ?? null : null;
+  const lastVectorBuildAt = status?.index ? (status.index.last_build_at ?? null) : null;
   const vectorEnabled = status ? Boolean(status.enabled) : null;
   const vectorDisabledReason = status && typeof status.disabled_reason === "string" ? status.disabled_reason : null;
 
@@ -397,12 +406,18 @@ export function RagPage() {
       }
       setKbSaveLoadingId(kid);
       try {
-        const res = await apiJson<{ kb: KnowledgeBase }>(`/api/projects/${projectId}/vector/kbs/${encodeURIComponent(kid)}`, {
-          method: "PUT",
-          body: JSON.stringify({ name: draft.name, enabled: draft.enabled, weight: draft.weight }),
-        });
+        const res = await apiJson<{ kb: KnowledgeBase }>(
+          `/api/projects/${projectId}/vector/kbs/${encodeURIComponent(kid)}`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ name: draft.name, enabled: draft.enabled, weight: draft.weight }),
+          },
+        );
         setKbs((prev) => prev.map((kb) => (kb.kb_id === kid ? res.data.kb : kb)));
-        setKbDraftById((prev) => ({ ...prev, [kid]: { name: res.data.kb.name, enabled: res.data.kb.enabled, weight: res.data.kb.weight } }));
+        setKbDraftById((prev) => ({
+          ...prev,
+          [kid]: { name: res.data.kb.name, enabled: res.data.kb.enabled, weight: res.data.kb.weight },
+        }));
         setKbDirtyById((prev) => ({ ...prev, [kid]: false }));
         toast.toastSuccess("已保存 KB", res.request_id);
       } catch (e) {
@@ -425,9 +440,12 @@ export function RagPage() {
       if (!kid) return;
       setKbDeleteLoadingId(kid);
       try {
-        const res = await apiJson<{ deleted: boolean }>(`/api/projects/${projectId}/vector/kbs/${encodeURIComponent(kid)}`, {
-          method: "DELETE",
-        });
+        const res = await apiJson<{ deleted: boolean }>(
+          `/api/projects/${projectId}/vector/kbs/${encodeURIComponent(kid)}`,
+          {
+            method: "DELETE",
+          },
+        );
         toast.toastSuccess("已删除 KB", res.request_id);
         await loadKbs();
       } catch (e) {
@@ -598,7 +616,9 @@ export function RagPage() {
       setQueryResult(res.data?.result ?? null);
       setQueryRequestId(res.request_id ?? null);
       setRawQueryText(typeof res.data?.raw_query_text === "string" ? res.data.raw_query_text : queryText);
-      setNormalizedQueryText(typeof res.data?.normalized_query_text === "string" ? res.data.normalized_query_text : null);
+      setNormalizedQueryText(
+        typeof res.data?.normalized_query_text === "string" ? res.data.normalized_query_text : null,
+      );
       setQueryPreprocessObs(res.data?.preprocess_obs ?? null);
     } catch (e) {
       const err =
@@ -776,8 +796,8 @@ export function RagPage() {
       <div className="mt-3 rounded-atelier border border-border bg-canvas p-3 text-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-subtext">
-            vector_index_dirty: {vectorIndexDirty === null ? "loading…" : String(vectorIndexDirty)} | last_vector_build_at:{" "}
-            {lastVectorBuildAt ?? "-"}
+            vector_index_dirty: {vectorIndexDirty === null ? "loading…" : String(vectorIndexDirty)} |
+            last_vector_build_at: {lastVectorBuildAt ?? "-"}
             {lastVectorBuildAt ? ` (${formatIsoToLocal(lastVectorBuildAt)})` : ""}
           </div>
           {vectorIndexDirty === null ? (
@@ -785,7 +805,8 @@ export function RagPage() {
           ) : vectorIndexDirty ? (
             vectorEnabled === false ? (
               <div className="text-ink">
-                索引已过期，但向量服务未启用（disabled_reason: {vectorDisabledReason ?? "-"}）。请先在 Settings 配置 embedding，再 rebuild。
+                索引已过期，但向量服务未启用（disabled_reason: {vectorDisabledReason ?? "-"}）。请先在 Settings 配置
+                embedding，再 rebuild。
               </div>
             ) : (
               <div className="text-ink">索引已过期：建议点击右上角 “Rebuild（建议）” 重新构建。</div>
@@ -800,10 +821,20 @@ export function RagPage() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm font-medium text-ink">Knowledge Bases</div>
           <div className="flex gap-2">
-            <button className="btn btn-secondary" disabled={!projectId || kbLoading} onClick={() => void loadKbs()} type="button">
+            <button
+              className="btn btn-secondary"
+              disabled={!projectId || kbLoading}
+              onClick={() => void loadKbs()}
+              type="button"
+            >
               {kbLoading ? "加载中…" : "刷新 KB"}
             </button>
-            <button className="btn btn-primary" disabled={!projectId || kbLoading || !kbOrderDirty} onClick={() => void saveKbOrder()} type="button">
+            <button
+              className="btn btn-primary"
+              disabled={!projectId || kbLoading || !kbOrderDirty}
+              onClick={() => void saveKbOrder()}
+              type="button"
+            >
               保存排序
             </button>
           </div>
@@ -812,9 +843,7 @@ export function RagPage() {
         <div className="mt-2 text-xs text-subtext">
           selected_kb_ids: {selectedKbIds.length ? selectedKbIds.join(", ") : "（空：query 默认用 enabled 集合）"}
           {queryResult?.kbs?.selected?.length ? (
-            <span className="ml-2">
-              | query_selected: {queryResult.kbs.selected.join(", ")}
-            </span>
+            <span className="ml-2">| query_selected: {queryResult.kbs.selected.join(", ")}</span>
           ) : null}
         </div>
 
@@ -830,7 +859,11 @@ export function RagPage() {
               return (
                 <div
                   key={kb.kb_id}
-                  className={isDragging ? "rounded-atelier border border-border bg-canvas p-3 opacity-80" : "rounded-atelier border border-border bg-canvas p-3"}
+                  className={
+                    isDragging
+                      ? "rounded-atelier border border-border bg-canvas p-3 opacity-80"
+                      : "rounded-atelier border border-border bg-canvas p-3"
+                  }
                   draggable
                   onDragStart={() => setKbDragId(kb.kb_id)}
                   onDragEnd={() => setKbDragId(null)}
@@ -902,7 +935,12 @@ export function RagPage() {
                       </button>
                       <button
                         className="btn btn-danger"
-                        disabled={!projectId || kbDeleteLoadingId === kb.kb_id || Boolean(draft.enabled) || kb.kb_id === "default"}
+                        disabled={
+                          !projectId ||
+                          kbDeleteLoadingId === kb.kb_id ||
+                          Boolean(draft.enabled) ||
+                          kb.kb_id === "default"
+                        }
                         onClick={() => void deleteKb(kb.kb_id)}
                         aria-label={`删除 KB ${kb.kb_id}`}
                         type="button"
@@ -918,7 +956,8 @@ export function RagPage() {
                     <div>weight: {String(draft.weight)}</div>
                     {counts ? (
                       <div>
-                        query_counts: {counts.candidates_total}/{counts.candidates_returned} | final:{counts.final_selected} | dropped:{counts.dropped_total}
+                        query_counts: {counts.candidates_total}/{counts.candidates_returned} | final:
+                        {counts.final_selected} | dropped:{counts.dropped_total}
                       </div>
                     ) : (
                       <div>query_counts: -</div>
@@ -944,7 +983,12 @@ export function RagPage() {
             />
           </label>
           <div className="flex items-end">
-            <button className="btn btn-primary w-full" disabled={!projectId || kbCreateLoading} onClick={() => void createKb()} type="button">
+            <button
+              className="btn btn-primary w-full"
+              disabled={!projectId || kbCreateLoading}
+              onClick={() => void createKb()}
+              type="button"
+            >
               {kbCreateLoading ? "创建中…" : "创建 KB"}
             </button>
           </div>
@@ -967,8 +1011,9 @@ export function RagPage() {
           {settingsQuery.data ? (
             <>
               effective: enabled:{String(settingsQuery.data.vector_rerank_effective_enabled)} | method:
-              {settingsQuery.data.vector_rerank_effective_method} | top_k:{settingsQuery.data.vector_rerank_effective_top_k} |
-              source:{settingsQuery.data.vector_rerank_effective_source}
+              {settingsQuery.data.vector_rerank_effective_method} | top_k:
+              {settingsQuery.data.vector_rerank_effective_top_k} | source:
+              {settingsQuery.data.vector_rerank_effective_source}
             </>
           ) : (
             "（未加载 settings）"
@@ -1014,7 +1059,12 @@ export function RagPage() {
             />
           </label>
           <div className="sm:col-span-3">
-            <button className="btn btn-primary" disabled={!projectId || rerankSaving || settingsQuery.loading} onClick={() => void applyRerank()} type="button">
+            <button
+              className="btn btn-primary"
+              disabled={!projectId || rerankSaving || settingsQuery.loading}
+              onClick={() => void applyRerank()}
+              type="button"
+            >
               {rerankSaving ? "保存中…" : "应用 rerank 配置"}
             </button>
           </div>
@@ -1098,7 +1148,12 @@ export function RagPage() {
               >
                 复制注入文本
               </button>
-              <button className="btn btn-secondary" disabled={!queryResult} onClick={() => void copyQueryDebug()} type="button">
+              <button
+                className="btn btn-secondary"
+                disabled={!queryResult}
+                onClick={() => void copyQueryDebug()}
+                type="button"
+              >
                 复制 debug
               </button>
               {queryResult?.counts ? (

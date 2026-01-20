@@ -176,7 +176,9 @@ export async function apiDownloadMarkdown(path: string): Promise<{ filename: str
   });
 }
 
-export async function apiDownloadAttachment(path: string): Promise<{ filename: string; blob: Blob; requestId: string }> {
+export async function apiDownloadAttachment(
+  path: string,
+): Promise<{ filename: string; blob: Blob; requestId: string }> {
   const res = await fetchWithTimeout(path);
   const requestIdHeader = res.headers.get("X-Request-Id") ?? "unknown";
   const cd = res.headers.get("Content-Disposition") ?? "";

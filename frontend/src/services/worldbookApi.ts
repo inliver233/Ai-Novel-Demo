@@ -132,10 +132,13 @@ export async function bulkUpdateWorldBookEntries(
     priority?: WorldBookPriority;
   },
 ): Promise<WorldBookEntry[]> {
-  const res = await apiJson<{ worldbook_entries: WorldBookEntry[] }>(`/api/projects/${projectId}/worldbook_entries/bulk_update`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  const res = await apiJson<{ worldbook_entries: WorldBookEntry[] }>(
+    `/api/projects/${projectId}/worldbook_entries/bulk_update`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
   return res.data.worldbook_entries ?? [];
 }
 
@@ -148,15 +151,20 @@ export async function bulkDeleteWorldBookEntries(projectId: string, entryIds: st
 }
 
 export async function duplicateWorldBookEntries(projectId: string, entryIds: string[]): Promise<WorldBookEntry[]> {
-  const res = await apiJson<{ worldbook_entries: WorldBookEntry[] }>(`/api/projects/${projectId}/worldbook_entries/duplicate`, {
-    method: "POST",
-    body: JSON.stringify({ entry_ids: entryIds }),
-  });
+  const res = await apiJson<{ worldbook_entries: WorldBookEntry[] }>(
+    `/api/projects/${projectId}/worldbook_entries/duplicate`,
+    {
+      method: "POST",
+      body: JSON.stringify({ entry_ids: entryIds }),
+    },
+  );
   return res.data.worldbook_entries ?? [];
 }
 
 export async function exportAllWorldBookEntries(projectId: string): Promise<WorldBookExportAllV1> {
-  const res = await apiJson<{ export: WorldBookExportAllV1 }>(`/api/projects/${projectId}/worldbook_entries/export_all`);
+  const res = await apiJson<{ export: WorldBookExportAllV1 }>(
+    `/api/projects/${projectId}/worldbook_entries/export_all`,
+  );
   return res.data.export;
 }
 

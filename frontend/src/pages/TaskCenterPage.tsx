@@ -92,7 +92,9 @@ export function TaskCenterPage() {
       if (changeSetStatus !== "all") params.set("status", changeSetStatus);
       params.set("limit", "50");
       const qs = params.toString();
-      const res = await apiJson<PagedResult<MemoryChangeSetSummary>>(`/api/projects/${id}/memory_change_sets${qs ? `?${qs}` : ""}`);
+      const res = await apiJson<PagedResult<MemoryChangeSetSummary>>(
+        `/api/projects/${id}/memory_change_sets${qs ? `?${qs}` : ""}`,
+      );
       return res.data;
     },
     [changeSetStatus],
@@ -104,7 +106,9 @@ export function TaskCenterPage() {
       if (taskStatus !== "all") params.set("status", taskStatus);
       params.set("limit", "50");
       const qs = params.toString();
-      const res = await apiJson<PagedResult<MemoryTaskSummary>>(`/api/projects/${id}/memory_tasks${qs ? `?${qs}` : ""}`);
+      const res = await apiJson<PagedResult<MemoryTaskSummary>>(
+        `/api/projects/${id}/memory_tasks${qs ? `?${qs}` : ""}`,
+      );
       return res.data;
     },
     [taskStatus],
@@ -130,9 +134,7 @@ export function TaskCenterPage() {
   const tasks = tasksQuery.data?.items ?? [];
 
   const [selected, setSelected] = useState<
-    | { kind: "change_set"; item: MemoryChangeSetSummary }
-    | { kind: "task"; item: MemoryTaskSummary }
-    | null
+    { kind: "change_set"; item: MemoryChangeSetSummary } | { kind: "task"; item: MemoryTaskSummary } | null
   >(null);
 
   const detailTitle = useMemo(() => {
@@ -240,7 +242,9 @@ export function TaskCenterPage() {
           </div>
 
           {tasksQuery.loading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
-          {!tasksQuery.loading && tasks.length === 0 ? <div className="mt-3 text-sm text-subtext">暂无 Task</div> : null}
+          {!tasksQuery.loading && tasks.length === 0 ? (
+            <div className="mt-3 text-sm text-subtext">暂无 Task</div>
+          ) : null}
 
           <div className="mt-3 grid gap-2">
             {tasks.map((t) => (
@@ -256,7 +260,9 @@ export function TaskCenterPage() {
                       {t.kind} <span className="text-subtext">({t.id})</span>
                     </div>
                     <div className="mt-1 truncate text-xs text-subtext">change_set_id: {t.change_set_id}</div>
-                    {t.request_id ? <div className="mt-1 truncate text-[11px] text-subtext">request_id: {t.request_id}</div> : null}
+                    {t.request_id ? (
+                      <div className="mt-1 truncate text-[11px] text-subtext">request_id: {t.request_id}</div>
+                    ) : null}
                     {t.status === "failed" ? (
                       <div className="mt-1 truncate text-xs text-red-700 dark:text-red-300">
                         {t.error_type || "ERROR"}: {t.error_message || "unknown"}

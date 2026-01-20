@@ -21,7 +21,9 @@ export function GenerationHistoryDrawer(props: Props) {
 
   const selectedRun = props.selectedRun;
   const paramsObj =
-    selectedRun?.params && typeof selectedRun.params === "object" ? (selectedRun.params as Record<string, unknown>) : null;
+    selectedRun?.params && typeof selectedRun.params === "object"
+      ? (selectedRun.params as Record<string, unknown>)
+      : null;
   const memoryLogRaw = paramsObj?.memory_retrieval_log_json;
   const memoryLog = memoryLogRaw && typeof memoryLogRaw === "object" ? (memoryLogRaw as Record<string, unknown>) : null;
   const perSectionRaw = memoryLog?.per_section;
@@ -44,7 +46,9 @@ export function GenerationHistoryDrawer(props: Props) {
     if (downloading) return;
     setDownloading(true);
     try {
-      const { filename, blob, requestId } = await apiDownloadAttachment(`/api/generation_runs/${selectedRun.id}/debug_bundle`);
+      const { filename, blob, requestId } = await apiDownloadAttachment(
+        `/api/generation_runs/${selectedRun.id}/debug_bundle`,
+      );
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objectUrl;
@@ -79,7 +83,7 @@ export function GenerationHistoryDrawer(props: Props) {
         </button>
       </div>
 
-        <div className="mt-5 grid gap-4">
+      <div className="mt-5 grid gap-4">
         {props.loading ? <div className="text-sm text-subtext">加载中...</div> : null}
 
         <div className="grid gap-3 md:grid-cols-2">
@@ -117,30 +121,30 @@ export function GenerationHistoryDrawer(props: Props) {
           </div>
 
           <div className="rounded-atelier border border-border bg-surface p-4">
-	            {!selectedRun ? (
-	              <div className="text-sm text-subtext">选择一条记录查看详情。</div>
+            {!selectedRun ? (
+              <div className="text-sm text-subtext">选择一条记录查看详情。</div>
             ) : (
               <div className="grid gap-3">
                 <div className="text-sm text-ink">{selectedRun.type}</div>
                 <div className="text-xs text-subtext">
                   {selectedRun.provider ?? "unknown"} / {selectedRun.model ?? "unknown"}
                 </div>
-	                <div className="flex items-center gap-2 text-xs text-subtext">
-	                  <span className="truncate">run_id: {selectedRun.id}</span>
-	                  <button
-	                    className="btn btn-ghost px-2 py-1 text-xs"
-	                    onClick={async () => {
-	                      await navigator.clipboard.writeText(selectedRun.id ?? "");
-	                    }}
-	                    type="button"
-	                  >
-	                    复制
-	                  </button>
-	                </div>
-	                {selectedRun.request_id ? (
-	                  <div className="flex items-center gap-2 text-xs text-subtext">
-	                    <span className="truncate">request_id: {selectedRun.request_id}</span>
-	                    <button
+                <div className="flex items-center gap-2 text-xs text-subtext">
+                  <span className="truncate">run_id: {selectedRun.id}</span>
+                  <button
+                    className="btn btn-ghost px-2 py-1 text-xs"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(selectedRun.id ?? "");
+                    }}
+                    type="button"
+                  >
+                    复制
+                  </button>
+                </div>
+                {selectedRun.request_id ? (
+                  <div className="flex items-center gap-2 text-xs text-subtext">
+                    <span className="truncate">request_id: {selectedRun.request_id}</span>
+                    <button
                       className="btn btn-ghost px-2 py-1 text-xs"
                       onClick={async () => {
                         await navigator.clipboard.writeText(selectedRun.request_id ?? "");
@@ -148,40 +152,40 @@ export function GenerationHistoryDrawer(props: Props) {
                       type="button"
                     >
                       复制
-	                    </button>
-	                  </div>
-	                ) : null}
-	                <div>
-	                  <button
-	                    className="btn btn-secondary"
-	                    disabled={downloading}
-	                    onClick={() => void downloadDebugBundle()}
-	                    type="button"
-	                  >
-	                    {downloading ? "下载中..." : "下载 debug bundle"}
-	                  </button>
-	                </div>
+                    </button>
+                  </div>
+                ) : null}
+                <div>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={downloading}
+                    onClick={() => void downloadDebugBundle()}
+                    type="button"
+                  >
+                    {downloading ? "下载中..." : "下载 debug bundle"}
+                  </button>
+                </div>
 
-                  {memoryLog ? (
-                    <details open>
-                      <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
-                        memory_retrieval_log_json
-                      </summary>
-                      <div className="mt-2 grid gap-2 text-xs text-subtext">
-                        <div>
-                          enabled: {String(memoryLog.enabled ?? "")} | phase: {String(memoryLog.phase ?? "")}
-                        </div>
-                        <div className="truncate">query_text: {String(memoryLog.query_text ?? "")}</div>
-                        {Array.isArray(memoryLog.errors) && memoryLog.errors.length ? (
-                          <div className="text-amber-600 dark:text-amber-400">errors: {memoryLog.errors.join(", ")}</div>
-                        ) : null}
+                {memoryLog ? (
+                  <details open>
+                    <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                      memory_retrieval_log_json
+                    </summary>
+                    <div className="mt-2 grid gap-2 text-xs text-subtext">
+                      <div>
+                        enabled: {String(memoryLog.enabled ?? "")} | phase: {String(memoryLog.phase ?? "")}
                       </div>
+                      <div className="truncate">query_text: {String(memoryLog.query_text ?? "")}</div>
+                      {Array.isArray(memoryLog.errors) && memoryLog.errors.length ? (
+                        <div className="text-amber-600 dark:text-amber-400">errors: {memoryLog.errors.join(", ")}</div>
+                      ) : null}
+                    </div>
 
-                      {perSection ? (
-                        <div className="mt-3 grid gap-2">
-                          {Object.entries(perSection)
-                            .sort(([a], [b]) => a.localeCompare(b))
-                            .map(([section, raw]) => {
+                    {perSection ? (
+                      <div className="mt-3 grid gap-2">
+                        {Object.entries(perSection)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([section, raw]) => {
                             const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
                             const enabled = Boolean(o.enabled);
                             const disabledReason = typeof o.disabled_reason === "string" ? o.disabled_reason : null;
@@ -200,18 +204,18 @@ export function GenerationHistoryDrawer(props: Props) {
                               </div>
                             );
                           })}
-                        </div>
-                      ) : (
-                        <pre className="mt-2 max-h-40 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
-                          {JSON.stringify(memoryLog, null, 2)}
-                        </pre>
-                      )}
-                    </details>
-                  ) : null}
+                      </div>
+                    ) : (
+                      <pre className="mt-2 max-h-40 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
+                        {JSON.stringify(memoryLog, null, 2)}
+                      </pre>
+                    )}
+                  </details>
+                ) : null}
 
-	                <details open>
-	                  <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
-	                    params
+                <details open>
+                  <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                    params
                   </summary>
                   <pre className="mt-2 max-h-40 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
                     {JSON.stringify(selectedRun.params ?? {}, null, 2)}

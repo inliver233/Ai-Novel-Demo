@@ -87,7 +87,9 @@ function tableLabel(t: TableName): string {
 }
 
 function safeSnippet(text: string | null | undefined, max = 80): string {
-  const s = String(text || "").replaceAll("\n", " ").trim();
+  const s = String(text || "")
+    .replaceAll("\n", " ")
+    .trim();
   if (!s) return "-";
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
@@ -115,7 +117,9 @@ function toCountMap(value: unknown): Counts {
 
 function toRowItems(value: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) return [];
-  return value.filter((x): x is Record<string, unknown> => !!x && typeof x === "object") as Array<Record<string, unknown>>;
+  return value.filter((x): x is Record<string, unknown> => !!x && typeof x === "object") as Array<
+    Record<string, unknown>
+  >;
 }
 
 function readStringField(row: Record<string, unknown>, key: string): string {
@@ -198,7 +202,9 @@ export function StructuredMemoryPage() {
     params.set("limit", "50");
 
     try {
-      const res = await apiJson<StructuredMemoryResponse>(`/api/projects/${projectId}/memory/structured?${params.toString()}`);
+      const res = await apiJson<StructuredMemoryResponse>(
+        `/api/projects/${projectId}/memory/structured?${params.toString()}`,
+      );
       const data = res.data as unknown as StructuredMemoryResponse;
       const nextItems = toRowItems(data[activeTable]);
       const nextCursor = (data.cursor?.[activeTable] ?? null) as string | null;
@@ -214,7 +220,10 @@ export function StructuredMemoryPage() {
         };
       });
     } catch (e) {
-      const err = e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     }
   }, [activeTable, counts, cursor, includeDeleted, pageQuery, projectId, queryText, toast]);
@@ -227,7 +236,12 @@ export function StructuredMemoryPage() {
 
   const generatedResolvedOpsJson = useMemo(() => {
     if (activeTable !== "foreshadows" || selectedIds.length === 0) return "";
-    const ops = selectedIds.map((id) => ({ op: "upsert", target_table: "foreshadows", target_id: id, after: { resolved: 1 } }));
+    const ops = selectedIds.map((id) => ({
+      op: "upsert",
+      target_table: "foreshadows",
+      target_id: id,
+      after: { resolved: 1 },
+    }));
     return safeJsonStringify(ops);
   }, [activeTable, selectedIds]);
 
@@ -304,17 +318,17 @@ export function StructuredMemoryPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-2 text-sm text-ink">
-                <input
-                  className="checkbox"
-                  checked={includeDeleted}
-                  onChange={(e) => {
-                    setSelectedIds([]);
-                    setIncludeDeleted(e.target.checked);
-                  }}
-                  aria-label="structured_include_deleted"
-                  type="checkbox"
-                />
-                include_deleted
+              <input
+                className="checkbox"
+                checked={includeDeleted}
+                onChange={(e) => {
+                  setSelectedIds([]);
+                  setIncludeDeleted(e.target.checked);
+                }}
+                aria-label="structured_include_deleted"
+                type="checkbox"
+              />
+              include_deleted
             </label>
             <button
               className="btn btn-secondary"
@@ -380,7 +394,12 @@ export function StructuredMemoryPage() {
 
             <div className="mt-3 grid gap-2">
               <div className="text-xs text-subtext">delete ops</div>
-              <textarea className="textarea font-mono text-xs" readOnly rows={Math.min(10, Math.max(3, selectedIds.length + 1))} value={generatedDeleteOpsJson} />
+              <textarea
+                className="textarea font-mono text-xs"
+                readOnly
+                rows={Math.min(10, Math.max(3, selectedIds.length + 1))}
+                value={generatedDeleteOpsJson}
+              />
               {activeTable === "foreshadows" ? (
                 <>
                   <div className="text-xs text-subtext">resolved ops</div>
@@ -406,7 +425,12 @@ export function StructuredMemoryPage() {
                 <thead className="bg-surface text-xs text-subtext">
                   <tr>
                     <th className="w-10 p-2">
-                      <button className="btn btn-secondary btn-icon" onClick={selectAll} type="button" aria-label="structured_select_all">
+                      <button
+                        className="btn btn-secondary btn-icon"
+                        onClick={selectAll}
+                        type="button"
+                        aria-label="structured_select_all"
+                      >
                         ✓
                       </button>
                     </th>

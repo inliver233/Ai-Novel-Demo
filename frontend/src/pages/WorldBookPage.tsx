@@ -105,9 +105,9 @@ export function WorldBookPage() {
   const [form, setForm] = useState<WorldBookEntryForm>(() => toForm(null));
 
   const [searchText, setSearchText] = useState("");
-  const [sortMode, setSortMode] = useState<"updated_desc" | "updated_asc" | "priority_desc" | "priority_asc" | "enabled_desc" | "enabled_asc">(
-    "updated_desc",
-  );
+  const [sortMode, setSortMode] = useState<
+    "updated_desc" | "updated_asc" | "priority_desc" | "priority_asc" | "enabled_desc" | "enabled_asc"
+  >("updated_desc");
 
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
@@ -495,7 +495,11 @@ export function WorldBookPage() {
   const bulkClearSelection = useCallback(() => setBulkSelectedIds([]), []);
 
   const bulkUpdate = useCallback(
-    async (opts: { title: string; description: string; patch: { enabled?: boolean; priority?: WorldBookPriority; char_limit?: number } }) => {
+    async (opts: {
+      title: string;
+      description: string;
+      patch: { enabled?: boolean; priority?: WorldBookPriority; char_limit?: number };
+    }) => {
       if (!projectId) return;
       if (bulkSelectedIds.length === 0) {
         toast.toastError(UI_COPY.worldbook.bulkNoSelection);
@@ -539,9 +543,7 @@ export function WorldBookPage() {
     const ok = await confirm.confirm({
       title: UI_COPY.worldbook.bulkDeleteTitle,
       description:
-        UI_COPY.worldbook.bulkDeleteDescPrefix +
-        bulkSelectedIds.length +
-        UI_COPY.worldbook.bulkDeleteDescSuffix,
+        UI_COPY.worldbook.bulkDeleteDescPrefix + bulkSelectedIds.length + UI_COPY.worldbook.bulkDeleteDescSuffix,
       confirmText: UI_COPY.worldbook.deleteConfirm,
       cancelText: UI_COPY.worldbook.deleteCancel,
       danger: true,
@@ -623,7 +625,12 @@ export function WorldBookPage() {
           <button className="btn btn-secondary" onClick={() => void entriesQuery.refresh()} type="button">
             {UI_COPY.worldbook.refresh}
           </button>
-          <button className="btn btn-secondary" disabled={!projectId || exporting} onClick={() => void exportAll()} type="button">
+          <button
+            className="btn btn-secondary"
+            disabled={!projectId || exporting}
+            onClick={() => void exportAll()}
+            type="button"
+          >
             {exporting ? "导出中..." : "导出 JSON"}
           </button>
           <button className="btn btn-secondary" disabled={!projectId} onClick={openImportDrawer} type="button">
@@ -823,7 +830,9 @@ export function WorldBookPage() {
                     className="btn btn-secondary"
                     disabled={bulkLoading || loading || drawerOpen}
                     onClick={() => {
-                      const safeCharLimit = Number.isFinite(bulkCharLimit) ? Math.max(0, Math.floor(bulkCharLimit)) : 12000;
+                      const safeCharLimit = Number.isFinite(bulkCharLimit)
+                        ? Math.max(0, Math.floor(bulkCharLimit))
+                        : 12000;
                       void bulkUpdate({
                         title: UI_COPY.worldbook.bulkUpdateTitle,
                         description:
@@ -1093,7 +1102,12 @@ export function WorldBookPage() {
                 >
                   {importLoading ? "处理中..." : "dry_run 预览"}
                 </button>
-                <button className="btn btn-primary" disabled={!importJson || importLoading} onClick={() => void runImport(false)} type="button">
+                <button
+                  className="btn btn-primary"
+                  disabled={!importJson || importLoading}
+                  onClick={() => void runImport(false)}
+                  type="button"
+                >
                   {importLoading ? "导入中..." : "应用导入"}
                 </button>
               </div>

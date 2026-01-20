@@ -279,7 +279,12 @@ function normalizeRerankObs(raw: unknown): VectorRerankObs | null {
   };
 }
 
-function rerankDelta(obs: VectorRerankObs): { compared: number; changedPositions: number; entered: number; left: number } {
+function rerankDelta(obs: VectorRerankObs): {
+  compared: number;
+  changedPositions: number;
+  entered: number;
+  left: number;
+} {
   const compared = Math.min(obs.top_k || 0, obs.before.length, obs.after.length);
   if (compared <= 0) return { compared: 0, changedPositions: 0, entered: 0, left: 0 };
   let changedPositions = 0;
@@ -306,7 +311,9 @@ function formatRerankSummary(obs: VectorRerankObs): string {
   const reqText = obs.requested_method || "-";
   const reasonText = obs.reason ?? "-";
   const errText = obs.error_type ? ` | error:${obs.error_type}` : "";
-  const changesText = delta.compared ? ` | changed_in_top_k:${comparedText} | entered:${delta.entered} | left:${delta.left}` : "";
+  const changesText = delta.compared
+    ? ` | changed_in_top_k:${comparedText} | entered:${delta.entered} | left:${delta.left}`
+    : "";
   return `enabled:${String(obs.enabled)} | applied:${String(obs.applied)} | reason:${reasonText} | requested:${reqText} | method:${methodText} | top_k:${obs.top_k} | timing_ms:${obs.timing_ms}${changesText}${errText}`;
 }
 
@@ -575,7 +582,11 @@ export function ContextPreviewDrawer(props: Props) {
     requestId?: string;
   } | null>(null);
   const [optimizerCompareLoading, setOptimizerCompareLoading] = useState(false);
-  const [optimizerCompareError, setOptimizerCompareError] = useState<{ code: string; message: string; requestId?: string } | null>(null);
+  const [optimizerCompareError, setOptimizerCompareError] = useState<{
+    code: string;
+    message: string;
+    requestId?: string;
+  } | null>(null);
   const [optimizerCompare, setOptimizerCompare] = useState<OptimizerCompare | null>(null);
   const lastOptimizerCompareKeyRef = useRef<string | null>(null);
 
@@ -691,7 +702,16 @@ export function ContextPreviewDrawer(props: Props) {
 
   const parsedBudgetOverrides = useMemo(() => {
     const out: Record<string, number> = {};
-    for (const key of ["worldbook", "story_memory", "semantic_history", "foreshadow_open_loops", "structured", "vector_rag", "graph", "fractal"] as const) {
+    for (const key of [
+      "worldbook",
+      "story_memory",
+      "semantic_history",
+      "foreshadow_open_loops",
+      "structured",
+      "vector_rag",
+      "graph",
+      "fractal",
+    ] as const) {
       const raw = String(budgetOverrideInputs[key] ?? "").trim();
       if (!raw) continue;
       const parsed = Number(raw);
@@ -806,7 +826,9 @@ export function ContextPreviewDrawer(props: Props) {
     setContextOptimizerSettingsLoading(true);
     setContextOptimizerSettingsError(null);
     try {
-      const res = await apiJson<{ settings: { context_optimizer_enabled?: unknown } }>(`/api/projects/${projectId}/settings`);
+      const res = await apiJson<{ settings: { context_optimizer_enabled?: unknown } }>(
+        `/api/projects/${projectId}/settings`,
+      );
       setContextOptimizerEnabled(Boolean(res.data?.settings?.context_optimizer_enabled));
     } catch (e) {
       if (e instanceof ApiError) {
@@ -832,14 +854,20 @@ export function ContextPreviewDrawer(props: Props) {
     setOptimizerCompareLoading(true);
     setOptimizerCompareError(null);
     try {
-      const baselineRes = await apiJson<{ preview: unknown; render_log?: unknown }>(`/api/projects/${projectId}/prompt_preview`, {
-        method: "POST",
-        body: JSON.stringify({ task: "chapter_generate", values: { ...values, context_optimizer_enabled: false } }),
-      });
-      const optimizedRes = await apiJson<{ preview: unknown; render_log?: unknown }>(`/api/projects/${projectId}/prompt_preview`, {
-        method: "POST",
-        body: JSON.stringify({ task: "chapter_generate", values: { ...values, context_optimizer_enabled: true } }),
-      });
+      const baselineRes = await apiJson<{ preview: unknown; render_log?: unknown }>(
+        `/api/projects/${projectId}/prompt_preview`,
+        {
+          method: "POST",
+          body: JSON.stringify({ task: "chapter_generate", values: { ...values, context_optimizer_enabled: false } }),
+        },
+      );
+      const optimizedRes = await apiJson<{ preview: unknown; render_log?: unknown }>(
+        `/api/projects/${projectId}/prompt_preview`,
+        {
+          method: "POST",
+          body: JSON.stringify({ task: "chapter_generate", values: { ...values, context_optimizer_enabled: true } }),
+        },
+      );
 
       const baselinePreview = baselineRes.data?.preview;
       const optimizedPreview = optimizedRes.data?.preview;
@@ -903,7 +931,9 @@ export function ContextPreviewDrawer(props: Props) {
       setVectorResult(normalized);
       setVectorRequestId(res.request_id ?? null);
       setVectorRawQueryText(typeof res.data?.raw_query_text === "string" ? res.data.raw_query_text : vectorQueryText);
-      setVectorNormalizedQueryText(typeof res.data?.normalized_query_text === "string" ? res.data.normalized_query_text : null);
+      setVectorNormalizedQueryText(
+        typeof res.data?.normalized_query_text === "string" ? res.data.normalized_query_text : null,
+      );
       setVectorPreprocessObs(res.data?.preprocess_obs ?? null);
     } catch (e) {
       setVectorRawQueryText(null);
@@ -1287,7 +1317,9 @@ export function ContextPreviewDrawer(props: Props) {
                 {optimizerCompareError ? (
                   <div className="text-xs text-amber-600 dark:text-amber-400">
                     对比失败：{optimizerCompareError.message} ({optimizerCompareError.code})
-                    {optimizerCompareError.requestId ? <span className="ml-2">request_id: {optimizerCompareError.requestId}</span> : null}
+                    {optimizerCompareError.requestId ? (
+                      <span className="ml-2">request_id: {optimizerCompareError.requestId}</span>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -1300,7 +1332,8 @@ export function ContextPreviewDrawer(props: Props) {
                     <div className="mt-1 text-[11px] text-subtext">
                       changed_blocks:{" "}
                       <span className="font-mono">
-                        {optimizerCompare.optimizerLog.blocks.filter((b) => b.changed).length}/{optimizerCompare.optimizerLog.blocks.length}
+                        {optimizerCompare.optimizerLog.blocks.filter((b) => b.changed).length}/
+                        {optimizerCompare.optimizerLog.blocks.length}
                       </span>
                     </div>
                     <div className="mt-2 grid gap-2">
@@ -1347,7 +1380,9 @@ export function ContextPreviewDrawer(props: Props) {
                 ) : null}
               </div>
             ) : (
-              <div className="mt-3 text-xs text-subtext">未启用时不会执行对比请求。可在 SettingsPage 开启后再查看摘要与 diff。</div>
+              <div className="mt-3 text-xs text-subtext">
+                未启用时不会执行对比请求。可在 SettingsPage 开启后再查看摘要与 diff。
+              </div>
             )}
           </div>
         ) : null}
@@ -1355,7 +1390,9 @@ export function ContextPreviewDrawer(props: Props) {
         {memoryInjectionEnabled ? (
           <div className="panel p-4">
             <div className="text-sm text-ink">Memory text_md</div>
-            {(["story_memory", "semantic_history", "foreshadow_open_loops", "structured", "graph", "fractal"] as const).map((key) => {
+            {(
+              ["story_memory", "semantic_history", "foreshadow_open_loops", "structured", "graph", "fractal"] as const
+            ).map((key) => {
               const raw = (effectivePack[key] ?? {}) as Record<string, unknown>;
               const textMd = typeof raw.text_md === "string" ? raw.text_md : "";
               return (
@@ -1607,9 +1644,7 @@ export function ContextPreviewDrawer(props: Props) {
                         {vectorResult.counts.candidates_returned} | unique_sources:
                         {vectorResult.counts.unique_sources} | final_selected:{vectorResult.counts.final_selected} |
                         dropped:
-                        {vectorResult.counts.dropped_total}
-                        {" "}
-                        | drop_by_reason:
+                        {vectorResult.counts.dropped_total} | drop_by_reason:
                         {Object.keys(vectorResult.counts.dropped_by_reason).length
                           ? Object.entries(vectorResult.counts.dropped_by_reason)
                               .map(([k, v]) => `${k}:${v}`)

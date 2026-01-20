@@ -859,7 +859,12 @@ export function PromptStudioPage() {
               >
                 导入整套
               </button>
-              <button className="btn btn-secondary w-full" onClick={() => void exportAllPresets()} disabled={bulkBusy || busy} type="button">
+              <button
+                className="btn btn-secondary w-full"
+                onClick={() => void exportAllPresets()}
+                disabled={bulkBusy || busy}
+                type="button"
+              >
                 导出整套
               </button>
             </div>
@@ -910,7 +915,9 @@ export function PromptStudioPage() {
                                 />
                               ) : null}
                               <div className="relative z-10 truncate">{p.name}</div>
-                              <div className="relative z-10 mt-1 text-xs opacity-80">{(p.active_for ?? []).join(", ") || "—"}</div>
+                              <div className="relative z-10 mt-1 text-xs opacity-80">
+                                {(p.active_for ?? []).join(", ") || "—"}
+                              </div>
                             </button>
                           );
                         })}

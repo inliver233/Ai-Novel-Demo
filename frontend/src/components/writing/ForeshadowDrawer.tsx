@@ -19,7 +19,12 @@ type ForeshadowOpenLoop = {
   updated_at: string | null;
 };
 
-export function ForeshadowDrawer(props: { open: boolean; onClose: () => void; projectId?: string; activeChapterId?: string }) {
+export function ForeshadowDrawer(props: {
+  open: boolean;
+  onClose: () => void;
+  projectId?: string;
+  activeChapterId?: string;
+}) {
   const toast = useToast();
   const confirm = useConfirm();
   const navigate = useNavigate();
@@ -71,7 +76,9 @@ export function ForeshadowDrawer(props: { open: boolean; onClose: () => void; pr
       if (!props.projectId) return;
       const ok = await confirm.confirm({
         title: "标记伏笔已回收？",
-        description: props.activeChapterId ? `将记录 resolved_at_chapter_id=${props.activeChapterId}` : "将标记为已回收（resolved_at_chapter_id 为空）",
+        description: props.activeChapterId
+          ? `将记录 resolved_at_chapter_id=${props.activeChapterId}`
+          : "将标记为已回收（resolved_at_chapter_id 为空）",
         confirmText: "标记回收",
         cancelText: "取消",
       });
@@ -101,7 +108,12 @@ export function ForeshadowDrawer(props: { open: boolean; onClose: () => void; pr
   );
 
   return (
-    <Drawer open={props.open} onClose={props.onClose} ariaLabel="伏笔面板" panelClassName="h-full w-full max-w-xl border-l border-border bg-canvas p-6 shadow-sm">
+    <Drawer
+      open={props.open}
+      onClose={props.onClose}
+      ariaLabel="伏笔面板"
+      panelClassName="h-full w-full max-w-xl border-l border-border bg-canvas p-6 shadow-sm"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-content text-2xl text-ink">伏笔面板</div>
@@ -113,7 +125,12 @@ export function ForeshadowDrawer(props: { open: boolean; onClose: () => void; pr
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="btn btn-secondary" disabled={!props.projectId || loading} onClick={() => void fetchOpenLoops()} type="button">
+          <button
+            className="btn btn-secondary"
+            disabled={!props.projectId || loading}
+            onClick={() => void fetchOpenLoops()}
+            type="button"
+          >
             {loading ? "加载中…" : "刷新"}
           </button>
           <button className="btn btn-secondary" onClick={props.onClose} type="button">
@@ -129,7 +146,9 @@ export function ForeshadowDrawer(props: { open: boolean; onClose: () => void; pr
         </label>
 
         {filtered.length === 0 ? (
-          <div className="text-sm text-subtext">暂无 open foreshadows（需要章节分析产出 foreshadows 并应用到记忆库）。</div>
+          <div className="text-sm text-subtext">
+            暂无 open foreshadows（需要章节分析产出 foreshadows 并应用到记忆库）。
+          </div>
         ) : (
           <div className="grid gap-2">
             {filtered.map((it) => (
@@ -138,7 +157,8 @@ export function ForeshadowDrawer(props: { open: boolean; onClose: () => void; pr
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-ink">{it.title || "（无标题）"}</div>
                     <div className="mt-1 text-[11px] text-subtext">
-                      chapter_id:{it.chapter_id || "-"} | score:{String(it.importance_score ?? 0)} | timeline:{String(it.story_timeline ?? 0)}
+                      chapter_id:{it.chapter_id || "-"} | score:{String(it.importance_score ?? 0)} | timeline:
+                      {String(it.story_timeline ?? 0)}
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
@@ -153,12 +173,19 @@ export function ForeshadowDrawer(props: { open: boolean; onClose: () => void; pr
                     <button
                       className="btn btn-secondary"
                       disabled={!it.chapter_id}
-                      onClick={() => navigate(`/projects/${props.projectId}/chapter-analysis?chapterId=${it.chapter_id}`)}
+                      onClick={() =>
+                        navigate(`/projects/${props.projectId}/chapter-analysis?chapterId=${it.chapter_id}`)
+                      }
                       type="button"
                     >
                       标注页
                     </button>
-                    <button className="btn btn-primary" disabled={loading} onClick={() => void resolve(it.id)} type="button">
+                    <button
+                      className="btn btn-primary"
+                      disabled={loading}
+                      onClick={() => void resolve(it.id)}
+                      type="button"
+                    >
                       标记回收
                     </button>
                   </div>
@@ -172,4 +199,3 @@ export function ForeshadowDrawer(props: { open: boolean; onClose: () => void; pr
     </Drawer>
   );
 }
-

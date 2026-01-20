@@ -349,7 +349,10 @@ export function SettingsPage() {
   const dirty = useMemo(() => {
     if (!baselineProject || !baselineSettings) return false;
     const vectorApiKeyDirty = vectorApiKeyClearRequested || vectorApiKeyDraft.trim().length > 0;
-    const qpDirty = !isSameQueryPreprocess(queryPreprocessFromForm(settingsForm), queryPreprocessFromBaseline(baselineSettings));
+    const qpDirty = !isSameQueryPreprocess(
+      queryPreprocessFromForm(settingsForm),
+      queryPreprocessFromBaseline(baselineSettings),
+    );
     return (
       projectForm.name !== baselineProject.name ||
       projectForm.genre !== (baselineProject.genre ?? "") ||
@@ -368,7 +371,8 @@ export function SettingsPage() {
       settingsForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
       settingsForm.vector_embedding_azure_deployment !== baselineSettings.vector_embedding_azure_deployment ||
       settingsForm.vector_embedding_azure_api_version !== baselineSettings.vector_embedding_azure_api_version ||
-      settingsForm.vector_embedding_sentence_transformers_model !== baselineSettings.vector_embedding_sentence_transformers_model ||
+      settingsForm.vector_embedding_sentence_transformers_model !==
+        baselineSettings.vector_embedding_sentence_transformers_model ||
       vectorApiKeyDirty
     );
   }, [
@@ -487,7 +491,8 @@ export function SettingsPage() {
                   vector_embedding_model: nextSettingsForm.vector_embedding_model,
                   vector_embedding_azure_deployment: nextSettingsForm.vector_embedding_azure_deployment,
                   vector_embedding_azure_api_version: nextSettingsForm.vector_embedding_azure_api_version,
-                  vector_embedding_sentence_transformers_model: nextSettingsForm.vector_embedding_sentence_transformers_model,
+                  vector_embedding_sentence_transformers_model:
+                    nextSettingsForm.vector_embedding_sentence_transformers_model,
                   ...(vectorApiKeyDirty
                     ? { vector_embedding_api_key: vectorApiKeyClearRequested ? "" : vectorApiKeyDraft }
                     : {}),
@@ -725,7 +730,9 @@ export function SettingsPage() {
                   const next = Math.floor(Number(e.target.value));
                   setSettingsForm((v) => ({
                     ...v,
-                    vector_rerank_top_k: Number.isFinite(next) ? Math.max(1, Math.min(1000, next)) : v.vector_rerank_top_k,
+                    vector_rerank_top_k: Number.isFinite(next)
+                      ? Math.max(1, Math.min(1000, next))
+                      : v.vector_rerank_top_k,
                   }));
                 }}
               />
@@ -969,7 +976,12 @@ export function SettingsPage() {
             </label>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              <button className="btn btn-secondary" disabled={qpPreviewLoading || !projectId} onClick={() => void runQpPreview()} type="button">
+              <button
+                className="btn btn-secondary"
+                disabled={qpPreviewLoading || !projectId}
+                onClick={() => void runQpPreview()}
+                type="button"
+              >
                 {qpPreviewLoading ? "预览中…" : "预览"}
               </button>
               <button
@@ -985,7 +997,9 @@ export function SettingsPage() {
               </button>
             </div>
 
-            {qpPreviewError ? <div className="mt-3 text-xs text-amber-600 dark:text-amber-400">{qpPreviewError}</div> : null}
+            {qpPreviewError ? (
+              <div className="mt-3 text-xs text-amber-600 dark:text-amber-400">{qpPreviewError}</div>
+            ) : null}
 
             {qpPreview ? (
               <div className="mt-3 grid gap-3">
