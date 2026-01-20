@@ -38,6 +38,8 @@ type WorldBookEntryForm = {
   priority: WorldBookPriority;
 };
 
+const EMPTY_WORLD_BOOK_ENTRIES: WorldBookEntry[] = [];
+
 function parseKeywords(raw: string): string[] {
   const tokens = raw
     .split(/[\n,，;；]/g)
@@ -90,7 +92,7 @@ export function WorldBookPage() {
   const confirm = useConfirm();
 
   const entriesQuery = useProjectData<WorldBookEntry[]>(projectId, async (id) => listWorldBookEntries(id));
-  const entries = entriesQuery.data ?? [];
+  const entries = entriesQuery.data ?? EMPTY_WORLD_BOOK_ENTRIES;
   const loading = entriesQuery.loading;
   const setEntries = entriesQuery.setData;
 
@@ -332,13 +334,13 @@ export function WorldBookPage() {
     setDrawerOpen(true);
   };
 
-  const openEdit = (entry: WorldBookEntry) => {
+  const openEdit = useCallback((entry: WorldBookEntry) => {
     setEditing(entry);
     const next = toForm(entry);
     setForm(next);
     setBaseline(next);
     setDrawerOpen(true);
-  };
+  }, []);
 
   const closeDrawer = useCallback(async () => {
     if (dirty) {

@@ -85,6 +85,8 @@ type VectorChunk = {
   metadata?: Record<string, unknown>;
 };
 
+const EMPTY_CHUNKS: VectorChunk[] = [];
+
 type KnowledgeBase = {
   kb_id: string;
   name: string;
@@ -503,7 +505,7 @@ export function RagPage() {
     } finally {
       setStatusLoading(false);
     }
-  }, [projectId, selectedKbIds, sortedSources, toast]);
+  }, [projectId, sortedSources, toast]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -534,7 +536,7 @@ export function RagPage() {
     } finally {
       setIngestLoading(false);
     }
-  }, [projectId, sortedSources, toast]);
+  }, [projectId, selectedKbIds, sortedSources, toast]);
 
   const runRebuild = useCallback(async () => {
     if (!projectId) return;
@@ -610,7 +612,7 @@ export function RagPage() {
   }, [projectId, queryText, selectedKbIds, sortedSources, toast]);
 
   const injectionText = (queryResult?.prompt_block?.text_md ?? "").trim();
-  const finalChunks = queryResult?.final?.chunks ?? [];
+  const finalChunks = queryResult?.final?.chunks ?? EMPTY_CHUNKS;
 
   const groupedFinalChunks = useMemo(() => {
     type GroupChunk = {

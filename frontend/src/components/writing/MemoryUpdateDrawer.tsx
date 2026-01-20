@@ -128,6 +128,7 @@ function safeParseJsonField(raw: string | null | undefined): unknown {
 export function MemoryUpdateDrawer(props: Props) {
   const navigate = useNavigate();
   const toast = useToast();
+  const { chapterId, onClose, open, projectId } = props;
   const [inputJson, setInputJson] = useState(EXAMPLE_OPS);
   const [autoFocus, setAutoFocus] = useState("");
 
@@ -146,11 +147,11 @@ export function MemoryUpdateDrawer(props: Props) {
   const [structured, setStructured] = useState<StructuredMemory | null>(null);
 
   useEffect(() => {
-    if (!props.open) return;
+    if (!open) return;
     setProposeError(null);
     setApplyError(null);
     setStructuredError(null);
-  }, [props.open]);
+  }, [open]);
 
   useEffect(() => {
     if (!proposeResult) return;
@@ -172,7 +173,7 @@ export function MemoryUpdateDrawer(props: Props) {
   }, [proposeResult]);
 
   const runPropose = useCallback(async () => {
-    if (!props.chapterId) {
+    if (!chapterId) {
       toast.toastError("请先选择章节");
       return;
     }
@@ -201,7 +202,7 @@ export function MemoryUpdateDrawer(props: Props) {
         ops,
       };
 
-      const res = await apiJson<ProposeResult>(`/api/chapters/${props.chapterId}/memory/propose`, {
+      const res = await apiJson<ProposeResult>(`/api/chapters/${chapterId}/memory/propose`, {
         method: "POST",
         body: JSON.stringify(req),
       });
@@ -216,10 +217,10 @@ export function MemoryUpdateDrawer(props: Props) {
     } finally {
       setProposeLoading(false);
     }
-  }, [inputJson, props.chapterId, toast]);
+  }, [chapterId, inputJson, toast]);
 
   const runAutoPropose = useCallback(async () => {
-    if (!props.chapterId) {
+    if (!chapterId) {
       toast.toastError("请先选择章节");
       return;
     }
@@ -229,7 +230,7 @@ export function MemoryUpdateDrawer(props: Props) {
     setApplyError(null);
     try {
       const idempotencyKey = `memupd-auto-${crypto.randomUUID().slice(0, 12)}`;
-      const res = await apiJson<ProposeResult>(`/api/chapters/${props.chapterId}/memory/propose/auto`, {
+      const res = await apiJson<ProposeResult>(`/api/chapters/${chapterId}/memory/propose/auto`, {
         method: "POST",
         body: JSON.stringify({ idempotency_key: idempotencyKey, focus: autoFocus.trim() || null }),
       });
@@ -244,10 +245,10 @@ export function MemoryUpdateDrawer(props: Props) {
     } finally {
       setProposeLoading(false);
     }
-  }, [autoFocus, props.chapterId, toast]);
+  }, [autoFocus, chapterId, toast]);
 
   const runApplyAccepted = useCallback(async () => {
-    if (!props.chapterId) {
+    if (!chapterId) {
       toast.toastError("请先选择章节");
       return;
     }
@@ -294,7 +295,7 @@ export function MemoryUpdateDrawer(props: Props) {
         title: "Memory Update (applied)",
         ops,
       };
-      const proposed = await apiJson<ProposeResult>(`/api/chapters/${props.chapterId}/memory/propose`, {
+      const proposed = await apiJson<ProposeResult>(`/api/chapters/${chapterId}/memory/propose`, {
         method: "POST",
         body: JSON.stringify(proposeReq),
       });
@@ -321,7 +322,7 @@ export function MemoryUpdateDrawer(props: Props) {
     } finally {
       setApplyLoading(false);
     }
-  }, [accepted, proposeResult, props.chapterId, toast]);
+  }, [accepted, chapterId, proposeResult, toast]);
 
   const retryApply = useCallback(async () => {
     if (!lastApplyChangeSetId) {
@@ -348,14 +349,14 @@ export function MemoryUpdateDrawer(props: Props) {
   }, [lastApplyChangeSetId, toast]);
 
   const refreshStructured = useCallback(async () => {
-    if (!props.projectId) {
+    if (!projectId) {
       toast.toastError("缺少 projectId");
       return;
     }
     setStructuredLoading(true);
     setStructuredError(null);
     try {
-      const res = await apiJson<StructuredMemory>(`/api/projects/${props.projectId}/memory/structured`, {
+      const res = await apiJson<StructuredMemory>(`/api/projects/${projectId}/memory/structured`, {
         method: "GET",
       });
       setStructured(res.data);
@@ -368,20 +369,20 @@ export function MemoryUpdateDrawer(props: Props) {
     } finally {
       setStructuredLoading(false);
     }
-  }, [props.projectId, toast]);
+  }, [projectId, toast]);
 
   const openTaskCenter = useCallback(() => {
-    if (!props.projectId) return;
+    if (!projectId) return;
     const qs = new URLSearchParams();
-    if (props.chapterId) qs.set("chapterId", props.chapterId);
-    navigate(`/projects/${props.projectId}/tasks${qs.toString() ? `?${qs.toString()}` : ""}`);
-    props.onClose();
-  }, [navigate, props.chapterId, props.onClose, props.projectId]);
+    if (chapterId) qs.set("chapterId", chapterId);
+    navigate(`/projects/${projectId}/tasks${qs.toString() ? `?${qs.toString()}` : ""}`);
+    onClose();
+  }, [chapterId, navigate, onClose, projectId]);
 
   return (
     <Drawer
-      open={props.open}
-      onClose={props.onClose}
+      open={open}
+      onClose={onClose}
       ariaLabel="Memory Update"
       panelClassName="h-full w-full max-w-[860px] overflow-hidden border-l border-border bg-surface shadow-sm"
     >
@@ -394,10 +395,10 @@ export function MemoryUpdateDrawer(props: Props) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="btn btn-secondary" disabled={!props.projectId} onClick={openTaskCenter} type="button">
+            <button className="btn btn-secondary" disabled={!projectId} onClick={openTaskCenter} type="button">
               任务中心
             </button>
-            <button className="btn btn-secondary" onClick={props.onClose} type="button">
+            <button className="btn btn-secondary" onClick={onClose} type="button">
               关闭
             </button>
           </div>
