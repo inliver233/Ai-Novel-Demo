@@ -22,6 +22,7 @@ import { PromptsPage } from "./pages/PromptsPage";
 import { PromptStudioPage } from "./pages/PromptStudioPage";
 import { ExportPage } from "./pages/ExportPage";
 import { GraphPage } from "./pages/GraphPage";
+import { FractalPage } from "./pages/FractalPage";
 import { StylesPage } from "./pages/StylesPage";
 import { WorldBookPage } from "./pages/WorldBookPage";
 import { RagPage } from "./pages/RagPage";
@@ -112,6 +113,10 @@ const router = createBrowserRouter([
               {
                 path: "graph",
                 element: <GraphPage />,
+              },
+              {
+                path: "fractal",
+                element: <FractalPage />,
               },
               {
                 path: "styles",

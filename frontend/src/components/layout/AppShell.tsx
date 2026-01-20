@@ -15,6 +15,7 @@ import {
   PenLine,
   Share2,
   Settings,
+  Snowflake,
   Sparkles,
   Table2,
   Users,
@@ -40,6 +41,7 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
   ["/tasks", "任务中心"],
   ["/structured-memory", "结构化记忆"],
   ["/graph", "图谱"],
+  ["/fractal", "Fractal"],
   ["/styles", "风格"],
   ["/chapter-analysis", "标注回溯"],
   ["/worldbook", "世界书"],
@@ -273,6 +275,13 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={false}
+                          icon={<Snowflake size={18} />}
+                          label="Fractal"
+                          to={`/projects/${projectId}/fractal`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
                           icon={<Bot size={18} />}
                           label="模型配置"
                           to={`/projects/${projectId}/prompts`}
@@ -404,6 +413,12 @@ export function AppShell() {
                     icon={<Share2 size={18} />}
                     label="图谱"
                     to={`/projects/${projectId}/graph`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Snowflake size={18} />}
+                    label="Fractal"
+                    to={`/projects/${projectId}/fractal`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
