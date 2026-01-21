@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { ApiError, apiJson } from "../services/apiClient";
 import { useToast } from "../components/ui/toast";
 
@@ -89,122 +90,118 @@ export function GraphPage() {
   }, [projectId, runQuery]);
 
   return (
-    <div className="grid gap-4">
-      <div className="panel p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="font-content text-2xl text-ink">图谱</div>
-            <div className="mt-1 text-xs text-subtext">GraphContext（命中实体 + 1-hop 扩散）与回放。</div>
+    <DebugPageShell
+      title="图谱"
+      description="GraphContext（命中实体 + 1-hop 扩散）与回放。"
+      actions={
+        <>
+          <label className="flex items-center gap-2 text-xs text-subtext">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              aria-label="graph_enabled"
+            />
+            启用
+          </label>
+          <button className="btn btn-secondary" onClick={() => void runQuery()} disabled={loading} type="button">
+            {loading ? "查询..." : "查询"}
+          </button>
+        </>
+      }
+    >
+      <label className="block">
+        <div className="text-xs text-subtext">query_text</div>
+        <input
+          className="mt-1 w-full rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink"
+          value={queryText}
+          onChange={(e) => setQueryText(e.target.value)}
+          placeholder="输入章节文本或关键片段（命中实体名/别名）"
+          aria-label="graph_query_text"
+        />
+      </label>
+
+      {error ? (
+        <div className="rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
+          {error.message} ({error.code}) {error.requestId ? `| request_id: ${error.requestId}` : ""}
+        </div>
+      ) : null}
+
+      <div className="rounded-atelier border border-border bg-surface p-3">
+        <div className="text-sm text-ink">GraphContext（概览）</div>
+        <div className="mt-1 text-xs text-subtext">
+          status: {result?.enabled ? "enabled" : `disabled (${result?.disabled_reason ?? "unknown"})`} | nodes:{" "}
+          {result?.nodes?.length ?? 0} | edges: {result?.edges?.length ?? 0} | evidence: {result?.evidence?.length ?? 0}
+        </div>
+      </div>
+
+      <DebugDetails title="注入预览（prompt_block.text_md）">
+        <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-[11px] leading-4 text-subtext">
+          {result?.prompt_block?.text_md || "（空）"}
+        </pre>
+      </DebugDetails>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-atelier border border-border bg-surface p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm text-ink">Nodes</div>
+            <div className="text-xs text-subtext">
+              matched: {(result?.matched?.entity_ids ?? []).length}
+              {result?.truncated?.nodes ? " | truncated" : ""}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 text-xs text-subtext">
-              <input
-                type="checkbox"
-                checked={enabled}
-                onChange={(e) => setEnabled(e.target.checked)}
-                aria-label="graph_enabled"
-              />
-              启用
-            </label>
-            <button className="btn btn-secondary" onClick={() => void runQuery()} disabled={loading} type="button">
-              {loading ? "查询..." : "查询"}
-            </button>
+          <div className="mt-2 grid gap-2">
+            {(result?.nodes ?? []).map((n) => (
+              <div
+                key={n.id}
+                className={
+                  "rounded-atelier border border-border p-2 text-xs " +
+                  (matchedIds.has(n.id) ? "bg-accent/10 text-ink" : "bg-surface text-subtext")
+                }
+              >
+                <div className="text-ink">
+                  [{n.entity_type}] {n.name}
+                </div>
+                <div className="mt-0.5 text-[11px] text-subtext">{n.id}</div>
+              </div>
+            ))}
+            {(result?.nodes ?? []).length === 0 ? <div className="text-xs text-subtext">nodes: 0</div> : null}
           </div>
         </div>
 
-        <div className="mt-3 grid gap-3">
-          <label className="block">
-            <div className="text-xs text-subtext">query_text</div>
-            <input
-              className="mt-1 w-full rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink"
-              value={queryText}
-              onChange={(e) => setQueryText(e.target.value)}
-              placeholder="输入章节文本或关键片段（命中实体名/别名）"
-              aria-label="graph_query_text"
-            />
-          </label>
-
-          {error ? (
-            <div className="rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
-              {error.message} ({error.code}) {error.requestId ? `| request_id: ${error.requestId}` : ""}
-            </div>
-          ) : null}
-
-          <div className="rounded-atelier border border-border bg-surface p-3">
-            <div className="text-sm text-ink">GraphContext（注入预览）</div>
-            <div className="mt-1 text-xs text-subtext">
-              status: {result?.enabled ? "enabled" : `disabled (${result?.disabled_reason ?? "unknown"})`} | nodes:{" "}
-              {result?.nodes?.length ?? 0} | edges: {result?.edges?.length ?? 0} | evidence:{" "}
-              {result?.evidence?.length ?? 0}
-            </div>
-            <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
-              {result?.prompt_block?.text_md || "（空）"}
-            </pre>
+        <div className="rounded-atelier border border-border bg-surface p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm text-ink">Edges</div>
+            <div className="text-xs text-subtext">{result?.truncated?.edges ? "truncated" : " "}</div>
           </div>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded-atelier border border-border bg-surface p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm text-ink">Nodes</div>
-                <div className="text-xs text-subtext">
-                  matched: {(result?.matched?.entity_ids ?? []).length}
-                  {result?.truncated?.nodes ? " | truncated" : ""}
+          <div className="mt-2 grid gap-2">
+            {(result?.edges ?? []).map((e) => (
+              <div key={e.id} className="rounded-atelier border border-border bg-surface p-2 text-xs">
+                <div className="text-ink">
+                  {e.from_name || e.from_entity_id} --({e.relation_type})→ {e.to_name || e.to_entity_id}
                 </div>
+                {e.description_md ? <div className="mt-1 text-subtext">{e.description_md}</div> : null}
               </div>
-              <div className="mt-2 grid gap-2">
-                {(result?.nodes ?? []).map((n) => (
-                  <div
-                    key={n.id}
-                    className={
-                      "rounded-atelier border border-border p-2 text-xs " +
-                      (matchedIds.has(n.id) ? "bg-accent/10 text-ink" : "bg-surface text-subtext")
-                    }
-                  >
-                    <div className="text-ink">
-                      [{n.entity_type}] {n.name}
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-subtext">{n.id}</div>
-                  </div>
-                ))}
-                {(result?.nodes ?? []).length === 0 ? <div className="text-xs text-subtext">nodes: 0</div> : null}
-              </div>
-            </div>
-
-            <div className="rounded-atelier border border-border bg-surface p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm text-ink">Edges</div>
-                <div className="text-xs text-subtext">{result?.truncated?.edges ? "truncated" : " "}</div>
-              </div>
-              <div className="mt-2 grid gap-2">
-                {(result?.edges ?? []).map((e) => (
-                  <div key={e.id} className="rounded-atelier border border-border bg-surface p-2 text-xs">
-                    <div className="text-ink">
-                      {e.from_name || e.from_entity_id} --({e.relation_type})→ {e.to_name || e.to_entity_id}
-                    </div>
-                    {e.description_md ? <div className="mt-1 text-subtext">{e.description_md}</div> : null}
-                  </div>
-                ))}
-                {(result?.edges ?? []).length === 0 ? <div className="text-xs text-subtext">edges: 0</div> : null}
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-atelier border border-border bg-surface p-3">
-            <div className="text-sm text-ink">Evidence（source_id 命中节点/边）</div>
-            <div className="mt-2 grid gap-2">
-              {(result?.evidence ?? []).slice(0, 12).map((ev) => (
-                <div key={ev.id} className="rounded-atelier border border-border bg-surface p-2 text-xs">
-                  <div className="text-ink">
-                    {ev.source_type}:{ev.source_id ?? "-"}
-                  </div>
-                  <div className="mt-1 text-subtext">{ev.quote_md || "（空）"}</div>
-                </div>
-              ))}
-              {(result?.evidence ?? []).length === 0 ? <div className="text-xs text-subtext">evidence: 0</div> : null}
-            </div>
+            ))}
+            {(result?.edges ?? []).length === 0 ? <div className="text-xs text-subtext">edges: 0</div> : null}
           </div>
         </div>
       </div>
-    </div>
+
+      <div className="rounded-atelier border border-border bg-surface p-3">
+        <div className="text-sm text-ink">Evidence（source_id 命中节点/边）</div>
+        <div className="mt-2 grid gap-2">
+          {(result?.evidence ?? []).slice(0, 12).map((ev) => (
+            <div key={ev.id} className="rounded-atelier border border-border bg-surface p-2 text-xs">
+              <div className="text-ink">
+                {ev.source_type}:{ev.source_id ?? "-"}
+              </div>
+              <div className="mt-1 text-subtext">{ev.quote_md || "（空）"}</div>
+            </div>
+          ))}
+          {(result?.evidence ?? []).length === 0 ? <div className="text-xs text-subtext">evidence: 0</div> : null}
+        </div>
+      </div>
+    </DebugPageShell>
   );
 }
