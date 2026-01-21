@@ -45,6 +45,17 @@ export function CharactersPage() {
   const wizardRefreshTimerRef = useRef<number | null>(null);
   const [baseline, setBaseline] = useState<CharacterForm | null>(null);
   const [form, setForm] = useState<CharacterForm>({ name: "", role: "", profile: "", notes: "" });
+  const [searchText, setSearchText] = useState("");
+
+  const filteredCharacters = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return characters;
+    return characters.filter((c) => {
+      const name = String(c.name ?? "").toLowerCase();
+      const role = String(c.role ?? "").toLowerCase();
+      return name.includes(q) || role.includes(q);
+    });
+  }, [characters, searchText]);
 
   const dirty = useMemo(() => {
     if (!baseline) return false;
@@ -206,14 +217,54 @@ export function CharactersPage() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-subtext">共 {characters.length} 位角色</div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="text-sm text-subtext">
+            {searchText.trim()
+              ? `共 ${filteredCharacters.length}/${characters.length} 位角色`
+              : `共 ${characters.length} 位角色`}
+          </div>
+          <input
+            className="input w-full sm:w-64"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="搜索：姓名 / 定位"
+            aria-label="角色搜索"
+          />
+          {searchText.trim() ? (
+            <button className="btn btn-ghost px-3 py-2 text-xs" onClick={() => setSearchText("")} type="button">
+              清空搜索
+            </button>
+          ) : null}
+        </div>
         <button className="btn btn-primary" onClick={openNew} type="button">
           新增角色
         </button>
       </div>
 
       {loading ? <div className="text-subtext">加载中...</div> : null}
+
+      {!loading && characters.length === 0 ? (
+        <div className="panel p-6">
+          <div className="font-content text-xl text-ink">暂无角色</div>
+          <div className="mt-2 text-sm text-subtext">
+            建议先创建 3-5 个关键角色（主角 / 反派 / 关键 NPC），再进入「大纲」生成章节。
+          </div>
+          <button className="btn btn-primary mt-4" onClick={openNew} type="button">
+            新增角色
+          </button>
+        </div>
+      ) : null}
+
+      {!loading && characters.length > 0 && filteredCharacters.length === 0 ? (
+        <div className="panel p-6">
+          <div className="font-content text-xl text-ink">没有匹配的角色</div>
+          <div className="mt-2 text-sm text-subtext">尝试修改搜索关键词，或清空搜索后再查看全部角色。</div>
+          <button className="btn btn-secondary mt-4" onClick={() => setSearchText("")} type="button">
+            清空搜索
+          </button>
+        </div>
+      ) : null}
 
       <motion.div
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
@@ -224,7 +275,7 @@ export function CharactersPage() {
           show: { transition: { staggerChildren: reduceMotion ? 0 : duration.stagger } },
         }}
       >
-        {characters.map((c) => (
+        {filteredCharacters.map((c) => (
           <motion.div
             key={c.id}
             className="panel-interactive ui-focus-ring p-5 text-left"
@@ -293,7 +344,7 @@ export function CharactersPage() {
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="font-content text-2xl">{editing ? "编辑角色" : "新增角色"}</div>
+            <div className="font-content text-2xl text-ink">{editing ? "编辑角色" : "新增角色"}</div>
             <div className="mt-1 text-xs text-subtext">{dirty ? "未保存" : "已同步"}</div>
           </div>
           <div className="flex gap-2">
@@ -319,7 +370,9 @@ export function CharactersPage() {
               name="name"
               value={form.name}
               onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))}
+              placeholder="例如：林默"
             />
+            <div className="text-[11px] text-subtext">建议使用读者容易记住的短名；后续会用于检索与生成。</div>
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-subtext">角色定位</span>
@@ -328,7 +381,9 @@ export function CharactersPage() {
               name="role"
               value={form.role}
               onChange={(e) => setForm((v) => ({ ...v, role: e.target.value }))}
+              placeholder="例如：主角 / 反派 / 关键 NPC"
             />
+            <div className="text-[11px] text-subtext">用于快速筛选；可以写“主角/反派/导师/同伴/路人”等。</div>
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-subtext">人物档案</span>
@@ -338,7 +393,9 @@ export function CharactersPage() {
               rows={8}
               value={form.profile}
               onChange={(e) => setForm((v) => ({ ...v, profile: e.target.value }))}
+              placeholder="外貌、性格、动机、关系、口癖、成长线…"
             />
+            <div className="text-[11px] text-subtext">用于生成时的角色一致性；可按条目写，更易复用。</div>
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-subtext">备注</span>
@@ -348,7 +405,9 @@ export function CharactersPage() {
               rows={6}
               value={form.notes}
               onChange={(e) => setForm((v) => ({ ...v, notes: e.target.value }))}
+              placeholder="出场章节、禁忌、时间线、待补信息…"
             />
+            <div className="text-[11px] text-subtext">记录未定稿/待补充信息，避免混进人物档案造成误导。</div>
           </label>
         </div>
       </Drawer>
