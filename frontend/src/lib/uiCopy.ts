@@ -209,4 +209,21 @@ export const UI_COPY = {
     ingestResultTitle: "入库结果（Ingest result）",
     rebuildResultTitle: "重建结果（Rebuild result）",
   },
+  graph: {
+    title: "图谱",
+    subtitle: "图谱上下文（GraphContext）：命中实体 + 1-hop 扩散与回放。",
+
+    enabledToggle: "启用（enabled）",
+    queryTextLabel: "查询文本（query_text）",
+    queryTextPlaceholder: "输入章节文本或关键片段（命中实体名/别名）",
+    queryRun: "查询",
+
+    overviewTitle: "结论摘要",
+    injectionPreviewTitle: "注入预览（prompt_block.text_md）",
+    nodesTitle: "节点",
+    matchedLabel: "命中（matched）",
+    relationsTitle: "关系",
+    evidenceTitle: "证据（source_id 命中节点/边）",
+    advancedDebugTitle: "高级调试（raw graph query result）",
+  },
 } as const;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
+import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
 import { useToast } from "../components/ui/toast";
 
@@ -99,8 +100,8 @@ export function GraphPage() {
 
   return (
     <DebugPageShell
-      title="图谱"
-      description="GraphContext（命中实体 + 1-hop 扩散）与回放。"
+      title={UI_COPY.graph.title}
+      description={UI_COPY.graph.subtitle}
       actions={
         <>
           <label className="flex items-center gap-2 text-xs text-subtext">
@@ -110,21 +111,21 @@ export function GraphPage() {
               onChange={(e) => setEnabled(e.target.checked)}
               aria-label="graph_enabled"
             />
-            启用
+            {UI_COPY.graph.enabledToggle}
           </label>
           <button className="btn btn-secondary" onClick={() => void runQuery()} disabled={loading} type="button">
-            {loading ? "查询..." : "查询"}
+            {loading ? "查询..." : UI_COPY.graph.queryRun}
           </button>
         </>
       }
     >
       <label className="block">
-        <div className="text-xs text-subtext">query_text</div>
+        <div className="text-xs text-subtext">{UI_COPY.graph.queryTextLabel}</div>
         <input
           className="mt-1 w-full rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink"
           value={queryText}
           onChange={(e) => setQueryText(e.target.value)}
-          placeholder="输入章节文本或关键片段（命中实体名/别名）"
+          placeholder={UI_COPY.graph.queryTextPlaceholder}
           aria-label="graph_query_text"
         />
       </label>
@@ -136,14 +137,14 @@ export function GraphPage() {
       ) : null}
 
       <div className="rounded-atelier border border-border bg-surface p-3">
-        <div className="text-sm text-ink">结论摘要</div>
+        <div className="text-sm text-ink">{UI_COPY.graph.overviewTitle}</div>
         <div className="mt-1 text-xs text-subtext">
           status: {result?.enabled ? "enabled" : `disabled (${result?.disabled_reason ?? "unknown"})`} | nodes:{" "}
           {result?.nodes?.length ?? 0} | edges: {result?.edges?.length ?? 0} | evidence: {result?.evidence?.length ?? 0}
         </div>
       </div>
 
-      <DebugDetails title="注入预览（prompt_block.text_md）" defaultOpen>
+      <DebugDetails title={UI_COPY.graph.injectionPreviewTitle} defaultOpen>
         <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-[11px] leading-4 text-subtext">
           {result?.prompt_block?.text_md || "（空）"}
         </pre>
@@ -152,9 +153,9 @@ export function GraphPage() {
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="rounded-atelier border border-border bg-surface p-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-sm text-ink">节点</div>
+            <div className="text-sm text-ink">{UI_COPY.graph.nodesTitle}</div>
             <div className="text-xs text-subtext">
-              matched: {(result?.matched?.entity_ids ?? []).length}
+              {UI_COPY.graph.matchedLabel}: {(result?.matched?.entity_ids ?? []).length}
               {result?.truncated?.nodes ? " | truncated" : ""}
             </div>
           </div>
@@ -179,7 +180,7 @@ export function GraphPage() {
 
         <div className="rounded-atelier border border-border bg-surface p-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-sm text-ink">关系</div>
+            <div className="text-sm text-ink">{UI_COPY.graph.relationsTitle}</div>
             <div className="text-xs text-subtext">{result?.truncated?.edges ? "truncated" : " "}</div>
           </div>
           <div className="mt-2 grid gap-2">
@@ -197,7 +198,7 @@ export function GraphPage() {
       </div>
 
       <div className="rounded-atelier border border-border bg-surface p-3">
-        <div className="text-sm text-ink">证据（source_id 命中节点/边）</div>
+        <div className="text-sm text-ink">{UI_COPY.graph.evidenceTitle}</div>
         <div className="mt-2 grid gap-2">
           {(result?.evidence ?? []).slice(0, 12).map((ev) => (
             <div key={ev.id} className="rounded-atelier border border-border bg-surface p-2 text-xs">
@@ -211,7 +212,7 @@ export function GraphPage() {
         </div>
       </div>
 
-      <DebugDetails title="高级调试（raw graph query result）">
+      <DebugDetails title={UI_COPY.graph.advancedDebugTitle}>
         <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-[11px] leading-4 text-subtext">
           {safeJson(result)}
         </pre>
