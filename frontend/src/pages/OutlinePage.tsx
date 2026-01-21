@@ -503,6 +503,16 @@ export function OutlinePage() {
         </button>
       </div>
 
+      <div className="panel p-4">
+        <div className="text-sm text-ink">流程说明</div>
+        <div className="mt-1 text-xs text-subtext">
+          推荐流程：AI 生成大纲 → 预览并应用（覆盖/另存） → 编辑完善 → 从大纲创建章节骨架 → 进入写作。
+        </div>
+        <div className="mt-1 text-[11px] text-subtext">
+          提示：若 “从大纲创建章节骨架” 不可用，请先用 AI 生成大纲并应用（需要解析到章节结构）。
+        </div>
+      </div>
+
       <MarkdownEditor
         value={content}
         onChange={setContent}
@@ -600,73 +610,84 @@ export function OutlinePage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="font-content text-2xl">AI 生成大纲</div>
-            <div className="mt-1 text-xs text-subtext">生成结果会先预览，需手动应用。</div>
+            <div className="mt-1 text-xs text-subtext">生成结果会先预览，可选择覆盖当前大纲或另存为新大纲。</div>
           </div>
           <button className="btn btn-secondary" onClick={() => setGenModalOpen(false)} type="button">
             关闭
           </button>
         </div>
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <label className="grid gap-1">
-            <span className="text-xs text-subtext">章节数</span>
-            <input
-              className="input"
-              type="number"
-              min={1}
-              name="chapter_count"
-              value={genForm.chapter_count}
-              onChange={(e) => setGenForm((v) => ({ ...v, chapter_count: Number(e.target.value) }))}
-            />
-          </label>
-          <label className="grid gap-1 sm:col-span-2">
-            <span className="text-xs text-subtext">基调</span>
-            <input
-              className="input"
-              name="tone"
-              value={genForm.tone}
-              onChange={(e) => setGenForm((v) => ({ ...v, tone: e.target.value }))}
-            />
-          </label>
-          <label className="grid gap-1 sm:col-span-3">
-            <span className="text-xs text-subtext">节奏</span>
-            <input
-              className="input"
-              name="pacing"
-              value={genForm.pacing}
-              onChange={(e) => setGenForm((v) => ({ ...v, pacing: e.target.value }))}
-            />
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              className="checkbox"
-              checked={genForm.include_world_setting}
-              name="include_world_setting"
-              onChange={(e) => setGenForm((v) => ({ ...v, include_world_setting: e.target.checked }))}
-              type="checkbox"
-            />
-            注入世界观
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              className="checkbox"
-              checked={genForm.include_characters}
-              name="include_characters"
-              onChange={(e) => setGenForm((v) => ({ ...v, include_characters: e.target.checked }))}
-              type="checkbox"
-            />
-            注入角色卡
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
-            <input
-              className="checkbox"
-              checked={genStreamEnabled}
-              name="stream"
-              onChange={(e) => setGenStreamEnabled(e.target.checked)}
-              type="checkbox"
-            />
-            流式生成（beta）
-          </label>
+        <div className="mt-4 grid gap-4">
+          <div className="rounded-atelier border border-border bg-canvas p-4">
+            <div className="text-sm text-ink">基础参数</div>
+            <div className="mt-3 grid gap-4 sm:grid-cols-3">
+              <label className="grid gap-1">
+                <span className="text-xs text-subtext">章节数</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  name="chapter_count"
+                  value={genForm.chapter_count}
+                  onChange={(e) => setGenForm((v) => ({ ...v, chapter_count: Number(e.target.value) }))}
+                />
+              </label>
+              <label className="grid gap-1 sm:col-span-2">
+                <span className="text-xs text-subtext">基调</span>
+                <input
+                  className="input"
+                  name="tone"
+                  value={genForm.tone}
+                  onChange={(e) => setGenForm((v) => ({ ...v, tone: e.target.value }))}
+                />
+              </label>
+              <label className="grid gap-1 sm:col-span-3">
+                <span className="text-xs text-subtext">节奏</span>
+                <input
+                  className="input"
+                  name="pacing"
+                  value={genForm.pacing}
+                  onChange={(e) => setGenForm((v) => ({ ...v, pacing: e.target.value }))}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-atelier border border-border bg-canvas p-4">
+            <div className="text-sm text-ink">高级参数</div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  className="checkbox"
+                  checked={genForm.include_world_setting}
+                  name="include_world_setting"
+                  onChange={(e) => setGenForm((v) => ({ ...v, include_world_setting: e.target.checked }))}
+                  type="checkbox"
+                />
+                注入世界观
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  className="checkbox"
+                  checked={genForm.include_characters}
+                  name="include_characters"
+                  onChange={(e) => setGenForm((v) => ({ ...v, include_characters: e.target.checked }))}
+                  type="checkbox"
+                />
+                注入角色卡
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
+                <input
+                  className="checkbox"
+                  checked={genStreamEnabled}
+                  name="stream"
+                  onChange={(e) => setGenStreamEnabled(e.target.checked)}
+                  type="checkbox"
+                />
+                流式生成（beta）
+              </label>
+            </div>
+          </div>
         </div>
 
         {genStreamEnabled ? (
@@ -826,6 +847,9 @@ export function OutlinePage() {
                 <div className="mt-1 text-xs text-subtext">
                   解析章节：{genPreview.chapters.length}{" "}
                   {genPreview.parse_error ? `（${genPreview.parse_error.message}）` : ""}
+                </div>
+                <div className="mt-1 text-[11px] text-subtext">
+                  应用方式：覆盖会替换当前大纲并立即保存；另存会创建新大纲并切换（更安全，推荐）。
                 </div>
               </div>
               <div className="flex gap-2">
