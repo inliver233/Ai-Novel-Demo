@@ -6,7 +6,7 @@ test("ui: export markdown triggers download", async ({ page, request }) => {
   const { projectId } = await bootstrapProject(request);
 
   await page.goto(`/projects/${projectId}/export`);
-  await expect(page.getByText("导出 Markdown")).toBeVisible();
+  await expect(page.getByRole("button", { name: "导出 Markdown", exact: true })).toBeVisible();
 
   await page.evaluate(() => {
     // @ts-ignore
@@ -28,7 +28,7 @@ test("ui: export markdown triggers download", async ({ page, request }) => {
     return resp.request().method() === "GET" && resp.url().includes(`/api/projects/${projectId}/export/markdown`);
   });
 
-  await page.getByRole("button", { name: "导出Markdown", exact: true }).click();
+  await page.getByRole("button", { name: "导出 Markdown", exact: true }).click();
 
   const resp = await exportResp;
   expect(resp.ok()).toBeTruthy();

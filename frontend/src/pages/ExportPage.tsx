@@ -48,17 +48,17 @@ export function ExportPage() {
       const { filename, content } = await apiDownloadMarkdown(url);
       const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
       const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = filename || "ainovel.md";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-      toast.toastSuccess("已导出");
-      markWizardExported(projectId);
-      bumpWizardLocal();
-      return true;
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download = filename || "ainovel.md";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        toast.toastSuccess("已导出 Markdown，已开始下载");
+        markWizardExported(projectId);
+        bumpWizardLocal();
+        return true;
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -82,11 +82,11 @@ export function ExportPage() {
             onClick={() => void doExport()}
             type="button"
           >
-            {exporting ? "导出中..." : "导出Markdown"}
+            {exporting ? "导出中…" : "导出 Markdown"}
           </button>
         </div>
 
-        {exporting ? <GhostwriterIndicator className="mt-4" label="正在装订 Markdown…马上就好" /> : null}
+        {exporting ? <GhostwriterIndicator className="mt-4" label="导出中：正在生成并下载 Markdown…" /> : null}
 
         <div className="mt-5 grid gap-4">
           <div className="grid gap-2">
@@ -148,7 +148,7 @@ export function ExportPage() {
                 onChange={() => setForm((v) => ({ ...v, chapters: "done" }))}
                 type="radio"
               />
-              仅 done 章节
+              仅定稿章节（done）
             </label>
           </div>
 
@@ -165,7 +165,7 @@ export function ExportPage() {
         loading={wizard.loading}
         primaryAction={
           wizard.progress.nextStep?.key === "export"
-            ? { label: "本页：导出Markdown", disabled: exporting, onClick: doExport }
+            ? { label: "本页：导出 Markdown", disabled: exporting, onClick: doExport }
             : undefined
         }
       />

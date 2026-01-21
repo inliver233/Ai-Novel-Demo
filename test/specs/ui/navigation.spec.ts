@@ -78,5 +78,5 @@ test("ui: core pages navigate and render", async ({ page, request }) => {
 
   // NOTE: WizardNextBar (fixed footer) may overlap the sidebar bottom; use direct navigation to keep this smoke stable.
   await page.goto(`/projects/${projectId}/export`);
-  await expect(page.getByText("导出 Markdown")).toBeVisible();
+  await expect(page.getByRole("button", { name: "导出 Markdown", exact: true })).toBeVisible();
 });
