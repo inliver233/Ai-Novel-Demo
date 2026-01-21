@@ -1,3 +1,4 @@
+import { humanizeChapterStatus } from "../../lib/humanize";
 import type { Chapter } from "../../types";
 
 export function ChapterListPanel(props: {
@@ -29,7 +30,7 @@ export function ChapterListPanel(props: {
                   <span className="mr-2 text-xs text-subtext">#{c.number}</span>
                   <span className="truncate">{c.title ?? "未命名章节"}</span>
                 </div>
-                <span className="shrink-0 text-[11px] text-subtext">{c.status}</span>
+                <span className="shrink-0 text-[11px] text-subtext">{humanizeChapterStatus(c.status)}</span>
               </div>
             </button>
           ))}
