@@ -44,6 +44,14 @@ type GraphQueryResult = {
   timings_ms?: Record<string, number>;
 };
 
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 export function GraphPage() {
   const { projectId } = useParams();
   const toast = useToast();
@@ -128,14 +136,14 @@ export function GraphPage() {
       ) : null}
 
       <div className="rounded-atelier border border-border bg-surface p-3">
-        <div className="text-sm text-ink">GraphContext（概览）</div>
+        <div className="text-sm text-ink">结论摘要</div>
         <div className="mt-1 text-xs text-subtext">
           status: {result?.enabled ? "enabled" : `disabled (${result?.disabled_reason ?? "unknown"})`} | nodes:{" "}
           {result?.nodes?.length ?? 0} | edges: {result?.edges?.length ?? 0} | evidence: {result?.evidence?.length ?? 0}
         </div>
       </div>
 
-      <DebugDetails title="注入预览（prompt_block.text_md）">
+      <DebugDetails title="注入预览（prompt_block.text_md）" defaultOpen>
         <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-[11px] leading-4 text-subtext">
           {result?.prompt_block?.text_md || "（空）"}
         </pre>
@@ -144,7 +152,7 @@ export function GraphPage() {
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="rounded-atelier border border-border bg-surface p-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-sm text-ink">Nodes</div>
+            <div className="text-sm text-ink">节点</div>
             <div className="text-xs text-subtext">
               matched: {(result?.matched?.entity_ids ?? []).length}
               {result?.truncated?.nodes ? " | truncated" : ""}
@@ -171,7 +179,7 @@ export function GraphPage() {
 
         <div className="rounded-atelier border border-border bg-surface p-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-sm text-ink">Edges</div>
+            <div className="text-sm text-ink">关系</div>
             <div className="text-xs text-subtext">{result?.truncated?.edges ? "truncated" : " "}</div>
           </div>
           <div className="mt-2 grid gap-2">
@@ -189,7 +197,7 @@ export function GraphPage() {
       </div>
 
       <div className="rounded-atelier border border-border bg-surface p-3">
-        <div className="text-sm text-ink">Evidence（source_id 命中节点/边）</div>
+        <div className="text-sm text-ink">证据（source_id 命中节点/边）</div>
         <div className="mt-2 grid gap-2">
           {(result?.evidence ?? []).slice(0, 12).map((ev) => (
             <div key={ev.id} className="rounded-atelier border border-border bg-surface p-2 text-xs">
@@ -202,6 +210,12 @@ export function GraphPage() {
           {(result?.evidence ?? []).length === 0 ? <div className="text-xs text-subtext">evidence: 0</div> : null}
         </div>
       </div>
+
+      <DebugDetails title="高级调试（raw graph query result）">
+        <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-[11px] leading-4 text-subtext">
+          {safeJson(result)}
+        </pre>
+      </DebugDetails>
     </DebugPageShell>
   );
 }
