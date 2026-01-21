@@ -127,6 +127,12 @@ export function TaskCenterPage() {
     return "Task 详情";
   }, [selected]);
 
+  const detailHeading = useMemo(() => {
+    if (!selected) return "";
+    if (selected.kind === "change_set") return "变更集详情";
+    return "任务详情";
+  }, [selected]);
+
   const refreshAll = useCallback(() => {
     void refreshChangeSets();
     void refreshTasks();
@@ -140,7 +146,7 @@ export function TaskCenterPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="font-content text-xl text-ink">任务中心</div>
-            <div className="mt-1 text-xs text-subtext">查看 Memory ChangeSets / Tasks 的状态与错误</div>
+            <div className="mt-1 text-xs text-subtext">查看记忆变更集与后台任务的状态、错误与排障信息</div>
           </div>
           <button className="btn btn-secondary" onClick={refreshAll} aria-label="刷新 (taskcenter_refresh)" type="button">
             刷新
@@ -152,8 +158,11 @@ export function TaskCenterPage() {
         <section className="panel p-4" aria-label="变更集 (taskcenter_changesets_section)">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="text-sm text-ink">ChangeSets</div>
-              <div className="mt-1 text-xs text-subtext">按状态筛选，点击可查看详情</div>
+              <div className="text-sm text-ink">变更集（ChangeSets）</div>
+              <div className="mt-1 text-xs text-subtext">按状态筛选；点击条目查看摘要与原始 JSON</div>
+              <div className="mt-1 text-[11px] text-subtext">
+                状态说明：未应用=仅提议 | 已应用=已落库 | 已回滚=已撤销 | 失败=执行异常
+              </div>
             </div>
             <label className="grid gap-1">
               <span className="text-[11px] text-subtext">状态</span>
@@ -174,7 +183,7 @@ export function TaskCenterPage() {
 
           {changeSetsQuery.loading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
           {!changeSetsQuery.loading && changeSets.length === 0 ? (
-            <div className="mt-3 text-sm text-subtext">暂无 ChangeSet</div>
+            <div className="mt-3 text-sm text-subtext">暂无变更集</div>
           ) : null}
 
           <div className="mt-3 grid gap-2">
@@ -189,7 +198,7 @@ export function TaskCenterPage() {
                   <div className="min-w-0">
                     <div className="truncate text-sm text-ink">{it.title || it.summary_md || it.id}</div>
                     <div className="mt-1 truncate text-xs text-subtext">
-                      chapter_id: {it.chapter_id || "-"} | updated_at: {it.updated_at || it.created_at || "-"}
+                      章节 ID：{it.chapter_id || "-"} | 更新时间：{it.updated_at || it.created_at || "-"}
                     </div>
                     {it.request_id ? (
                       <div className="mt-1 flex items-center gap-2 text-[11px] text-subtext">
@@ -218,8 +227,9 @@ export function TaskCenterPage() {
         <section className="panel p-4" aria-label="任务列表 (taskcenter_tasks_section)">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="text-sm text-ink">Tasks</div>
-              <div className="mt-1 text-xs text-subtext">失败任务会显示 error 摘要与 {UI_COPY.common.requestIdLabel}</div>
+              <div className="text-sm text-ink">任务（Tasks）</div>
+              <div className="mt-1 text-xs text-subtext">失败任务会显示错误摘要与 {UI_COPY.common.requestIdLabel}</div>
+              <div className="mt-1 text-[11px] text-subtext">状态说明：排队中→运行中→完成/失败（如失败可用 request_id 查后端日志）</div>
             </div>
             <label className="grid gap-1">
               <span className="text-[11px] text-subtext">状态</span>
@@ -240,7 +250,7 @@ export function TaskCenterPage() {
 
           {tasksQuery.loading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
           {!tasksQuery.loading && tasks.length === 0 ? (
-            <div className="mt-3 text-sm text-subtext">暂无 Task</div>
+            <div className="mt-3 text-sm text-subtext">暂无任务</div>
           ) : null}
 
           <div className="mt-3 grid gap-2">
@@ -256,7 +266,7 @@ export function TaskCenterPage() {
                     <div className="truncate text-sm text-ink">
                       {t.kind} <span className="text-subtext">({t.id})</span>
                     </div>
-                    <div className="mt-1 truncate text-xs text-subtext">change_set_id: {t.change_set_id}</div>
+                    <div className="mt-1 truncate text-xs text-subtext">变更集 ID：{t.change_set_id}</div>
                     {t.request_id ? (
                       <div className="mt-1 flex items-center gap-2 text-[11px] text-subtext">
                         <span className="truncate">
@@ -295,10 +305,10 @@ export function TaskCenterPage() {
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="font-content text-2xl text-ink">{detailTitle}</div>
+            <div className="font-content text-2xl text-ink">{detailHeading || detailTitle}</div>
             {selected ? (
               <div className="mt-1 text-xs text-subtext">
-                id: {selected.item.id}{" "}
+                ID：{selected.item.id}{" "}
                 {selected.kind === "task" ? `| ${UI_COPY.common.requestIdLabel}: ${selected.item.request_id ?? "-"}` : ""}
               </div>
             ) : null}
@@ -309,12 +319,12 @@ export function TaskCenterPage() {
         </div>
 
         {selected ? (
-          <div className="mt-5 grid gap-3">
-            <div className="text-xs text-subtext">原始数据（JSON）</div>
-            <pre className="max-h-[70vh] overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+          <details className="mt-5 rounded-atelier border border-border bg-surface p-3">
+            <summary className="cursor-pointer select-none text-sm text-ink">原始数据（JSON）</summary>
+            <pre className="mt-3 max-h-[70vh] overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
               {safeJsonStringify(selected.item)}
             </pre>
-          </div>
+          </details>
         ) : null}
       </Drawer>
     </div>
