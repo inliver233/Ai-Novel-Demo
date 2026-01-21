@@ -28,7 +28,7 @@ test("ui: structured memory page tabs + search + memory update drawer", async ({
   await expect(dialog).toBeHidden();
 
   await page.goto(`/projects/${projectId}/structured-memory?chapterId=${chapterId}`);
-  await expect(page.getByRole("button", { name: /^entities/ })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: /structured_tab_entities/ })).toBeVisible({ timeout: 60_000 });
 
   // Entities should include the seeded entity.
   await expect(page.getByText("character:Alice", { exact: true })).toBeVisible({ timeout: 60_000 });
@@ -39,13 +39,13 @@ test("ui: structured memory page tabs + search + memory update drawer", async ({
   await expect(page.getByText("character:Alice", { exact: true })).toBeVisible({ timeout: 60_000 });
 
   // Tabs should switch without crashing.
-  await page.getByRole("button", { name: /^relations/ }).click();
+  await page.getByRole("button", { name: /structured_tab_relations/ }).click();
   await expect(page.getByText("暂无数据", { exact: true })).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("button", { name: /^events/ }).click();
+  await page.getByRole("button", { name: /structured_tab_events/ }).click();
   await expect(page.getByText("暂无数据", { exact: true })).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("button", { name: /^foreshadows/ }).click();
+  await page.getByRole("button", { name: /structured_tab_foreshadows/ }).click();
   await expect(page.getByText("暂无数据", { exact: true })).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("button", { name: /^evidence/ }).click();
+  await page.getByRole("button", { name: /structured_tab_evidence/ }).click();
   await expect(page.getByText("暂无数据", { exact: true })).toBeVisible({ timeout: 60_000 });
 
   // MemoryUpdateDrawer should be available on this page when chapterId is present.
