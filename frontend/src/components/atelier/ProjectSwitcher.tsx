@@ -18,7 +18,11 @@ export function ProjectSwitcher() {
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <div className="text-xs text-subtext">{UI_COPY.nav.currentProject}</div>
-        <Link className="text-xs text-accent hover:underline" to="/">
+        <Link
+          className="ui-focus-ring ui-transition-fast rounded-atelier px-2 py-1 text-xs text-accent hover:bg-canvas hover:text-ink"
+          to="/"
+          aria-label="首页 (project_switcher_home)"
+        >
           {UI_COPY.nav.home}
         </Link>
       </div>
