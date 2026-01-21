@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { useToast } from "../components/ui/toast";
 import { MemoryUpdateDrawer } from "../components/writing/MemoryUpdateDrawer";
 import { useProjectData } from "../hooks/useProjectData";
+import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
 
 type TableName = "entities" | "relations" | "events" | "foreshadows" | "evidence";
@@ -78,12 +79,16 @@ type PageData = {
   items: Array<Record<string, unknown>>;
 };
 
+const STRUCTURED_TABLE_LABELS: Record<TableName, string> = {
+  entities: UI_COPY.structuredMemory.tabs.entities,
+  relations: UI_COPY.structuredMemory.tabs.relations,
+  events: UI_COPY.structuredMemory.tabs.events,
+  foreshadows: UI_COPY.structuredMemory.tabs.foreshadows,
+  evidence: UI_COPY.structuredMemory.tabs.evidence,
+};
+
 function tableLabel(t: TableName): string {
-  if (t === "entities") return "entities";
-  if (t === "relations") return "relations";
-  if (t === "events") return "events";
-  if (t === "foreshadows") return "foreshadows";
-  return "evidence";
+  return STRUCTURED_TABLE_LABELS[t] ?? t;
 }
 
 function safeSnippet(text: string | null | undefined, max = 80): string {
@@ -286,11 +291,10 @@ export function StructuredMemoryPage() {
       <div className="panel p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="font-content text-xl text-ink">结构化记忆</div>
-            <div className="mt-1 text-xs text-subtext">表格化浏览 entities/relations/events/foreshadows/evidence</div>
-            <div className="mt-1 text-[11px] text-subtext">
-              批量操作会生成 memory_update_v1 ops JSON（需在 Memory Update 中粘贴并 Apply）。
-            </div>
+            <div className="font-content text-xl text-ink">{UI_COPY.structuredMemory.title}</div>
+            <div className="mt-1 text-xs text-subtext">{UI_COPY.structuredMemory.subtitle}</div>
+            <div className="mt-1 text-[11px] text-subtext">{UI_COPY.structuredMemory.bulkOpsHint}</div>
+            <div className="mt-1 text-[11px] text-subtext">{UI_COPY.structuredMemory.bulkOpsRisk}</div>
           </div>
           <button className="btn btn-secondary" onClick={() => void pageQuery.refresh()} type="button">
             刷新
@@ -309,6 +313,7 @@ export function StructuredMemoryPage() {
                   setSelectedIds([]);
                   setActiveTable(t);
                 }}
+                aria-label={`${t}（${tableLabel(t)}） (structured_tab_${t})`}
                 type="button"
               >
                 {tableLabel(t)} <span className="text-xs opacity-80">({counts[t] ?? 0})</span>
@@ -328,7 +333,7 @@ export function StructuredMemoryPage() {
                 aria-label="structured_include_deleted"
                 type="checkbox"
               />
-              include_deleted
+              {UI_COPY.structuredMemory.includeDeleted}
             </label>
             <button
               className="btn btn-secondary"
@@ -364,7 +369,7 @@ export function StructuredMemoryPage() {
           <div className="mt-4 surface p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm text-ink">
-                已选择 {selectedIds.length} 条（{activeTable}）
+                已选择 {selectedIds.length} 条（{tableLabel(activeTable)}）
               </div>
               <div className="flex flex-wrap gap-2">
                 <button className="btn btn-secondary" onClick={selectAll} type="button">
@@ -375,25 +380,30 @@ export function StructuredMemoryPage() {
                 </button>
                 <button
                   className="btn btn-secondary"
-                  onClick={() => void copyText(generatedDeleteOpsJson, "delete ops")}
+                  onClick={() => void copyText(generatedDeleteOpsJson, "删除操作 JSON")}
                   type="button"
                 >
-                  复制 delete ops
+                  {UI_COPY.structuredMemory.copyDeleteOps}
                 </button>
                 {activeTable === "foreshadows" ? (
                   <button
                     className="btn btn-secondary"
-                    onClick={() => void copyText(generatedResolvedOpsJson, "resolved ops")}
+                    onClick={() => void copyText(generatedResolvedOpsJson, "标记已解决 JSON")}
                     type="button"
                   >
-                    复制 resolved ops
+                    {UI_COPY.structuredMemory.copyResolvedOps}
                   </button>
                 ) : null}
               </div>
             </div>
 
+            <div className="mt-2 rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
+              <div>{UI_COPY.structuredMemory.bulkOpsHint}</div>
+              <div className="mt-1">{UI_COPY.structuredMemory.bulkOpsRisk}</div>
+            </div>
+
             <div className="mt-3 grid gap-2">
-              <div className="text-xs text-subtext">delete ops</div>
+              <div className="text-xs text-subtext">{UI_COPY.structuredMemory.deleteOpsLabel}</div>
               <textarea
                 className="textarea font-mono text-xs"
                 readOnly
@@ -402,7 +412,7 @@ export function StructuredMemoryPage() {
               />
               {activeTable === "foreshadows" ? (
                 <>
-                  <div className="text-xs text-subtext">resolved ops</div>
+                  <div className="text-xs text-subtext">{UI_COPY.structuredMemory.resolvedOpsLabel}</div>
                   <textarea
                     className="textarea font-mono text-xs"
                     readOnly
