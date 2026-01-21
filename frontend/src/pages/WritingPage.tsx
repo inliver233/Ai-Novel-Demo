@@ -30,6 +30,7 @@ import { useChapterEditor } from "./writing/useChapterEditor";
 import { useChapterGeneration } from "./writing/useChapterGeneration";
 import { useGenerationHistory } from "./writing/useGenerationHistory";
 import { useOutlineSwitcher } from "./writing/useOutlineSwitcher";
+import { humanizeChapterStatus } from "../lib/humanize";
 import type { ChapterStatus, Character, LLMPreset, Outline, OutlineListItem } from "../types";
 
 type WritingLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LLMPreset; characters: Character[] };
@@ -289,7 +290,9 @@ export function WritingPage() {
             return;
           }
           if (activeChapter.status !== "done") {
-            toast.toastWarning("仅定稿章节（status=done）允许记忆更新；请先将章节标记为 done。");
+            toast.toastWarning(
+              `仅状态为 ${humanizeChapterStatus("done")} 的章节允许记忆更新；请先将章节标记为 ${humanizeChapterStatus("done")}。`,
+            );
             return;
           }
           setMemoryUpdateOpen(true);
@@ -396,7 +399,9 @@ export function WritingPage() {
                       if (form.status === "done") {
                         if (!editedDoneAutoRevertedRef.current) {
                           editedDoneAutoRevertedRef.current = true;
-                          toast.toastWarning("已将章节状态从 done 回退为 drafting：编辑定稿章会产生草稿污染风险。");
+                          toast.toastWarning(
+                            `已将章节状态从 ${humanizeChapterStatus("done")} 回退为 ${humanizeChapterStatus("drafting")}：编辑定稿章会产生草稿污染风险。`,
+                          );
                         }
                         setForm((v) => (v ? { ...v, title: nextTitle, status: "drafting" } : v));
                         return;
@@ -417,12 +422,12 @@ export function WritingPage() {
                       setForm((v) => (v ? { ...v, status: next } : v));
                     }}
                   >
-                    <option value="planned">planned</option>
-                    <option value="drafting">drafting</option>
-                    <option value="done">done</option>
+                    <option value="planned">{humanizeChapterStatus("planned")}</option>
+                    <option value="drafting">{humanizeChapterStatus("drafting")}</option>
+                    <option value="done">{humanizeChapterStatus("done")}</option>
                   </select>
                   <div className="text-[11px] text-subtext">
-                    提示：保存不等于定稿。仅 status=done（定稿章）允许进行记忆更新（Memory Update）写入长期记忆。
+                    提示：保存不等于定稿。仅状态为 {humanizeChapterStatus("done")} 的章节允许进行记忆更新（Memory Update）写入长期记忆。
                   </div>
                 </label>
               </div>
@@ -440,7 +445,9 @@ export function WritingPage() {
                       if (form.status === "done") {
                         if (!editedDoneAutoRevertedRef.current) {
                           editedDoneAutoRevertedRef.current = true;
-                          toast.toastWarning("已将章节状态从 done 回退为 drafting：编辑定稿章会产生草稿污染风险。");
+                          toast.toastWarning(
+                            `已将章节状态从 ${humanizeChapterStatus("done")} 回退为 ${humanizeChapterStatus("drafting")}：编辑定稿章会产生草稿污染风险。`,
+                          );
                         }
                         setForm((v) => (v ? { ...v, plan: nextPlan, status: "drafting" } : v));
                         return;
@@ -457,7 +464,9 @@ export function WritingPage() {
                       if (form.status === "done") {
                         if (!editedDoneAutoRevertedRef.current) {
                           editedDoneAutoRevertedRef.current = true;
-                          toast.toastWarning("已将章节状态从 done 回退为 drafting：编辑定稿章会产生草稿污染风险。");
+                          toast.toastWarning(
+                            `已将章节状态从 ${humanizeChapterStatus("done")} 回退为 ${humanizeChapterStatus("drafting")}：编辑定稿章会产生草稿污染风险。`,
+                          );
                         }
                         setForm((v) => (v ? { ...v, content_md: next, status: "drafting" } : v));
                         return;
@@ -486,7 +495,9 @@ export function WritingPage() {
                       if (form.status === "done") {
                         if (!editedDoneAutoRevertedRef.current) {
                           editedDoneAutoRevertedRef.current = true;
-                          toast.toastWarning("已将章节状态从 done 回退为 drafting：编辑定稿章会产生草稿污染风险。");
+                          toast.toastWarning(
+                            `已将章节状态从 ${humanizeChapterStatus("done")} 回退为 ${humanizeChapterStatus("drafting")}：编辑定稿章会产生草稿污染风险。`,
+                          );
                         }
                         setForm((v) => (v ? { ...v, summary: nextSummary, status: "drafting" } : v));
                         return;

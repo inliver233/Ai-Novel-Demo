@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { Drawer } from "../components/ui/Drawer";
 import { useProjectData } from "../hooks/useProjectData";
+import { humanizeChangeSetStatus, humanizeTaskStatus } from "../lib/humanize";
 import { apiJson } from "../services/apiClient";
 
 type MemoryChangeSetSummary = {
@@ -32,24 +33,6 @@ type MemoryTaskSummary = {
 
 type PagedResult<T> = { items: T[]; next_before?: string | null };
 
-function humanChangeSetStatus(status: string): string {
-  const s = String(status || "").trim();
-  if (s === "proposed") return "未应用";
-  if (s === "applied") return "已应用";
-  if (s === "rolled_back") return "已回滚";
-  if (s === "failed") return "失败";
-  return s || "未知";
-}
-
-function humanTaskStatus(status: string): string {
-  const s = String(status || "").trim();
-  if (s === "queued") return "排队中";
-  if (s === "running") return "执行中";
-  if (s === "done") return "完成";
-  if (s === "failed") return "失败";
-  return s || "未知";
-}
-
 function statusTone(status: string): "ok" | "warn" | "bad" | "info" {
   const s = String(status || "").trim();
   if (s === "failed") return "bad";
@@ -68,7 +51,7 @@ function StatusBadge(props: { status: string; kind: "change_set" | "task" }) {
         : tone === "info"
           ? "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
           : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300";
-  const label = props.kind === "change_set" ? humanChangeSetStatus(props.status) : humanTaskStatus(props.status);
+  const label = props.kind === "change_set" ? humanizeChangeSetStatus(props.status) : humanizeTaskStatus(props.status);
   return <span className={`inline-flex rounded px-2 py-0.5 text-[11px] ${cls}`}>{label}</span>;
 }
 
@@ -180,10 +163,10 @@ export function TaskCenterPage() {
                 onChange={(e) => setChangeSetStatus(e.target.value)}
               >
                 <option value="all">全部</option>
-                <option value="proposed">proposed</option>
-                <option value="applied">applied</option>
-                <option value="rolled_back">rolled_back</option>
-                <option value="failed">failed</option>
+                <option value="proposed">{humanizeChangeSetStatus("proposed")}</option>
+                <option value="applied">{humanizeChangeSetStatus("applied")}</option>
+                <option value="rolled_back">{humanizeChangeSetStatus("rolled_back")}</option>
+                <option value="failed">{humanizeChangeSetStatus("failed")}</option>
               </select>
             </label>
           </div>
@@ -233,10 +216,10 @@ export function TaskCenterPage() {
                 onChange={(e) => setTaskStatus(e.target.value)}
               >
                 <option value="all">全部</option>
-                <option value="queued">queued</option>
-                <option value="running">running</option>
-                <option value="done">done</option>
-                <option value="failed">failed</option>
+                <option value="queued">{humanizeTaskStatus("queued")}</option>
+                <option value="running">{humanizeTaskStatus("running")}</option>
+                <option value="done">{humanizeTaskStatus("done")}</option>
+                <option value="failed">{humanizeTaskStatus("failed")}</option>
               </select>
             </label>
           </div>

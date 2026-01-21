@@ -11,6 +11,7 @@ import { useProjectData } from "../hooks/useProjectData";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
+import { humanizeMemberRole } from "../lib/humanize";
 import { ApiError, apiJson } from "../services/apiClient";
 import { markWizardProjectChanged } from "../services/wizard";
 import type { Project, ProjectSettings, QueryPreprocessingConfig } from "../types";
@@ -1077,8 +1078,8 @@ export function SettingsPage() {
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value === "editor" ? "editor" : "viewer")}
                 >
-                  <option value="viewer">viewer</option>
-                  <option value="editor">editor</option>
+                  <option value="viewer">{humanizeMemberRole("viewer")}</option>
+                  <option value="editor">{humanizeMemberRole("editor")}</option>
                 </select>
               </label>
               <div className="flex gap-2">
@@ -1121,7 +1122,7 @@ export function SettingsPage() {
                         <td className="px-3 py-2">{m.user?.display_name ?? "-"}</td>
                         <td className="px-3 py-2">
                           {isOwnerRow ? (
-                            <span className="text-xs text-subtext">owner</span>
+                            <span className="text-xs text-subtext">{humanizeMemberRole("owner")}</span>
                           ) : (
                             <select
                               className="select"
@@ -1132,8 +1133,8 @@ export function SettingsPage() {
                                 void updateMemberRole(memberUserId, e.target.value === "editor" ? "editor" : "viewer")
                               }
                             >
-                              <option value="viewer">viewer</option>
-                              <option value="editor">editor</option>
+                              <option value="viewer">{humanizeMemberRole("viewer")}</option>
+                              <option value="editor">{humanizeMemberRole("editor")}</option>
                             </select>
                           )}
                         </td>

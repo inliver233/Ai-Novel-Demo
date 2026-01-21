@@ -9,6 +9,7 @@ import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { Drawer } from "../components/ui/Drawer";
 import { useProjectData } from "../hooks/useProjectData";
 import { useWizardProgress } from "../hooks/useWizardProgress";
+import { humanizeChapterStatus } from "../lib/humanize";
 import { apiJson } from "../services/apiClient";
 import { markWizardPreviewSeen } from "../services/wizard";
 import type { Chapter } from "../types";
@@ -132,7 +133,7 @@ export function PreviewPage() {
                 <span className="min-w-0 truncate">
                   {c.number}. {c.title?.trim() ? c.title : "（未命名）"}
                 </span>
-                <span className="shrink-0 text-[11px] text-subtext">{c.status}</span>
+                <span className="shrink-0 text-[11px] text-subtext">{humanizeChapterStatus(c.status)}</span>
               </button>
             );
           })}
@@ -207,7 +208,8 @@ export function PreviewPage() {
                   </div>
                   {activeChapter.status !== "done" ? (
                     <div className="mt-1 text-xs text-subtext">
-                      提示：本章状态为 {activeChapter.status}，向导会以 done 作为“写完”判定。
+                      提示：本章状态为 {humanizeChapterStatus(activeChapter.status)}，向导会以{" "}
+                      {humanizeChapterStatus("done")} 作为“写完”判定。
                     </div>
                   ) : null}
                 </div>

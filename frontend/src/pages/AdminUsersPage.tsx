@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../contexts/auth";
+import { humanizeYesNo } from "../lib/humanize";
 import { ApiError, apiJson } from "../services/apiClient";
 
 type AdminUser = {
@@ -249,8 +250,8 @@ export function AdminUsersPage() {
                 <tr key={u.id} className="border-t border-border">
                   <td className="py-2 pr-3 font-mono text-xs">{u.id}</td>
                   <td className="py-2 pr-3">{u.display_name ?? "-"}</td>
-                  <td className="py-2 pr-3">{u.is_admin ? "yes" : "no"}</td>
-                  <td className="py-2 pr-3">{u.disabled ? "yes" : "no"}</td>
+                  <td className="py-2 pr-3">{humanizeYesNo(u.is_admin)}</td>
+                  <td className="py-2 pr-3">{humanizeYesNo(u.disabled)}</td>
                   <td className="py-2 pr-3 font-mono text-[11px]">{tempPasswords[u.id] ?? "-"}</td>
                   <td className="py-2 pr-3">
                     <div className="flex flex-wrap gap-2">
