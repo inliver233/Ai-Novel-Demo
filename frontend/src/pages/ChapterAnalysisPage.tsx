@@ -145,16 +145,25 @@ export function ChapterAnalysisPage() {
             <button
               className="btn btn-ghost px-2 py-1 text-xs"
               type="button"
+              title="仅清除 URL 中的 chapterId，不会删除章节。"
               onClick={() => {
                 const next = new URLSearchParams(searchParams);
                 next.delete("chapterId");
                 setSearchParams(next, { replace: true });
               }}
             >
-              清除章节
+              清除选择
             </button>
           ) : null}
         </div>
+      </div>
+
+      <div className="panel p-4 text-sm text-subtext">
+        <div className="text-ink">用途说明</div>
+        <div className="mt-1">
+          将“记忆标注”高亮映射回正文，便于核对与定位；点击高亮或右侧列表可跳转到对应片段。
+        </div>
+        <div className="mt-2">入口：写作页 → 章节工具栏 → “标注回溯”（需要 chapterId）。</div>
       </div>
 
       {invalidCount > 0 ? (
