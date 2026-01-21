@@ -7,7 +7,6 @@ import {
   BookOpenText,
   FileDown,
   LayoutDashboard,
-  ListChecks,
   ListTodo,
   Palette,
   PanelLeftClose,
@@ -33,6 +32,8 @@ import { getCurrentUserId } from "../../services/currentUser";
 import { sidebarCollapsedStorageKey } from "../../services/uiState";
 
 const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
+  ["/admin/users", UI_COPY.nav.adminUsers],
+
   ["/settings", UI_COPY.nav.projectSettings],
   ["/characters", UI_COPY.nav.characters],
   ["/outline", UI_COPY.nav.outline],
@@ -45,6 +46,7 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
   ["/export", UI_COPY.nav.export],
 
   ["/worldbook", UI_COPY.nav.worldBook],
+  ["/rag", UI_COPY.nav.rag],
   ["/graph", UI_COPY.nav.graph],
   ["/fractal", UI_COPY.nav.fractal],
   ["/styles", UI_COPY.nav.styles],
@@ -211,11 +213,72 @@ export function AppShell() {
                     <div className="my-2 h-px bg-border" />
                     {projectId ? (
                       <>
+                        <div className="px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupWorkbench}</div>
                         <SidebarLink
                           collapsed={false}
-                          icon={<ListChecks size={18} />}
-                          label={UI_COPY.nav.wizard}
-                          to={`/projects/${projectId}/wizard`}
+                          icon={<PenLine size={18} />}
+                          label={UI_COPY.nav.writing}
+                          to={`/projects/${projectId}/writing`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<BookOpenText size={18} />}
+                          label={UI_COPY.nav.outline}
+                          to={`/projects/${projectId}/outline`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<Users size={18} />}
+                          label={UI_COPY.nav.characters}
+                          to={`/projects/${projectId}/characters`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<Book size={18} />}
+                          label={UI_COPY.nav.worldBook}
+                          to={`/projects/${projectId}/worldbook`}
+                          onClick={closeMobileNav}
+                        />
+
+                        <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupView}</div>
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<BookOpen size={18} />}
+                          label={UI_COPY.nav.preview}
+                          to={`/projects/${projectId}/preview`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<FileDown size={18} />}
+                          label={UI_COPY.nav.export}
+                          to={`/projects/${projectId}/export`}
+                          onClick={closeMobileNav}
+                        />
+
+                        <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupAiConfig}</div>
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<Bot size={18} />}
+                          label={UI_COPY.nav.prompts}
+                          to={`/projects/${projectId}/prompts`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<Sparkles size={18} />}
+                          label={UI_COPY.nav.promptStudio}
+                          to={`/projects/${projectId}/prompt-studio`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<Palette size={18} />}
+                          label={UI_COPY.nav.styles}
+                          to={`/projects/${projectId}/styles`}
                           onClick={closeMobileNav}
                         />
                         <SidebarLink
@@ -225,52 +288,19 @@ export function AppShell() {
                           to={`/projects/${projectId}/settings`}
                           onClick={closeMobileNav}
                         />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Book size={18} />}
-                          label="世界书"
-                          to={`/projects/${projectId}/worldbook`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Users size={18} />}
-                          label="角色卡"
-                          to={`/projects/${projectId}/characters`}
-                          onClick={closeMobileNav}
-                        />
+
+                        <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupAdvancedDebug}</div>
                         <SidebarLink
                           collapsed={false}
                           icon={<BookOpenText size={18} />}
-                          label="大纲"
-                          to={`/projects/${projectId}/outline`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<PenLine size={18} />}
-                          label="写作"
-                          to={`/projects/${projectId}/writing`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<ListTodo size={18} />}
-                          label="任务中心"
-                          to={`/projects/${projectId}/tasks`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Table2 size={18} />}
-                          label="结构化记忆"
-                          to={`/projects/${projectId}/structured-memory`}
+                          label={UI_COPY.nav.rag}
+                          to={`/projects/${projectId}/rag`}
                           onClick={closeMobileNav}
                         />
                         <SidebarLink
                           collapsed={false}
                           icon={<Share2 size={18} />}
-                          label="图谱"
+                          label={UI_COPY.nav.graph}
                           to={`/projects/${projectId}/graph`}
                           onClick={closeMobileNav}
                         />
@@ -283,37 +313,16 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={false}
-                          icon={<Bot size={18} />}
-                          label="模型配置"
-                          to={`/projects/${projectId}/prompts`}
+                          icon={<Table2 size={18} />}
+                          label={UI_COPY.nav.structuredMemory}
+                          to={`/projects/${projectId}/structured-memory`}
                           onClick={closeMobileNav}
                         />
                         <SidebarLink
                           collapsed={false}
-                          icon={<Palette size={18} />}
-                          label="风格"
-                          to={`/projects/${projectId}/styles`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Sparkles size={18} />}
-                          label={UI_COPY.nav.promptStudio}
-                          to={`/projects/${projectId}/prompt-studio`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<BookOpen size={18} />}
-                          label="预览"
-                          to={`/projects/${projectId}/preview`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<FileDown size={18} />}
-                          label="导出"
-                          to={`/projects/${projectId}/export`}
+                          icon={<ListTodo size={18} />}
+                          label={UI_COPY.nav.tasks}
+                          to={`/projects/${projectId}/tasks`}
                           onClick={closeMobileNav}
                         />
                       </>
@@ -322,6 +331,15 @@ export function AppShell() {
                         {UI_COPY.nav.chooseProjectHint}
                       </div>
                     )}
+                    <div className="my-2 h-px bg-border" />
+                    <div className="px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupAdmin}</div>
+                    <SidebarLink
+                      collapsed={false}
+                      icon={<Users size={18} />}
+                      label={UI_COPY.nav.adminUsers}
+                      to="/admin/users"
+                      onClick={closeMobileNav}
+                    />
                   </nav>
                 </LayoutGroup>
               </motion.aside>
@@ -336,7 +354,7 @@ export function AppShell() {
           )}
         >
           <div className={clsx("flex gap-2", collapsed ? "flex-col items-center" : "items-center justify-between")}>
-            {collapsed ? null : <div className="font-content text-lg">ainovel Atelier</div>}
+            {collapsed ? null : <div className="font-content text-lg">{UI_COPY.brand.appName}</div>}
             <div className={clsx("flex gap-2", collapsed ? "flex-col items-center" : "items-center")}>
               <ThemeToggle />
               <button
@@ -357,15 +375,74 @@ export function AppShell() {
 
           <LayoutGroup id="atelier-sidebar-desktop">
             <nav className="mt-4 flex flex-col gap-1">
-                  <SidebarLink collapsed={collapsed} icon={<LayoutDashboard size={18} />} label={UI_COPY.nav.home} to="/" />
+              <SidebarLink collapsed={collapsed} icon={<LayoutDashboard size={18} />} label={UI_COPY.nav.home} to="/" />
               <div className="my-2 h-px bg-border" />
               {projectId ? (
                 <>
+                  {collapsed ? null : (
+                    <div className="px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupWorkbench}</div>
+                  )}
                   <SidebarLink
                     collapsed={collapsed}
-                    icon={<ListChecks size={18} />}
-                    label={UI_COPY.nav.wizard}
-                    to={`/projects/${projectId}/wizard`}
+                    icon={<PenLine size={18} />}
+                    label={UI_COPY.nav.writing}
+                    to={`/projects/${projectId}/writing`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<BookOpenText size={18} />}
+                    label={UI_COPY.nav.outline}
+                    to={`/projects/${projectId}/outline`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Users size={18} />}
+                    label={UI_COPY.nav.characters}
+                    to={`/projects/${projectId}/characters`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Book size={18} />}
+                    label={UI_COPY.nav.worldBook}
+                    to={`/projects/${projectId}/worldbook`}
+                  />
+
+                  {collapsed ? null : (
+                    <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupView}</div>
+                  )}
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<BookOpen size={18} />}
+                    label={UI_COPY.nav.preview}
+                    to={`/projects/${projectId}/preview`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<FileDown size={18} />}
+                    label={UI_COPY.nav.export}
+                    to={`/projects/${projectId}/export`}
+                  />
+
+                  {collapsed ? null : (
+                    <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupAiConfig}</div>
+                  )}
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Bot size={18} />}
+                    label={UI_COPY.nav.prompts}
+                    to={`/projects/${projectId}/prompts`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Sparkles size={18} />}
+                    label={UI_COPY.nav.promptStudio}
+                    to={`/projects/${projectId}/prompt-studio`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Palette size={18} />}
+                    label={UI_COPY.nav.styles}
+                    to={`/projects/${projectId}/styles`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
@@ -373,46 +450,22 @@ export function AppShell() {
                     label={UI_COPY.nav.projectSettings}
                     to={`/projects/${projectId}/settings`}
                   />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Book size={18} />}
-                    label="世界书"
-                    to={`/projects/${projectId}/worldbook`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Users size={18} />}
-                    label="角色卡"
-                    to={`/projects/${projectId}/characters`}
-                  />
+
+                  {collapsed ? null : (
+                    <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">
+                      {UI_COPY.nav.groupAdvancedDebug}
+                    </div>
+                  )}
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<BookOpenText size={18} />}
-                    label="大纲"
-                    to={`/projects/${projectId}/outline`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<PenLine size={18} />}
-                    label="写作"
-                    to={`/projects/${projectId}/writing`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<ListTodo size={18} />}
-                    label="任务中心"
-                    to={`/projects/${projectId}/tasks`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Table2 size={18} />}
-                    label="结构化记忆"
-                    to={`/projects/${projectId}/structured-memory`}
+                    label={UI_COPY.nav.rag}
+                    to={`/projects/${projectId}/rag`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<Share2 size={18} />}
-                    label="图谱"
+                    label={UI_COPY.nav.graph}
                     to={`/projects/${projectId}/graph`}
                   />
                   <SidebarLink
@@ -423,38 +476,20 @@ export function AppShell() {
                   />
                   <SidebarLink
                     collapsed={collapsed}
-                    icon={<Bot size={18} />}
-                    label="模型配置"
-                    to={`/projects/${projectId}/prompts`}
+                    icon={<Table2 size={18} />}
+                    label={UI_COPY.nav.structuredMemory}
+                    to={`/projects/${projectId}/structured-memory`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
-                    icon={<Palette size={18} />}
-                    label="风格"
-                    to={`/projects/${projectId}/styles`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Sparkles size={18} />}
-                    label={UI_COPY.nav.promptStudio}
-                    to={`/projects/${projectId}/prompt-studio`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<BookOpen size={18} />}
-                    label="预览"
-                    to={`/projects/${projectId}/preview`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<FileDown size={18} />}
-                    label="导出"
-                    to={`/projects/${projectId}/export`}
+                    icon={<ListTodo size={18} />}
+                    label={UI_COPY.nav.tasks}
+                    to={`/projects/${projectId}/tasks`}
                   />
                 </>
               ) : (
-                  <div
-                    className={clsx(
+                <div
+                  className={clsx(
                       "rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext",
                       collapsed && "hidden",
                     )}
@@ -462,8 +497,13 @@ export function AppShell() {
                     {UI_COPY.nav.chooseProjectHint}
                   </div>
                 )}
-              </nav>
-            </LayoutGroup>
+              <div className="my-2 h-px bg-border" />
+              {collapsed ? null : (
+                <div className="px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupAdmin}</div>
+              )}
+              <SidebarLink collapsed={collapsed} icon={<Users size={18} />} label={UI_COPY.nav.adminUsers} to="/admin/users" />
+            </nav>
+          </LayoutGroup>
           </aside>
 
         <main className="flex-1">

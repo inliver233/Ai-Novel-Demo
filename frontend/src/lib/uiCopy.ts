@@ -10,6 +10,12 @@ export const UI_COPY = {
   },
   nav: {
     home: "首页",
+    groupWorkbench: "项目工作台",
+    groupView: "查看",
+    groupAiConfig: "AI 配置",
+    groupAdvancedDebug: "高级调试",
+    groupAdmin: "管理",
+
     wizard: "开工向导",
     projectSettings: "项目设置",
     characters: "角色卡",
@@ -22,11 +28,13 @@ export const UI_COPY = {
     export: "导出",
 
     worldBook: "世界书",
+    rag: "知识库（RAG）",
     graph: "图谱",
     fractal: "分形（Fractal）",
     styles: "风格",
     prompts: "模型配置",
     promptStudio: "提示词工作室",
+    adminUsers: "用户管理",
 
     navMenu: "导航菜单",
     openNav: "打开导航",
