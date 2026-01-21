@@ -98,11 +98,26 @@ export function FractalPage() {
 
   const v2 = result?.v2 ?? null;
   const v2Enabled = Boolean(v2?.enabled);
-  const v2StatusText = v2Enabled
-    ? "enabled"
-    : v2
-      ? `disabled (${v2.disabled_reason ?? v2.status ?? "unknown"})`
-      : "disabled (missing)";
+  const fractalEnabled = Boolean(result?.enabled);
+  const fractalStatusText = result
+    ? fractalEnabled
+      ? "已启用"
+      : `未启用（${result.disabled_reason ?? "unknown"}）`
+    : "未加载";
+  const v2StatusText = result
+    ? v2Enabled
+      ? "已启用"
+      : v2
+        ? `未启用（${v2.disabled_reason ?? v2.status ?? "unknown"}）`
+        : "未启用（missing）"
+    : "未加载";
+  const conclusionText = result
+    ? !fractalEnabled
+      ? "结论：分形记忆当前不可用（未构建或被禁用）。"
+      : v2Enabled
+        ? "结论：当前注入将优先使用 LLM 摘要（v2）。"
+        : "结论：当前注入将使用确定性结果（deterministic）。"
+    : "结论：尚未加载分形记忆结果。";
 
   return (
     <div className="grid gap-4">
@@ -129,10 +144,10 @@ export function FractalPage() {
               disabled={loading}
               type="button"
             >
-              {loading ? "重建中..." : "重建（deterministic）"}
+              {loading ? "重建中..." : "重建（确定性）"}
             </button>
             <button className="btn btn-primary" onClick={() => void rebuild("llm_v2")} disabled={loading} type="button">
-              {loading ? "重建中..." : "重建（llm v2）"}
+              {loading ? "重建中..." : "重建（LLM 摘要）"}
             </button>
           </div>
         </div>
@@ -145,45 +160,66 @@ export function FractalPage() {
 
         <div className="mt-4 grid gap-3">
           <div className="rounded-atelier border border-border bg-surface p-3">
-            <div className="text-sm text-ink">状态</div>
+            <div className="text-sm text-ink">状态与结论</div>
             <div className="mt-1 text-xs text-subtext">
-              fractal: {result?.enabled ? "enabled" : `disabled (${result?.disabled_reason ?? "unknown"})`} | v2:{" "}
-              {v2StatusText}
+              分形记忆：{fractalStatusText} | LLM 摘要：{v2StatusText}
               {result?.updated_at ? ` | updated_at: ${result.updated_at}` : ""}
             </div>
-            <div className="mt-1 text-xs text-subtext">
-              v2_meta: provider={v2?.provider ?? "-"} | model={v2?.model ?? "-"} | latency_ms=
-              {typeof v2?.latency_ms === "number" ? String(v2.latency_ms) : "-"} | run_id={v2?.run_id ?? "-"}
+            <div className="mt-1 text-xs text-subtext">{conclusionText}</div>
+          </div>
+
+          <div className="rounded-atelier border border-border bg-surface p-3">
+            <div className="text-sm text-ink">生成结果预览</div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <div className="rounded-atelier border border-border bg-canvas p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm text-ink">确定性（deterministic）</div>
+                  <div className="text-xs text-subtext">{result?.prompt_block?.identifier ?? "-"}</div>
+                </div>
+                <pre className="mt-2 max-h-96 overflow-auto text-xs text-ink">
+                  {result?.prompt_block?.text_md || "（空）"}
+                </pre>
+              </div>
+
+              <div className="rounded-atelier border border-border bg-canvas p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm text-ink">LLM 摘要（v2）</div>
+                  <div className="text-xs text-subtext">{result?.prompt_block_v2?.identifier ?? "-"}</div>
+                </div>
+                {!v2Enabled ? (
+                  <div className="mt-2 rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
+                    LLM 摘要当前未启用，将回退至确定性结果。原因：{v2?.disabled_reason ?? v2?.status ?? "unknown"}
+                    {v2?.error_code ? ` | error_code=${v2.error_code}` : ""}
+                    {v2?.error_type ? ` | error_type=${v2.error_type}` : ""}
+                  </div>
+                ) : null}
+                <pre className="mt-2 max-h-96 overflow-auto text-xs text-ink">
+                  {result?.prompt_block_v2?.text_md || "（空）"}
+                </pre>
+              </div>
             </div>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded-atelier border border-border bg-surface p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm text-ink">Deterministic</div>
-                <div className="text-xs text-subtext">{result?.prompt_block?.identifier ?? "-"}</div>
+          <details className="rounded-atelier border border-border bg-surface p-3">
+            <summary className="cursor-pointer select-none text-sm text-ink">高级调试信息</summary>
+            <div className="mt-2 grid gap-2 text-xs text-subtext">
+              <div>
+                v2_meta: provider={v2?.provider ?? "-"} | model={v2?.model ?? "-"} | latency_ms=
+                {typeof v2?.latency_ms === "number" ? String(v2.latency_ms) : "-"} | run_id={v2?.run_id ?? "-"}
               </div>
-              <pre className="mt-2 max-h-96 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
-                {result?.prompt_block?.text_md || "（空）"}
-              </pre>
-            </div>
-            <div className="rounded-atelier border border-border bg-surface p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm text-ink">LLM v2</div>
-                <div className="text-xs text-subtext">{result?.prompt_block_v2?.identifier ?? "-"}</div>
-              </div>
-              {!v2Enabled ? (
-                <div className="mt-2 rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
-                  v2 当前为 fallback/disabled：{v2?.disabled_reason ?? v2?.status ?? "unknown"}
-                  {v2?.error_code ? ` | error_code=${v2.error_code}` : ""}
-                  {v2?.error_type ? ` | error_type=${v2.error_type}` : ""}
-                </div>
+              {v2?.finish_reason ? <div>v2_finish_reason: {String(v2.finish_reason)}</div> : null}
+              {v2?.warnings?.length ? <div>v2_warnings: {v2.warnings.join(" | ")}</div> : null}
+              {v2?.dropped_params?.length ? <div>v2_dropped_params: {v2.dropped_params.join(" | ")}</div> : null}
+              {v2?.parse_error ? (
+                <pre className="max-h-64 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
+                  {JSON.stringify(v2.parse_error, null, 2)}
+                </pre>
               ) : null}
-              <pre className="mt-2 max-h-96 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
-                {result?.prompt_block_v2?.text_md || "（空）"}
+              <pre className="max-h-64 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
+                {JSON.stringify(result?.config ?? {}, null, 2)}
               </pre>
             </div>
-          </div>
+          </details>
         </div>
       </div>
     </div>
