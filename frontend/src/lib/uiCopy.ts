@@ -46,8 +46,10 @@ export const UI_COPY = {
   auth: {
     loginTitle: "登录",
     loginSubtitle: "使用本地账号登录（cookie session）",
-    devFallbackHint: "当前后端启用了 dev fallback（未登录也可使用本地模式）。",
-    continueInDevFallback: "继续进入首页",
+    devFallbackHint: "已启用 DEV 本地模式（dev fallback）：无需登录也可继续体验。",
+    devFallbackRiskHint: "风险提示：仅用于开发/演示；生产环境请关闭 dev_fallback（否则可能绕过登录）。",
+    devFallbackNextStepHint: "下一步：如需权限/协作，请在下方使用账号登录。",
+    continueInDevFallback: "进入首页",
     userIdLabel: "用户 ID",
     userIdPlaceholder: "例如：admin",
     passwordLabel: "密码",
@@ -59,7 +61,7 @@ export const UI_COPY = {
     loginFooterHint: "提示：登录态会保存在 cookie 中；退出登录会清理前端本地状态。",
     logout: "退出登录",
     sessionExpireAtPrefix: "会话到期：",
-    devFallbackTag: "本地模式",
+    devFallbackTag: "本地模式（DEV）",
   },
   writing: {
     contextPreview: "上下文预览",

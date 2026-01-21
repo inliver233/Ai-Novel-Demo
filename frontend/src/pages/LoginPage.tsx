@@ -41,10 +41,12 @@ export function LoginPage() {
 
             {auth.status === "dev_fallback" ? (
               <div className="mt-4 rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
-                {UI_COPY.auth.devFallbackHint}{" "}
+                <div className="text-ink">{UI_COPY.auth.devFallbackHint}</div>
+                <div className="mt-1">{UI_COPY.auth.devFallbackRiskHint}</div>
+                <div className="mt-1">{UI_COPY.auth.devFallbackNextStepHint}</div>
                 <button
-                  className="ui-focus-ring underline underline-offset-2"
-                  onClick={() => navigate("/")}
+                  className="ui-focus-ring mt-2 inline-flex underline underline-offset-2"
+                  onClick={() => navigate("/", { replace: true })}
                   type="button"
                 >
                   {UI_COPY.auth.continueInDevFallback}
