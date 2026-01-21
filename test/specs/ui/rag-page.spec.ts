@@ -9,12 +9,12 @@ test("ui: rag page supports status + query injection preview", async ({ page, re
   await page.goto(`/projects/${projectId}/rag`);
   await expect(page.getByText("Vector RAG 管理", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "刷新状态", exact: true }).click();
+  await page.getByLabel("刷新状态 (rag_refresh_status)", { exact: true }).click();
   await expect(page.getByText(/disabled_reason:/)).toBeVisible();
 
   const queryInput = page.getByLabel("query_text", { exact: true });
   await queryInput.fill("dragon");
-  await page.getByRole("button", { name: "查询", exact: true }).click();
+  await page.getByLabel("查询 (rag_query)", { exact: true }).click();
 
   await expect(page.getByText("注入预览（prompt_block.text_md）", { exact: true })).toBeVisible();
 
@@ -54,10 +54,10 @@ test("ui: rag page supports KB manage + multi-kb rebuild/query", async ({ page, 
   expect(wbRes.ok()).toBeTruthy();
 
   await page.goto(`/projects/${projectId}/rag`);
-  await expect(page.getByText("Knowledge Bases", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "知识库 (rag_kb_section)", exact: true })).toBeVisible();
 
   await page.getByLabel("kb_create_name", { exact: true }).fill(`E2E_KB_${Date.now()}`);
-  await page.getByRole("button", { name: "创建 KB", exact: true }).click();
+  await page.getByLabel("创建 KB (rag_kb_create)", { exact: true }).click();
 
   const newKbIdEl = page.getByText(/^kb_/, { exact: false }).first();
   await expect(newKbIdEl).toBeVisible();
@@ -74,7 +74,7 @@ test("ui: rag page supports KB manage + multi-kb rebuild/query", async ({ page, 
   await expect(page.getByText(/Rebuild result/)).toBeVisible();
 
   await page.getByLabel("query_text", { exact: true }).fill("dragon");
-  await page.getByRole("button", { name: "查询", exact: true }).click();
+  await page.getByLabel("查询 (rag_query)", { exact: true }).click();
 
   const rawSummary = page.locator("summary", { hasText: "raw vector query result" });
   await rawSummary.click();
@@ -119,7 +119,7 @@ test("ui: rag page displays grouped multi-chunk final.chunks for chapters", asyn
   await expect(page.getByText("Vector RAG 管理", { exact: true })).toBeVisible();
 
   await page.getByLabel("query_text", { exact: true }).fill("dragon");
-  await page.getByRole("button", { name: "查询", exact: true }).click();
+  await page.getByLabel("查询 (rag_query)", { exact: true }).click();
 
   const summary = page.locator("summary", { hasText: "final.chunks（按 source/chapter 分组）" });
   await summary.click();

@@ -142,14 +142,14 @@ export function TaskCenterPage() {
             <div className="font-content text-xl text-ink">任务中心</div>
             <div className="mt-1 text-xs text-subtext">查看 Memory ChangeSets / Tasks 的状态与错误</div>
           </div>
-          <button className="btn btn-secondary" onClick={refreshAll} type="button">
+          <button className="btn btn-secondary" onClick={refreshAll} aria-label="刷新 (taskcenter_refresh)" type="button">
             刷新
           </button>
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="panel p-4">
+        <section className="panel p-4" aria-label="变更集 (taskcenter_changesets_section)">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-sm text-ink">ChangeSets</div>
@@ -215,7 +215,7 @@ export function TaskCenterPage() {
           </div>
         </section>
 
-        <section className="panel p-4">
+        <section className="panel p-4" aria-label="任务列表 (taskcenter_tasks_section)">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-sm text-ink">Tasks</div>

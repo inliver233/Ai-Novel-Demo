@@ -33,11 +33,10 @@ test("ui: task center shows change sets + tasks + details", async ({ page, reque
 
   // Navigate via MemoryUpdateDrawer entry.
   await dialog.getByRole("button", { name: "任务中心", exact: true }).click();
-  await expect(page.getByText("ChangeSets", { exact: true })).toBeVisible({ timeout: 60_000 });
 
-  const changeSetsPanel = page.locator(".panel", { has: page.getByText("ChangeSets", { exact: true }) });
-  const tasksPanel = page.locator(".panel", { has: page.getByText("Tasks", { exact: true }) });
-  await expect(changeSetsPanel).toBeVisible();
+  const changeSetsPanel = page.getByRole("region", { name: "变更集 (taskcenter_changesets_section)", exact: true });
+  const tasksPanel = page.getByRole("region", { name: "任务列表 (taskcenter_tasks_section)", exact: true });
+  await expect(changeSetsPanel).toBeVisible({ timeout: 60_000 });
   await expect(tasksPanel).toBeVisible();
 
   // Wait until list items appear.
@@ -64,6 +63,6 @@ test("ui: task center shows change sets + tasks + details", async ({ page, reque
   await expect(detail).toBeHidden();
 
   // Refresh keeps the status visible.
-  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.getByLabel("刷新 (taskcenter_refresh)", { exact: true }).click();
   await expect.poll(async () => await changeSetItems.count(), { timeout: 60_000 }).toBeGreaterThan(0);
 });

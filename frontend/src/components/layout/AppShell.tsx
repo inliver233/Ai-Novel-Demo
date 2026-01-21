@@ -107,6 +107,7 @@ function SidebarLink(props: {
   to: string;
   icon: React.ReactNode;
   label: string;
+  ariaLabel?: string;
   collapsed: boolean;
   onClick?: () => void;
 }) {
@@ -120,7 +121,7 @@ function SidebarLink(props: {
         )
       }
       to={props.to}
-      aria-label={props.label}
+      aria-label={props.ariaLabel ?? props.label}
       title={props.collapsed ? props.label : undefined}
       onClick={props.onClick}
     >
@@ -240,6 +241,7 @@ export function AppShell() {
                       collapsed={false}
                       icon={<LayoutDashboard size={18} />}
                       label={UI_COPY.nav.home}
+                      ariaLabel="首页 (nav_home)"
                       to="/"
                       onClick={closeMobileNav}
                     />
@@ -251,6 +253,7 @@ export function AppShell() {
                           collapsed={false}
                           icon={<PenLine size={18} />}
                           label={UI_COPY.nav.writing}
+                          ariaLabel="写作 (nav_writing)"
                           to={`/projects/${projectId}/writing`}
                           onClick={closeMobileNav}
                         />
@@ -258,6 +261,7 @@ export function AppShell() {
                           collapsed={false}
                           icon={<BookOpenText size={18} />}
                           label={UI_COPY.nav.outline}
+                          ariaLabel="大纲 (nav_outline)"
                           to={`/projects/${projectId}/outline`}
                           onClick={closeMobileNav}
                         />
@@ -265,6 +269,7 @@ export function AppShell() {
                           collapsed={false}
                           icon={<Users size={18} />}
                           label={UI_COPY.nav.characters}
+                          ariaLabel="角色卡 (nav_characters)"
                           to={`/projects/${projectId}/characters`}
                           onClick={closeMobileNav}
                         />
@@ -272,6 +277,7 @@ export function AppShell() {
                           collapsed={false}
                           icon={<Book size={18} />}
                           label={UI_COPY.nav.worldBook}
+                          ariaLabel="世界书 (nav_worldbook)"
                           to={`/projects/${projectId}/worldbook`}
                           onClick={closeMobileNav}
                         />
@@ -281,6 +287,7 @@ export function AppShell() {
                           collapsed={false}
                           icon={<BookOpen size={18} />}
                           label={UI_COPY.nav.preview}
+                          ariaLabel="预览 (nav_preview)"
                           to={`/projects/${projectId}/preview`}
                           onClick={closeMobileNav}
                         />
@@ -288,6 +295,7 @@ export function AppShell() {
                           collapsed={false}
                           icon={<FileDown size={18} />}
                           label={UI_COPY.nav.export}
+                          ariaLabel="导出 (nav_export)"
                           to={`/projects/${projectId}/export`}
                           onClick={closeMobileNav}
                         />
@@ -297,6 +305,7 @@ export function AppShell() {
                           collapsed={false}
                           icon={<Bot size={18} />}
                           label={UI_COPY.nav.prompts}
+                          ariaLabel="模型配置 (nav_prompts)"
                           to={`/projects/${projectId}/prompts`}
                           onClick={closeMobileNav}
                         />
@@ -304,6 +313,7 @@ export function AppShell() {
                           collapsed={false}
                           icon={<Sparkles size={18} />}
                           label={UI_COPY.nav.promptStudio}
+                          ariaLabel="提示词工作室 (nav_prompt_studio)"
                           to={`/projects/${projectId}/prompt-studio`}
                           onClick={closeMobileNav}
                         />
@@ -311,6 +321,7 @@ export function AppShell() {
                           collapsed={false}
                           icon={<Palette size={18} />}
                           label={UI_COPY.nav.styles}
+                          ariaLabel="风格 (nav_styles)"
                           to={`/projects/${projectId}/styles`}
                           onClick={closeMobileNav}
                         />
@@ -318,6 +329,7 @@ export function AppShell() {
                           collapsed={false}
                           icon={<Settings size={18} />}
                           label={UI_COPY.nav.projectSettings}
+                          ariaLabel="项目设置 (nav_settings)"
                           to={`/projects/${projectId}/settings`}
                           onClick={closeMobileNav}
                         />
@@ -326,6 +338,7 @@ export function AppShell() {
                           <span>显示{UI_COPY.nav.groupAdvancedDebug}</span>
                           <input
                             checked={advancedDebugVisible}
+                            aria-label="显示高级调试 (toggle_advanced_debug)"
                             onChange={(e) => {
                               const next = e.target.checked;
                               setAdvancedDebugVisible(next);
@@ -351,6 +364,7 @@ export function AppShell() {
                                 collapsed={false}
                                 icon={<BookOpenText size={18} />}
                                 label={UI_COPY.nav.rag}
+                                ariaLabel="知识库（RAG） (nav_rag)"
                                 to={`/projects/${projectId}/rag`}
                                 onClick={closeMobileNav}
                               />
@@ -358,6 +372,7 @@ export function AppShell() {
                                 collapsed={false}
                                 icon={<Share2 size={18} />}
                                 label={UI_COPY.nav.graph}
+                                ariaLabel="图谱 (nav_graph)"
                                 to={`/projects/${projectId}/graph`}
                                 onClick={closeMobileNav}
                               />
@@ -365,6 +380,7 @@ export function AppShell() {
                                 collapsed={false}
                                 icon={<Snowflake size={18} />}
                                 label={UI_COPY.nav.fractal}
+                                ariaLabel="分形（Fractal） (nav_fractal)"
                                 to={`/projects/${projectId}/fractal`}
                                 onClick={closeMobileNav}
                               />
@@ -372,6 +388,7 @@ export function AppShell() {
                                 collapsed={false}
                                 icon={<Table2 size={18} />}
                                 label={UI_COPY.nav.structuredMemory}
+                                ariaLabel="结构化记忆 (nav_structured_memory)"
                                 to={`/projects/${projectId}/structured-memory`}
                                 onClick={closeMobileNav}
                               />
@@ -379,6 +396,7 @@ export function AppShell() {
                                 collapsed={false}
                                 icon={<ListTodo size={18} />}
                                 label={UI_COPY.nav.tasks}
+                                ariaLabel="任务中心 (nav_tasks)"
                                 to={`/projects/${projectId}/tasks`}
                                 onClick={closeMobileNav}
                               />
@@ -397,6 +415,7 @@ export function AppShell() {
                       collapsed={false}
                       icon={<Users size={18} />}
                       label={UI_COPY.nav.adminUsers}
+                      ariaLabel="用户管理 (nav_admin_users)"
                       to="/admin/users"
                       onClick={closeMobileNav}
                     />
@@ -435,7 +454,13 @@ export function AppShell() {
 
           <LayoutGroup id="atelier-sidebar-desktop">
             <nav className="mt-4 flex flex-col gap-1">
-              <SidebarLink collapsed={collapsed} icon={<LayoutDashboard size={18} />} label={UI_COPY.nav.home} to="/" />
+              <SidebarLink
+                collapsed={collapsed}
+                icon={<LayoutDashboard size={18} />}
+                label={UI_COPY.nav.home}
+                ariaLabel="首页 (nav_home)"
+                to="/"
+              />
               <div className="my-2 h-px bg-border" />
               {projectId ? (
                 <>
@@ -446,24 +471,28 @@ export function AppShell() {
                     collapsed={collapsed}
                     icon={<PenLine size={18} />}
                     label={UI_COPY.nav.writing}
+                    ariaLabel="写作 (nav_writing)"
                     to={`/projects/${projectId}/writing`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<BookOpenText size={18} />}
                     label={UI_COPY.nav.outline}
+                    ariaLabel="大纲 (nav_outline)"
                     to={`/projects/${projectId}/outline`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<Users size={18} />}
                     label={UI_COPY.nav.characters}
+                    ariaLabel="角色卡 (nav_characters)"
                     to={`/projects/${projectId}/characters`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<Book size={18} />}
                     label={UI_COPY.nav.worldBook}
+                    ariaLabel="世界书 (nav_worldbook)"
                     to={`/projects/${projectId}/worldbook`}
                   />
 
@@ -474,12 +503,14 @@ export function AppShell() {
                     collapsed={collapsed}
                     icon={<BookOpen size={18} />}
                     label={UI_COPY.nav.preview}
+                    ariaLabel="预览 (nav_preview)"
                     to={`/projects/${projectId}/preview`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<FileDown size={18} />}
                     label={UI_COPY.nav.export}
+                    ariaLabel="导出 (nav_export)"
                     to={`/projects/${projectId}/export`}
                   />
 
@@ -490,24 +521,28 @@ export function AppShell() {
                     collapsed={collapsed}
                     icon={<Bot size={18} />}
                     label={UI_COPY.nav.prompts}
+                    ariaLabel="模型配置 (nav_prompts)"
                     to={`/projects/${projectId}/prompts`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<Sparkles size={18} />}
                     label={UI_COPY.nav.promptStudio}
+                    ariaLabel="提示词工作室 (nav_prompt_studio)"
                     to={`/projects/${projectId}/prompt-studio`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<Palette size={18} />}
                     label={UI_COPY.nav.styles}
+                    ariaLabel="风格 (nav_styles)"
                     to={`/projects/${projectId}/styles`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<Settings size={18} />}
                     label={UI_COPY.nav.projectSettings}
+                    ariaLabel="项目设置 (nav_settings)"
                     to={`/projects/${projectId}/settings`}
                   />
 
@@ -516,6 +551,7 @@ export function AppShell() {
                       <span>显示{UI_COPY.nav.groupAdvancedDebug}</span>
                       <input
                         checked={advancedDebugVisible}
+                        aria-label="显示高级调试 (toggle_advanced_debug)"
                         onChange={(e) => {
                           const next = e.target.checked;
                           setAdvancedDebugVisible(next);
@@ -533,30 +569,35 @@ export function AppShell() {
                           collapsed={collapsed}
                           icon={<BookOpenText size={18} />}
                           label={UI_COPY.nav.rag}
+                          ariaLabel="知识库（RAG） (nav_rag)"
                           to={`/projects/${projectId}/rag`}
                         />
                         <SidebarLink
                           collapsed={collapsed}
                           icon={<Share2 size={18} />}
                           label={UI_COPY.nav.graph}
+                          ariaLabel="图谱 (nav_graph)"
                           to={`/projects/${projectId}/graph`}
                         />
                         <SidebarLink
                           collapsed={collapsed}
                           icon={<Snowflake size={18} />}
                           label={UI_COPY.nav.fractal}
+                          ariaLabel="分形（Fractal） (nav_fractal)"
                           to={`/projects/${projectId}/fractal`}
                         />
                         <SidebarLink
                           collapsed={collapsed}
                           icon={<Table2 size={18} />}
                           label={UI_COPY.nav.structuredMemory}
+                          ariaLabel="结构化记忆 (nav_structured_memory)"
                           to={`/projects/${projectId}/structured-memory`}
                         />
                         <SidebarLink
                           collapsed={collapsed}
                           icon={<ListTodo size={18} />}
                           label={UI_COPY.nav.tasks}
+                          ariaLabel="任务中心 (nav_tasks)"
                           to={`/projects/${projectId}/tasks`}
                         />
                       </>
@@ -576,30 +617,35 @@ export function AppShell() {
                             collapsed={collapsed}
                             icon={<BookOpenText size={18} />}
                             label={UI_COPY.nav.rag}
+                            ariaLabel="知识库（RAG） (nav_rag)"
                             to={`/projects/${projectId}/rag`}
                           />
                           <SidebarLink
                             collapsed={collapsed}
                             icon={<Share2 size={18} />}
                             label={UI_COPY.nav.graph}
+                            ariaLabel="图谱 (nav_graph)"
                             to={`/projects/${projectId}/graph`}
                           />
                           <SidebarLink
                             collapsed={collapsed}
                             icon={<Snowflake size={18} />}
                             label={UI_COPY.nav.fractal}
+                            ariaLabel="分形（Fractal） (nav_fractal)"
                             to={`/projects/${projectId}/fractal`}
                           />
                           <SidebarLink
                             collapsed={collapsed}
                             icon={<Table2 size={18} />}
                             label={UI_COPY.nav.structuredMemory}
+                            ariaLabel="结构化记忆 (nav_structured_memory)"
                             to={`/projects/${projectId}/structured-memory`}
                           />
                           <SidebarLink
                             collapsed={collapsed}
                             icon={<ListTodo size={18} />}
                             label={UI_COPY.nav.tasks}
+                            ariaLabel="任务中心 (nav_tasks)"
                             to={`/projects/${projectId}/tasks`}
                           />
                         </div>
@@ -621,7 +667,13 @@ export function AppShell() {
               {collapsed ? null : (
                 <div className="px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupAdmin}</div>
               )}
-              <SidebarLink collapsed={collapsed} icon={<Users size={18} />} label={UI_COPY.nav.adminUsers} to="/admin/users" />
+              <SidebarLink
+                collapsed={collapsed}
+                icon={<Users size={18} />}
+                label={UI_COPY.nav.adminUsers}
+                ariaLabel="用户管理 (nav_admin_users)"
+                to="/admin/users"
+              />
             </nav>
           </LayoutGroup>
           </aside>

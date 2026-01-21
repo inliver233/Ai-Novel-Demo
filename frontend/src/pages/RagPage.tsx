@@ -766,7 +766,13 @@ export function RagPage() {
           <div className="mt-1 text-xs text-subtext">ingest / rebuild / status / query（用于排查注入与索引状态）</div>
         </div>
         <div className="flex gap-2">
-          <button className="btn btn-secondary" disabled={statusLoading} onClick={() => void runStatus()} type="button">
+          <button
+            className="btn btn-secondary"
+            disabled={statusLoading}
+            onClick={() => void runStatus()}
+            aria-label="刷新状态 (rag_refresh_status)"
+            type="button"
+          >
             {statusLoading ? "加载中…" : "刷新状态"}
           </button>
           <button className="btn btn-secondary" disabled={ingestLoading} onClick={() => void runIngest()} type="button">
@@ -818,7 +824,7 @@ export function RagPage() {
         </div>
       </div>
 
-      <div className="mt-6 rounded-atelier border border-border bg-surface p-4">
+      <div className="mt-6 rounded-atelier border border-border bg-surface p-4" role="region" aria-label="知识库 (rag_kb_section)">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm font-medium text-ink">Knowledge Bases</div>
           <div className="flex gap-2">
@@ -988,6 +994,7 @@ export function RagPage() {
               className="btn btn-primary w-full"
               disabled={!projectId || kbCreateLoading}
               onClick={() => void createKb()}
+              aria-label="创建 KB (rag_kb_create)"
               type="button"
             >
               {kbCreateLoading ? "创建中…" : "创建 KB"}
@@ -1137,6 +1144,7 @@ export function RagPage() {
                 className="btn btn-primary"
                 disabled={queryLoading || busy}
                 onClick={() => void runQuery()}
+                aria-label="查询 (rag_query)"
                 type="button"
               >
                 {queryLoading ? "查询中…" : "查询"}
