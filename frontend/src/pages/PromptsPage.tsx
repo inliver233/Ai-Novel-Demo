@@ -777,15 +777,15 @@ export function PromptsPage() {
       <div className="surface p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold">Prompt Studio（beta）</div>
-            <div className="text-xs text-subtext">提示词只在 Prompt Studio 中编辑/预览（与真实发送一致）。</div>
+            <div className="text-sm font-semibold">提示词工作室（beta）</div>
+            <div className="text-xs text-subtext">提示词仅在「提示词工作室」中编辑/预览（与实际发送一致）。</div>
           </div>
           <button
             className="btn btn-secondary"
             onClick={() => navigate(`/projects/${projectId}/prompt-studio`)}
             type="button"
           >
-            打开
+            打开提示词工作室
           </button>
         </div>
       </div>

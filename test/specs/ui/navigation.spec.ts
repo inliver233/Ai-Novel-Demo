@@ -38,13 +38,13 @@ test("ui: core pages navigate and render", async ({ page, request }) => {
   await expect(page.getByText("项目信息")).toBeVisible();
 
   await page.getByLabel("角色卡 (nav_characters)", { exact: true }).click();
-  await expect(page.getByRole("button", { name: "新增角色", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "新增角色", exact: true }).first()).toBeVisible();
 
   await page.getByLabel("大纲 (nav_outline)", { exact: true }).click();
   await expect(page.getByRole("button", { name: "AI 生成大纲", exact: true })).toBeVisible();
 
   await page.getByLabel("模型配置 (nav_prompts)", { exact: true }).click();
-  await expect(page.getByText("Provider", { exact: true })).toBeVisible();
+  await expect(page.locator('select[name="provider"]')).toBeVisible();
 
   await page.getByLabel("提示词工作室 (nav_prompt_studio)", { exact: true }).click();
   await expect(page.getByRole("button", { name: "一键启用推荐预设（大纲/章节）", exact: true })).toBeVisible();

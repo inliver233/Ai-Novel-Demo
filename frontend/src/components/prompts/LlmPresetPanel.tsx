@@ -53,7 +53,7 @@ export function LlmPresetPanel(props: Props) {
         <div>
           <div className="font-content text-xl">模型配置</div>
           <div className="mt-1 text-xs text-subtext">
-            provider/base_url/model/参数（API Key 安全存储在后端，不回显明文）
+            必填：服务商/接口地址/模型名（API Key 后端加密存储，不会回显明文）
           </div>
         </div>
         <div className="flex gap-2">
@@ -73,7 +73,7 @@ export function LlmPresetPanel(props: Props) {
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="grid gap-1">
-          <span className="text-xs text-subtext">Provider</span>
+          <span className="text-xs text-subtext">服务商（provider）</span>
           <select
             className="select"
             name="provider"
@@ -96,7 +96,7 @@ export function LlmPresetPanel(props: Props) {
           </select>
         </label>
         <label className="grid gap-1">
-          <span className="text-xs text-subtext">Model</span>
+          <span className="text-xs text-subtext">模型（model）</span>
           <input
             className="input"
             disabled={props.profileBusy}
@@ -107,7 +107,7 @@ export function LlmPresetPanel(props: Props) {
         </label>
 
         <label className="grid gap-1 sm:col-span-2">
-          <span className="text-xs text-subtext">Base URL</span>
+          <span className="text-xs text-subtext">接口地址（base_url）</span>
           <input
             className="input"
             placeholder={
@@ -123,97 +123,101 @@ export function LlmPresetPanel(props: Props) {
         </label>
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-3">
-        <label className="grid gap-1">
-          <span className="text-xs text-subtext">temperature</span>
-          <input
-            className="input"
-            name="temperature"
-            value={props.llmForm.temperature}
-            onChange={(e) => props.setLlmForm((v) => ({ ...v, temperature: e.target.value }))}
-          />
-        </label>
-        <label className="grid gap-1">
-          <span className="text-xs text-subtext">top_p</span>
-          <input
-            className="input"
-            name="top_p"
-            value={props.llmForm.top_p}
-            onChange={(e) => props.setLlmForm((v) => ({ ...v, top_p: e.target.value }))}
-          />
-        </label>
-        <label className="grid gap-1">
-          <span className="text-xs text-subtext">max_tokens</span>
-          <input
-            className="input"
-            name="max_tokens"
-            value={props.llmForm.max_tokens}
-            onChange={(e) => props.setLlmForm((v) => ({ ...v, max_tokens: e.target.value }))}
-          />
-          {maxTokensHint ? <div className="text-[11px] text-subtext">{maxTokensHint}</div> : null}
-        </label>
-        {props.llmForm.provider === "openai" || props.llmForm.provider === "openai_compatible" ? (
-          <>
-            <label className="grid gap-1">
-              <span className="text-xs text-subtext">presence_penalty</span>
-              <input
-                className="input"
-                name="presence_penalty"
-                value={props.llmForm.presence_penalty}
-                onChange={(e) => props.setLlmForm((v) => ({ ...v, presence_penalty: e.target.value }))}
-              />
-            </label>
-            <label className="grid gap-1">
-              <span className="text-xs text-subtext">frequency_penalty</span>
-              <input
-                className="input"
-                name="frequency_penalty"
-                value={props.llmForm.frequency_penalty}
-                onChange={(e) => props.setLlmForm((v) => ({ ...v, frequency_penalty: e.target.value }))}
-              />
-            </label>
-          </>
-        ) : (
+      <details className="surface mt-4 p-4">
+        <summary className="cursor-pointer select-none text-sm text-ink">高级参数（可选）</summary>
+        <div className="mt-1 text-xs text-subtext">常见情况下保持默认即可；如需微调采样/停止词/超时/extra，可在此修改。</div>
+        <div className="mt-3 grid gap-4 sm:grid-cols-3">
           <label className="grid gap-1">
-            <span className="text-xs text-subtext">top_k</span>
+            <span className="text-xs text-subtext">温度（temperature）</span>
             <input
               className="input"
-              name="top_k"
-              value={props.llmForm.top_k}
-              onChange={(e) => props.setLlmForm((v) => ({ ...v, top_k: e.target.value }))}
+              name="temperature"
+              value={props.llmForm.temperature}
+              onChange={(e) => props.setLlmForm((v) => ({ ...v, temperature: e.target.value }))}
             />
           </label>
-        )}
-        <label className="grid gap-1 sm:col-span-2">
-          <span className="text-xs text-subtext">stop（逗号分隔）</span>
-          <input
-            className="input"
-            placeholder="---"
-            name="stop"
-            value={props.llmForm.stop}
-            onChange={(e) => props.setLlmForm((v) => ({ ...v, stop: e.target.value }))}
-          />
-        </label>
-        <label className="grid gap-1">
-          <span className="text-xs text-subtext">timeout_seconds（默认 90；最大 1800/30分钟）</span>
-          <input
-            className="input"
-            name="timeout_seconds"
-            value={props.llmForm.timeout_seconds}
-            onChange={(e) => props.setLlmForm((v) => ({ ...v, timeout_seconds: e.target.value }))}
-          />
-        </label>
-        <label className="grid gap-1 sm:col-span-3">
-          <span className="text-xs text-subtext">extra（JSON）</span>
-          <textarea
-            className="textarea atelier-mono"
-            name="extra"
-            rows={5}
-            value={props.llmForm.extra}
-            onChange={(e) => props.setLlmForm((v) => ({ ...v, extra: e.target.value }))}
-          />
-        </label>
-      </div>
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">top_p（核采样）</span>
+            <input
+              className="input"
+              name="top_p"
+              value={props.llmForm.top_p}
+              onChange={(e) => props.setLlmForm((v) => ({ ...v, top_p: e.target.value }))}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">最大输出（max_tokens）</span>
+            <input
+              className="input"
+              name="max_tokens"
+              value={props.llmForm.max_tokens}
+              onChange={(e) => props.setLlmForm((v) => ({ ...v, max_tokens: e.target.value }))}
+            />
+            {maxTokensHint ? <div className="text-[11px] text-subtext">{maxTokensHint}</div> : null}
+          </label>
+          {props.llmForm.provider === "openai" || props.llmForm.provider === "openai_compatible" ? (
+            <>
+              <label className="grid gap-1">
+                <span className="text-xs text-subtext">新颖度惩罚（presence_penalty）</span>
+                <input
+                  className="input"
+                  name="presence_penalty"
+                  value={props.llmForm.presence_penalty}
+                  onChange={(e) => props.setLlmForm((v) => ({ ...v, presence_penalty: e.target.value }))}
+                />
+              </label>
+              <label className="grid gap-1">
+                <span className="text-xs text-subtext">重复惩罚（frequency_penalty）</span>
+                <input
+                  className="input"
+                  name="frequency_penalty"
+                  value={props.llmForm.frequency_penalty}
+                  onChange={(e) => props.setLlmForm((v) => ({ ...v, frequency_penalty: e.target.value }))}
+                />
+              </label>
+            </>
+          ) : (
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">top_k</span>
+              <input
+                className="input"
+                name="top_k"
+                value={props.llmForm.top_k}
+                onChange={(e) => props.setLlmForm((v) => ({ ...v, top_k: e.target.value }))}
+              />
+            </label>
+          )}
+          <label className="grid gap-1 sm:col-span-2">
+            <span className="text-xs text-subtext">停止词（stop，逗号分隔）</span>
+            <input
+              className="input"
+              placeholder="---"
+              name="stop"
+              value={props.llmForm.stop}
+              onChange={(e) => props.setLlmForm((v) => ({ ...v, stop: e.target.value }))}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-subtext">超时（timeout_seconds，默认 90，最大 1800/30 分钟）</span>
+            <input
+              className="input"
+              name="timeout_seconds"
+              value={props.llmForm.timeout_seconds}
+              onChange={(e) => props.setLlmForm((v) => ({ ...v, timeout_seconds: e.target.value }))}
+            />
+          </label>
+          <label className="grid gap-1 sm:col-span-3">
+            <span className="text-xs text-subtext">额外参数（extra，JSON）</span>
+            <textarea
+              className="textarea atelier-mono"
+              name="extra"
+              rows={5}
+              value={props.llmForm.extra}
+              onChange={(e) => props.setLlmForm((v) => ({ ...v, extra: e.target.value }))}
+            />
+          </label>
+        </div>
+      </details>
 
       <div className="surface mt-4 p-4">
         <div className="text-sm text-ink">API 配置库（后端持久化）</div>
