@@ -5,11 +5,22 @@ import { bootstrapProject } from "../../lib/bootstrap";
 test("ui: settings query_preprocessing saves and shows normalized query in ContextPreviewDrawer", async ({ page, request }) => {
   const { projectId } = await bootstrapProject(request);
 
+  const expandSettingsSection = async (title: string) => {
+    const summary = page.locator("summary", { hasText: title });
+    await expect(summary).toBeVisible();
+    const details = summary.locator("..");
+    if ((await details.getAttribute("open")) === null) {
+      await summary.click();
+      await expect(details).toHaveAttribute("open", "");
+    }
+  };
+
   await page.goto(`/projects/${projectId}/settings`);
   await expect(page.getByText("项目信息", { exact: true })).toBeVisible();
 
   const qpTitle = page.getByText("Query 预处理（Query Preprocessing）", { exact: true });
   await expect(qpTitle).toBeVisible();
+  await expandSettingsSection("Query 预处理（Query Preprocessing）");
 
   const enable = page.getByRole("checkbox", { name: "启用 query_preprocessing（默认关闭）", exact: true });
   await enable.check();
@@ -22,6 +33,8 @@ test("ui: settings query_preprocessing saves and shows normalized query in Conte
   await expect(save).toBeEnabled();
   await save.click();
   await expect(save).toBeDisabled();
+
+  await expandSettingsSection("Query 预处理（Query Preprocessing）");
 
   const previewBox = page.getByText("示例 normalize（基于已保存的 effective 配置）", { exact: true });
   await expect(previewBox).toBeVisible();

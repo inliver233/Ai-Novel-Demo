@@ -5,6 +5,16 @@ import { bootstrapProject } from "../../lib/bootstrap";
 test("ui: settings context_optimizer_enabled toggles and ContextPreviewDrawer shows status", async ({ page, request }) => {
   const { projectId } = await bootstrapProject(request);
 
+  const expandSettingsSection = async (title: string) => {
+    const summary = page.locator("summary", { hasText: title });
+    await expect(summary).toBeVisible();
+    const details = summary.locator("..");
+    if ((await details.getAttribute("open")) === null) {
+      await summary.click();
+      await expect(details).toHaveAttribute("open", "");
+    }
+  };
+
   const openContextPreview = async () => {
     await page.goto(`/projects/${projectId}/writing`);
     await page.getByRole("button", { name: "上下文预览", exact: true }).click();
@@ -19,6 +29,7 @@ test("ui: settings context_optimizer_enabled toggles and ContextPreviewDrawer sh
 
   await page.goto(`/projects/${projectId}/settings`);
   await expect(page.getByText("上下文优化（Context Optimizer）", { exact: true })).toBeVisible();
+  await expandSettingsSection("上下文优化（Context Optimizer）");
 
   const getToggle = () => page.getByRole("checkbox", { name: "启用 ContextOptimizer（影响 Prompt 预览与生成）", exact: true });
   const save = page.getByRole("button", { name: "保存", exact: true });
@@ -33,6 +44,7 @@ test("ui: settings context_optimizer_enabled toggles and ContextPreviewDrawer sh
   await expect(enabledDialog.getByText(/saved_tokens_estimate:/)).toBeVisible();
 
   await page.goto(`/projects/${projectId}/settings`);
+  await expandSettingsSection("上下文优化（Context Optimizer）");
   await getToggle().uncheck();
   await expect(save).toBeEnabled();
   await save.click();

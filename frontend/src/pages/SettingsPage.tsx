@@ -679,24 +679,28 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <section className="panel p-6">
-        <div className="font-content text-xl">向量检索（Vector RAG）</div>
-        <div className="mt-1 text-xs text-subtext">
-          Embedding 配置支持项目级覆盖（API Key 加密存储，仅回显 masked），并可 fallback 到后端 env。
-        </div>
+      <details className="panel" aria-label="向量检索（Vector RAG）">
+        <summary className="ui-focus-ring ui-transition-fast cursor-pointer select-none p-6">
+          <div className="grid gap-1">
+            <div className="font-content text-xl text-ink">向量检索（Vector RAG）</div>
+            <div className="text-xs text-subtext">
+              Embedding 配置支持项目级覆盖（API Key 加密存储，仅回显 masked），并可 fallback 到后端 env。
+            </div>
+            <div className="text-xs text-subtext">
+              provider: {baselineSettings.vector_embedding_effective_provider || "openai_compatible"} | status:{" "}
+              {baselineSettings.vector_embedding_effective_disabled_reason ?? "enabled"} | source:{" "}
+              {baselineSettings.vector_embedding_effective_source}
+            </div>
+            <div className="text-xs text-subtext">
+              rerank: {baselineSettings.vector_rerank_effective_enabled ? "enabled" : "disabled"} | method:{" "}
+              {baselineSettings.vector_rerank_effective_method} | top_k: {baselineSettings.vector_rerank_effective_top_k}{" "}
+              | source: {baselineSettings.vector_rerank_effective_source}
+            </div>
+          </div>
+        </summary>
 
-        <div className="mt-3 text-xs text-subtext">
-          provider: {baselineSettings.vector_embedding_effective_provider || "openai_compatible"} | status:{" "}
-          {baselineSettings.vector_embedding_effective_disabled_reason ?? "enabled"} | source:{" "}
-          {baselineSettings.vector_embedding_effective_source}
-        </div>
-        <div className="mt-1 text-xs text-subtext">
-          rerank: {baselineSettings.vector_rerank_effective_enabled ? "enabled" : "disabled"} | method:{" "}
-          {baselineSettings.vector_rerank_effective_method} | top_k: {baselineSettings.vector_rerank_effective_top_k} |
-          source: {baselineSettings.vector_rerank_effective_source}
-        </div>
-
-        <div className="mt-4 grid gap-4">
+        <div className="px-6 pb-6 pt-0">
+          <div className="mt-4 grid gap-4">
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
               <input
@@ -895,21 +899,26 @@ export function SettingsPage() {
             </button>
           </div>
         </div>
-      </section>
-
-      <section className="panel p-6">
-        <div className="font-content text-xl">Query 预处理（Query Preprocessing）</div>
-        <div className="mt-1 text-xs text-subtext">
-          用于统一 WorldBook / VectorRAG / Graph / 生成链路的 query_text 处理（默认关闭）。tags 支持从 query_text 中提取
-          #tag；exclusion_rules 会从 query_text 中移除。
         </div>
+      </details>
 
-        <div className="mt-3 text-xs text-subtext">
-          status: {baselineSettings.query_preprocessing_effective?.enabled ? "enabled" : "disabled"} | source:{" "}
-          {baselineSettings.query_preprocessing_effective_source ?? "unknown"}
-        </div>
+      <details className="panel" aria-label="Query 预处理（Query Preprocessing）">
+        <summary className="ui-focus-ring ui-transition-fast cursor-pointer select-none p-6">
+          <div className="grid gap-1">
+            <div className="font-content text-xl text-ink">Query 预处理（Query Preprocessing）</div>
+            <div className="text-xs text-subtext">
+              用于统一 WorldBook / VectorRAG / Graph / 生成链路的 query_text 处理（默认关闭）。tags 支持从 query_text 中提取
+              #tag；exclusion_rules 会从 query_text 中移除。
+            </div>
+            <div className="text-xs text-subtext">
+              status: {baselineSettings.query_preprocessing_effective?.enabled ? "enabled" : "disabled"} | source:{" "}
+              {baselineSettings.query_preprocessing_effective_source ?? "unknown"}
+            </div>
+          </div>
+        </summary>
 
-        <div className="mt-4 grid gap-4">
+        <div className="px-6 pb-6 pt-0">
+          <div className="mt-4 grid gap-4">
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
               className="checkbox"
@@ -1023,40 +1032,52 @@ export function SettingsPage() {
             ) : null}
           </div>
         </div>
-      </section>
-
-      <section className="panel p-6">
-        <div className="font-content text-xl">上下文优化（Context Optimizer）</div>
-        <div className="mt-1 text-xs text-subtext">
-          对 StructuredMemory / WORLD_BOOK 注入做去重、排序、表格化合并，用于节省 tokens 并提升可读性（默认关闭）。
         </div>
+      </details>
 
-        <div className="mt-3 text-xs text-subtext">
-          status: {baselineSettings.context_optimizer_enabled ? "enabled" : "disabled"}
+      <details className="panel" aria-label="上下文优化（Context Optimizer）">
+        <summary className="ui-focus-ring ui-transition-fast cursor-pointer select-none p-6">
+          <div className="grid gap-1">
+            <div className="font-content text-xl text-ink">上下文优化（Context Optimizer）</div>
+            <div className="text-xs text-subtext">
+              对 StructuredMemory / WORLD_BOOK 注入做去重、排序、表格化合并，用于节省 tokens 并提升可读性（默认关闭）。
+            </div>
+            <div className="text-xs text-subtext">
+              status: {baselineSettings.context_optimizer_enabled ? "enabled" : "disabled"}
+            </div>
+          </div>
+        </summary>
+
+        <div className="px-6 pb-6 pt-0">
+          <div className="mt-4 grid gap-2">
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input
+                className="checkbox"
+                checked={settingsForm.context_optimizer_enabled}
+                onChange={(e) => setSettingsForm((v) => ({ ...v, context_optimizer_enabled: e.target.checked }))}
+                type="checkbox"
+              />
+              启用 ContextOptimizer（影响 Prompt 预览与生成）
+            </label>
+            <div className="text-[11px] text-subtext">提示：写作页「上下文预览」会显示优化摘要与 diff。</div>
+          </div>
         </div>
+      </details>
 
-        <div className="mt-4 grid gap-2">
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              className="checkbox"
-              checked={settingsForm.context_optimizer_enabled}
-              onChange={(e) => setSettingsForm((v) => ({ ...v, context_optimizer_enabled: e.target.checked }))}
-              type="checkbox"
-            />
-            启用 ContextOptimizer（影响 Prompt 预览与生成）
-          </label>
-          <div className="text-[11px] text-subtext">提示：写作页「上下文预览」会显示优化摘要与 diff。</div>
-        </div>
-      </section>
+      <details className="panel" aria-label="协作成员（Project Memberships）">
+        <summary className="ui-focus-ring ui-transition-fast cursor-pointer select-none p-6">
+          <div className="grid gap-1">
+            <div className="font-content text-xl text-ink">协作成员（Project Memberships）</div>
+            <div className="text-xs text-subtext">
+              项目 owner 可邀请/改角色/移除成员；非成员访问将被 404（RBAC fail-closed）。
+            </div>
+            <div className="text-xs text-subtext">owner: {baselineProject.owner_user_id}</div>
+          </div>
+        </summary>
 
-      <section className="panel p-6">
-        <div className="font-content text-xl">协作成员（Project Memberships）</div>
-        <div className="mt-1 text-xs text-subtext">
-          项目 owner 可邀请/改角色/移除成员；非成员访问将被 404（RBAC fail-closed）。
-        </div>
-
-        {canManageMemberships ? (
-          <div className="mt-4 grid gap-4">
+        <div className="px-6 pb-6 pt-0">
+          {canManageMemberships ? (
+            <div className="mt-4 grid gap-4">
             <div className="flex flex-wrap items-end gap-3">
               <label className="grid gap-1">
                 <span className="text-xs text-subtext">邀请 user_id</span>
@@ -1171,7 +1192,8 @@ export function SettingsPage() {
             仅项目 owner（{baselineProject.owner_user_id}）可管理成员；当前用户：{auth.user?.id ?? "unknown"}。
           </div>
         )}
-      </section>
+        </div>
+      </details>
 
       <div className="text-xs text-subtext">快捷键：Ctrl/Cmd + S 保存</div>
 
