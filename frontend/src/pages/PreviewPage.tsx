@@ -26,6 +26,7 @@ export function PreviewPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [onlyDone, setOnlyDone] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -40,32 +41,40 @@ export function PreviewPage() {
 
   const chapters = previewQuery.data?.chapters ?? EMPTY_CHAPTERS;
   const sortedChapters = useMemo(() => [...chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)), [chapters]);
+  const doneCount = useMemo(
+    () => sortedChapters.reduce((acc, c) => acc + (c.status === "done" ? 1 : 0), 0),
+    [sortedChapters],
+  );
+  const visibleChapters = useMemo(() => {
+    if (!onlyDone) return sortedChapters;
+    return sortedChapters.filter((c) => c.status === "done");
+  }, [onlyDone, sortedChapters]);
 
   const effectiveActiveId = useMemo(() => {
-    if (activeId && sortedChapters.some((c) => c.id === activeId)) return activeId;
-    return sortedChapters[0]?.id ?? null;
-  }, [activeId, sortedChapters]);
+    if (activeId && visibleChapters.some((c) => c.id === activeId)) return activeId;
+    return visibleChapters[0]?.id ?? null;
+  }, [activeId, visibleChapters]);
 
   const activeIndex = useMemo(() => {
     if (!effectiveActiveId) return -1;
-    return sortedChapters.findIndex((c) => c.id === effectiveActiveId);
-  }, [effectiveActiveId, sortedChapters]);
+    return visibleChapters.findIndex((c) => c.id === effectiveActiveId);
+  }, [effectiveActiveId, visibleChapters]);
 
   const activeChapter = useMemo(() => {
     if (activeIndex < 0) return null;
-    return sortedChapters[activeIndex] ?? null;
-  }, [activeIndex, sortedChapters]);
+    return visibleChapters[activeIndex] ?? null;
+  }, [activeIndex, visibleChapters]);
 
   const prevChapter = useMemo(() => {
     if (activeIndex <= 0) return null;
-    return sortedChapters[activeIndex - 1] ?? null;
-  }, [activeIndex, sortedChapters]);
+    return visibleChapters[activeIndex - 1] ?? null;
+  }, [activeIndex, visibleChapters]);
 
   const nextChapter = useMemo(() => {
     if (activeIndex < 0) return null;
-    if (activeIndex >= sortedChapters.length - 1) return null;
-    return sortedChapters[activeIndex + 1] ?? null;
-  }, [activeIndex, sortedChapters]);
+    if (activeIndex >= visibleChapters.length - 1) return null;
+    return visibleChapters[activeIndex + 1] ?? null;
+  }, [activeIndex, visibleChapters]);
 
   const openEditor = (chapterId: string) => {
     if (!projectId) return;
@@ -103,22 +112,38 @@ export function PreviewPage() {
   }, [nextChapter, openChapter, prevChapter]);
 
   const list = (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <div className="inline-flex items-center gap-2 text-sm text-ink">
-          <BookOpen size={16} />
-          章节
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <div className="inline-flex items-center gap-2 text-sm text-ink">
+            <BookOpen size={16} />
+            章节
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className={clsx("btn btn-ghost px-2 py-1 text-xs", onlyDone ? "text-accent" : "text-subtext")}
+              onClick={() => setOnlyDone((v) => !v)}
+              type="button"
+            >
+              {onlyDone ? "显示全部" : "只看定稿"}
+            </button>
+            <span className="text-[11px] text-subtext">
+              {doneCount}/{sortedChapters.length} 已定稿
+            </span>
+          </div>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-auto p-2">
-        {sortedChapters.length === 0 ? <div className="p-3 text-sm text-subtext">暂无章节</div> : null}
-        <div className="grid gap-1">
-          {sortedChapters.map((c) => {
-            const isActive = c.id === effectiveActiveId;
-            return (
-              <button
-                key={c.id}
+        <div className="flex-1 overflow-auto p-2">
+          {sortedChapters.length === 0 ? (
+            <div className="p-3 text-sm text-subtext">暂无章节</div>
+          ) : onlyDone && visibleChapters.length === 0 ? (
+            <div className="p-3 text-sm text-subtext">暂无已定稿章节</div>
+          ) : null}
+          <div className="grid gap-1">
+            {visibleChapters.map((c) => {
+              const isActive = c.id === effectiveActiveId;
+              return (
+                <button
+                  key={c.id}
                 className={clsx(
                   "ui-focus-ring ui-transition-fast flex w-full items-center justify-between gap-2 rounded-atelier border px-3 py-2 text-left text-sm motion-safe:active:scale-[0.99]",
                   isActive
@@ -129,16 +154,20 @@ export function PreviewPage() {
                   openChapter(c.id);
                 }}
                 type="button"
-              >
-                <span className="min-w-0 truncate">
-                  {c.number}. {c.title?.trim() ? c.title : "（未命名）"}
-                </span>
-                <span className="shrink-0 text-[11px] text-subtext">{humanizeChapterStatus(c.status)}</span>
-              </button>
-            );
-          })}
+                >
+                  <span className="min-w-0 truncate">
+                    {c.number}. {c.title?.trim() ? c.title : "（未命名）"}
+                  </span>
+                  <span
+                    className={clsx("shrink-0 text-[11px]", c.status === "done" ? "text-accent" : "text-subtext")}
+                  >
+                    {humanizeChapterStatus(c.status)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
     </div>
   );
 
