@@ -367,60 +367,91 @@ export function StructuredMemoryPage() {
 
         {selectedIds.length > 0 ? (
           <div className="mt-4 surface p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-sm text-ink">
-                已选择 {selectedIds.length} 条（{tableLabel(activeTable)}）
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button className="btn btn-secondary" onClick={selectAll} type="button">
-                  全选当前页
-                </button>
-                <button className="btn btn-secondary" onClick={clearSelected} type="button">
-                  清空选择
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => void copyText(generatedDeleteOpsJson, "删除操作 JSON")}
-                  type="button"
-                >
-                  {UI_COPY.structuredMemory.copyDeleteOps}
-                </button>
-                {activeTable === "foreshadows" ? (
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => void copyText(generatedResolvedOpsJson, "标记已解决 JSON")}
-                    type="button"
-                  >
-                    {UI_COPY.structuredMemory.copyResolvedOps}
+            <div className="text-sm text-ink">批量操作（3 步）</div>
+
+            <div className="mt-3 grid gap-3">
+              <div className="rounded-atelier border border-border bg-surface p-3">
+                <div className="text-xs text-subtext">1）选择条目</div>
+                <div className="mt-1 text-sm text-ink">
+                  已选择 {selectedIds.length} 条（{tableLabel(activeTable)}）
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button className="btn btn-secondary" onClick={selectAll} type="button">
+                    全选当前页
                   </button>
+                  <button className="btn btn-secondary" onClick={clearSelected} type="button">
+                    清空选择
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-atelier border border-border bg-surface p-3">
+                <div className="text-xs text-subtext">2）生成操作</div>
+                <div className="mt-1 text-xs text-subtext">删除操作：{selectedIds.length} 条</div>
+                {activeTable === "foreshadows" ? (
+                  <div className="mt-1 text-xs text-subtext">标记已解决：{selectedIds.length} 条（可选）</div>
                 ) : null}
               </div>
-            </div>
 
-            <div className="mt-2 rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
-              <div>{UI_COPY.structuredMemory.bulkOpsHint}</div>
-              <div className="mt-1">{UI_COPY.structuredMemory.bulkOpsRisk}</div>
-            </div>
+              <div className="rounded-atelier border border-border bg-surface p-3">
+                <div className="text-xs text-subtext">3）复制并打开 Memory Update</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => void copyText(generatedDeleteOpsJson, "删除操作 JSON")}
+                    type="button"
+                  >
+                    {UI_COPY.structuredMemory.copyDeleteOps}
+                  </button>
+                  {activeTable === "foreshadows" ? (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => void copyText(generatedResolvedOpsJson, "标记已解决 JSON")}
+                      type="button"
+                    >
+                      {UI_COPY.structuredMemory.copyResolvedOps}
+                    </button>
+                  ) : null}
+                  <button
+                    className="btn btn-secondary"
+                    disabled={!chapterId}
+                    title={chapterId ? undefined : "建议从写作页带上 ?chapterId=... 打开以便 Apply"}
+                    onClick={() => setMemoryUpdateOpen(true)}
+                    type="button"
+                  >
+                    打开 Memory Update
+                  </button>
+                </div>
 
-            <div className="mt-3 grid gap-2">
-              <div className="text-xs text-subtext">{UI_COPY.structuredMemory.deleteOpsLabel}</div>
-              <textarea
-                className="textarea font-mono text-xs"
-                readOnly
-                rows={Math.min(10, Math.max(3, selectedIds.length + 1))}
-                value={generatedDeleteOpsJson}
-              />
-              {activeTable === "foreshadows" ? (
-                <>
-                  <div className="text-xs text-subtext">{UI_COPY.structuredMemory.resolvedOpsLabel}</div>
-                  <textarea
-                    className="textarea font-mono text-xs"
-                    readOnly
-                    rows={Math.min(10, Math.max(3, selectedIds.length + 1))}
-                    value={generatedResolvedOpsJson}
-                  />
-                </>
-              ) : null}
+                <details className="mt-3 rounded-atelier border border-border bg-canvas p-3">
+                  <summary className="cursor-pointer select-none text-xs text-ink">查看 JSON（高级）</summary>
+                  <div className="mt-3 grid gap-2">
+                    <div className="text-xs text-subtext">{UI_COPY.structuredMemory.deleteOpsLabel}</div>
+                    <textarea
+                      className="textarea font-mono text-xs"
+                      readOnly
+                      rows={Math.min(10, Math.max(3, selectedIds.length + 1))}
+                      value={generatedDeleteOpsJson}
+                    />
+                    {activeTable === "foreshadows" ? (
+                      <>
+                        <div className="text-xs text-subtext">{UI_COPY.structuredMemory.resolvedOpsLabel}</div>
+                        <textarea
+                          className="textarea font-mono text-xs"
+                          readOnly
+                          rows={Math.min(10, Math.max(3, selectedIds.length + 1))}
+                          value={generatedResolvedOpsJson}
+                        />
+                      </>
+                    ) : null}
+                  </div>
+                </details>
+
+                <div className="mt-3 rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
+                  <div>{UI_COPY.structuredMemory.bulkOpsHint}</div>
+                  <div className="mt-1">{UI_COPY.structuredMemory.bulkOpsRisk}</div>
+                </div>
+              </div>
             </div>
           </div>
         ) : null}
