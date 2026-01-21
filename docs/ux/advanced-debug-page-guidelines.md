@@ -70,9 +70,8 @@
 
 ## 页面对照（本批次需要覆盖）
 
-- **RAG**：Overview（enabled/索引/计数）→ Actions（ingest/rebuild/query）→ Results（final chunks 分组）→ Debug（payload/obs/raw）
+- **RAG**：状态（索引/disabled_reason/计数）→ 知识库（KB 管理/排序/权重）→ 查询（sources + query_text）→ 注入结果（注入预览/final chunks/raw）→ 高级调试（默认折叠：rerank 配置、ingest/rebuild 原始结果、payload/obs/raw）
 - **Graph**：Overview（图构建状态/节点边数）→ Actions（重建/刷新）→ Results（节点/边列表或可视化）→ Debug（raw graph json）
 - **Fractal**：Overview（生成/检索状态）→ Actions（刷新/重算）→ Results（分层输出）→ Debug（raw）
 - **Structured Memory**：Overview（表计数/筛选）→ Actions（刷新/批量 ops）→ Results（表格）→ Debug（原始响应/复制 ops）
 - **Task Center**：Overview（队列/运行中/失败计数）→ Actions（刷新/重试）→ Results（任务列表）→ Debug（请求/响应/日志）
-
