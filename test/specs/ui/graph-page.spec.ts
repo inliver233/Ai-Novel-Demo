@@ -58,7 +58,7 @@ test("ui: GraphPage loads graph query result", async ({ page, request }) => {
   await page.goto(`/projects/${projectId}/graph`);
 
   await page.getByLabel("graph_query_text", { exact: true }).fill("Alice");
-  await page.getByRole("button", { name: "查询", exact: true }).click();
+  await page.getByRole("button", { name: /查询/ }).click();
 
   await expect(page.getByText("[character] Alice", { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("Alice --(knows)→ Bob", { exact: true })).toBeVisible({ timeout: 60_000 });
