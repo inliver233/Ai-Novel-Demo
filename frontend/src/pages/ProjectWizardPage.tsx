@@ -200,8 +200,24 @@ export function ProjectWizardPage() {
     }
   }, [confirm, llmPreset, navigate, projectId, toast]);
 
-  if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
-  if (wizardQuery.loading) return <div className="text-subtext">加载中...</div>;
+  if (!projectId) {
+    return (
+      <div className="panel p-6">
+        <div className="font-content text-xl text-ink">缺少项目 ID</div>
+        <div className="mt-2 text-sm text-subtext">请从首页选择一个项目后再进入开工向导。</div>
+        <button className="btn btn-secondary mt-4" onClick={() => navigate("/")} type="button">
+          返回首页
+        </button>
+      </div>
+    );
+  }
+  if (wizardQuery.loading) {
+    return (
+      <div className="panel p-6">
+        <div className="text-sm text-subtext">正在加载向导数据...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-6">
@@ -221,7 +237,7 @@ export function ProjectWizardPage() {
           </div>
           <div className="flex gap-2">
             <button className="btn btn-secondary" onClick={() => void reload()} type="button">
-              刷新完成度
+              刷新进度
             </button>
             <button
               className="btn btn-primary"
@@ -249,10 +265,11 @@ export function ProjectWizardPage() {
 
       <section className="panel p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="grid gap-2">
-            <div className="font-content text-xl">自动模式（MVP）</div>
-            <div className="text-xs text-subtext">一键：生成大纲 → 保存 → 创建章节骨架 → 跳转写作页。</div>
-          </div>
+            <div className="grid gap-2">
+              <div className="font-content text-xl">自动模式（MVP）</div>
+              <div className="text-xs text-subtext">一键：生成大纲 → 保存 → 创建章节骨架 → 跳转写作页。</div>
+              <div className="text-xs text-subtext">建议先完成「项目设置 / 模型配置」，以避免生成失败。</div>
+            </div>
           <button
             className="btn btn-primary"
             disabled={autoRunning}
@@ -269,7 +286,10 @@ export function ProjectWizardPage() {
       </section>
 
       <section className="panel p-6">
-        <div className="font-content text-xl">步骤清单</div>
+        <div className="grid gap-1">
+          <div className="font-content text-xl">步骤清单</div>
+          <div className="text-xs text-subtext">从上到下完成；不适用的步骤可以先跳过，之后也可取消跳过。</div>
+        </div>
         <motion.div
           className="mt-4 grid gap-3"
           initial="hidden"
@@ -330,7 +350,7 @@ export function ProjectWizardPage() {
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <button className="btn btn-secondary" onClick={() => goStep(s)} type="button">
-                    打开
+                    前往
                   </button>
                   {s.state === "todo" ? (
                     <button
@@ -346,7 +366,7 @@ export function ProjectWizardPage() {
                       onClick={() => setSkipped(s.key, false)}
                       type="button"
                     >
-                      撤销跳过
+                      取消跳过
                     </button>
                   ) : null}
                 </div>
