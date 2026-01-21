@@ -30,6 +30,7 @@ export function DashboardPage() {
   const [form, setForm] = useState<CreateProjectForm>({ name: "", genre: "", logline: "" });
 
   const sorted = useMemo(() => [...projects].sort((a, b) => b.created_at.localeCompare(a.created_at)), [projects]);
+  const recommendedProject = sorted[0] ?? null;
 
   type WizardSummary = { percent: number; nextTitle: string | null; nextHref: string | null };
   const [wizardByProjectId, setWizardByProjectId] = useState<Record<string, WizardSummary>>({});
@@ -117,6 +118,59 @@ export function DashboardPage() {
           <div className="font-content text-2xl text-ink">+</div>
           <div className="mt-2 text-sm text-subtext">新建项目</div>
         </button>
+
+        <div className="panel p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="font-content text-xl text-ink">推荐流程</div>
+              <div className="mt-1 text-xs text-subtext">
+                {recommendedProject ? `基于最近项目「${recommendedProject.name}」：` : "创建项目后，可从这里快速开始："}
+              </div>
+            </div>
+            {recommendedProject ? (
+              <button
+                className="btn btn-ghost px-3 py-2 text-xs"
+                onClick={() => enterProject(recommendedProject)}
+                aria-label="继续最近项目 (dashboard_continue_latest)"
+                type="button"
+              >
+                继续
+              </button>
+            ) : null}
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <button
+              className="btn btn-secondary justify-start"
+              disabled={!recommendedProject}
+              onClick={() => navigate(`/projects/${recommendedProject?.id ?? ""}/settings`)}
+              aria-label="项目设置 (dashboard_recommend_settings)"
+              type="button"
+            >
+              项目设置
+            </button>
+            <button
+              className="btn btn-secondary justify-start"
+              disabled={!recommendedProject}
+              onClick={() => navigate(`/projects/${recommendedProject?.id ?? ""}/wizard`)}
+              aria-label="开工向导 (dashboard_recommend_wizard)"
+              type="button"
+            >
+              开工向导
+            </button>
+            <button
+              className="btn btn-secondary justify-start"
+              disabled={!recommendedProject}
+              onClick={() => navigate(`/projects/${recommendedProject?.id ?? ""}/writing`)}
+              aria-label="写作 (dashboard_recommend_writing)"
+              type="button"
+            >
+              写作
+            </button>
+          </div>
+          {!recommendedProject ? (
+            <div className="mt-3 text-xs text-subtext">提示：先点击左侧 “新建项目” 创建一个项目。</div>
+          ) : null}
+        </div>
 
         {loading ? (
           <div className="panel p-6">
