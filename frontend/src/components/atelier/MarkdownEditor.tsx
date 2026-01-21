@@ -112,7 +112,7 @@ export function MarkdownEditor({
             </button>
           </div>
         </LayoutGroup>
-        <div className="text-xs text-subtext">{value.length} chars</div>
+        <div className="text-xs text-subtext">字数：{value.length}</div>
       </div>
       {tab === "edit" ? (
         <textarea
