@@ -2,6 +2,8 @@ export const UI_COPY = {
   common: {
     loading: "加载中...",
     droppedParamsPrefix: "参数已自动降级：",
+    copy: "复制",
+    requestIdLabel: "请求 ID（request_id）",
   },
   brand: {
     appName: "ainovel Atelier",

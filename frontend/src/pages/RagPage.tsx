@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
+import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
 import type { ProjectSettings } from "../types";
 
@@ -1182,7 +1183,22 @@ export function RagPage() {
               {normalizeRerankObs(queryResult.rerank) ? (
                 <div className="mt-1">rerank: {formatRerankSummary(normalizeRerankObs(queryResult.rerank)!)}</div>
               ) : null}
-              {queryRequestId ? <div className="mt-1">request_id: {queryRequestId}</div> : null}
+              {queryRequestId ? (
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="truncate">
+                    {UI_COPY.common.requestIdLabel}: <span className="font-mono">{queryRequestId}</span>
+                  </span>
+                  <button
+                    className="btn btn-ghost px-2 py-1 text-xs"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(queryRequestId ?? "");
+                    }}
+                    type="button"
+                  >
+                    {UI_COPY.common.copy}
+                  </button>
+                </div>
+              ) : null}
               <div className="mt-2 grid gap-3 sm:grid-cols-2">
                 <div>
                   <div className="text-[11px] text-subtext">raw_query_text</div>

@@ -5,6 +5,7 @@ import { Drawer } from "../components/ui/Drawer";
 import { useProjectData } from "../hooks/useProjectData";
 import { humanizeChangeSetStatus, humanizeTaskStatus } from "../lib/humanize";
 import { apiJson } from "../services/apiClient";
+import { UI_COPY } from "../lib/uiCopy";
 
 type MemoryChangeSetSummary = {
   id: string;
@@ -191,7 +192,20 @@ export function TaskCenterPage() {
                       chapter_id: {it.chapter_id || "-"} | updated_at: {it.updated_at || it.created_at || "-"}
                     </div>
                     {it.request_id ? (
-                      <div className="mt-1 truncate text-[11px] text-subtext">request_id: {it.request_id}</div>
+                      <div className="mt-1 flex items-center gap-2 text-[11px] text-subtext">
+                        <span className="truncate">
+                          {UI_COPY.common.requestIdLabel}: <span className="font-mono">{it.request_id}</span>
+                        </span>
+                        <button
+                          className="btn btn-ghost px-2 py-1 text-[11px]"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(it.request_id ?? "");
+                          }}
+                          type="button"
+                        >
+                          {UI_COPY.common.copy}
+                        </button>
+                      </div>
                     ) : null}
                   </div>
                   <StatusBadge status={it.status} kind="change_set" />
@@ -205,7 +219,7 @@ export function TaskCenterPage() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-sm text-ink">Tasks</div>
-              <div className="mt-1 text-xs text-subtext">失败任务会显示 error 摘要与 request_id</div>
+              <div className="mt-1 text-xs text-subtext">失败任务会显示 error 摘要与 {UI_COPY.common.requestIdLabel}</div>
             </div>
             <label className="grid gap-1">
               <span className="text-[11px] text-subtext">状态</span>
@@ -244,7 +258,20 @@ export function TaskCenterPage() {
                     </div>
                     <div className="mt-1 truncate text-xs text-subtext">change_set_id: {t.change_set_id}</div>
                     {t.request_id ? (
-                      <div className="mt-1 truncate text-[11px] text-subtext">request_id: {t.request_id}</div>
+                      <div className="mt-1 flex items-center gap-2 text-[11px] text-subtext">
+                        <span className="truncate">
+                          {UI_COPY.common.requestIdLabel}: <span className="font-mono">{t.request_id}</span>
+                        </span>
+                        <button
+                          className="btn btn-ghost px-2 py-1 text-[11px]"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(t.request_id ?? "");
+                          }}
+                          type="button"
+                        >
+                          {UI_COPY.common.copy}
+                        </button>
+                      </div>
                     ) : null}
                     {t.status === "failed" ? (
                       <div className="mt-1 truncate text-xs text-red-700 dark:text-red-300">
@@ -272,7 +299,7 @@ export function TaskCenterPage() {
             {selected ? (
               <div className="mt-1 text-xs text-subtext">
                 id: {selected.item.id}{" "}
-                {selected.kind === "task" ? `| request_id: ${selected.item.request_id ?? "-"}` : ""}
+                {selected.kind === "task" ? `| ${UI_COPY.common.requestIdLabel}: ${selected.item.request_id ?? "-"}` : ""}
               </div>
             ) : null}
           </div>

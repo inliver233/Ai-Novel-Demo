@@ -7,6 +7,7 @@ import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjects } from "../contexts/projects";
 import { duration, transition } from "../lib/motion";
+import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
 import { computeWizardProgressFromSummary } from "../services/wizard";
 import type { Project, ProjectSummaryItem } from "../types";
@@ -134,7 +135,22 @@ export function DashboardPage() {
           <div className="panel p-6">
             <div className="font-content text-xl text-ink">项目加载失败</div>
             <div className="mt-2 text-sm text-subtext">{error.message}</div>
-            <div className="mt-1 text-xs text-subtext">request_id: {error.requestId}</div>
+            {error.requestId ? (
+              <div className="mt-1 flex items-center gap-2 text-xs text-subtext">
+                <span className="truncate">
+                  {UI_COPY.common.requestIdLabel}: <span className="font-mono">{error.requestId}</span>
+                </span>
+                <button
+                  className="btn btn-ghost px-2 py-1 text-xs"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(error.requestId ?? "");
+                  }}
+                  type="button"
+                >
+                  {UI_COPY.common.copy}
+                </button>
+              </div>
+            ) : null}
             <button className="btn btn-secondary mt-4" onClick={() => void refresh()} type="button">
               重试
             </button>

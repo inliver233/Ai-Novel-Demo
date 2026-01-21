@@ -47,8 +47,8 @@ test("ui: task center shows change sets + tasks + details", async ({ page, reque
   await expect.poll(async () => await taskItems.count(), { timeout: 60_000 }).toBeGreaterThan(0);
 
   // request_id should be present for debugging.
-  await expect(changeSetsPanel.getByText(/request_id:/).first()).toBeVisible();
-  await expect(tasksPanel.getByText(/request_id:/).first()).toBeVisible();
+  await expect(changeSetsPanel.getByText(/request_id/).first()).toBeVisible();
+  await expect(tasksPanel.getByText(/request_id/).first()).toBeVisible();
 
   // Filters should work without crashing.
   await page.getByLabel("taskcenter_changeset_status", { exact: true }).selectOption("applied");
