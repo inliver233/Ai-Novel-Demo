@@ -6,7 +6,7 @@ test("ui: prompt studio render preview + edit/save block", async ({ page, reques
   const { projectId } = await bootstrapProject(request);
 
   await page.goto(`/projects/${projectId}/prompt-studio`);
-  await expect(page.getByText("Prompt Studio（beta）")).toBeVisible();
+  await expect(page.getByText("提示词工作室（beta）")).toBeVisible();
 
   // Pick a preset that actually supports the preview task, otherwise preview can be empty.
   await page.getByRole("button", { name: /chapter_generate/ }).first().click();

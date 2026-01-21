@@ -755,13 +755,13 @@ export function PromptStudioPage() {
   return (
     <div className="grid gap-6">
       <div className="panel p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-lg font-semibold">Prompt Studio（beta）</div>
-            <div className="text-xs text-subtext">
-              预览通过后端渲染接口生成。{" "}
-              <Link className="underline" to={`/projects/${projectId}/prompts`}>
-                返回模型配置
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-lg font-semibold">提示词工作室（beta）</div>
+              <div className="text-xs text-subtext">
+                预览通过后端渲染接口生成。{" "}
+                <Link className="underline" to={`/projects/${projectId}/prompts`}>
+                  返回模型配置
               </Link>
             </div>
           </div>
@@ -794,8 +794,9 @@ export function PromptStudioPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px,1fr]">
         <div className="panel p-4">
-          <div className="mb-3 text-sm font-semibold">预设</div>
+          <div className="mb-3 text-sm font-semibold">预设列表</div>
           <div className="grid gap-2">
+            <div className="text-xs text-subtext">新建预设</div>
             <div className="flex gap-2">
               <input
                 className="input"
@@ -809,6 +810,7 @@ export function PromptStudioPage() {
               </button>
             </div>
 
+            <div className="text-xs text-subtext">导入/导出（当前预设）</div>
             <div className="flex gap-2">
               <input
                 ref={importInputRef}
@@ -850,6 +852,7 @@ export function PromptStudioPage() {
               </button>
             </div>
 
+            <div className="text-xs text-subtext">导入/导出（整套）</div>
             <div className="flex gap-2">
               <button
                 className="btn btn-secondary w-full"

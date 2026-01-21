@@ -6,7 +6,7 @@ test("ui: prompt studio export -> import -> new preset appears", async ({ page, 
   const { projectId } = await bootstrapProject(request);
 
   await page.goto(`/projects/${projectId}/prompt-studio`);
-  await expect(page.getByText("Prompt Studio（beta）")).toBeVisible();
+  await expect(page.getByText("提示词工作室（beta）")).toBeVisible();
 
   // Pick a preset with chapter_generate enabled so export is meaningful.
   await page.getByRole("button", { name: /chapter_generate/ }).first().click();

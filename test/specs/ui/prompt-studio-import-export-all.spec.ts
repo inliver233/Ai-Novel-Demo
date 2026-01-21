@@ -25,7 +25,7 @@ test("ui: prompt studio export_all -> import_all + category filter", async ({ pa
   }
 
   await page.goto(`/projects/${projectId}/prompt-studio`);
-  await expect(page.getByText("Prompt Studio（beta）")).toBeVisible();
+  await expect(page.getByText("提示词工作室（beta）")).toBeVisible();
 
   await expect(page.getByRole("button", { name: presetAName })).toBeVisible();
   await expect(page.getByRole("button", { name: presetBName })).toBeVisible();
