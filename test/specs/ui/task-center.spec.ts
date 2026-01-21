@@ -57,7 +57,9 @@ test("ui: task center shows change sets + tasks + details", async ({ page, reque
 
   // Details drawer should open.
   await changeSetItems.first().click();
-  const detail = page.getByRole("dialog", { name: "ChangeSet 详情", exact: true });
+  const detail = page.getByRole("dialog").filter({
+    has: page.getByRole("button", { name: "复制排障信息", exact: true }),
+  });
   await expect(detail).toBeVisible();
   await detail.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(detail).toBeHidden();
