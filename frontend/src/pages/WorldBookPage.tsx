@@ -651,7 +651,7 @@ export function WorldBookPage() {
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 sm:col-span-2">
-              <span className="text-xs text-subtext">搜索（title / keyword）</span>
+              <span className="text-xs text-subtext">搜索（标题 / 关键词）</span>
               <input
                 className="input"
                 value={searchText}
@@ -668,12 +668,12 @@ export function WorldBookPage() {
                 onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
                 aria-label="worldbook_sort"
               >
-                <option value="updated_desc">updated_at ↓</option>
-                <option value="updated_asc">updated_at ↑</option>
-                <option value="priority_desc">priority ↓</option>
-                <option value="priority_asc">priority ↑</option>
-                <option value="enabled_desc">enabled ↓</option>
-                <option value="enabled_asc">enabled ↑</option>
+                <option value="updated_desc">更新时间（updated_at）↓</option>
+                <option value="updated_asc">更新时间（updated_at）↑</option>
+                <option value="priority_desc">优先级（priority）↓</option>
+                <option value="priority_asc">优先级（priority）↑</option>
+                <option value="enabled_desc">启用（enabled）↓</option>
+                <option value="enabled_asc">启用（enabled）↑</option>
               </select>
             </label>
             <label className="flex items-center justify-between gap-2 text-sm text-ink">
@@ -787,10 +787,10 @@ export function WorldBookPage() {
                       disabled={bulkLoading || loading}
                       aria-label="worldbook_bulk_priority"
                     >
-                      <option value="must">must</option>
-                      <option value="important">important</option>
-                      <option value="optional">optional</option>
-                      <option value="drop_first">drop_first</option>
+                      <option value="must">必须（must）</option>
+                      <option value="important">重要（important）</option>
+                      <option value="optional">可选（optional）</option>
+                      <option value="drop_first">优先丢弃（drop_first）</option>
                     </select>
                   </label>
                   <button
@@ -1045,7 +1045,7 @@ export function WorldBookPage() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="font-content text-2xl text-ink">世界书导入</div>
-            <div className="mt-1 text-xs text-subtext">上传 export_all JSON，支持 dry_run 预览冲突并确认应用</div>
+            <div className="mt-1 text-xs text-subtext">上传导出的整套 JSON（export_all），支持 dry_run 预演查看冲突并确认应用。</div>
           </div>
           <button className="btn btn-secondary" disabled={importLoading} onClick={closeImportDrawer} type="button">
             {UI_COPY.worldbook.close}
@@ -1122,6 +1122,9 @@ export function WorldBookPage() {
                   <div className="mt-1 text-xs text-subtext">
                     dry_run: {String(importReport.dry_run)} | mode: {importReport.mode}
                   </div>
+                  <div className="mt-1 text-[11px] text-subtext">
+                    字段解释：dry_run=预演（不写入）；mode=merge 合并更新 / overwrite 覆盖导入。
+                  </div>
                 </div>
               </div>
 
@@ -1132,6 +1135,7 @@ export function WorldBookPage() {
                   <span className="text-ink">{importReport.deleted}</span> | skipped:{" "}
                   <span className="text-ink">{importReport.skipped}</span>
                 </div>
+                <div className="text-[11px] text-subtext">created 新建 | updated 更新 | deleted 删除 | skipped 跳过</div>
                 <div>
                   conflicts: <span className="text-ink">{importReport.conflicts?.length ?? 0}</span> | actions:{" "}
                   <span className="text-ink">{importReport.actions?.length ?? 0}</span>
@@ -1140,7 +1144,7 @@ export function WorldBookPage() {
 
               <details className="mt-3" open>
                 <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
-                  conflicts ({importReport.conflicts?.length ?? 0})
+                  冲突（conflicts）({importReport.conflicts?.length ?? 0})
                 </summary>
                 <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
                   {JSON.stringify(importReport.conflicts ?? [], null, 2)}
@@ -1149,7 +1153,7 @@ export function WorldBookPage() {
 
               <details className="mt-3">
                 <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
-                  actions ({importReport.actions?.length ?? 0})
+                  变更（actions）({importReport.actions?.length ?? 0})
                 </summary>
                 <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
                   {JSON.stringify(importReport.actions ?? [], null, 2)}
