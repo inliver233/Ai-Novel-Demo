@@ -195,7 +195,7 @@ export function StylesPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="font-content text-2xl text-ink">风格</div>
-            <div className="mt-1 text-xs text-subtext">Style Profiles（写作风格资产）+ 项目默认。</div>
+            <div className="mt-1 text-xs text-subtext">写作风格（Style Profiles）：管理预设与自定义风格，可设为项目默认。</div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button className="btn btn-secondary" onClick={() => void refresh()} disabled={loading} type="button">
@@ -340,7 +340,7 @@ export function StylesPage() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="font-content text-xl text-ink">{modalMode === "create" ? "新建风格" : "编辑风格"}</div>
-              <div className="mt-1 text-xs text-subtext">prompt_content 会在生成时按优先级注入（Phase 7.2）。</div>
+              <div className="mt-1 text-xs text-subtext">风格提示词（prompt_content）会在生成时按优先级注入。</div>
             </div>
             <button className="btn btn-secondary" onClick={() => setModalOpen(false)} type="button">
               关闭
@@ -369,7 +369,7 @@ export function StylesPage() {
               />
             </label>
             <label className="block">
-              <div className="text-xs text-subtext">prompt_content</div>
+              <div className="text-xs text-subtext">风格提示词（prompt_content）</div>
               <textarea
                 className="mt-1 min-h-[180px] w-full rounded-atelier border border-border bg-surface px-3 py-2 font-mono text-xs text-ink"
                 value={draftPromptContent}
@@ -379,6 +379,14 @@ export function StylesPage() {
               />
               <div className="mt-1 text-xs text-subtext">建议：用条目列出风格约束，避免冗长。</div>
             </label>
+            <details className="rounded-atelier border border-border bg-canvas px-3 py-2 text-xs text-subtext">
+              <summary className="cursor-pointer select-none">示例（点击展开）</summary>
+              <pre className="mt-2 whitespace-pre-wrap font-mono text-[11px] text-ink">{`写作要求：
+- 叙述视角：第三人称
+- 语气：克制、现实主义
+- 节奏：短句为主，少用感叹号
+- 禁止：出现“作为一个AI”之类自我表述`}</pre>
+            </details>
 
             <div className="flex items-center justify-end gap-2">
               <button className="btn btn-secondary" onClick={() => setModalOpen(false)} type="button">
