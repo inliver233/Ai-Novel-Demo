@@ -279,10 +279,12 @@ export function WritingPage() {
             ? `（${batch.batchTask.completed_count}/${batch.batchTask.total_count}）`
             : ""
         }
+        aiGenerateDisabled={!activeChapter || loadingChapter}
         onSwitchOutline={(outlineId) => void switchOutline(outlineId)}
         onOpenChapterList={() => setChapterListOpen(true)}
         onOpenBatch={batch.openModal}
         onOpenHistory={history.openDrawer}
+        onOpenAiGenerate={() => setAiOpen(true)}
         onOpenMemoryUpdate={() => {
           if (!activeChapter) return;
           if (dirty) {
@@ -330,14 +332,6 @@ export function WritingPage() {
                   <div className="mt-1 text-xs text-subtext">updated_at: {activeChapter.updated_at}</div>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  <button
-                    className="btn btn-secondary"
-                    disabled={loadingChapter}
-                    onClick={() => setAiOpen(true)}
-                    type="button"
-                  >
-                    AI 生成
-                  </button>
                   <button
                     className="btn btn-secondary"
                     disabled={loadingChapter || generating}
