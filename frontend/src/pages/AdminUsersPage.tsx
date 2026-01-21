@@ -24,6 +24,31 @@ type CreateUserForm = {
   password: string;
 };
 
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const el = document.createElement("textarea");
+      el.value = text;
+      el.setAttribute("readonly", "true");
+      el.style.position = "fixed";
+      el.style.top = "0";
+      el.style.left = "0";
+      el.style.opacity = "0";
+      document.body.appendChild(el);
+      el.focus();
+      el.select();
+      const ok = document.execCommand("copy");
+      el.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 export function AdminUsersPage() {
   const auth = useAuth();
   const toast = useToast();
@@ -69,7 +94,7 @@ export function AdminUsersPage() {
     if (!canManage) return;
     const userId = form.user_id.trim();
     if (!userId) {
-      toast.toastError("user_id 不能为空");
+      toast.toastError("用户 ID 不能为空");
       return;
     }
     setSaving(true);
@@ -152,6 +177,31 @@ export function AdminUsersPage() {
 
   const visibleUsers = useMemo(() => users, [users]);
 
+  const copyTempPassword = useCallback(
+    async (userId: string) => {
+      const pwd = tempPasswords[userId];
+      if (!pwd) return;
+      const ok = await copyToClipboard(pwd);
+      if (!ok) {
+        window.prompt("复制失败：请手动复制一次性密码（关闭后将从页面隐藏）", pwd);
+        toast.toastError("复制失败：已弹出一次性密码，请手动复制（已从页面隐藏）。");
+        setTempPasswords((prev) => {
+          const next = { ...prev };
+          delete next[userId];
+          return next;
+        });
+        return;
+      }
+      toast.toastSuccess("已复制一次性密码（已从页面隐藏）");
+      setTempPasswords((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    },
+    [tempPasswords, toast],
+  );
+
   if (!canManage) {
     return (
       <div className="mx-auto max-w-screen-md px-4 py-10 sm:px-6 lg:px-8">
@@ -170,7 +220,7 @@ export function AdminUsersPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="font-content text-2xl text-ink">管理员用户管理</div>
-          <div className="mt-1 text-xs text-subtext">创建 / 列表 / 重置密码 / 禁用（最小闭环）</div>
+          <div className="mt-1 text-xs text-subtext">创建用户 / 重置密码 / 启用/禁用（管理员操作）</div>
         </div>
         <div className="flex gap-2">
           <button className="btn btn-secondary" disabled={loading || saving} onClick={() => void load()} type="button">
@@ -181,37 +231,46 @@ export function AdminUsersPage() {
 
       <section className="mt-6 rounded-atelier border border-border bg-surface p-4">
         <div className="text-sm font-medium text-ink">创建用户</div>
+        <div className="mt-1 text-xs text-subtext">
+          提示：留空“初始密码”会由系统生成一次性密码。一次性密码不会持久化保存，刷新页面后无法找回；建议创建/重置后立即复制并通过安全渠道发送给用户。
+        </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <label className="text-sm text-ink">
-            <div className="text-xs text-subtext">user_id</div>
+            <div className="text-xs text-subtext">用户 ID（user_id）</div>
             <input
               className="mt-1 w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm"
               value={form.user_id}
               onChange={(e) => setForm((v) => ({ ...v, user_id: e.target.value }))}
+              placeholder="例如：admin2"
             />
           </label>
           <label className="text-sm text-ink">
-            <div className="text-xs text-subtext">display_name</div>
+            <div className="text-xs text-subtext">显示名（display_name）</div>
             <input
               className="mt-1 w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm"
               value={form.display_name}
               onChange={(e) => setForm((v) => ({ ...v, display_name: e.target.value }))}
+              placeholder="例如：管理员 2"
             />
           </label>
           <label className="text-sm text-ink">
-            <div className="text-xs text-subtext">email（可选）</div>
+            <div className="text-xs text-subtext">邮箱（email，可选）</div>
             <input
               className="mt-1 w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm"
               value={form.email}
               onChange={(e) => setForm((v) => ({ ...v, email: e.target.value }))}
+              placeholder="例如：admin2@example.com"
             />
           </label>
           <label className="text-sm text-ink">
-            <div className="text-xs text-subtext">password（可选，留空则生成一次性密码）</div>
+            <div className="text-xs text-subtext">初始密码（password，可选）</div>
             <input
               className="mt-1 w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm"
+              type="password"
+              autoComplete="new-password"
               value={form.password}
               onChange={(e) => setForm((v) => ({ ...v, password: e.target.value }))}
+              placeholder="留空则生成一次性密码"
             />
           </label>
         </div>
@@ -223,7 +282,7 @@ export function AdminUsersPage() {
               checked={form.is_admin}
               onChange={(e) => setForm((v) => ({ ...v, is_admin: e.target.checked }))}
             />
-            <span>is_admin</span>
+            <span>管理员（is_admin）</span>
           </label>
           <button className="btn btn-primary" disabled={saving} onClick={() => void createUser()} type="button">
             {saving ? "提交中…" : "创建"}
@@ -233,16 +292,19 @@ export function AdminUsersPage() {
 
       <section className="mt-6 rounded-atelier border border-border bg-surface p-4">
         <div className="text-sm font-medium text-ink">用户列表</div>
+        <div className="mt-1 text-xs text-subtext">
+          安全提示：一次性密码仅用于首次登录/找回；建议用户首次登录后尽快修改。为降低泄露风险，本页默认不显示明文，一键复制后会自动隐藏。
+        </div>
         <div className="mt-3 overflow-auto">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="text-xs text-subtext">
               <tr>
-                <th className="py-2 pr-3">id</th>
-                <th className="py-2 pr-3">display_name</th>
-                <th className="py-2 pr-3">is_admin</th>
-                <th className="py-2 pr-3">disabled</th>
-                <th className="py-2 pr-3">temp_password</th>
-                <th className="py-2 pr-3">actions</th>
+                <th className="py-2 pr-3">用户 ID</th>
+                <th className="py-2 pr-3">显示名</th>
+                <th className="py-2 pr-3">管理员</th>
+                <th className="py-2 pr-3">已禁用</th>
+                <th className="py-2 pr-3">一次性密码</th>
+                <th className="py-2 pr-3">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -252,7 +314,20 @@ export function AdminUsersPage() {
                   <td className="py-2 pr-3">{u.display_name ?? "-"}</td>
                   <td className="py-2 pr-3">{humanizeYesNo(u.is_admin)}</td>
                   <td className="py-2 pr-3">{humanizeYesNo(u.disabled)}</td>
-                  <td className="py-2 pr-3 font-mono text-[11px]">{tempPasswords[u.id] ?? "-"}</td>
+                  <td className="py-2 pr-3">
+                    {tempPasswords[u.id] ? (
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        disabled={saving}
+                        onClick={() => void copyTempPassword(u.id)}
+                        type="button"
+                      >
+                        复制并隐藏
+                      </button>
+                    ) : (
+                      <span className="text-subtext">-</span>
+                    )}
+                  </td>
                   <td className="py-2 pr-3">
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -260,8 +335,9 @@ export function AdminUsersPage() {
                         disabled={saving}
                         onClick={() => void resetPassword(u.id)}
                         type="button"
+                        title="将生成一次性密码（仅显示在本页，建议立即复制）。"
                       >
-                        Reset password
+                        重置密码
                       </button>
                       <button
                         className="btn btn-secondary btn-sm"
@@ -269,7 +345,7 @@ export function AdminUsersPage() {
                         onClick={() => void setDisabled(u.id, !u.disabled)}
                         type="button"
                       >
-                        {u.disabled ? "Enable" : "Disable"}
+                        {u.disabled ? "启用" : "禁用"}
                       </button>
                     </div>
                   </td>
