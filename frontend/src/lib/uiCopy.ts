@@ -182,4 +182,31 @@ export const UI_COPY = {
 
     missingProjectId: "缺少 projectId",
   },
+  rag: {
+    title: "Vector RAG 管理",
+    subtitle: "入库（ingest） / 重建索引（rebuild） / 状态 / 查询（用于排查注入与索引状态）",
+
+    settings: "项目设置（Settings）",
+    ingest: "触发入库（Ingest）",
+    rebuild: "重建索引（Rebuild）",
+    rebuildNeedConfig: "重建索引（Rebuild，需配置）",
+    rebuildRecommended: "重建索引（Rebuild，建议）",
+
+    kbTitle: "知识库（KB）",
+    kbOrderLabel: "排序（order）",
+    kbEnabledLabel: "启用（enabled）",
+    kbWeightLabel: "权重（weight）",
+    kbNameLabel: "名称（name）",
+    kbNewNameLabel: "新建知识库名称（name）",
+    kbNewNamePlaceholder: "例如：我的知识库",
+
+    sourcesTitle: "查询来源",
+    queryTitle: "查询",
+    injectionTitle: "注入结果",
+    advancedDebugTitle: "高级调试",
+    rerankTitle: "重排（Rerank）",
+
+    ingestResultTitle: "入库结果（Ingest result）",
+    rebuildResultTitle: "重建结果（Rebuild result）",
+  },
 } as const;

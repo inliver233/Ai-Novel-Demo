@@ -769,8 +769,8 @@ export function RagPage() {
       <div className="panel p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="font-content text-2xl text-ink">Vector RAG 管理</div>
-            <div className="mt-1 text-xs text-subtext">ingest / rebuild / status / query（用于排查注入与索引状态）</div>
+            <div className="font-content text-2xl text-ink">{UI_COPY.rag.title}</div>
+            <div className="mt-1 text-xs text-subtext">{UI_COPY.rag.subtitle}</div>
           </div>
           <div className="flex gap-2">
             <button
@@ -786,27 +786,33 @@ export function RagPage() {
               className="btn btn-secondary"
               disabled={ingestLoading}
               onClick={() => void runIngest()}
+              aria-label={`${UI_COPY.rag.ingest} (rag_ingest)`}
               type="button"
             >
-              {ingestLoading ? "执行中…" : "Ingest"}
+              {ingestLoading ? "执行中…" : UI_COPY.rag.ingest}
             </button>
             <button
               className={vectorIndexDirty ? "btn btn-primary" : "btn btn-secondary"}
               disabled={rebuildLoading}
               onClick={() => void runRebuild()}
+              aria-label={`${UI_COPY.rag.rebuild} (rag_rebuild)`}
               type="button"
             >
               {rebuildLoading
                 ? "执行中…"
                 : vectorIndexDirty && vectorEnabled === false
-                  ? "Rebuild（需配置）"
+                  ? UI_COPY.rag.rebuildNeedConfig
                   : vectorIndexDirty
-                    ? "Rebuild（建议）"
-                    : "Rebuild"}
+                    ? UI_COPY.rag.rebuildRecommended
+                    : UI_COPY.rag.rebuild}
             </button>
             {projectId ? (
-              <Link className="btn btn-secondary" to={`/projects/${projectId}/settings`}>
-                Settings
+              <Link
+                className="btn btn-secondary"
+                to={`/projects/${projectId}/settings`}
+                aria-label={`${UI_COPY.rag.settings} (rag_settings)`}
+              >
+                {UI_COPY.rag.settings}
               </Link>
             ) : null}
           </div>
@@ -824,11 +830,11 @@ export function RagPage() {
             ) : vectorIndexDirty ? (
               vectorEnabled === false ? (
                 <div className="text-ink">
-                  索引已过期，但向量服务未启用（disabled_reason: {vectorDisabledReason ?? "-"}）。请先在 Settings 配置
-                  embedding，再 rebuild。
+                  索引已过期，但向量服务未启用（disabled_reason: {vectorDisabledReason ?? "-"}）。请先在{" "}
+                  {UI_COPY.rag.settings} 配置 向量化（Embedding），再 {UI_COPY.rag.rebuild}。
                 </div>
               ) : (
-                <div className="text-ink">索引已过期：建议点击右上角 “Rebuild（建议）” 重新构建。</div>
+                <div className="text-ink">索引已过期：建议点击右上角 “{UI_COPY.rag.rebuildRecommended}” 重新构建。</div>
               )
             ) : (
               <div className="text-subtext">索引为 clean，无需重建。</div>
@@ -877,7 +883,7 @@ export function RagPage() {
           aria-label="知识库 (rag_kb_section)"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-medium text-ink">知识库</div>
+            <div className="text-sm font-medium text-ink">{UI_COPY.rag.kbTitle}</div>
             <div className="flex gap-2">
               <button
                 className="btn btn-secondary"
@@ -971,7 +977,7 @@ export function RagPage() {
                           />
                         </label>
                         <label className="flex items-center gap-2 text-sm text-ink">
-                          <span className="text-xs text-subtext">name</span>
+                          <span className="text-xs text-subtext">{UI_COPY.rag.kbNameLabel}</span>
                           <input
                             className="input w-56"
                             value={draft.name}
@@ -1009,9 +1015,15 @@ export function RagPage() {
                     </div>
 
                     <div className="mt-2 flex flex-wrap gap-3 text-xs text-subtext">
-                      <div>order: {kb.order}</div>
-                      <div>enabled: {String(Boolean(draft.enabled))}</div>
-                      <div>weight: {String(draft.weight)}</div>
+                      <div>
+                        {UI_COPY.rag.kbOrderLabel}: {kb.order}
+                      </div>
+                      <div>
+                        {UI_COPY.rag.kbEnabledLabel}: {String(Boolean(draft.enabled))}
+                      </div>
+                      <div>
+                        {UI_COPY.rag.kbWeightLabel}: {String(draft.weight)}
+                      </div>
                       {counts ? (
                         <div>
                           query_counts: {counts.candidates_total}/{counts.candidates_returned} | final:
@@ -1031,13 +1043,13 @@ export function RagPage() {
 
           <div className="mt-4 grid gap-2 sm:grid-cols-4">
             <label className="grid gap-1 sm:col-span-3">
-              <span className="text-xs text-subtext">new kb name</span>
+              <span className="text-xs text-subtext">{UI_COPY.rag.kbNewNameLabel}</span>
               <input
                 className="input"
                 value={kbCreateName}
                 onChange={(e) => setKbCreateName(e.target.value)}
                 aria-label="kb_create_name"
-                placeholder="My KB"
+                placeholder={UI_COPY.rag.kbNewNamePlaceholder}
               />
             </label>
             <div className="flex items-end">
@@ -1055,7 +1067,7 @@ export function RagPage() {
         </div>
 
         <div className="mt-6 rounded-atelier border border-border bg-surface p-4">
-          <div className="text-sm font-medium text-ink">查询来源</div>
+          <div className="text-sm font-medium text-ink">{UI_COPY.rag.sourcesTitle}</div>
           <div className="mt-3 flex flex-wrap gap-3">
             {(["worldbook", "outline", "chapter"] as const).map((s) => (
               <label key={s} className="flex items-center gap-2 text-sm text-ink">
@@ -1067,7 +1079,7 @@ export function RagPage() {
         </div>
 
         <section className="mt-6 rounded-atelier border border-border bg-surface p-4">
-          <div className="text-sm font-medium text-ink">查询</div>
+          <div className="text-sm font-medium text-ink">{UI_COPY.rag.queryTitle}</div>
           <div className="mt-3">
             <label className="text-xs text-subtext" htmlFor="rag-query-text">
               query_text
@@ -1118,7 +1130,7 @@ export function RagPage() {
         </section>
 
         <section className="mt-6 rounded-atelier border border-border bg-surface p-4">
-          <div className="text-sm font-medium text-ink">注入结果</div>
+          <div className="text-sm font-medium text-ink">{UI_COPY.rag.injectionTitle}</div>
           {queryResult ? (
             <div className="mt-3 text-xs text-subtext">
               <div>
@@ -1269,16 +1281,18 @@ export function RagPage() {
           open={debugOpen}
           onToggle={(e) => setDebugOpen((e.target as HTMLDetailsElement).open)}
         >
-          <summary className="cursor-pointer select-none text-sm font-medium text-ink">高级调试</summary>
+          <summary className="cursor-pointer select-none text-sm font-medium text-ink">
+            {UI_COPY.rag.advancedDebugTitle}
+          </summary>
 
           <div className="mt-3 grid gap-4">
             <div className="rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
-              默认仅展示基础信息；Rerank 配置与 Ingest/Rebuild 原始结果放在此处统一折叠。
+              默认仅展示基础信息；{UI_COPY.rag.rerankTitle} 配置与入库/重建（ingest/rebuild）原始结果放在此处统一折叠。
             </div>
 
             <div className="rounded-atelier border border-border bg-surface p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-medium text-ink">Rerank</div>
+                <div className="text-sm font-medium text-ink">{UI_COPY.rag.rerankTitle}</div>
                 <button
                   className="btn btn-secondary"
                   disabled={!projectId || settingsQuery.loading || busy}
@@ -1354,23 +1368,23 @@ export function RagPage() {
 
             <div className="grid gap-4 lg:grid-cols-2">
               <section className="rounded-atelier border border-border bg-surface p-4">
-                <div className="text-sm font-medium text-ink">Ingest result</div>
+                <div className="text-sm font-medium text-ink">{UI_COPY.rag.ingestResultTitle}</div>
                 {ingestResult ? (
                   <pre className="mt-2 max-h-80 overflow-auto text-[11px] leading-4 text-subtext">
                     {safeJson(ingestResult)}
                   </pre>
                 ) : (
-                  <div className="mt-2 text-xs text-subtext">点击 “Ingest” 后展示结果。</div>
+                  <div className="mt-2 text-xs text-subtext">点击“{UI_COPY.rag.ingest}”后展示结果。</div>
                 )}
               </section>
               <section className="rounded-atelier border border-border bg-surface p-4">
-                <div className="text-sm font-medium text-ink">Rebuild result</div>
+                <div className="text-sm font-medium text-ink">{UI_COPY.rag.rebuildResultTitle}</div>
                 {rebuildResult ? (
                   <pre className="mt-2 max-h-80 overflow-auto text-[11px] leading-4 text-subtext">
                     {safeJson(rebuildResult)}
                   </pre>
                 ) : (
-                  <div className="mt-2 text-xs text-subtext">点击 “Rebuild” 后展示结果。</div>
+                  <div className="mt-2 text-xs text-subtext">点击“{UI_COPY.rag.rebuild}”后展示结果。</div>
                 )}
               </section>
             </div>
