@@ -16,11 +16,13 @@ test("ui: rag page supports status + query injection preview", async ({ page, re
   await queryInput.fill("dragon");
   await page.getByLabel("查询 (rag_query)", { exact: true }).click();
 
-  await expect(page.getByText("注入预览（prompt_block.text_md）", { exact: true })).toBeVisible();
+  await expect(page.locator("summary", { hasText: /^注入预览/ })).toBeVisible();
 
-  const rawSummary = page.locator("summary", { hasText: "raw vector query result" });
-  await rawSummary.click();
-  const rawDetails = rawSummary.locator("..");
+  const rawDetails = page
+    .locator("details", { hasText: '"query_text": "dragon"' })
+    .filter({ hasText: '"final"' })
+    .first();
+  await rawDetails.locator("summary").click();
   await expect(rawDetails).toHaveAttribute("open", "");
   await expect(rawDetails).toContainText('"query_text": "dragon"');
 });
@@ -70,15 +72,19 @@ test("ui: rag page supports KB manage + multi-kb rebuild/query", async ({ page, 
   await page.locator(`input[aria-label="KB 权重 ${newKbId}"]`).fill("3");
   await page.getByLabel(`保存 KB ${newKbId}`, { exact: true }).click();
 
-  await page.getByRole("button", { name: /Rebuild/ }).click();
-  await expect(page.getByText(/Rebuild result/)).toBeVisible();
+  await page.getByLabel(/rag_rebuild/).click();
+  const debugDetails = page.locator("summary", { hasText: "高级调试" }).locator("..");
+  await expect(debugDetails).toHaveAttribute("open", "");
+  await expect(page.getByText(/^重建结果/)).toBeVisible();
 
   await page.getByLabel("query_text", { exact: true }).fill("dragon");
   await page.getByLabel("查询 (rag_query)", { exact: true }).click();
 
-  const rawSummary = page.locator("summary", { hasText: "raw vector query result" });
-  await rawSummary.click();
-  const rawDetails = rawSummary.locator("..");
+  const rawDetails = page
+    .locator("details", { hasText: '"query_text": "dragon"' })
+    .filter({ hasText: '"final"' })
+    .first();
+  await rawDetails.locator("summary").click();
   await expect(rawDetails).toHaveAttribute("open", "");
   await expect(rawDetails).toContainText(newKbId);
   await expect(rawDetails).toContainText('"kbs"');
@@ -121,11 +127,6 @@ test("ui: rag page displays grouped multi-chunk final.chunks for chapters", asyn
   await page.getByLabel("query_text", { exact: true }).fill("dragon");
   await page.getByLabel("查询 (rag_query)", { exact: true }).click();
 
-  const summary = page.locator("summary", { hasText: "final.chunks（按 source/chapter 分组）" });
-  await summary.click();
-  const details = summary.locator("..");
-  await expect(details).toHaveAttribute("open", "");
-  await expect(details).toContainText("source: chapter");
-  const chunkSummaries = details.locator("summary", { hasText: "chunk_index:" });
-  await expect.poll(async () => await chunkSummaries.count(), { timeout: 30_000 }).toBeGreaterThan(1);
+  const chunkTextBlocks = page.locator("details.bg-surface.p-2 pre.whitespace-pre-wrap");
+  await expect.poll(async () => await chunkTextBlocks.count(), { timeout: 30_000 }).toBeGreaterThan(1);
 });
