@@ -11,6 +11,29 @@ test("ui: core pages navigate and render", async ({ page, request }) => {
   await page.goto(`/projects/${projectId}/writing`);
   await expect(page.getByRole("button", { name: "新增章节" })).toBeVisible();
 
+  // Ensure sidebar is expanded so the advanced debug toggle is always available.
+  const expandSidebar = page.getByRole("button", { name: "展开侧边栏", exact: true });
+  if (await expandSidebar.isVisible()) await expandSidebar.click();
+
+  const advancedToggle = page.getByLabel("显示高级调试 (toggle_advanced_debug)", { exact: true });
+  await expect(advancedToggle).toBeVisible();
+
+  // Off: advanced debug pages should not be visible.
+  await advancedToggle.uncheck();
+  await expect(page.getByLabel("知识库（RAG） (nav_rag)", { exact: true })).toHaveCount(0);
+
+  const openAdvancedDebugGroup = async () => {
+    const navRag = page.getByLabel("知识库（RAG） (nav_rag)", { exact: true });
+    if (await navRag.isVisible()) return;
+
+    const sidebar = page.locator("aside").first();
+    const summary = sidebar.locator("summary", { hasText: "高级调试" }).first();
+    await expect(summary).toBeVisible();
+    await summary.scrollIntoViewIfNeeded();
+    await summary.click();
+    await expect(navRag).toBeVisible();
+  };
+
   await page.getByLabel("项目设置 (nav_settings)", { exact: true }).click();
   await expect(page.getByText("项目信息")).toBeVisible();
 
@@ -28,6 +51,30 @@ test("ui: core pages navigate and render", async ({ page, request }) => {
 
   await page.getByLabel("预览 (nav_preview)", { exact: true }).click();
   await expect(page.getByRole("button", { name: "上一章", exact: true })).toBeVisible();
+
+  // On: advanced debug pages should be reachable and selectors should be stable.
+  await advancedToggle.check();
+
+  await openAdvancedDebugGroup();
+
+  await page.getByLabel("知识库（RAG） (nav_rag)", { exact: true }).click();
+  await expect(page.getByText("Vector RAG 管理", { exact: true })).toBeVisible();
+
+  await openAdvancedDebugGroup();
+  await page.getByLabel("图谱 (nav_graph)", { exact: true }).click();
+  await expect(page.getByLabel("graph_enabled", { exact: true })).toBeVisible();
+
+  await openAdvancedDebugGroup();
+  await page.getByLabel("分形（Fractal） (nav_fractal)", { exact: true }).click();
+  await expect(page.getByText("Fractal", { exact: true })).toBeVisible();
+
+  await openAdvancedDebugGroup();
+  await page.getByLabel("结构化记忆 (nav_structured_memory)", { exact: true }).click();
+  await expect(page.getByLabel("structured_search", { exact: true })).toBeVisible();
+
+  await openAdvancedDebugGroup();
+  await page.getByLabel("任务中心 (nav_tasks)", { exact: true }).click();
+  await expect(page.getByLabel("刷新 (taskcenter_refresh)", { exact: true })).toBeVisible();
 
   // NOTE: WizardNextBar (fixed footer) may overlap the sidebar bottom; use direct navigation to keep this smoke stable.
   await page.goto(`/projects/${projectId}/export`);
