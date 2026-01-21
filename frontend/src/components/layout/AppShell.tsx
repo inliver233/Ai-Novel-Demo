@@ -33,28 +33,29 @@ import { getCurrentUserId } from "../../services/currentUser";
 import { sidebarCollapsedStorageKey } from "../../services/uiState";
 
 const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
-  ["/settings", "设定"],
-  ["/characters", "角色卡"],
-  ["/outline", "大纲"],
-  ["/wizard", "开工向导"],
-  ["/writing", "写作"],
-  ["/tasks", "任务中心"],
-  ["/structured-memory", "结构化记忆"],
-  ["/graph", "图谱"],
-  ["/fractal", "Fractal"],
-  ["/styles", "风格"],
-  ["/chapter-analysis", "标注回溯"],
-  ["/worldbook", "世界书"],
-  ["/prompts", "模型配置"],
-  ["/prompt-studio", "Prompt Studio"],
-  ["/preview", "预览"],
-  ["/export", "导出"],
+  ["/settings", UI_COPY.nav.projectSettings],
+  ["/characters", UI_COPY.nav.characters],
+  ["/outline", UI_COPY.nav.outline],
+  ["/wizard", UI_COPY.nav.wizard],
+  ["/writing", UI_COPY.nav.writing],
+  ["/tasks", UI_COPY.nav.tasks],
+  ["/structured-memory", UI_COPY.nav.structuredMemory],
+  ["/chapter-analysis", UI_COPY.nav.chapterAnalysis],
+  ["/preview", UI_COPY.nav.preview],
+  ["/export", UI_COPY.nav.export],
+
+  ["/worldbook", UI_COPY.nav.worldBook],
+  ["/graph", UI_COPY.nav.graph],
+  ["/fractal", UI_COPY.nav.fractal],
+  ["/styles", UI_COPY.nav.styles],
+  ["/prompts", UI_COPY.nav.prompts],
+  ["/prompt-studio", UI_COPY.nav.promptStudio],
 ];
 
 function resolveTitle(pathname: string): string {
-  if (pathname === "/") return "Dashboard";
+  if (pathname === "/") return UI_COPY.nav.home;
   const match = ROUTE_TITLES.find(([suffix]) => pathname.endsWith(suffix));
-  return match?.[1] ?? "ainovel Atelier";
+  return match?.[1] ?? UI_COPY.brand.appName;
 }
 
 function useSidebarCollapsed(): [boolean, (v: boolean) => void] {
@@ -172,7 +173,7 @@ export function AppShell() {
               }}
               role="dialog"
               aria-modal="true"
-              aria-label="导航菜单"
+              aria-label={UI_COPY.nav.navMenu}
             >
               <motion.aside
                 className="h-full w-[280px] shrink-0 overflow-x-hidden border-r border-border bg-surface p-4 shadow-sm"
@@ -182,12 +183,12 @@ export function AppShell() {
                 transition={reduceMotion ? { duration: 0.01 } : transition.base}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <div className="font-content text-lg">ainovel Atelier</div>
+                  <div className="font-content text-lg">{UI_COPY.brand.appName}</div>
                   <button
                     className="btn btn-secondary btn-icon"
                     onClick={closeMobileNav}
-                    aria-label="关闭导航"
-                    title="关闭导航"
+                    aria-label={UI_COPY.nav.closeNav}
+                    title={UI_COPY.nav.closeNav}
                     type="button"
                   >
                     <PanelLeftClose size={18} />
@@ -203,7 +204,7 @@ export function AppShell() {
                     <SidebarLink
                       collapsed={false}
                       icon={<LayoutDashboard size={18} />}
-                      label="Dashboard"
+                      label={UI_COPY.nav.home}
                       to="/"
                       onClick={closeMobileNav}
                     />
@@ -213,14 +214,14 @@ export function AppShell() {
                         <SidebarLink
                           collapsed={false}
                           icon={<ListChecks size={18} />}
-                          label="向导"
+                          label={UI_COPY.nav.wizard}
                           to={`/projects/${projectId}/wizard`}
                           onClick={closeMobileNav}
                         />
                         <SidebarLink
                           collapsed={false}
                           icon={<Settings size={18} />}
-                          label="设定"
+                          label={UI_COPY.nav.projectSettings}
                           to={`/projects/${projectId}/settings`}
                           onClick={closeMobileNav}
                         />
@@ -276,7 +277,7 @@ export function AppShell() {
                         <SidebarLink
                           collapsed={false}
                           icon={<Snowflake size={18} />}
-                          label="Fractal"
+                          label={UI_COPY.nav.fractal}
                           to={`/projects/${projectId}/fractal`}
                           onClick={closeMobileNav}
                         />
@@ -297,7 +298,7 @@ export function AppShell() {
                         <SidebarLink
                           collapsed={false}
                           icon={<Sparkles size={18} />}
-                          label="Prompt Studio"
+                          label={UI_COPY.nav.promptStudio}
                           to={`/projects/${projectId}/prompt-studio`}
                           onClick={closeMobileNav}
                         />
@@ -318,7 +319,7 @@ export function AppShell() {
                       </>
                     ) : (
                       <div className="rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
-                        请选择一个项目以进入编辑页。
+                        {UI_COPY.nav.chooseProjectHint}
                       </div>
                     )}
                   </nav>
@@ -356,20 +357,20 @@ export function AppShell() {
 
           <LayoutGroup id="atelier-sidebar-desktop">
             <nav className="mt-4 flex flex-col gap-1">
-              <SidebarLink collapsed={collapsed} icon={<LayoutDashboard size={18} />} label="Dashboard" to="/" />
+                  <SidebarLink collapsed={collapsed} icon={<LayoutDashboard size={18} />} label={UI_COPY.nav.home} to="/" />
               <div className="my-2 h-px bg-border" />
               {projectId ? (
                 <>
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<ListChecks size={18} />}
-                    label="向导"
+                    label={UI_COPY.nav.wizard}
                     to={`/projects/${projectId}/wizard`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<Settings size={18} />}
-                    label="设定"
+                    label={UI_COPY.nav.projectSettings}
                     to={`/projects/${projectId}/settings`}
                   />
                   <SidebarLink
@@ -417,7 +418,7 @@ export function AppShell() {
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<Snowflake size={18} />}
-                    label="Fractal"
+                    label={UI_COPY.nav.fractal}
                     to={`/projects/${projectId}/fractal`}
                   />
                   <SidebarLink
@@ -435,7 +436,7 @@ export function AppShell() {
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<Sparkles size={18} />}
-                    label="Prompt Studio"
+                    label={UI_COPY.nav.promptStudio}
                     to={`/projects/${projectId}/prompt-studio`}
                   />
                   <SidebarLink
@@ -452,18 +453,18 @@ export function AppShell() {
                   />
                 </>
               ) : (
-                <div
-                  className={clsx(
-                    "rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext",
-                    collapsed && "hidden",
-                  )}
-                >
-                  请选择一个项目以进入编辑页。
-                </div>
-              )}
-            </nav>
-          </LayoutGroup>
-        </aside>
+                  <div
+                    className={clsx(
+                      "rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext",
+                      collapsed && "hidden",
+                    )}
+                  >
+                    {UI_COPY.nav.chooseProjectHint}
+                  </div>
+                )}
+              </nav>
+            </LayoutGroup>
+          </aside>
 
         <main className="flex-1">
           <header className="border-b border-border bg-canvas">
@@ -473,8 +474,8 @@ export function AppShell() {
                   <button
                     className="btn btn-secondary btn-icon lg:hidden"
                     onClick={openMobileNav}
-                    aria-label="打开导航"
-                    title="打开导航"
+                    aria-label={UI_COPY.nav.openNav}
+                    title={UI_COPY.nav.openNav}
                     type="button"
                   >
                     <PanelLeftOpen size={18} />

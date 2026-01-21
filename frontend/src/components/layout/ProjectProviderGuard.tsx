@@ -1,6 +1,7 @@
 import { Outlet, useParams } from "react-router-dom";
 
 import { useProjects } from "../../contexts/projects";
+import { UI_COPY } from "../../lib/uiCopy";
 
 export function ProjectProviderGuard() {
   const { projectId } = useParams();
@@ -26,7 +27,7 @@ export function ProjectProviderGuard() {
     return (
       <div className="panel p-6">
         <div className="font-content text-xl">项目不存在或无权限</div>
-        <div className="mt-2 text-sm text-subtext">请返回 Dashboard 重新选择项目。</div>
+        <div className="mt-2 text-sm text-subtext">请返回{UI_COPY.nav.home}重新选择项目。</div>
       </div>
     );
   }

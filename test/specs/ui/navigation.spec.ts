@@ -11,7 +11,7 @@ test("ui: core pages navigate and render", async ({ page, request }) => {
   await page.goto(`/projects/${projectId}/writing`);
   await expect(page.getByRole("button", { name: "新增章节" })).toBeVisible();
 
-  await page.getByRole("link", { name: "设定" }).click();
+  await page.getByRole("link", { name: "项目设置" }).click();
   await expect(page.getByText("项目信息")).toBeVisible();
 
   await page.getByRole("link", { name: "角色卡" }).click();
@@ -23,7 +23,7 @@ test("ui: core pages navigate and render", async ({ page, request }) => {
   await page.getByRole("link", { name: "模型配置" }).click();
   await expect(page.getByText("Provider", { exact: true })).toBeVisible();
 
-  await page.getByRole("link", { name: "Prompt Studio" }).click();
+  await page.getByRole("link", { name: "提示词工作室" }).click();
   await expect(page.getByRole("button", { name: "一键启用推荐预设（大纲/章节）", exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "预览" }).click();

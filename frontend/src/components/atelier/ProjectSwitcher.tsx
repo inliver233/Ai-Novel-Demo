@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { useProjects } from "../../contexts/projects";
+import { UI_COPY } from "../../lib/uiCopy";
 
 export function ProjectSwitcher() {
   const { projects, loading } = useProjects();
@@ -16,9 +17,9 @@ export function ProjectSwitcher() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <div className="text-xs text-subtext">当前项目</div>
+        <div className="text-xs text-subtext">{UI_COPY.nav.currentProject}</div>
         <Link className="text-xs text-accent hover:underline" to="/">
-          Dashboard
+          {UI_COPY.nav.home}
         </Link>
       </div>
       <select
