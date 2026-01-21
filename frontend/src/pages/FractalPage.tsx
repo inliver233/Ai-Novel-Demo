@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { ApiError, apiJson } from "../services/apiClient";
 import { useToast } from "../components/ui/toast";
+import { UI_COPY } from "../lib/uiCopy";
 
 type PromptBlock = {
   identifier: string;
@@ -108,8 +109,15 @@ export function FractalPage() {
       <div className="panel p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="font-content text-2xl text-ink">Fractal</div>
-            <div className="mt-1 text-xs text-subtext">FractalMemory（deterministic + 可选 v2 摘要）预览与回放。</div>
+            <div className="font-content text-2xl text-ink">{UI_COPY.fractal.title}</div>
+            <div className="mt-1 text-xs text-subtext">
+              <span className="font-mono">{UI_COPY.fractal.tag}</span>
+              <span className="ml-2">{UI_COPY.fractal.subtitle}</span>
+            </div>
+            <div className="mt-3 rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
+              <div>{UI_COPY.fractal.usageHint}</div>
+              <div className="mt-1">{UI_COPY.fractal.riskHint}</div>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button className="btn btn-secondary" onClick={() => void loadFractal()} disabled={loading} type="button">
