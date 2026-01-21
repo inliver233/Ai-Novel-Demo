@@ -117,6 +117,32 @@ export function TaskCenterPage() {
   const changeSets = changeSetsQuery.data?.items ?? [];
   const tasks = tasksQuery.data?.items ?? [];
 
+  const changeSetSummary = useMemo(() => {
+    const out = { all: changeSets.length, proposed: 0, applied: 0, rolled_back: 0, failed: 0, other: 0 };
+    for (const it of changeSets) {
+      const s = String(it.status || "").trim();
+      if (s === "proposed") out.proposed += 1;
+      else if (s === "applied") out.applied += 1;
+      else if (s === "rolled_back") out.rolled_back += 1;
+      else if (s === "failed") out.failed += 1;
+      else out.other += 1;
+    }
+    return out;
+  }, [changeSets]);
+
+  const taskSummary = useMemo(() => {
+    const out = { all: tasks.length, queued: 0, running: 0, done: 0, failed: 0, other: 0 };
+    for (const it of tasks) {
+      const s = String(it.status || "").trim();
+      if (s === "queued") out.queued += 1;
+      else if (s === "running") out.running += 1;
+      else if (s === "done") out.done += 1;
+      else if (s === "failed") out.failed += 1;
+      else out.other += 1;
+    }
+    return out;
+  }, [tasks]);
+
   const [selected, setSelected] = useState<
     { kind: "change_set"; item: MemoryChangeSetSummary } | { kind: "task"; item: MemoryTaskSummary } | null
   >(null);
@@ -137,6 +163,38 @@ export function TaskCenterPage() {
     void refreshChangeSets();
     void refreshTasks();
   }, [refreshChangeSets, refreshTasks]);
+
+  const copyDebugInfo = useCallback(async () => {
+    if (!selected) return;
+    if (selected.kind === "change_set") {
+      const it = selected.item;
+      const lines = [
+        "[TaskCenter][ChangeSet]",
+        `id=${it.id}`,
+        `status=${String(it.status || "-")} (${humanizeChangeSetStatus(String(it.status || ""))})`,
+        `chapter_id=${it.chapter_id || "-"}`,
+        `request_id=${it.request_id || "-"}`,
+        `idempotency_key=${it.idempotency_key || "-"}`,
+        `created_at=${it.created_at || "-"}`,
+        `updated_at=${it.updated_at || "-"}`,
+      ];
+      await navigator.clipboard.writeText(lines.join("\n"));
+      return;
+    }
+
+    const t = selected.item;
+    const lines = [
+      "[TaskCenter][Task]",
+      `id=${t.id}`,
+      `kind=${t.kind}`,
+      `status=${String(t.status || "-")} (${humanizeTaskStatus(String(t.status || ""))})`,
+      `change_set_id=${t.change_set_id}`,
+      `request_id=${t.request_id || "-"}`,
+      `error_type=${t.error_type || "-"}`,
+      `error_message=${t.error_message || "-"}`,
+    ];
+    await navigator.clipboard.writeText(lines.join("\n"));
+  }, [selected]);
 
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
 
@@ -162,6 +220,13 @@ export function TaskCenterPage() {
               <div className="mt-1 text-xs text-subtext">按状态筛选；点击条目查看摘要与原始 JSON</div>
               <div className="mt-1 text-[11px] text-subtext">
                 状态说明：未应用=仅提议 | 已应用=已落库 | 已回滚=已撤销 | 失败=执行异常
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-subtext">
+                <span>总计 {changeSetSummary.all}</span>
+                <span>未应用 {changeSetSummary.proposed}</span>
+                <span>已应用 {changeSetSummary.applied}</span>
+                <span>已回滚 {changeSetSummary.rolled_back}</span>
+                <span>失败 {changeSetSummary.failed}</span>
               </div>
             </div>
             <label className="grid gap-1">
@@ -230,22 +295,39 @@ export function TaskCenterPage() {
               <div className="text-sm text-ink">任务（Tasks）</div>
               <div className="mt-1 text-xs text-subtext">失败任务会显示错误摘要与 {UI_COPY.common.requestIdLabel}</div>
               <div className="mt-1 text-[11px] text-subtext">状态说明：排队中→运行中→完成/失败（如失败可用 request_id 查后端日志）</div>
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-subtext">
+                <span>总计 {taskSummary.all}</span>
+                <span>排队中 {taskSummary.queued}</span>
+                <span>运行中 {taskSummary.running}</span>
+                <span>完成 {taskSummary.done}</span>
+                <span>失败 {taskSummary.failed}</span>
+              </div>
             </div>
-            <label className="grid gap-1">
-              <span className="text-[11px] text-subtext">状态</span>
-              <select
-                className="select"
-                aria-label="taskcenter_task_status"
-                value={taskStatus}
-                onChange={(e) => setTaskStatus(e.target.value)}
+            <div className="flex flex-wrap items-end gap-2">
+              <button
+                className="btn btn-secondary"
+                aria-label="失败任务筛选 (taskcenter_failed_only)"
+                onClick={() => setTaskStatus((prev) => (prev === "failed" ? "all" : "failed"))}
+                type="button"
               >
-                <option value="all">全部</option>
-                <option value="queued">{humanizeTaskStatus("queued")}</option>
-                <option value="running">{humanizeTaskStatus("running")}</option>
-                <option value="done">{humanizeTaskStatus("done")}</option>
-                <option value="failed">{humanizeTaskStatus("failed")}</option>
-              </select>
-            </label>
+                仅看失败
+              </button>
+              <label className="grid gap-1">
+                <span className="text-[11px] text-subtext">状态</span>
+                <select
+                  className="select"
+                  aria-label="taskcenter_task_status"
+                  value={taskStatus}
+                  onChange={(e) => setTaskStatus(e.target.value)}
+                >
+                  <option value="all">全部</option>
+                  <option value="queued">{humanizeTaskStatus("queued")}</option>
+                  <option value="running">{humanizeTaskStatus("running")}</option>
+                  <option value="done">{humanizeTaskStatus("done")}</option>
+                  <option value="failed">{humanizeTaskStatus("failed")}</option>
+                </select>
+              </label>
+            </div>
           </div>
 
           {tasksQuery.loading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
@@ -313,9 +395,14 @@ export function TaskCenterPage() {
               </div>
             ) : null}
           </div>
-          <button className="btn btn-secondary" onClick={() => setSelected(null)} type="button">
-            关闭
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button className="btn btn-secondary" onClick={() => void copyDebugInfo()} type="button">
+              复制排障信息
+            </button>
+            <button className="btn btn-secondary" onClick={() => setSelected(null)} type="button">
+              关闭
+            </button>
+          </div>
         </div>
 
         {selected ? (
