@@ -173,3 +173,49 @@ test("api: project memberships manage access (viewer/editor/remove)", async ({ r
   expect(afterRemoveJson.ok).toBe(false);
   expect(afterRemoveJson.error.code).toBe("NOT_FOUND");
 });
+
+test("api: project memberships forbid owner changes + validate role", async ({ request }) => {
+  const state = loadState();
+  const { projectId } = await bootstrapProject(request);
+
+  const getProject = await request.get(`${state.backendUrl}/api/projects/${projectId}`);
+  expect(getProject.ok()).toBeTruthy();
+  const getProjectJson = (await getProject.json()) as ApiOk<{ project: { owner_user_id: string } }>;
+  const ownerUserId = getProjectJson.data.project.owner_user_id;
+  expect(typeof ownerUserId).toBe("string");
+  expect(ownerUserId.length).toBeGreaterThan(0);
+
+  const addOwner = await request.post(`${state.backendUrl}/api/projects/${projectId}/memberships`, {
+    data: { user_id: ownerUserId, role: "viewer" },
+  });
+  expect(addOwner.status()).toBe(400);
+  const addOwnerJson = (await addOwner.json()) as ApiErr;
+  expect(addOwnerJson.ok).toBe(false);
+  expect(addOwnerJson.error.code).toBe("VALIDATION_ERROR");
+  expect(addOwnerJson.error.message).toBe("不可修改 owner membership");
+
+  const updateOwner = await request.put(`${state.backendUrl}/api/projects/${projectId}/memberships/${ownerUserId}`, {
+    data: { role: "editor" },
+  });
+  expect(updateOwner.status()).toBe(400);
+  const updateOwnerJson = (await updateOwner.json()) as ApiErr;
+  expect(updateOwnerJson.ok).toBe(false);
+  expect(updateOwnerJson.error.code).toBe("VALIDATION_ERROR");
+  expect(updateOwnerJson.error.message).toBe("不可修改 owner membership");
+
+  const deleteOwner = await request.delete(`${state.backendUrl}/api/projects/${projectId}/memberships/${ownerUserId}`);
+  expect(deleteOwner.status()).toBe(400);
+  const deleteOwnerJson = (await deleteOwner.json()) as ApiErr;
+  expect(deleteOwnerJson.ok).toBe(false);
+  expect(deleteOwnerJson.error.code).toBe("VALIDATION_ERROR");
+  expect(deleteOwnerJson.error.message).toBe("不可移除 owner membership");
+
+  const badRole = await request.post(`${state.backendUrl}/api/projects/${projectId}/memberships`, {
+    data: { user_id: "admin", role: "owner" },
+  });
+  expect(badRole.status()).toBe(400);
+  const badRoleJson = (await badRole.json()) as ApiErr;
+  expect(badRoleJson.ok).toBe(false);
+  expect(badRoleJson.error.code).toBe("VALIDATION_ERROR");
+  expect(badRoleJson.error.message).toBe("role 必须为 viewer 或 editor");
+});
