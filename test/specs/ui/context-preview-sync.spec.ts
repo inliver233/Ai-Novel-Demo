@@ -76,15 +76,21 @@ test("ui: writing ContextPreviewDrawer syncs preview params from AI generate dra
   const previewQuery = dialog.locator('textarea[name="memory_preview_query_text"]');
   await expect(previewQuery).toHaveValue("dragon");
 
-  await expect(dialog.getByText("Pack sections", { exact: true })).toBeVisible();
+  const packSummary = dialog.locator("summary", { hasText: "Pack sections" });
+  await packSummary.click();
+  const packPanel = packSummary.locator("..");
+  await expect(packPanel).toHaveAttribute("open", "");
 
   const worldbookModule = dialog.getByRole("checkbox", { name: "世界书（worldbook）", exact: true });
   await worldbookModule.uncheck();
   await dialog.getByRole("button", { name: "刷新", exact: true }).click();
 
-  const packPanel = dialog.getByText("Pack sections", { exact: true }).locator("..");
   const worldbookCard = packPanel.getByText("worldbook", { exact: true }).locator("..").locator("..");
   await expect(worldbookCard).toContainText("disabled: disabled");
+  const triggeredSummary = dialog.locator("summary", { hasText: "触发条目" });
+  await triggeredSummary.click();
+  const triggeredDetails = triggeredSummary.locator("..");
+  await expect(triggeredDetails).toHaveAttribute("open", "");
   await expect(dialog.getByText("未触发任何条目", { exact: true })).toBeVisible();
 
   await dialog.getByRole("button", { name: "同步生成设置", exact: true }).click();

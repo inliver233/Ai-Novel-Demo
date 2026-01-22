@@ -172,7 +172,7 @@ export function VectorRagDebugPanel(props: {
               | backend: {vectorResult.backend ?? "-"}
             </div>
 
-            <details open className="mt-1">
+            <details className="mt-1">
               <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
                 注入预览（prompt_block.text_md）
               </summary>
@@ -307,4 +307,3 @@ export function VectorRagDebugPanel(props: {
     </div>
   );
 }
-

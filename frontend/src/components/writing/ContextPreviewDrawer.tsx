@@ -620,6 +620,18 @@ export function ContextPreviewDrawer(props: Props) {
         </div>
       </div>
 
+      <div className="mt-4 rounded-atelier border border-border bg-surface p-3 text-[11px] text-subtext">
+        <div className="text-xs text-ink">用途</div>
+        <div className="mt-1">
+          用于预览“生成前可能注入的上下文”与调试信息（WorldBook / RAG / 结构化记忆等），帮助排查“为什么写成这样”。
+        </div>
+        <div className="mt-2 text-xs text-ink">风险</div>
+        <ul className="mt-1 list-disc pl-5">
+          <li>页面可能包含隐私/敏感内容：分享/截图前请确认，并避免公开传播</li>
+          <li>可用“下载预览 bundle”导出排障材料；按设计不应包含 API Key（分享前仍建议自行快速检索）</li>
+        </ul>
+      </div>
+
       <div className="mt-5 grid gap-4">
         <div className="panel p-3">
           <label className="flex items-center justify-between gap-3 text-sm text-ink">
@@ -753,10 +765,10 @@ export function ContextPreviewDrawer(props: Props) {
         ) : null}
 
         {memoryInjectionEnabled ? (
-          <div className="panel p-4">
-            <div className="text-sm text-ink">Pack sections</div>
+          <details className="panel p-4">
+            <summary className="ui-transition-fast cursor-pointer text-sm text-ink hover:text-ink">Pack sections</summary>
             {packLogs.length ? (
-              <div className="mt-2 grid gap-2">
+              <div className="mt-3 grid gap-2">
                 {packLogs.map((it) => (
                   <div key={it.section} className="rounded-atelier border border-border bg-surface p-2">
                     <div className="flex items-center justify-between gap-2 text-xs">
@@ -774,9 +786,9 @@ export function ContextPreviewDrawer(props: Props) {
                 ))}
               </div>
             ) : (
-              <div className="mt-2 text-sm text-subtext">No logs available.</div>
+              <div className="mt-3 text-sm text-subtext">No logs available.</div>
             )}
-          </div>
+          </details>
         ) : null}
 
         {memoryInjectionEnabled ? (

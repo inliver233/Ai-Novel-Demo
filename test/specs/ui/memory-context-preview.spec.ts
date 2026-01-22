@@ -61,7 +61,10 @@ test("ui: writing ContextPreviewDrawer supports worldbook injection toggle", asy
 
   await toggle.check();
 
-  await expect(dialog.getByText("Pack sections", { exact: true })).toBeVisible();
+  const packSummary = dialog.locator("summary", { hasText: "Pack sections" });
+  await packSummary.click();
+  const packDetails = packSummary.locator("..");
+  await expect(packDetails).toHaveAttribute("open", "");
   const storyMemoryCard = dialog.getByText("story_memory", { exact: true }).locator("..").locator("..");
   await expect(storyMemoryCard).toContainText("disabled: empty");
   await expect(dialog.getByText("semantic_history", { exact: true })).toBeVisible();
@@ -69,6 +72,10 @@ test("ui: writing ContextPreviewDrawer supports worldbook injection toggle", asy
   await expect(dialog.getByText("vector_rag", { exact: true })).toBeVisible();
 
   await expect(dialog.getByText("世界书（WorldBook）", { exact: true })).toBeVisible();
+  const triggeredSummary = dialog.locator("summary", { hasText: "触发条目" });
+  await triggeredSummary.click();
+  const triggeredDetails = triggeredSummary.locator("..");
+  await expect(triggeredDetails).toHaveAttribute("open", "");
   await expect(dialog.getByText("keyword:dragon | priority:important", { exact: true })).toBeVisible();
   await expect(dialog.getByText("constant | priority:important", { exact: true })).toBeVisible();
 

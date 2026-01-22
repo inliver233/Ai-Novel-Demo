@@ -21,7 +21,7 @@ export function WorldbookPreviewPanel(props: {
         ) : null}
       </div>
 
-      <details open className="mt-3">
+      <details className="mt-3">
         <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
           {UI_COPY.worldbook.previewTriggeredList}
         </summary>
@@ -70,4 +70,3 @@ export function WorldbookPreviewPanel(props: {
     </div>
   );
 }
-
