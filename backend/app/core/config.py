@@ -445,6 +445,12 @@ class Settings(BaseSettings):
             raise ValueError("SECRET_ENCRYPTION_KEY must be set when APP_ENV=prod")
         if self.app_env == "prod" and self.task_queue_backend != "rq":
             raise ValueError("TASK_QUEUE_BACKEND must be set to 'rq' when APP_ENV=prod")
+        if self.app_env == "prod":
+            origins = self.cors_origins_list()
+            if any(origin == "*" for origin in origins):
+                raise ValueError("CORS_ORIGINS must not contain '*' when APP_ENV=prod")
+            if any(origin.lower() == "null" for origin in origins):
+                raise ValueError("CORS_ORIGINS must not contain 'null' when APP_ENV=prod")
         if self.task_queue_backend == "rq" and not self.redis_url:
             raise ValueError("REDIS_URL must be set when TASK_QUEUE_BACKEND=rq")
         return self
