@@ -295,16 +295,16 @@ def reorder_prompt_blocks(
 
     if len(ordered_ids) != len(existing_ids):
         raise AppError.validation(
-            message=f"ordered_block_ids 必须包含该 preset 的全部 blocks（expected={len(existing_ids)} got={len(ordered_ids)}）"
+            message=f"块顺序（ordered_block_ids）必须包含该 preset 的全部 blocks（expected={len(existing_ids)} got={len(ordered_ids)}）"
         )
     if len(set(ordered_ids)) != len(ordered_ids):
-        raise AppError.validation(message="ordered_block_ids 包含重复 block_id")
+        raise AppError.validation(message="块顺序（ordered_block_ids）包含重复 block_id")
 
     ordered_set = set(ordered_ids)
     missing = existing_set - ordered_set
     extra = ordered_set - existing_set
     if missing or extra:
-        raise AppError.validation(message="ordered_block_ids 必须与该 preset 的 blocks 集合完全一致")
+        raise AppError.validation(message="块顺序（ordered_block_ids）必须与该 preset 的 blocks 集合完全一致")
 
     for idx, block_id in enumerate(ordered_ids):
         by_id[block_id].injection_order = idx

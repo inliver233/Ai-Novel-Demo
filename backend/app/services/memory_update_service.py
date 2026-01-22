@@ -761,7 +761,7 @@ def apply_memory_change_set(
             db.commit()
         except Exception:
             db.rollback()
-        raise AppError.conflict(message="Memory change set apply failed", details={"reason": "integrity_error"}) from exc
+        raise AppError.conflict(message="记忆变更集应用失败", details={"reason": "integrity_error"}) from exc
     except Exception:
         db.rollback()
         raise

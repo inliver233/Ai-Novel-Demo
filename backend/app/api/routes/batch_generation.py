@@ -47,7 +47,7 @@ def create_batch_generation_task(
     if body.after_chapter_id:
         after = require_chapter_editor(db, chapter_id=body.after_chapter_id, user_id=user_id)
         if after.project_id != project_id:
-            raise AppError.validation(message="after_chapter_id 不属于当前项目")
+            raise AppError.validation(message="起始章节（after_chapter_id）不属于当前项目")
         outline_id = after.outline_id
         start_number = int(after.number) + 1
     else:

@@ -44,7 +44,7 @@ class ProjectMembershipUpdateRole(RequestModel):
 def _normalize_membership_role(raw: str) -> str:
     role = (raw or "").strip().lower()
     if role not in ("viewer", "editor"):
-        raise AppError.validation("role must be viewer|editor")
+        raise AppError.validation("role 必须为 viewer 或 editor")
     return role
 
 

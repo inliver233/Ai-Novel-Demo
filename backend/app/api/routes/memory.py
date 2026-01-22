@@ -170,14 +170,14 @@ def resolve_story_memory_foreshadow(
     if m is None or str(m.project_id) != str(project_id):
         raise AppError.not_found()
     if not bool(getattr(m, "is_foreshadow", 0)):
-        raise AppError.validation(message="该 StoryMemory 不是 foreshadow", details={"story_memory_id": story_memory_id})
+        raise AppError.validation(message="该 StoryMemory 不是伏笔（foreshadow）", details={"story_memory_id": story_memory_id})
 
     resolved_at_chapter_id = str(body.resolved_at_chapter_id or "").strip() or None
     if resolved_at_chapter_id:
         chapter = db.get(Chapter, resolved_at_chapter_id)
         if chapter is None or str(getattr(chapter, "project_id", "")) != str(project_id):
             raise AppError.validation(
-                message="resolved_at_chapter_id 无效或不属于该 project",
+                message="回收章节（resolved_at_chapter_id）无效或不属于当前项目",
                 details={"resolved_at_chapter_id": resolved_at_chapter_id},
             )
 
@@ -584,7 +584,7 @@ def auto_propose_chapter_memory_update(
     parsed = contract.parse(llm_result.text, finish_reason=llm_result.finish_reason)
     if parsed.parse_error is not None:
         raise AppError.validation(
-            message="memory_update 输出不符合 JSON 契约",
+            message="记忆更新（memory_update）输出不符合 JSON 契约",
             details={
                 "parse_error": parsed.parse_error,
                 "warnings": parsed.warnings,

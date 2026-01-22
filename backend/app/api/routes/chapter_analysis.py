@@ -135,7 +135,7 @@ def rewrite_chapter(
     project_id = ""
 
     if not body.analysis:
-        raise AppError.validation(message="analysis 不能为空，请先完成章节分析")
+        raise AppError.validation(message="章节分析结果不能为空（analysis），请先完成章节分析")
 
     analysis_json = json.dumps(body.analysis, ensure_ascii=False, indent=2)
 

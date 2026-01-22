@@ -22,7 +22,7 @@ def llm_test(
 ) -> dict:
     request_id = request.state.request_id
     if x_llm_provider and x_llm_provider != body.provider:
-        raise AppError(code="LLM_CONFIG_ERROR", message="Header X-LLM-Provider 必须与 body.provider 一致", status_code=400)
+        raise AppError(code="LLM_CONFIG_ERROR", message="请求头 X-LLM-Provider 必须与 body.provider 一致", status_code=400)
 
     header_key = normalize_header_api_key(x_llm_api_key)
     if header_key is not None:

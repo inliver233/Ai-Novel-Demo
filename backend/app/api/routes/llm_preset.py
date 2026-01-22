@@ -120,7 +120,7 @@ def put_llm_preset(
     else:
         max_tokens = int(body.max_tokens)
         if max_tokens <= 0:
-            raise AppError.validation(message="max_tokens 必须为正整数")
+            raise AppError.validation(message="最大 tokens（max_tokens）必须为正整数")
         limit = max_output_tokens_limit(body.provider, body.model)
         row.max_tokens = min(max_tokens, limit) if limit else max_tokens
     row.presence_penalty = body.presence_penalty

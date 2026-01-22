@@ -142,7 +142,7 @@ def put_project_default_style(
     if style_id is not None:
         style = db.get(WritingStyle, style_id)
         if style is None:
-            raise AppError.validation(message="style_id 不存在")
+            raise AppError.validation(message="风格（style_id）不存在")
         if not style.is_preset and style.owner_user_id != user_id:
             raise AppError.forbidden(message="无权限使用该风格")
 
@@ -157,4 +157,3 @@ def put_project_default_style(
     db.refresh(row)
     out = ProjectDefaultStyleOut(project_id=project_id, style_id=row.style_id, updated_at=row.updated_at)
     return ok_payload(request_id=request_id, data={"default": out.model_dump()})
-
