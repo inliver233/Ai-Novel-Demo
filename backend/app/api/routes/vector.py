@@ -6,12 +6,12 @@ from pydantic import BaseModel, Field
 from app.api.deps import UserIdDep, require_project_editor, require_project_owner, require_project_viewer
 from app.core.config import settings
 from app.core.errors import AppError, ok_payload
-from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.db.session import SessionLocal
 from app.db.utils import utc_now
 from app.models.knowledge_base import KnowledgeBase
 from app.models.project_settings import ProjectSettings
 from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
+from app.services.vector_embedding_overrides import vector_embedding_overrides
 from app.services.vector_kb_service import create_kb as create_vector_kb
 from app.services.vector_kb_service import delete_kb as delete_vector_kb
 from app.services.vector_kb_service import ensure_default_kb as ensure_default_vector_kb
@@ -50,39 +50,6 @@ def _index_state(row: ProjectSettings | None) -> dict[str, object]:
         "dirty": bool(getattr(row, "vector_index_dirty", False)),
         "last_build_at": last_build_at.isoformat() if last_build_at else None,
     }
-
-
-def _vector_embedding_overrides(row: ProjectSettings | None) -> dict[str, str | None]:
-    if row is None:
-        return {}
-    out: dict[str, str | None] = {}
-    provider = str(getattr(row, "vector_embedding_provider", "") or "").strip()
-    if provider:
-        out["provider"] = provider
-    base_url = str(row.vector_embedding_base_url or "").strip()
-    if base_url:
-        out["base_url"] = base_url
-    model = str(row.vector_embedding_model or "").strip()
-    if model:
-        out["model"] = model
-    azure_deployment = str(getattr(row, "vector_embedding_azure_deployment", "") or "").strip()
-    if azure_deployment:
-        out["azure_deployment"] = azure_deployment
-    azure_api_version = str(getattr(row, "vector_embedding_azure_api_version", "") or "").strip()
-    if azure_api_version:
-        out["azure_api_version"] = azure_api_version
-    st_model = str(getattr(row, "vector_embedding_sentence_transformers_model", "") or "").strip()
-    if st_model:
-        out["sentence_transformers_model"] = st_model
-    if row.vector_embedding_api_key_ciphertext:
-        try:
-            api_key = decrypt_secret(row.vector_embedding_api_key_ciphertext).strip()
-        except SecretCryptoError:
-            api_key = ""
-        if api_key:
-            out["api_key"] = api_key
-    return out
-
 
 def _vector_rerank_config(row: ProjectSettings | None) -> dict[str, object]:
     override_enabled = row.vector_rerank_enabled if row is not None else None
@@ -158,7 +125,7 @@ def get_vector_status(request: Request, user_id: UserIdDep, project_id: str, bod
     try:
         require_project_viewer(db, project_id=project_id, user_id=user_id)
         settings_row = db.get(ProjectSettings, project_id)
-        embedding = _vector_embedding_overrides(settings_row)
+        embedding = vector_embedding_overrides(settings_row)
         rerank = _vector_rerank_config(settings_row)
         index_state = _index_state(settings_row)
     finally:
@@ -190,7 +157,7 @@ def ingest_vector_index(request: Request, user_id: UserIdDep, project_id: str, b
     try:
         require_project_editor(db, project_id=project_id, user_id=user_id)
         chunks = build_project_chunks(db=db, project_id=project_id, sources=body.sources)
-        embedding = _vector_embedding_overrides(db.get(ProjectSettings, project_id))
+        embedding = vector_embedding_overrides(db.get(ProjectSettings, project_id))
         ensure_default_vector_kb(db, project_id=project_id)
         for kid in kb_ids_unique:
             get_vector_kb(db, project_id=project_id, kb_id=kid)
@@ -242,7 +209,7 @@ def rebuild_vector_index(request: Request, user_id: UserIdDep, project_id: str, 
     try:
         require_project_editor(db, project_id=project_id, user_id=user_id)
         chunks = build_project_chunks(db=db, project_id=project_id, sources=body.sources)
-        embedding = _vector_embedding_overrides(db.get(ProjectSettings, project_id))
+        embedding = vector_embedding_overrides(db.get(ProjectSettings, project_id))
         ensure_default_vector_kb(db, project_id=project_id)
         for kid in kb_ids_unique:
             get_vector_kb(db, project_id=project_id, kb_id=kid)
@@ -320,7 +287,7 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
     try:
         require_project_viewer(db, project_id=project_id, user_id=user_id)
         settings_row = db.get(ProjectSettings, project_id)
-        embedding = _vector_embedding_overrides(settings_row)
+        embedding = vector_embedding_overrides(settings_row)
         rerank = _vector_rerank_config(settings_row)
         selected_kbs = resolve_vector_query_kbs(db, project_id=project_id, requested_kb_ids=requested_kb_ids)
         qp_cfg = parse_query_preprocessing_config(

@@ -9,10 +9,11 @@ from sqlalchemy import select
 from app.api.deps import DbDep, UserIdDep, require_generation_run_viewer, require_project_viewer
 from app.core.config import settings
 from app.core.errors import ok_payload
-from app.core.secrets import SecretCryptoError, decrypt_secret, redact_api_keys
+from app.core.secrets import redact_api_keys
 from app.models.generation_run import GenerationRun
 from app.models.project_settings import ProjectSettings
 from app.schemas.generation_runs import GenerationRunOut
+from app.services.vector_embedding_overrides import vector_embedding_overrides
 from app.services.vector_rag_service import VectorSource, query_project, vector_rag_status
 
 router = APIRouter()
@@ -36,38 +37,6 @@ def _safe_json_dict_or_none(raw: str | None) -> dict | None:
     except Exception:
         return {"_raw": raw}
     return parsed if isinstance(parsed, dict) else {"_raw": raw}
-
-
-def _vector_embedding_overrides(row: ProjectSettings | None) -> dict[str, str | None]:
-    if row is None:
-        return {}
-    out: dict[str, str | None] = {}
-    provider = str(getattr(row, "vector_embedding_provider", "") or "").strip()
-    if provider:
-        out["provider"] = provider
-    base_url = str(row.vector_embedding_base_url or "").strip()
-    if base_url:
-        out["base_url"] = base_url
-    model = str(row.vector_embedding_model or "").strip()
-    if model:
-        out["model"] = model
-    azure_deployment = str(getattr(row, "vector_embedding_azure_deployment", "") or "").strip()
-    if azure_deployment:
-        out["azure_deployment"] = azure_deployment
-    azure_api_version = str(getattr(row, "vector_embedding_azure_api_version", "") or "").strip()
-    if azure_api_version:
-        out["azure_api_version"] = azure_api_version
-    st_model = str(getattr(row, "vector_embedding_sentence_transformers_model", "") or "").strip()
-    if st_model:
-        out["sentence_transformers_model"] = st_model
-    if row.vector_embedding_api_key_ciphertext:
-        try:
-            api_key = decrypt_secret(row.vector_embedding_api_key_ciphertext).strip()
-        except SecretCryptoError:
-            api_key = ""
-        if api_key:
-            out["api_key"] = api_key
-    return out
 
 
 def _vector_rerank_config(row: ProjectSettings | None) -> dict[str, object]:
@@ -203,7 +172,7 @@ def download_debug_bundle(request: Request, db: DbDep, user_id: UserIdDep, run_i
 
     sources: list[VectorSource] = ["worldbook", "outline", "chapter"]
     settings_row = db.get(ProjectSettings, str(row.project_id))
-    embedding = _vector_embedding_overrides(settings_row)
+    embedding = vector_embedding_overrides(settings_row)
     rerank = _vector_rerank_config(settings_row)
 
     vector_rag_enabled = bool(modules.get("vector_rag", True))

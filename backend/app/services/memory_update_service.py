@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.errors import AppError
 from app.core.logging import exception_log_fields, log_event
-from app.core.secrets import SecretCryptoError, decrypt_secret
 from app.db.session import SessionLocal
 from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
@@ -30,6 +29,7 @@ from app.models.structured_memory import (
 )
 from app.schemas.memory_update import AFTER_MODEL_BY_TABLE, MemoryUpdateV1Request
 from app.services.fractal_memory_service import rebuild_fractal_memory
+from app.services.vector_embedding_overrides import vector_embedding_overrides
 from app.services.vector_rag_service import build_project_chunks, rebuild_project, vector_rag_status
 
 logger = logging.getLogger("ainovel")
@@ -767,29 +767,6 @@ def apply_memory_change_set(
         raise
 
 
-def _vector_embedding_overrides(*, db: Session, project_id: str) -> dict[str, str | None]:
-    row = db.get(ProjectSettings, project_id)
-    if row is None:
-        return {}
-
-    out: dict[str, str | None] = {}
-    base_url = str(row.vector_embedding_base_url or "").strip()
-    if base_url:
-        out["base_url"] = base_url
-    model = str(row.vector_embedding_model or "").strip()
-    if model:
-        out["model"] = model
-
-    if row.vector_embedding_api_key_ciphertext:
-        try:
-            api_key = decrypt_secret(row.vector_embedding_api_key_ciphertext).strip()
-        except SecretCryptoError:
-            api_key = ""
-        if api_key:
-            out["api_key"] = api_key
-    return out
-
-
 def _ensure_memory_tasks(
     *,
     db: Session,
@@ -896,7 +873,7 @@ def run_memory_task(*, task_id: str) -> str:
         elif kind == "vector_rebuild":
             db2 = SessionLocal()
             try:
-                embedding = _vector_embedding_overrides(db=db2, project_id=project_id)
+                embedding = vector_embedding_overrides(db2.get(ProjectSettings, project_id))
                 status = vector_rag_status(project_id=project_id, embedding=embedding)
                 if not bool(status.get("enabled")):
                     result = {"skipped": True, **status}

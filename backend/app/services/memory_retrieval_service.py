@@ -7,7 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.secrets import SecretCryptoError, decrypt_secret, redact_api_keys
+from app.core.secrets import redact_api_keys
 from app.models.chapter import Chapter
 from app.models.project_settings import ProjectSettings
 from app.models.story_memory import StoryMemory
@@ -16,6 +16,7 @@ from app.schemas.memory_pack import MemoryContextPackOut
 from app.services.fractal_memory_service import get_fractal_context
 from app.services.graph_context_service import query_graph_context
 from app.services.prompt_budget import estimate_tokens
+from app.services.vector_embedding_overrides import vector_embedding_overrides
 from app.services.vector_rag_service import query_project, vector_rag_status
 from app.services.worldbook_service import preview_worldbook_trigger
 
@@ -69,41 +70,6 @@ def _wrap_block_with_inner_limit(*, tag: str, inner: str, char_limit: int, ellip
         truncated = True
 
     return f"{prefix}{body}{suffix}", truncated
-
-
-def _vector_embedding_overrides(*, db: Session, project_id: str) -> dict[str, str | None]:
-    row = db.get(ProjectSettings, project_id)
-    if row is None:
-        return {}
-
-    out: dict[str, str | None] = {}
-    provider = str(getattr(row, "vector_embedding_provider", "") or "").strip()
-    if provider:
-        out["provider"] = provider
-    base_url = str(row.vector_embedding_base_url or "").strip()
-    if base_url:
-        out["base_url"] = base_url
-    model = str(row.vector_embedding_model or "").strip()
-    if model:
-        out["model"] = model
-    azure_deployment = str(getattr(row, "vector_embedding_azure_deployment", "") or "").strip()
-    if azure_deployment:
-        out["azure_deployment"] = azure_deployment
-    azure_api_version = str(getattr(row, "vector_embedding_azure_api_version", "") or "").strip()
-    if azure_api_version:
-        out["azure_api_version"] = azure_api_version
-    st_model = str(getattr(row, "vector_embedding_sentence_transformers_model", "") or "").strip()
-    if st_model:
-        out["sentence_transformers_model"] = st_model
-
-    if row.vector_embedding_api_key_ciphertext:
-        try:
-            api_key = decrypt_secret(row.vector_embedding_api_key_ciphertext).strip()
-        except SecretCryptoError:
-            api_key = ""
-        if api_key:
-            out["api_key"] = api_key
-    return out
 
 
 def _vector_rerank_config(*, db: Session, project_id: str) -> dict[str, object]:
@@ -412,7 +378,7 @@ def retrieve_memory_context_pack(
             }
 
     vector_query_text = (query_text or "").strip()
-    embedding_overrides = _vector_embedding_overrides(db=db, project_id=project_id)
+    embedding_overrides = vector_embedding_overrides(db.get(ProjectSettings, project_id))
     rerank_config = _vector_rerank_config(db=db, project_id=project_id)
 
     semantic_history: dict[str, Any] = {"enabled": False, "disabled_reason": "empty", "items": [], "text_md": ""}
