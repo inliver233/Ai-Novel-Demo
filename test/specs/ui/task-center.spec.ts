@@ -22,14 +22,14 @@ test("ui: task center shows change sets + tasks + details", async ({ page, reque
 
   // Create at least one change_set + task via Memory Update apply.
   await page.getByRole("button", { name: "Memory Update", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Memory Update" });
+  const dialog = page.getByRole("dialog", { name: "记忆更新（Memory Update）" });
   await expect(dialog).toBeVisible();
 
-  await dialog.getByRole("button", { name: "一键生成提议", exact: true }).click();
-  await expect(dialog.getByText("提议 diff", { exact: true })).toBeVisible({ timeout: 60_000 });
+  await dialog.getByRole("button", { name: "一键生成提议（Auto Propose）", exact: true }).click();
+  await expect(dialog.getByText("步骤 2：审核（Review）", { exact: true })).toBeVisible({ timeout: 60_000 });
 
-  await dialog.getByRole("button", { name: "Apply accepted", exact: true }).click();
-  await expect(dialog.getByText("Apply 结果", { exact: true })).toBeVisible({ timeout: 60_000 });
+  await dialog.getByRole("button", { name: "应用已接受项（Apply）", exact: true }).click();
+  await expect(dialog.getByText("应用结果（Apply Result）", { exact: true })).toBeVisible({ timeout: 60_000 });
 
   // Navigate via MemoryUpdateDrawer entry.
   await dialog.getByRole("button", { name: "任务中心", exact: true }).click();

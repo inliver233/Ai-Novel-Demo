@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { UI_COPY } from "../../lib/uiCopy";
 import { ApiError, apiJson } from "../../services/apiClient";
 import { Drawer } from "../ui/Drawer";
 import { useToast } from "../ui/toast";
@@ -94,10 +95,10 @@ function toOpsPayload(value: unknown): unknown[] {
 }
 
 function humanStatus(status: string): string {
-  if (status === "proposed") return "未应用";
-  if (status === "applied") return "已应用";
-  if (status === "rolled_back") return "已回滚";
-  if (status === "failed") return "失败";
+  if (status === "proposed") return "未应用（Proposed）";
+  if (status === "applied") return "已应用（Applied）";
+  if (status === "rolled_back") return "已回滚（Rolled Back）";
+  if (status === "failed") return "失败（Failed）";
   return status || "未知";
 }
 
@@ -130,6 +131,7 @@ export function MemoryUpdateDrawer(props: Props) {
   const toast = useToast();
   const { chapterId, onClose, open, projectId } = props;
   const titleId = useId();
+  const copy = UI_COPY.writing.memoryUpdateDrawer;
   const [inputJson, setInputJson] = useState(EXAMPLE_OPS);
   const [autoFocus, setAutoFocus] = useState("");
 
@@ -254,7 +256,7 @@ export function MemoryUpdateDrawer(props: Props) {
       return;
     }
     if (!proposeResult) {
-      toast.toastError("请先 Propose");
+      toast.toastError("请先生成提议（Propose）");
       return;
     }
     const acceptedItems = (proposeResult.items ?? []).filter((item) => accepted[item.id] !== false);
@@ -391,11 +393,9 @@ export function MemoryUpdateDrawer(props: Props) {
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="min-w-0">
             <div className="truncate text-sm text-ink" id={titleId}>
-              Memory Update
+              {copy.title}
             </div>
-            <div className="mt-0.5 truncate text-xs text-subtext">
-              Propose（生成 diff）→ 人在环审核 → Apply（单事务）
-            </div>
+            <div className="mt-0.5 truncate text-xs text-subtext">{copy.subtitle}</div>
           </div>
           <div className="flex items-center gap-2">
             <button className="btn btn-secondary" disabled={!projectId} onClick={openTaskCenter} type="button">
@@ -410,21 +410,22 @@ export function MemoryUpdateDrawer(props: Props) {
         <div className="flex-1 overflow-auto p-4">
           <div className="grid gap-3">
             <div className="rounded-atelier border border-border bg-surface p-3">
-              <div className="text-sm text-ink">输入（memory_update_v1）</div>
-              <div className="mt-1 text-xs text-subtext">支持：ops 数组 或包含 ops 字段的对象。</div>
+              <div className="text-sm text-ink">{copy.step1}</div>
+              <div className="mt-1 text-xs text-subtext">{copy.inputTitle}</div>
+              <div className="mt-0.5 text-xs text-subtext">{copy.inputHint}</div>
               <label className="mt-2 block text-xs text-subtext">
-                focus（可选）
+                {copy.focusLabel}
                 <input
                   className="input mt-1 w-full"
                   aria-label="memory_update_focus"
                   name="memory_update_focus"
                   value={autoFocus}
                   onChange={(e) => setAutoFocus(e.target.value)}
-                  placeholder="例如：只更新角色关系 / 仅新增事件"
+                  placeholder={copy.focusPlaceholder}
                 />
               </label>
               <label className="mt-2 block text-xs text-subtext">
-                memory_update_json
+                {copy.jsonLabel}
                 <textarea
                   className="textarea mt-1 min-h-40 w-full font-mono text-xs"
                   aria-label="memory_update_json"
@@ -440,7 +441,7 @@ export function MemoryUpdateDrawer(props: Props) {
                   disabled={proposeLoading}
                   type="button"
                 >
-                  {proposeLoading ? "生成中..." : "一键生成提议"}
+                  {proposeLoading ? copy.proposing : copy.autoPropose}
                 </button>
                 <button
                   className="btn btn-secondary"
@@ -448,45 +449,16 @@ export function MemoryUpdateDrawer(props: Props) {
                   disabled={proposeLoading}
                   type="button"
                 >
-                  {proposeLoading ? "Propose..." : "Propose"}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => void runApplyAccepted()}
-                  disabled={applyLoading || !proposeResult}
-                  type="button"
-                >
-                  {applyLoading ? "Apply..." : "Apply accepted"}
+                  {proposeLoading ? copy.proposing : copy.propose}
                 </button>
               </div>
 
               {proposeError ? (
                 <div className="mt-3 rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
-                  <div className="text-ink">Propose 失败</div>
+                  <div className="text-ink">{copy.proposeFailed}</div>
                   <div className="mt-1">
                     {proposeError.message} ({proposeError.code}){" "}
                     {proposeError.requestId ? `| request_id: ${proposeError.requestId}` : ""}
-                  </div>
-                </div>
-              ) : null}
-
-              {applyError ? (
-                <div className="mt-3 rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
-                  <div className="text-ink">Apply 失败</div>
-                  <div className="mt-1">
-                    {applyError.message} ({applyError.code}){" "}
-                    {applyError.requestId ? `| request_id: ${applyError.requestId}` : ""}
-                  </div>
-                  {lastApplyChangeSetId ? <div className="mt-1">change_set_id: {lastApplyChangeSetId}</div> : null}
-                  <div className="mt-2">
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => void retryApply()}
-                      disabled={applyLoading}
-                      type="button"
-                    >
-                      重试 apply
-                    </button>
                   </div>
                 </div>
               ) : null}
@@ -495,9 +467,9 @@ export function MemoryUpdateDrawer(props: Props) {
             {proposeResult ? (
               <div className="rounded-atelier border border-border bg-surface p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-sm text-ink">提议 diff</div>
+                  <div className="text-sm text-ink">{copy.step2}</div>
                   <div className="text-xs text-subtext">
-                    状态：{humanStatus(proposeResult.change_set.status)} | items: {proposeResult.items.length}
+                    {copy.reviewTitle} | 状态：{humanStatus(proposeResult.change_set.status)} | 条目：{proposeResult.items.length}
                   </div>
                 </div>
                 <div className="mt-1 text-xs text-subtext">
@@ -525,7 +497,7 @@ export function MemoryUpdateDrawer(props: Props) {
                                     checked={accepted[item.id] !== false}
                                     onChange={(e) => setAccepted((prev) => ({ ...prev, [item.id]: e.target.checked }))}
                                   />
-                                  accept
+                                  {copy.accept}
                                 </label>
                                 <div className="text-subtext">
                                   #{item.item_index} {item.op} {item.target_table}{" "}
@@ -535,17 +507,17 @@ export function MemoryUpdateDrawer(props: Props) {
 
                               <details className="mt-2">
                                 <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
-                                  diff preview (before/after)
+                                  {copy.diffPreview}
                                 </summary>
                                 <div className="mt-2 grid gap-2 md:grid-cols-2">
                                   <div>
-                                    <div className="text-[11px] text-subtext">before</div>
+                                    <div className="text-[11px] text-subtext">{copy.before}</div>
                                     <pre className="mt-1 max-h-56 overflow-auto rounded-atelier border border-border bg-surface p-2 text-[11px] text-ink">
                                       {safeJsonStringify(before) || "null"}
                                     </pre>
                                   </div>
                                   <div>
-                                    <div className="text-[11px] text-subtext">after</div>
+                                    <div className="text-[11px] text-subtext">{copy.after}</div>
                                     <pre className="mt-1 max-h-56 overflow-auto rounded-atelier border border-border bg-surface p-2 text-[11px] text-ink">
                                       {safeJsonStringify(after) || "null"}
                                     </pre>
@@ -562,29 +534,68 @@ export function MemoryUpdateDrawer(props: Props) {
               </div>
             ) : null}
 
-            {applyResult ? (
-              <div className="rounded-atelier border border-border bg-surface p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-sm text-ink">Apply 结果</div>
+            <div className="rounded-atelier border border-border bg-surface p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm text-ink">{copy.step3}</div>
+                {applyResult ? (
                   <div className="text-xs text-subtext">
                     状态：{humanStatus(applyResult.change_set.status)} {applyResult.idempotent ? "（幂等）" : ""}
                   </div>
-                </div>
-                <div className="mt-1 text-xs text-subtext">change_set_id: {applyResult.change_set.id}</div>
-                {applyResult.warnings?.length ? (
-                  <details className="mt-2">
-                    <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
-                      warnings（{applyResult.warnings.length}）
-                    </summary>
-                    <pre className="mt-2 max-h-56 overflow-auto rounded-atelier border border-border bg-surface p-2 text-[11px] text-ink">
-                      {safeJsonStringify(applyResult.warnings)}
-                    </pre>
-                  </details>
-                ) : (
-                  <div className="mt-2 text-xs text-subtext">warnings: 0</div>
-                )}
+                ) : null}
               </div>
-            ) : null}
+
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => void runApplyAccepted()}
+                  disabled={applyLoading || !proposeResult}
+                  type="button"
+                >
+                  {applyLoading ? copy.applying : copy.applyAccepted}
+                </button>
+                {!proposeResult ? <div className="text-xs text-subtext">{copy.missingProposeHint}</div> : null}
+              </div>
+
+              {applyError ? (
+                <div className="mt-3 rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
+                  <div className="text-ink">{copy.applyFailed}</div>
+                  <div className="mt-1">
+                    {applyError.message} ({applyError.code}){" "}
+                    {applyError.requestId ? `| request_id: ${applyError.requestId}` : ""}
+                  </div>
+                  {lastApplyChangeSetId ? <div className="mt-1">change_set_id: {lastApplyChangeSetId}</div> : null}
+                  <div className="mt-2">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => void retryApply()}
+                      disabled={applyLoading}
+                      type="button"
+                    >
+                      {copy.retryApply}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {applyResult ? (
+                <div className="mt-3">
+                  <div className="text-sm text-ink">{copy.applyResultTitle}</div>
+                  <div className="mt-1 text-xs text-subtext">change_set_id: {applyResult.change_set.id}</div>
+                  {applyResult.warnings?.length ? (
+                    <details className="mt-2">
+                      <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                        {copy.warnings}（{applyResult.warnings.length}）
+                      </summary>
+                      <pre className="mt-2 max-h-56 overflow-auto rounded-atelier border border-border bg-surface p-2 text-[11px] text-ink">
+                        {safeJsonStringify(applyResult.warnings)}
+                      </pre>
+                    </details>
+                  ) : (
+                    <div className="mt-2 text-xs text-subtext">{copy.warningsZero}</div>
+                  )}
+                </div>
+              ) : null}
+            </div>
 
             <div className="rounded-atelier border border-border bg-surface p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -632,7 +643,7 @@ export function MemoryUpdateDrawer(props: Props) {
                   </div>
                 </div>
               ) : (
-                <div className="mt-2 text-xs text-subtext">提示：Apply 后点“刷新”确认结构化事实已落库。</div>
+                <div className="mt-2 text-xs text-subtext">提示：应用（Apply）后点“刷新”确认结构化事实已落库。</div>
               )}
             </div>
           </div>
