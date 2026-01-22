@@ -129,6 +129,8 @@ test("api: prompt_preview contract", async ({ request }) => {
     expect(Number.isInteger(b.token_estimate)).toBe(true);
     expect(b.token_estimate).toBeGreaterThanOrEqual(0);
   }
+  expect(new Set(preview.blocks.map((b) => b.id)).size).toBe(preview.blocks.length);
+  expect(new Set(preview.blocks.map((b) => b.identifier)).size).toBe(preview.blocks.length);
 
   // render_log observability: context optimizer + unified budget summary must exist and stay shape-stable.
   expect(json.data.render_log).toBeTruthy();
