@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { UI_COPY } from "../../lib/uiCopy";
 import { ApiError, apiJson } from "../../services/apiClient";
 import { Drawer } from "../ui/Drawer";
 import { useConfirm } from "../ui/confirm";
@@ -29,6 +30,7 @@ export function ForeshadowDrawer(props: {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const titleId = useId();
+  const copy = UI_COPY.writing.foreshadowDrawer;
 
   const [loading, setLoading] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -76,12 +78,12 @@ export function ForeshadowDrawer(props: {
     async (foreshadowId: string) => {
       if (!props.projectId) return;
       const ok = await confirm.confirm({
-        title: "标记伏笔已回收？",
+        title: copy.resolveConfirmTitle,
         description: props.activeChapterId
-          ? `将记录 resolved_at_chapter_id=${props.activeChapterId}`
+          ? `将记录回收章节：${props.activeChapterId}（resolved_at_chapter_id）`
           : "将标记为已回收（resolved_at_chapter_id 为空）",
-        confirmText: "标记回收",
-        cancelText: "取消",
+        confirmText: copy.resolveConfirmText,
+        cancelText: copy.resolveCancelText,
       });
       if (!ok) return;
 
@@ -96,7 +98,7 @@ export function ForeshadowDrawer(props: {
         );
         setRequestId(res.request_id ?? null);
         setItems((prev) => prev.filter((it) => it.id !== foreshadowId));
-        toast.toastSuccess("已标记回收", res.request_id ?? undefined);
+        toast.toastSuccess(copy.resolveDoneToast, res.request_id ?? undefined);
       } catch (e) {
         const err = e as ApiError;
         setRequestId(err.requestId ?? null);
@@ -116,41 +118,51 @@ export function ForeshadowDrawer(props: {
       panelClassName="h-full w-full max-w-xl border-l border-border bg-canvas p-6 shadow-sm"
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="font-content text-2xl text-ink" id={titleId}>
-            伏笔面板
+          <div className="min-w-0">
+            <div className="font-content text-2xl text-ink" id={titleId}>
+              {copy.title}
+            </div>
+            <div className="mt-1 text-xs text-subtext">
+              {copy.openCountLabel}：{filtered.length}
+              {filtered.length === items.length ? "" : ` / ${items.length}`}
+              {hasMore ? copy.hasMoreTag : ""}
+              {requestId ? (
+                <span className="ml-2">
+                  {copy.requestIdPrefix} {requestId}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-1 text-xs text-subtext">{copy.openOnlyHint}</div>
           </div>
-          <div className="mt-1 text-xs text-subtext">
-            open_loops: {filtered.length}
-            {filtered.length === items.length ? "" : ` / ${items.length}`}
-            {hasMore ? "（has_more）" : ""}
-            {requestId ? <span className="ml-2">request_id: {requestId}</span> : null}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="btn btn-secondary"
-            disabled={!props.projectId || loading}
-            onClick={() => void fetchOpenLoops()}
-            type="button"
-          >
-            {loading ? "加载中…" : "刷新"}
-          </button>
-          <button className="btn btn-secondary" aria-label="关闭" onClick={props.onClose} type="button">
-            关闭
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="btn btn-secondary"
+              disabled={!props.projectId || loading}
+              onClick={() => void fetchOpenLoops()}
+              type="button"
+            >
+              {loading ? copy.refreshing : copy.refresh}
+            </button>
+            <button className="btn btn-secondary" aria-label="关闭" onClick={props.onClose} type="button">
+              关闭
+            </button>
         </div>
       </div>
 
       <div className="mt-4 grid gap-3">
         <label className="grid gap-1">
-          <span className="text-xs text-subtext">筛选（chapter_id / title / preview）</span>
-          <input className="input" value={filterText} onChange={(e) => setFilterText(e.target.value)} />
+          <span className="text-xs text-subtext">{copy.filterLabel}</span>
+          <input
+            className="input"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            placeholder={copy.filterPlaceholder}
+          />
         </label>
 
         {filtered.length === 0 ? (
           <div className="text-sm text-subtext">
-            暂无 open foreshadows（需要章节分析产出 foreshadows 并应用到记忆库）。
+            {copy.empty}
           </div>
         ) : (
           <div className="grid gap-2">
@@ -158,10 +170,10 @@ export function ForeshadowDrawer(props: {
               <div key={it.id} className="rounded-atelier border border-border bg-surface p-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-ink">{it.title || "（无标题）"}</div>
+                    <div className="truncate text-sm font-medium text-ink">{it.title || copy.noTitle}</div>
                     <div className="mt-1 text-[11px] text-subtext">
-                      chapter_id:{it.chapter_id || "-"} | score:{String(it.importance_score ?? 0)} | timeline:
-                      {String(it.story_timeline ?? 0)}
+                      {copy.metaChapterId}:{it.chapter_id || "-"} | {copy.metaScore}:{String(it.importance_score ?? 0)} |{" "}
+                      {copy.metaTimeline}:{String(it.story_timeline ?? 0)}
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
@@ -171,7 +183,7 @@ export function ForeshadowDrawer(props: {
                       onClick={() => navigate(`/projects/${props.projectId}/writing?chapterId=${it.chapter_id}`)}
                       type="button"
                     >
-                      跳转章节
+                      {copy.jumpChapter}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -181,7 +193,7 @@ export function ForeshadowDrawer(props: {
                       }
                       type="button"
                     >
-                      标注页
+                      {copy.annotatePage}
                     </button>
                     <button
                       className="btn btn-primary"
@@ -189,11 +201,11 @@ export function ForeshadowDrawer(props: {
                       onClick={() => void resolve(it.id)}
                       type="button"
                     >
-                      标记回收
+                      {copy.resolve}
                     </button>
                   </div>
                 </div>
-                <div className="mt-2 whitespace-pre-wrap text-xs text-subtext">{it.content_preview || "（空）"}</div>
+                <div className="mt-2 whitespace-pre-wrap text-xs text-subtext">{it.content_preview || copy.contentEmpty}</div>
               </div>
             ))}
           </div>
