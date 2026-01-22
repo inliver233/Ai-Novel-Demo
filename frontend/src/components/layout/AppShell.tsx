@@ -142,26 +142,71 @@ function SidebarLink(props: {
   );
 }
 
+const PERSISTENT_OUTLET_CACHE_MAX_ENTRIES = 3;
+const PERSISTENT_OUTLET_CACHE_WHITELIST: RegExp[] = [/^\/projects\/[^/]+\/writing$/];
+
+function isPersistentOutletCacheable(pathname: string): boolean {
+  return PERSISTENT_OUTLET_CACHE_WHITELIST.some((pattern) => pattern.test(pathname));
+}
+
+type PersistentOutletCacheState = {
+  elementsByKey: Map<string, React.ReactNode>;
+  lruKeys: string[];
+};
+
 function PersistentOutlet(props: { activeKey: string }) {
   const outlet = useOutlet();
-  const [cache, setCache] = useState<Map<string, React.ReactNode>>(() => new Map([[props.activeKey, outlet]]));
+  const activeIsCacheable = isPersistentOutletCacheable(props.activeKey);
+  const [cacheState, setCacheState] = useState<PersistentOutletCacheState>(() => ({
+    elementsByKey: activeIsCacheable ? new Map([[props.activeKey, outlet]]) : new Map(),
+    lruKeys: activeIsCacheable ? [props.activeKey] : [],
+  }));
 
-  const cacheWithActive = useMemo(() => {
-    if (cache.has(props.activeKey)) return cache;
-    const next = new Map(cache);
-    next.set(props.activeKey, outlet);
-    return next;
-  }, [cache, outlet, props.activeKey]);
+  const cacheStateWithActive = useMemo(() => {
+    if (!activeIsCacheable) return cacheState;
+
+    let nextElementsByKey = cacheState.elementsByKey;
+    let nextLruKeys = cacheState.lruKeys;
+
+    if (!nextElementsByKey.has(props.activeKey)) {
+      nextElementsByKey = new Map(nextElementsByKey);
+      nextElementsByKey.set(props.activeKey, outlet);
+    }
+
+    if (nextLruKeys[nextLruKeys.length - 1] !== props.activeKey) {
+      nextLruKeys = nextLruKeys.filter((key) => key !== props.activeKey);
+      nextLruKeys.push(props.activeKey);
+    }
+
+    while (nextLruKeys.length > PERSISTENT_OUTLET_CACHE_MAX_ENTRIES) {
+      const evictedKey = nextLruKeys[0];
+      nextLruKeys = nextLruKeys.slice(1);
+      if (nextElementsByKey.has(evictedKey)) {
+        nextElementsByKey = new Map(nextElementsByKey);
+        nextElementsByKey.delete(evictedKey);
+      }
+    }
+
+    if (nextElementsByKey === cacheState.elementsByKey && nextLruKeys === cacheState.lruKeys) return cacheState;
+    return { elementsByKey: nextElementsByKey, lruKeys: nextLruKeys };
+  }, [activeIsCacheable, cacheState, outlet, props.activeKey]);
 
   useEffect(() => {
-    if (cacheWithActive === cache) return;
-    const id = window.setTimeout(() => setCache(cacheWithActive), 0);
+    if (cacheStateWithActive === cacheState) return;
+    const id = window.setTimeout(() => setCacheState(cacheStateWithActive), 0);
     return () => window.clearTimeout(id);
-  }, [cache, cacheWithActive]);
+  }, [cacheState, cacheStateWithActive]);
 
   return (
     <>
-      {Array.from(cacheWithActive.entries()).map(([key, element]) => (
+      {activeIsCacheable ? null : (
+        <div key={props.activeKey}>
+          <PersistentOutletProvider outletKey={props.activeKey} activeKey={props.activeKey}>
+            {outlet}
+          </PersistentOutletProvider>
+        </div>
+      )}
+      {Array.from(cacheStateWithActive.elementsByKey.entries()).map(([key, element]) => (
         <div key={key} style={{ display: key === props.activeKey ? "block" : "none" }}>
           <PersistentOutletProvider outletKey={key} activeKey={props.activeKey}>
             {element}
