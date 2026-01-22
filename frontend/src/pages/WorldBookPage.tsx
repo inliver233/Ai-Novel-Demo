@@ -40,6 +40,9 @@ type WorldBookEntryForm = {
 
 const EMPTY_WORLD_BOOK_ENTRIES: WorldBookEntry[] = [];
 
+const WORLD_BOOK_ENTRY_RENDER_THRESHOLD = 150;
+const WORLD_BOOK_ENTRY_PAGE_SIZE = 100;
+
 function parseKeywords(raw: string): string[] {
   const tokens = raw
     .split(/[\n,，;；]/g)
@@ -310,6 +313,20 @@ export function WorldBookPage() {
 
     return out;
   }, [entries, searchText, sortMode]);
+
+  const [visibleEntryCount, setVisibleEntryCount] = useState(WORLD_BOOK_ENTRY_PAGE_SIZE);
+
+  const paginateEntries = filteredEntries.length > WORLD_BOOK_ENTRY_RENDER_THRESHOLD;
+
+  useEffect(() => {
+    if (!paginateEntries) return;
+    setVisibleEntryCount(WORLD_BOOK_ENTRY_PAGE_SIZE);
+  }, [paginateEntries, searchText, sortMode]);
+
+  const visibleEntries = useMemo(
+    () => (paginateEntries ? filteredEntries.slice(0, visibleEntryCount) : filteredEntries),
+    [filteredEntries, paginateEntries, visibleEntryCount],
+  );
 
   const dirty = useMemo(() => {
     if (!baseline) return false;
@@ -856,7 +873,7 @@ export function WorldBookPage() {
             {filteredEntries.length === 0 ? (
               <div className="text-sm text-subtext">{UI_COPY.worldbook.empty}</div>
             ) : (
-              filteredEntries.map((e) => {
+              visibleEntries.map((e) => {
                 const selected = bulkSelectedSet.has(e.id);
                 return (
                   <button
@@ -908,6 +925,24 @@ export function WorldBookPage() {
               })
             )}
           </div>
+
+          {paginateEntries ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-subtext">
+              <div>
+                已显示 {visibleEntries.length}/{filteredEntries.length} 条（超过 {WORLD_BOOK_ENTRY_RENDER_THRESHOLD} 条时分页渲染）
+              </div>
+              {visibleEntries.length < filteredEntries.length ? (
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setVisibleEntryCount((prev) => prev + WORLD_BOOK_ENTRY_PAGE_SIZE)}
+                  aria-label="worldbook_load_more"
+                  type="button"
+                >
+                  显示更多
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="panel p-4">
