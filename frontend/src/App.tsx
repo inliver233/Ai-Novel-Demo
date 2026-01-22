@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
 
 import { AuthGuard } from "./components/layout/AuthGuard";
@@ -7,27 +8,111 @@ import { ConfirmProvider } from "./components/ui/ConfirmProvider";
 import { ToastProvider } from "./components/ui/ToastProvider";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProjectsProvider } from "./contexts/ProjectsContext";
-import { DashboardPage } from "./pages/DashboardPage";
-import { LoginPage } from "./pages/LoginPage";
-import { ProjectWizardPage } from "./pages/ProjectWizardPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { CharactersPage } from "./pages/CharactersPage";
-import { OutlinePage } from "./pages/OutlinePage";
-import { WritingPage } from "./pages/WritingPage";
-import { TaskCenterPage } from "./pages/TaskCenterPage";
-import { StructuredMemoryPage } from "./pages/StructuredMemoryPage";
-import { ChapterAnalysisPage } from "./pages/ChapterAnalysisPage";
-import { PreviewPage } from "./pages/PreviewPage";
-import { PromptsPage } from "./pages/PromptsPage";
-import { PromptStudioPage } from "./pages/PromptStudioPage";
-import { ExportPage } from "./pages/ExportPage";
-import { GraphPage } from "./pages/GraphPage";
-import { FractalPage } from "./pages/FractalPage";
-import { StylesPage } from "./pages/StylesPage";
-import { WorldBookPage } from "./pages/WorldBookPage";
-import { RagPage } from "./pages/RagPage";
-import { AdminUsersPage } from "./pages/AdminUsersPage";
-import { NotFoundPage } from "./pages/NotFoundPage";
+
+const LoginPage = lazy(async () => {
+  const mod = await import("./pages/LoginPage");
+  return { default: mod.LoginPage };
+});
+
+const DashboardPage = lazy(async () => {
+  const mod = await import("./pages/DashboardPage");
+  return { default: mod.DashboardPage };
+});
+
+const AdminUsersPage = lazy(async () => {
+  const mod = await import("./pages/AdminUsersPage");
+  return { default: mod.AdminUsersPage };
+});
+
+const ProjectWizardPage = lazy(async () => {
+  const mod = await import("./pages/ProjectWizardPage");
+  return { default: mod.ProjectWizardPage };
+});
+
+const SettingsPage = lazy(async () => {
+  const mod = await import("./pages/SettingsPage");
+  return { default: mod.SettingsPage };
+});
+
+const CharactersPage = lazy(async () => {
+  const mod = await import("./pages/CharactersPage");
+  return { default: mod.CharactersPage };
+});
+
+const OutlinePage = lazy(async () => {
+  const mod = await import("./pages/OutlinePage");
+  return { default: mod.OutlinePage };
+});
+
+const WritingPage = lazy(async () => {
+  const mod = await import("./pages/WritingPage");
+  return { default: mod.WritingPage };
+});
+
+const TaskCenterPage = lazy(async () => {
+  const mod = await import("./pages/TaskCenterPage");
+  return { default: mod.TaskCenterPage };
+});
+
+const StructuredMemoryPage = lazy(async () => {
+  const mod = await import("./pages/StructuredMemoryPage");
+  return { default: mod.StructuredMemoryPage };
+});
+
+const ChapterAnalysisPage = lazy(async () => {
+  const mod = await import("./pages/ChapterAnalysisPage");
+  return { default: mod.ChapterAnalysisPage };
+});
+
+const PreviewPage = lazy(async () => {
+  const mod = await import("./pages/PreviewPage");
+  return { default: mod.PreviewPage };
+});
+
+const PromptsPage = lazy(async () => {
+  const mod = await import("./pages/PromptsPage");
+  return { default: mod.PromptsPage };
+});
+
+const PromptStudioPage = lazy(async () => {
+  const mod = await import("./pages/PromptStudioPage");
+  return { default: mod.PromptStudioPage };
+});
+
+const ExportPage = lazy(async () => {
+  const mod = await import("./pages/ExportPage");
+  return { default: mod.ExportPage };
+});
+
+const WorldBookPage = lazy(async () => {
+  const mod = await import("./pages/WorldBookPage");
+  return { default: mod.WorldBookPage };
+});
+
+const GraphPage = lazy(async () => {
+  const mod = await import("./pages/GraphPage");
+  return { default: mod.GraphPage };
+});
+
+const FractalPage = lazy(async () => {
+  const mod = await import("./pages/FractalPage");
+  return { default: mod.FractalPage };
+});
+
+const StylesPage = lazy(async () => {
+  const mod = await import("./pages/StylesPage");
+  return { default: mod.StylesPage };
+});
+
+const RagPage = lazy(async () => {
+  const mod = await import("./pages/RagPage");
+  return { default: mod.RagPage };
+});
+
+const NotFoundPage = lazy(async () => {
+  const mod = await import("./pages/NotFoundPage");
+  return { default: mod.NotFoundPage };
+});
 
 const router = createBrowserRouter([
   {
@@ -140,7 +225,9 @@ export default function App() {
     <ToastProvider>
       <ConfirmProvider>
         <AuthProvider>
-          <RouterProvider router={router} />
+          <Suspense fallback={<div className="p-4 text-sm text-subtext">加载中…</div>}>
+            <RouterProvider router={router} />
+          </Suspense>
         </AuthProvider>
       </ConfirmProvider>
     </ToastProvider>
