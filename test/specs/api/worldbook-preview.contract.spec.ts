@@ -62,6 +62,13 @@ test("api: worldbook preview_trigger contract + memory/retrieve includes reasons
   expect(Array.isArray(previewJson.data.triggered)).toBe(true);
   expect(typeof previewJson.data.text_md).toBe("string");
   expect(typeof previewJson.data.truncated).toBe("boolean");
+  for (const item of previewJson.data.triggered) {
+    expect(typeof item.id).toBe("string");
+    expect(item.id.length).toBeGreaterThan(0);
+    expect(typeof item.title).toBe("string");
+    expect(typeof item.reason).toBe("string");
+    expect(typeof item.priority).toBe("string");
+  }
   expect(previewJson.data.triggered.some((t) => t.reason === "constant")).toBe(true);
   expect(previewJson.data.triggered.some((t) => t.reason.includes("keyword:dragon"))).toBe(true);
 
@@ -111,7 +118,7 @@ test("api: worldbook preview_trigger contract + memory/retrieve includes reasons
   expect(triggered.some((t) => String(t.reason ?? "").includes("keyword:dragon"))).toBe(true);
 
   // Must not leak api keys or secrets (bootstrapProject uses "test-key").
-  const raw = JSON.stringify(previewJson);
+  const raw = JSON.stringify({ previewJson, aliasPreviewJson, retrieveJson });
   expect(raw).not.toContain("test-key");
   expect(raw).not.toMatch(/sk-[a-zA-Z0-9]{10,}/);
 });
