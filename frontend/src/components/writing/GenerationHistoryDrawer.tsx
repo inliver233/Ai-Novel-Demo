@@ -58,7 +58,7 @@ export function GenerationHistoryDrawer(props: Props) {
       a.click();
       a.remove();
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-      toast.toastSuccess("已下载 debug bundle", requestId);
+      toast.toastSuccess("已下载排障包", requestId);
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -165,8 +165,16 @@ export function GenerationHistoryDrawer(props: Props) {
                     onClick={() => void downloadDebugBundle()}
                     type="button"
                   >
-                    {downloading ? "下载中..." : "下载 debug bundle"}
+                    {downloading ? "下载中..." : "下载排障包"}
                   </button>
+                  <div className="mt-2 rounded-atelier border border-border bg-canvas p-3 text-[11px] text-subtext">
+                    <div className="text-xs text-ink">排障包说明</div>
+                    <ul className="mt-1 list-disc pl-5">
+                      <li>用途：定位生成失败、提示词渲染、记忆检索注入等问题</li>
+                      <li>提示：可能包含隐私/敏感内容，分享前请确认并避免公开传播</li>
+                      <li>安全：按设计不应包含 API Key；分享前仍建议自行快速检索</li>
+                    </ul>
+                  </div>
                 </div>
 
                 {memoryLog ? (

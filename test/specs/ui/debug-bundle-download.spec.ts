@@ -63,7 +63,7 @@ test("ui: download debug bundle (history + context preview)", async ({ page, req
 
   const [bundleDownload] = await Promise.all([
     page.waitForEvent("download"),
-    history.getByRole("button", { name: "下载 debug bundle", exact: true }).click(),
+    history.getByRole("button", { name: "下载排障包", exact: true }).click(),
   ]);
   await expect(bundleDownload.failure()).resolves.toBeNull();
   const bundlePath = await bundleDownload.path();
