@@ -146,3 +146,59 @@ test("api: analysis/apply rejects unknown analysis fields (fail-closed)", async 
   expect(applyJson.error.code).toBe("ANALYSIS_SCHEMA_ERROR");
   expect(Array.isArray(applyJson.error.details.unknown_fields)).toBe(true);
 });
+
+test("api: chapter rewrite returns content_md + raw_output", async ({ request }) => {
+  const state = loadState();
+  const { projectId } = await bootstrapProject(request);
+
+  const create = await request.post(`${state.backendUrl}/api/projects/${projectId}/chapters`, {
+    data: { number: 1, title: "E2E 第一章", plan: "要点 A；要点 B" },
+  });
+  expect(create.ok()).toBeTruthy();
+  const createJson = (await create.json()) as ApiOk<{ chapter: { id: string } }>;
+  const chapterId = createJson.data.chapter.id;
+
+  const contentMd = "E2E 原始正文：用于章节重写 contract。";
+  const update = await request.put(`${state.backendUrl}/api/chapters/${chapterId}`, {
+    data: { title: "E2E 第一章", plan: "要点 A；要点 B", content_md: contentMd, summary: "", status: "drafting" },
+  });
+  expect(update.ok()).toBeTruthy();
+
+  const rewrite = await request.post(`${state.backendUrl}/api/chapters/${chapterId}/rewrite`, {
+    headers: { "X-LLM-Provider": "openai_compatible" },
+    data: {
+      instruction: "E2E rewrite contract test",
+      analysis: { overall_notes: "rewrite with improvements" },
+      draft_content_md: contentMd,
+      context: {
+        include_world_setting: false,
+        include_style_guide: false,
+        include_constraints: false,
+        include_outline: false,
+        include_smart_context: false,
+        require_sequential: false,
+        character_ids: [],
+        previous_chapter: "none",
+      },
+    },
+  });
+  expect(rewrite.ok()).toBeTruthy();
+
+  const rewriteJson = (await rewrite.json()) as ApiOk<{
+    content_md: string;
+    raw_output: string;
+    generation_run_id: string;
+  }>;
+  expect(rewriteJson.ok).toBe(true);
+  expect(typeof rewriteJson.request_id).toBe("string");
+  expect(typeof rewriteJson.data.content_md).toBe("string");
+  expect(rewriteJson.data.content_md.length).toBeGreaterThan(0);
+  expect(typeof rewriteJson.data.raw_output).toBe("string");
+  expect(typeof rewriteJson.data.generation_run_id).toBe("string");
+  expect(rewriteJson.data.generation_run_id.length).toBeGreaterThan(0);
+
+  // Must not leak api keys or secrets (bootstrapProject uses "test-key").
+  const raw = JSON.stringify(rewriteJson);
+  expect(raw).not.toContain("test-key");
+  expect(raw).not.toMatch(/sk-[a-zA-Z0-9]{10,}/);
+});
