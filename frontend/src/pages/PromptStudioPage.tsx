@@ -1,166 +1,23 @@
-import clsx from "clsx";
-import { LayoutGroup, motion, useReducedMotion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
-import { transition } from "../lib/motion";
 import { ApiError, apiJson, sanitizeFilename } from "../services/apiClient";
 import type { Character, Outline, Project, ProjectSettings, PromptBlock, PromptPreset, PromptPreview } from "../types";
-
-type PresetDetails = { preset: PromptPreset; blocks: PromptBlock[] };
-
-type BlockDraft = {
-  identifier: string;
-  name: string;
-  role: string;
-  enabled: boolean;
-  template: string;
-  marker_key: string;
-  triggers: string;
-};
+import { PromptStudioPresetEditorPanel } from "./promptStudio/PromptStudioPresetEditorPanel";
+import { PromptStudioPresetListPanel } from "./promptStudio/PromptStudioPresetListPanel";
+import { PromptStudioPreviewPanel } from "./promptStudio/PromptStudioPreviewPanel";
+import type { BlockDraft, PresetDetails, PromptStudioTask } from "./promptStudio/types";
+import { formatTriggers, guessPreviewValues, parseTriggersWithValidation } from "./promptStudio/utils";
 
 const RECOMMENDED_OUTLINE_PRESET_NAME = "默认·大纲生成 v3（推荐）";
 const RECOMMENDED_CHAPTER_PRESET_NAME = "默认·章节生成 v3（推荐）";
-const TRIGGER_TOKEN_RE = /^[a-z][a-z0-9_]*$/;
-
-function formatTriggers(value: string[]): string {
-  return (value ?? []).join(", ");
-}
-
-function parseTriggersWithValidation(value: string): { triggers: string[]; invalid: string[] } {
-  const trimmed = value.trim();
-  if (!trimmed) return { triggers: [], invalid: [] };
-
-  const raw = trimmed
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const seen = new Set<string>();
-  const invalidSet = new Set<string>();
-  const triggers: string[] = [];
-
-  for (const item of raw) {
-    if (!TRIGGER_TOKEN_RE.test(item) || item.length > 64) invalidSet.add(item);
-    if (seen.has(item)) continue;
-    seen.add(item);
-    triggers.push(item);
-  }
-  return { triggers, invalid: [...invalidSet] };
-}
-
-function formatCharacters(chars: Character[]): string {
-  return chars.map((c) => `- ${c.name}${c.role ? `（${c.role}）` : ""}`).join("\n");
-}
-
-function guessPreviewValues(args: {
-  project: Project | null;
-  settings: ProjectSettings | null;
-  outline: Outline | null;
-  characters: Character[];
-}): Record<string, unknown> {
-  const projectName = args.project?.name ?? "";
-  const genre = args.project?.genre ?? "";
-  const logline = args.project?.logline ?? "";
-  const worldSetting = args.settings?.world_setting ?? "";
-  const styleGuide = args.settings?.style_guide ?? "";
-  const constraints = args.settings?.constraints ?? "";
-  const charactersText = formatCharacters(args.characters);
-  const outlineText = args.outline?.content_md ?? "";
-
-  const chapterNumber = 1;
-  const chapterTitle = "第一章";
-  const chapterPlan = "（示例要点）";
-  const chapterSummary = "（示例摘要）";
-  const instruction = "（示例指令）";
-  const previousChapter = "（示例上一章摘要）";
-  const targetWordCount = 2500;
-  const rawContent = "（示例已生成正文，用于 post_edit 预览）";
-  const chapterContentMd = "（示例章节正文，用于 chapter_analyze / chapter_rewrite）";
-  const planText = "（示例规划，可用于 plan_first 注入）";
-  const analysisJson = JSON.stringify(
-    {
-      chapter_summary: "（示例分析摘要）",
-      hooks: [{ excerpt: "（示例 excerpt）", note: "（示例 hook 备注）" }],
-      foreshadows: [],
-      plot_points: [{ beat: "（示例情节点）", excerpt: "（示例 excerpt）" }],
-      suggestions: [
-        {
-          title: "（示例建议）",
-          excerpt: "（示例 excerpt）",
-          issue: "（示例问题）",
-          recommendation: "（示例建议）",
-          priority: "medium",
-        },
-      ],
-      overall_notes: "",
-    },
-    null,
-    2,
-  );
-  const requirementsObj = { chapter_count: 12 };
-
-  const values: Record<string, unknown> = {
-    project_name: projectName,
-    genre,
-    logline,
-    world_setting: worldSetting,
-    style_guide: styleGuide,
-    constraints,
-    characters: charactersText,
-    outline: outlineText,
-    chapter_number: String(chapterNumber),
-    chapter_title: chapterTitle,
-    chapter_plan: chapterPlan,
-    chapter_summary: chapterSummary,
-    chapter_content_md: chapterContentMd,
-    analysis_json: analysisJson,
-    requirements: JSON.stringify(requirementsObj, null, 2),
-    instruction,
-    previous_chapter: previousChapter,
-    target_word_count: String(targetWordCount),
-    raw_content: rawContent,
-    story_plan: planText,
-    smart_context_recent_summaries: "（示例 smart_context_recent_summaries）",
-    smart_context_recent_full: "（示例 smart_context_recent_full）",
-    smart_context_story_skeleton: "（示例 smart_context_story_skeleton）",
-  };
-
-  values.project = {
-    name: projectName,
-    genre,
-    logline,
-    world_setting: worldSetting,
-    style_guide: styleGuide,
-    constraints,
-    characters: charactersText,
-  };
-  values.story = {
-    outline: outlineText,
-    chapter_number: chapterNumber,
-    chapter_title: chapterTitle,
-    chapter_plan: chapterPlan,
-    chapter_summary: chapterSummary,
-    previous_chapter: previousChapter,
-    plan: planText,
-    raw_content: rawContent,
-    chapter_content_md: chapterContentMd,
-    analysis_json: analysisJson,
-    smart_context_recent_summaries: "（示例 smart_context_recent_summaries）",
-    smart_context_recent_full: "（示例 smart_context_recent_full）",
-    smart_context_story_skeleton: "（示例 smart_context_story_skeleton）",
-  };
-  values.user = { instruction, requirements: requirementsObj };
-
-  return values;
-}
 
 export function PromptStudioPage() {
   const { projectId } = useParams();
   const toast = useToast();
   const confirm = useConfirm();
-  const reduceMotion = useReducedMotion();
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -179,12 +36,8 @@ export function PromptStudioPage() {
   const [presetDraftName, setPresetDraftName] = useState("");
   const [presetDraftActiveFor, setPresetDraftActiveFor] = useState<string[]>([]);
 
-  const [newPresetName, setNewPresetName] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
-  const importInputRef = useRef<HTMLInputElement | null>(null);
-  const importAllInputRef = useRef<HTMLInputElement | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string>("__all__");
 
   const [previewTask, setPreviewTask] = useState<string>("chapter_generate");
   const [preview, setPreview] = useState<PromptPreview | null>(null);
@@ -268,30 +121,34 @@ export function PromptStudioPage() {
     void loadPreset(selectedPresetId);
   }, [loadPreset, selectedPresetId]);
 
-  const createPreset = useCallback(async () => {
-    if (!projectId) return;
-    const name = newPresetName.trim();
-    if (!name) {
-      toast.toastError("请输入预设名称");
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await apiJson<{ preset: PromptPreset }>(`/api/projects/${projectId}/prompt_presets`, {
-        method: "POST",
-        body: JSON.stringify({ name, scope: "project", version: 1, active_for: [] }),
-      });
-      setNewPresetName("");
-      await reloadAll();
-      setSelectedPresetId(res.data.preset.id);
-      toast.toastSuccess("已创建预设");
-    } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    } finally {
-      setBusy(false);
-    }
-  }, [newPresetName, projectId, reloadAll, toast]);
+  const createPreset = useCallback(
+    async (rawName: string): Promise<boolean> => {
+      if (!projectId) return false;
+      const name = rawName.trim();
+      if (!name) {
+        toast.toastError("请输入预设名称");
+        return false;
+      }
+      setBusy(true);
+      try {
+        const res = await apiJson<{ preset: PromptPreset }>(`/api/projects/${projectId}/prompt_presets`, {
+          method: "POST",
+          body: JSON.stringify({ name, scope: "project", version: 1, active_for: [] }),
+        });
+        await reloadAll();
+        setSelectedPresetId(res.data.preset.id);
+        toast.toastSuccess("已创建预设");
+        return true;
+      } catch (e) {
+        const err = e as ApiError;
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [projectId, reloadAll, toast],
+  );
 
   const deletePreset = useCallback(async () => {
     if (!selectedPresetId || !selectedPreset) return;
@@ -526,8 +383,6 @@ export function PromptStudioPage() {
     [selectedPresetId, toast],
   );
 
-  const dragIdRef = useRef<string | null>(null);
-
   type ImportAllReport = {
     dry_run: boolean;
     created: number;
@@ -710,7 +565,7 @@ export function PromptStudioPage() {
       .filter((b) => b.identifier && b.error);
   }, [renderLog]);
 
-  const tasks = useMemo(
+  const tasks = useMemo<PromptStudioTask[]>(
     () => [
       { key: "outline_generate", label: "outline_generate（大纲）" },
       { key: "chapter_generate", label: "chapter_generate（章节）" },
@@ -721,33 +576,6 @@ export function PromptStudioPage() {
     ],
     [],
   );
-  const taskKeySet = useMemo(() => new Set(tasks.map((t) => t.key)), [tasks]);
-
-  const presetCategoryGroups = useMemo(() => {
-    const groups = new Map<string, PromptPreset[]>();
-    for (const p of presets) {
-      const key = String(p.category ?? "").trim() || "（未分类）";
-      const list = groups.get(key) ?? [];
-      list.push(p);
-      groups.set(key, list);
-    }
-    const ordered = [...groups.entries()];
-    ordered.sort((a, b) => a[0].localeCompare(b[0]));
-    return ordered;
-  }, [presets]);
-
-  const visiblePresetCategoryGroups = useMemo(() => {
-    if (categoryFilter === "__all__") return presetCategoryGroups;
-    return presetCategoryGroups.filter(([key]) => key === categoryFilter);
-  }, [categoryFilter, presetCategoryGroups]);
-
-  useEffect(() => {
-    if (categoryFilter === "__all__") return;
-    if (presetCategoryGroups.some(([key]) => key === categoryFilter)) return;
-    setCategoryFilter("__all__");
-  }, [categoryFilter, presetCategoryGroups]);
-
-  const showCategoryHeaders = categoryFilter === "__all__";
 
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
   if (loading) return <div className="text-subtext">加载中...</div>;
@@ -755,13 +583,13 @@ export function PromptStudioPage() {
   return (
     <div className="grid gap-6">
       <div className="panel p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-lg font-semibold">提示词工作室（beta）</div>
-              <div className="text-xs text-subtext">
-                预览通过后端渲染接口生成。{" "}
-                <Link className="underline" to={`/projects/${projectId}/prompts`}>
-                  返回模型配置
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">提示词工作室（beta）</div>
+            <div className="text-xs text-subtext">
+              预览通过后端渲染接口生成。{" "}
+              <Link className="underline" to={`/projects/${projectId}/prompts`}>
+                返回模型配置
               </Link>
             </div>
           </div>
@@ -793,650 +621,52 @@ export function PromptStudioPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px,1fr]">
-        <div className="panel p-4">
-          <div className="mb-3 text-sm font-semibold">预设列表</div>
-          <div className="grid gap-2">
-            <div className="text-xs text-subtext">新建预设</div>
-            <div className="flex gap-2">
-              <input
-                className="input"
-                placeholder="新预设名称"
-                value={newPresetName}
-                onChange={(e) => setNewPresetName(e.target.value)}
-                disabled={busy}
-              />
-              <button className="btn btn-secondary" onClick={() => void createPreset()} disabled={busy}>
-                新建
-              </button>
-            </div>
-
-            <div className="text-xs text-subtext">导入/导出（当前预设）</div>
-            <div className="flex gap-2">
-              <input
-                ref={importInputRef}
-                type="file"
-                accept="application/json"
-                className="hidden"
-                data-testid="prompt-studio-import-file"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void importPreset(file);
-                  if (importInputRef.current) importInputRef.current.value = "";
-                }}
-              />
-              <input
-                ref={importAllInputRef}
-                type="file"
-                accept="application/json"
-                className="hidden"
-                data-testid="prompt-studio-import-all-file"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void importAllPresets(file);
-                  if (importAllInputRef.current) importAllInputRef.current.value = "";
-                }}
-              />
-              <button
-                className="btn btn-secondary w-full"
-                onClick={() => importInputRef.current?.click()}
-                disabled={importBusy || busy}
-              >
-                导入
-              </button>
-              <button
-                className="btn btn-secondary w-full"
-                onClick={() => void exportPreset()}
-                disabled={busy || !selectedPresetId}
-              >
-                导出
-              </button>
-            </div>
-
-            <div className="text-xs text-subtext">导入/导出（整套）</div>
-            <div className="flex gap-2">
-              <button
-                className="btn btn-secondary w-full"
-                onClick={() => importAllInputRef.current?.click()}
-                disabled={bulkBusy || importBusy || busy}
-                type="button"
-              >
-                导入整套
-              </button>
-              <button
-                className="btn btn-secondary w-full"
-                onClick={() => void exportAllPresets()}
-                disabled={bulkBusy || busy}
-                type="button"
-              >
-                导出整套
-              </button>
-            </div>
-
-            <div className="grid gap-1">
-              <div className="text-xs text-subtext">分类</div>
-              <select
-                className="input"
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.currentTarget.value)}
-                disabled={busy || bulkBusy}
-              >
-                <option value="__all__">全部分类</option>
-                {presetCategoryGroups.map(([key]) => (
-                  <option key={key} value={key}>
-                    {key}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <LayoutGroup id="promptstudio-presets">
-              <div className="mt-2 grid gap-3">
-                {visiblePresetCategoryGroups.length ? (
-                  visiblePresetCategoryGroups.map(([category, items]) => (
-                    <div key={category}>
-                      {showCategoryHeaders ? <div className="text-xs text-subtext">{category}</div> : null}
-                      <div className={clsx("grid gap-1", showCategoryHeaders ? "mt-1" : null)}>
-                        {items.map((p) => {
-                          const active = p.id === selectedPresetId;
-                          return (
-                            <button
-                              key={p.id}
-                              className={clsx(
-                                "ui-focus-ring ui-transition-fast group relative w-full overflow-hidden rounded-atelier border px-3 py-2 text-left text-sm motion-safe:active:scale-[0.99]",
-                                active
-                                  ? "border-accent/40 text-ink"
-                                  : "border-border text-subtext hover:bg-canvas hover:text-ink",
-                              )}
-                              onClick={() => setSelectedPresetId(p.id)}
-                              type="button"
-                            >
-                              {active ? (
-                                <motion.span
-                                  layoutId="promptstudio-preset-active"
-                                  className="absolute inset-0 rounded-atelier bg-canvas"
-                                  transition={reduceMotion ? { duration: 0.01 } : transition.fast}
-                                />
-                              ) : null}
-                              <div className="relative z-10 truncate">{p.name}</div>
-                              <div className="relative z-10 mt-1 text-xs opacity-80">
-                                {(p.active_for ?? []).join(", ") || "—"}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-xs text-subtext">暂无预设</div>
-                )}
-              </div>
-            </LayoutGroup>
-
-            <div className="mt-2 text-xs text-subtext">拖拽块可调整排序；预览走后端渲染。</div>
-          </div>
-        </div>
+        <PromptStudioPresetListPanel
+          busy={busy}
+          importBusy={importBusy}
+          bulkBusy={bulkBusy}
+          presets={presets}
+          selectedPresetId={selectedPresetId}
+          setSelectedPresetId={setSelectedPresetId}
+          createPreset={createPreset}
+          exportPreset={exportPreset}
+          exportAllPresets={exportAllPresets}
+          importPreset={importPreset}
+          importAllPresets={importAllPresets}
+        />
 
         <div className="grid gap-6">
-          <div className="panel p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold">预设设置</div>
-              <div className="flex gap-2">
-                <button
-                  className="btn btn-primary"
-                  onClick={() => void savePreset()}
-                  disabled={busy || !selectedPresetId}
-                  type="button"
-                >
-                  保存预设
-                </button>
-                <button
-                  className="btn btn-ghost text-accent hover:bg-accent/10"
-                  onClick={() => void deletePreset()}
-                  disabled={busy || !selectedPresetId}
-                  type="button"
-                >
-                  删除预设
-                </button>
-              </div>
-            </div>
+          <PromptStudioPresetEditorPanel
+            busy={busy}
+            selectedPresetId={selectedPresetId}
+            tasks={tasks}
+            presetDraftName={presetDraftName}
+            setPresetDraftName={setPresetDraftName}
+            presetDraftActiveFor={presetDraftActiveFor}
+            setPresetDraftActiveFor={setPresetDraftActiveFor}
+            savePreset={savePreset}
+            deletePreset={deletePreset}
+            blocks={blocks}
+            drafts={drafts}
+            setDrafts={setDrafts}
+            addBlock={addBlock}
+            saveBlock={saveBlock}
+            deleteBlock={deleteBlock}
+            onReorder={onReorder}
+          />
 
-            <div className="grid gap-4">
-              <div className="grid gap-2">
-                <div className="text-xs text-subtext">名称</div>
-                <input
-                  className="input"
-                  value={presetDraftName}
-                  onChange={(e) => setPresetDraftName(e.target.value)}
-                  disabled={busy}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <div className="text-xs text-subtext">active_for（哪些任务使用该预设）</div>
-                <div className="flex flex-wrap gap-2">
-                  {tasks.map((t) => {
-                    const checked = presetDraftActiveFor.includes(t.key);
-                    return (
-                      <label
-                        key={t.key}
-                        className={clsx(
-                          "ui-transition-fast flex items-center gap-2 rounded-atelier border px-3 py-2 text-sm",
-                          checked
-                            ? "border-accent/40 bg-accent/10 text-ink"
-                            : "border-border bg-canvas text-subtext hover:bg-surface hover:text-ink",
-                          busy ? "opacity-60" : "cursor-pointer",
-                        )}
-                      >
-                        <input
-                          className="checkbox"
-                          type="checkbox"
-                          checked={checked}
-                          disabled={busy}
-                          onChange={(e) => {
-                            const next = new Set(presetDraftActiveFor);
-                            if (e.target.checked) next.add(t.key);
-                            else next.delete(t.key);
-                            setPresetDraftActiveFor([...next]);
-                          }}
-                        />
-                        <span>{t.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="panel p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold">提示块</div>
-              <button
-                className="btn btn-secondary"
-                onClick={() => void addBlock()}
-                disabled={busy || !selectedPresetId}
-                type="button"
-              >
-                添加块
-              </button>
-            </div>
-
-            <div className="grid gap-3">
-              {blocks.length === 0 ? <div className="text-sm text-subtext">暂无块</div> : null}
-              {blocks.map((b, idx) => {
-                const d = drafts[b.id];
-                const enabled = d?.enabled ?? b.enabled;
-                const role = d?.role ?? b.role;
-                const identifier = d?.identifier ?? b.identifier;
-                const name = d?.name ?? b.name;
-                const triggers = d?.triggers ?? formatTriggers(b.triggers ?? []);
-                const triggerValidation = parseTriggersWithValidation(triggers);
-                const triggerTokens = triggerValidation.triggers;
-                const invalidTriggers = triggerValidation.invalid;
-                const customTriggers = triggerTokens.filter((t) => !taskKeySet.has(t));
-                const markerKey = d?.marker_key ?? b.marker_key ?? "";
-                const template = d?.template ?? b.template ?? "";
-
-                return (
-                  <div
-                    key={b.id}
-                    className="surface p-3"
-                    draggable
-                    onDragStart={() => {
-                      dragIdRef.current = b.id;
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                    }}
-                    onDrop={() => {
-                      const fromId = dragIdRef.current;
-                      dragIdRef.current = null;
-                      if (!fromId || fromId === b.id) return;
-                      const ids = blocks.map((x) => x.id);
-                      const fromIdx = ids.indexOf(fromId);
-                      const toIdx = ids.indexOf(b.id);
-                      if (fromIdx < 0 || toIdx < 0) return;
-                      ids.splice(fromIdx, 1);
-                      const insertIdx = fromIdx < toIdx ? toIdx - 1 : toIdx;
-                      ids.splice(insertIdx, 0, fromId);
-                      void onReorder(ids);
-                    }}
-                    title="拖拽可调整排序"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="select-none text-subtext">≡</span>
-                        <span className="text-xs text-subtext">#{idx + 1}</span>
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            className="checkbox"
-                            type="checkbox"
-                            checked={enabled}
-                            disabled={busy}
-                            onChange={(e) =>
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [b.id]: {
-                                  identifier,
-                                  name,
-                                  role,
-                                  enabled: e.target.checked,
-                                  template,
-                                  marker_key: markerKey,
-                                  triggers,
-                                },
-                              }))
-                            }
-                          />
-                          <span className="font-semibold">{name}</span>
-                        </label>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          className="btn btn-secondary px-3 py-1 text-sm"
-                          onClick={() => void saveBlock(b.id)}
-                          disabled={busy || invalidTriggers.length > 0}
-                          type="button"
-                        >
-                          保存
-                        </button>
-                        <button
-                          className="btn btn-ghost px-3 py-1 text-sm text-accent hover:bg-accent/10"
-                          onClick={() => void deleteBlock(b.id)}
-                          disabled={busy}
-                          type="button"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 grid gap-3">
-                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                        <div className="grid gap-1">
-                          <div className="text-xs text-subtext">identifier</div>
-                          <input
-                            className="input"
-                            value={identifier}
-                            disabled={busy}
-                            onChange={(e) =>
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [b.id]: {
-                                  identifier: e.target.value,
-                                  name,
-                                  role,
-                                  enabled,
-                                  template,
-                                  marker_key: markerKey,
-                                  triggers,
-                                },
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="grid gap-1">
-                          <div className="text-xs text-subtext">role</div>
-                          <select
-                            className="select"
-                            value={role}
-                            disabled={busy}
-                            onChange={(e) =>
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [b.id]: {
-                                  identifier,
-                                  name,
-                                  role: e.target.value,
-                                  enabled,
-                                  template,
-                                  marker_key: markerKey,
-                                  triggers,
-                                },
-                              }))
-                            }
-                          >
-                            <option value="system">system</option>
-                            <option value="user">user</option>
-                            <option value="assistant">assistant</option>
-                            <option value="tool">tool</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-1">
-                        <div className="text-xs text-subtext">name</div>
-                        <input
-                          className="input"
-                          value={name}
-                          disabled={busy}
-                          onChange={(e) =>
-                            setDrafts((prev) => ({
-                              ...prev,
-                              [b.id]: {
-                                identifier,
-                                name: e.target.value,
-                                role,
-                                enabled,
-                                template,
-                                marker_key: markerKey,
-                                triggers,
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                        <div className="grid gap-2">
-                          <div className="text-xs text-subtext">triggers（按任务触发；不勾选=所有任务）</div>
-                          <div className="flex flex-wrap gap-2">
-                            {tasks.map((t) => {
-                              const checked = triggerTokens.includes(t.key);
-                              return (
-                                <label
-                                  key={t.key}
-                                  className={clsx(
-                                    "ui-transition-fast flex items-center gap-2 rounded-atelier border px-3 py-2 text-sm",
-                                    checked
-                                      ? "border-accent/40 bg-accent/10 text-ink"
-                                      : "border-border bg-canvas text-subtext hover:bg-surface hover:text-ink",
-                                    busy ? "opacity-60" : "cursor-pointer",
-                                  )}
-                                >
-                                  <input
-                                    className="checkbox"
-                                    type="checkbox"
-                                    checked={checked}
-                                    disabled={busy}
-                                    onChange={(e) => {
-                                      const next = new Set(triggerTokens);
-                                      if (e.target.checked) next.add(t.key);
-                                      else next.delete(t.key);
-                                      const nextOrdered = [
-                                        ...tasks.filter((x) => next.has(x.key)).map((x) => x.key),
-                                        ...customTriggers.filter((x) => next.has(x)),
-                                      ];
-                                      setDrafts((prev) => ({
-                                        ...prev,
-                                        [b.id]: {
-                                          identifier,
-                                          name,
-                                          role,
-                                          enabled,
-                                          template,
-                                          marker_key: markerKey,
-                                          triggers: formatTriggers(nextOrdered),
-                                        },
-                                      }));
-                                    }}
-                                  />
-                                  <span>{t.key}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                          <div className="grid gap-1">
-                            <div className="text-xs text-subtext">triggers（高级：逗号分隔；可自定义）</div>
-                            <input
-                              className="input"
-                              value={triggers}
-                              disabled={busy}
-                              onChange={(e) =>
-                                setDrafts((prev) => ({
-                                  ...prev,
-                                  [b.id]: {
-                                    identifier,
-                                    name,
-                                    role,
-                                    enabled,
-                                    template,
-                                    marker_key: markerKey,
-                                    triggers: e.target.value,
-                                  },
-                                }))
-                              }
-                              placeholder="chapter_generate, outline_generate"
-                            />
-                            {customTriggers.length ? (
-                              <div className="text-xs text-subtext">自定义：{customTriggers.join(", ")}</div>
-                            ) : null}
-                            {invalidTriggers.length ? (
-                              <div className="text-xs text-accent">无效 triggers：{invalidTriggers.join(", ")}</div>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div className="grid gap-1">
-                          <div className="text-xs text-subtext">marker_key（可空）</div>
-                          <input
-                            className="input"
-                            value={markerKey}
-                            disabled={busy}
-                            onChange={(e) =>
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [b.id]: {
-                                  identifier,
-                                  name,
-                                  role,
-                                  enabled,
-                                  template,
-                                  marker_key: e.target.value,
-                                  triggers,
-                                },
-                              }))
-                            }
-                            placeholder="story.outline / user.instruction / ..."
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid gap-1">
-                        <div className="text-xs text-subtext">template</div>
-                        <textarea
-                          className="textarea atelier-mono min-h-[140px] resize-y py-2 text-xs"
-                          value={template}
-                          disabled={busy}
-                          onChange={(e) =>
-                            setDrafts((prev) => ({
-                              ...prev,
-                              [b.id]: {
-                                identifier,
-                                name,
-                                role,
-                                enabled,
-                                template: e.target.value,
-                                marker_key: markerKey,
-                                triggers,
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="panel p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-sm font-semibold">预览（后端渲染）</div>
-              <div className="flex gap-2">
-                <select
-                  className="select w-auto"
-                  value={previewTask}
-                  onChange={(e) => setPreviewTask(e.target.value)}
-                  disabled={busy}
-                >
-                  {tasks.map((t) => (
-                    <option key={t.key} value={t.key}>
-                      {t.key}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => void runPreview()}
-                  disabled={previewLoading || busy || !selectedPresetId}
-                  type="button"
-                >
-                  {previewLoading ? "渲染中…" : "渲染预览"}
-                </button>
-              </div>
-            </div>
-
-            {preview ? (
-              <div className="grid gap-3">
-                {templateErrors.length ? (
-                  <div className="rounded-atelier border border-border bg-surface/50 p-3 text-xs">
-                    <div className="font-semibold">模板渲染错误</div>
-                    <div className="mt-2 grid gap-1 text-subtext">
-                      {templateErrors.map((item) => (
-                        <div key={`${item.identifier}:${item.error}`}>
-                          <span className="font-mono text-ink">{item.identifier}</span>
-                          <span className="text-subtext">：{item.error}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {preview.missing?.length ? (
-                  <div className="rounded-atelier border border-border bg-surface/50 p-3 text-xs">
-                    <div className="font-semibold">缺失变量</div>
-                    <div className="mt-1 text-subtext">{preview.missing.join(", ")}</div>
-                  </div>
-                ) : null}
-
-                <div className="rounded-atelier border border-border bg-surface/50 p-3 text-xs">
-                  <div className="font-semibold">Token 估算</div>
-                  <div className="mt-1 text-subtext">
-                    总计：{preview.prompt_tokens_estimate ?? 0}
-                    {preview.prompt_budget_tokens ? ` / 预算：${preview.prompt_budget_tokens}` : ""}
-                  </div>
-                </div>
-
-                {renderLog ? (
-                  <details className="rounded-atelier border border-border bg-surface/50 p-3">
-                    <summary className="ui-transition-fast cursor-pointer text-sm hover:text-ink">
-                      查看 render_log（裁剪/原因/错误）
-                    </summary>
-                    <pre className="mt-2 max-h-[260px] overflow-auto whitespace-pre-wrap break-words rounded-atelier border border-border bg-surface p-3 text-xs">
-                      {JSON.stringify(renderLog, null, 2)}
-                    </pre>
-                  </details>
-                ) : null}
-
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                  <div className="grid gap-1">
-                    <div className="text-xs text-subtext">system</div>
-                    <textarea
-                      readOnly
-                      className="textarea atelier-mono min-h-[180px] resize-y bg-surface py-2 text-xs"
-                      value={preview.system}
-                    />
-                  </div>
-                  <div className="grid gap-1">
-                    <div className="text-xs text-subtext">user</div>
-                    <textarea
-                      readOnly
-                      className="textarea atelier-mono min-h-[180px] resize-y bg-surface py-2 text-xs"
-                      value={preview.user}
-                    />
-                  </div>
-                </div>
-
-                <details className="rounded-atelier border border-border bg-surface/50 p-3">
-                  <summary className="ui-transition-fast cursor-pointer text-sm hover:text-ink">
-                    查看分块渲染结果
-                  </summary>
-                  <div className="mt-3 grid gap-2">
-                    {(preview.blocks ?? []).map((pb) => (
-                      <div key={pb.id} className="surface p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-sm font-semibold">
-                            {pb.identifier} <span className="text-xs text-subtext">({pb.role})</span>
-                          </div>
-                          <div className="text-xs text-subtext">
-                            tokens≈{pb.token_estimate ?? 0}
-                            {pb.missing?.length ? ` · missing: ${pb.missing.join(", ")}` : ""}
-                          </div>
-                        </div>
-                        <pre className="mt-2 max-h-[260px] overflow-auto whitespace-pre-wrap break-words rounded-atelier border border-border bg-surface p-3 text-xs">
-                          {pb.text}
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              </div>
-            ) : (
-              <div className="text-sm text-subtext">选择任务并点击“渲染预览”。</div>
-            )}
-          </div>
+          <PromptStudioPreviewPanel
+            busy={busy}
+            selectedPresetId={selectedPresetId}
+            previewTask={previewTask}
+            setPreviewTask={setPreviewTask}
+            tasks={tasks}
+            previewLoading={previewLoading}
+            runPreview={runPreview}
+            preview={preview}
+            templateErrors={templateErrors}
+            renderLog={renderLog}
+          />
         </div>
       </div>
     </div>
