@@ -58,4 +58,9 @@ test("api: memory/retrieve returns stable pack structure", async ({ request }) =
   for (const key of ["worldbook", "story_memory", "semantic_history", "foreshadow_open_loops", "structured", "vector_rag", "graph", "fractal"] as const) {
     expect(sections.has(key)).toBe(true);
   }
+
+  // Must not leak api keys (bootstrapProject uses "test-key").
+  const raw = JSON.stringify(json);
+  expect(raw).not.toContain("test-key");
+  expect(raw).not.toMatch(/sk-[a-zA-Z0-9]{10,}/);
 });

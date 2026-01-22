@@ -96,4 +96,9 @@ test("api: memory/preview accepts modules + budget_overrides and returns stable 
   expect(smLog).toBeTruthy();
   expect(smLog?.budget_source).toBe("override");
   expect(smLog?.budget_char_limit).toBe(456);
+
+  // Must not leak api keys (bootstrapProject uses "test-key").
+  const raw = JSON.stringify(json);
+  expect(raw).not.toContain("test-key");
+  expect(raw).not.toMatch(/sk-[a-zA-Z0-9]{10,}/);
 });
