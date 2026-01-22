@@ -88,6 +88,25 @@ test("api: chapter_generate (non-stream) + generation_runs contract", async ({ r
   expect(getJson.data.run.project_id).toBe(projectId);
   expect(getJson.data.run.chapter_id).toBe(chapterId);
 
+  const bundle = await request.get(`${state.backendUrl}/api/generation_runs/${genJson.data.generation_run_id}/debug_bundle`);
+  expect(bundle.ok()).toBeTruthy();
+  const bundleRaw = await bundle.text();
+  const bundleJson = JSON.parse(bundleRaw) as {
+    schema_version: string;
+    run?: { id?: string };
+    prompt?: { render_log?: unknown };
+    memory_retrieval_log?: unknown;
+    vector_rag?: unknown;
+  };
+  expect(bundleJson.schema_version).toBe("debug_bundle_v1");
+  expect(bundleJson.run?.id).toBe(genJson.data.generation_run_id);
+  expect(bundleJson.prompt).toBeTruthy();
+  expect(bundleJson.prompt).toHaveProperty("render_log");
+  expect(bundleJson).toHaveProperty("vector_rag");
+  expect(bundleJson).toHaveProperty("memory_retrieval_log");
+
   // Must not leak api keys (bootstrapProject uses "test-key").
   expect(JSON.stringify(getJson)).not.toContain("test-key");
+  expect(bundleRaw).not.toContain("test-key");
+  expect(bundleRaw).not.toMatch(/sk-[a-zA-Z0-9]{10,}/);
 });
