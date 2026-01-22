@@ -443,6 +443,8 @@ class Settings(BaseSettings):
     def _validate_crypto_config(self) -> "Settings":
         if self.app_env == "prod" and not self.secret_encryption_key:
             raise ValueError("SECRET_ENCRYPTION_KEY must be set when APP_ENV=prod")
+        if self.app_env == "prod" and self.auth_dev_fallback_user_id:
+            raise ValueError("AUTH_DEV_FALLBACK_USER_ID must be empty when APP_ENV=prod")
         if self.app_env == "prod" and self.task_queue_backend != "rq":
             raise ValueError("TASK_QUEUE_BACKEND must be set to 'rq' when APP_ENV=prod")
         if self.app_env == "prod":
