@@ -24,7 +24,8 @@ test("ui: writing generate shows validation error toast and keeps editor content
   await page.getByRole("button", { name: "AI 生成", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: "AI 生成", exact: true });
   await expect(drawer).toBeVisible();
-  await drawer.getByRole("checkbox", { name: "流式生成（beta）" }).uncheck();
+  await drawer.getByRole("button", { name: "高级参数", exact: true }).click();
+  await drawer.getByRole("checkbox", { name: "流式生成（beta）", exact: true }).uncheck();
 
   await page.route(`**/api/chapters/${chapterId}/generate`, async (route) => {
     await route.fulfill({

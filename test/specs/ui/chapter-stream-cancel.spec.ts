@@ -22,7 +22,8 @@ test("ui: chapter stream can be canceled and reverts editor", async ({ page, req
   const drawer = page.getByRole("dialog", { name: "AI 生成", exact: true });
   await expect(drawer).toBeVisible();
 
-  await drawer.getByRole("checkbox", { name: "流式生成（beta）" }).check();
+  await drawer.getByRole("button", { name: "高级参数", exact: true }).click();
+  await drawer.getByRole("checkbox", { name: "流式生成（beta）", exact: true }).check();
   await drawer.locator('textarea[name="instruction"]').fill("E2E_LONG_STREAM");
 
   await drawer.getByRole("button", { name: "生成", exact: true }).click();
@@ -35,4 +36,3 @@ test("ui: chapter stream can be canceled and reverts editor", async ({ page, req
   await expect(page.getByText("已取消生成")).toBeVisible();
   await expect(content).toHaveValue("");
 });
-

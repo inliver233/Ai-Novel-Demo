@@ -32,9 +32,10 @@ test("ui: select style -> generate + post_edit_sanitize -> replay style_resoluti
   const drawer = page.getByRole("dialog", { name: "AI 生成", exact: true });
   await expect(drawer).toBeVisible();
 
-  await drawer.getByRole("checkbox", { name: "流式生成（beta）" }).uncheck();
-  await drawer.getByRole("checkbox", { name: "润色（post_edit）" }).check();
-  await drawer.getByRole("checkbox", { name: "去味/一致性修复（post_edit_sanitize）" }).check();
+  await drawer.getByRole("button", { name: "高级参数", exact: true }).click();
+  await drawer.getByRole("checkbox", { name: "流式生成（beta）", exact: true }).uncheck();
+  await drawer.getByRole("checkbox", { name: "润色", exact: true }).check();
+  await drawer.getByRole("checkbox", { name: "去味/一致性修复", exact: true }).check();
 
   const styleSelect = drawer.getByLabel("gen_style_id", { exact: true });
   await expect(styleSelect).toBeVisible();

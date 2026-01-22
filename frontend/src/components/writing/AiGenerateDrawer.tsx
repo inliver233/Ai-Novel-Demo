@@ -36,12 +36,14 @@ export function AiGenerateDrawer(props: Props) {
   const { generating, onClose, open } = props;
   const streamProviderSupported = !!props.preset && props.preset.provider.startsWith("openai");
   const titleId = useId();
+  const advancedPanelId = useId();
 
   const [stylesLoading, setStylesLoading] = useState(false);
   const [presets, setPresets] = useState<WritingStyle[]>([]);
   const [userStyles, setUserStyles] = useState<WritingStyle[]>([]);
   const [projectDefaultStyleId, setProjectDefaultStyleId] = useState<string | null>(null);
   const [stylesError, setStylesError] = useState<ApiError | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const allStyles = useMemo(() => [...presets, ...userStyles], [presets, userStyles]);
   const projectDefaultStyle = useMemo(
@@ -59,6 +61,11 @@ export function AiGenerateDrawer(props: Props) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [generating, onClose, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setAdvancedOpen(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -124,78 +131,80 @@ export function AiGenerateDrawer(props: Props) {
 
       <div className="mt-5 grid gap-4">
         <div className="panel p-3">
-          <label className="flex items-center justify-between gap-3 text-sm text-ink">
-            <span>流式生成（beta）</span>
-            <input
-              className="checkbox"
-              checked={props.genForm.stream}
-              disabled={props.generating}
-              name="stream"
-              onChange={(e) => {
-                const checked = e.target.checked;
-                props.setGenForm((v) => ({ ...v, stream: checked }));
-              }}
-              type="checkbox"
-            />
-          </label>
+          <div className="text-sm font-medium text-ink">基础生成</div>
+          <div className="mt-3 grid gap-3">
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">用户指令</span>
+              <textarea
+                className="textarea atelier-content"
+                disabled={props.generating}
+                name="instruction"
+                rows={5}
+                value={props.genForm.instruction}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  props.setGenForm((v) => ({ ...v, instruction: value }));
+                }}
+              />
+            </label>
 
-          {props.preset && props.genForm.stream && !streamProviderSupported ? (
-            <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-              不支持流式，生成时会自动回退非流式生成
-            </div>
-          ) : null}
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">目标字数（中文按字数=字符数）</span>
+              <input
+                className="input"
+                disabled={props.generating}
+                min={100}
+                name="target_word_count"
+                type="number"
+                value={props.genForm.target_word_count ?? ""}
+                onChange={(e) => {
+                  const next = e.currentTarget.valueAsNumber;
+                  props.setGenForm((v) => ({ ...v, target_word_count: Number.isNaN(next) ? null : next }));
+                }}
+              />
+            </label>
 
-          <label className="mt-2 flex items-center justify-between gap-3 text-sm text-ink">
-            <span>先生成规划（plan_first）</span>
-            <input
-              className="checkbox"
-              checked={props.genForm.plan_first}
-              disabled={props.generating}
-              name="plan_first"
-              onChange={(e) => {
-                const checked = e.target.checked;
-                props.setGenForm((v) => ({ ...v, plan_first: checked }));
-              }}
-              type="checkbox"
-            />
-          </label>
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">风格</span>
+              <select
+                className="select"
+                disabled={props.generating || stylesLoading}
+                name="style_id"
+                value={props.genForm.style_id ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  props.setGenForm((v) => ({ ...v, style_id: value ? value : null }));
+                }}
+                aria-label="gen_style_id"
+              >
+                <option value="">自动（项目默认 → settings fallback）</option>
+                <optgroup label="系统预设">
+                  {presets.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="我的风格">
+                  {userStyles.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              <div className="text-[11px] text-subtext">
+                项目默认：{projectDefaultStyle ? projectDefaultStyle.name : "（未设置）"}
+                {stylesError ? ` | 加载失败：${stylesError.code}` : ""}
+              </div>
+            </label>
+          </div>
+        </div>
 
-          <label className="mt-2 flex items-center justify-between gap-3 text-sm text-ink">
-            <span>润色（post_edit）</span>
-            <input
-              className="checkbox"
-              checked={props.genForm.post_edit}
-              disabled={props.generating}
-              name="post_edit"
-              onChange={(e) => {
-                const checked = e.target.checked;
-                props.setGenForm((v) => ({
-                  ...v,
-                  post_edit: checked,
-                  post_edit_sanitize: checked ? v.post_edit_sanitize : false,
-                }));
-              }}
-              type="checkbox"
-            />
-          </label>
+        <div className="panel p-3">
+          <div className="text-sm font-medium text-ink">记忆注入</div>
 
-          <label className="mt-2 flex items-center justify-between gap-3 text-sm text-ink">
-            <span>去味/一致性修复（post_edit_sanitize）</span>
-            <input
-              className="checkbox"
-              checked={props.genForm.post_edit_sanitize}
-              disabled={props.generating || !props.genForm.post_edit}
-              name="post_edit_sanitize"
-              onChange={(e) => {
-                const checked = e.target.checked;
-                props.setGenForm((v) => ({ ...v, post_edit_sanitize: checked }));
-              }}
-              type="checkbox"
-            />
-          </label>
-          <div className="mt-1 text-[11px] text-subtext">失败会降级保留原文，并记录原因。</div>
-
-          <div className="mt-2">
+          <div className="mt-3">
             <label className="flex items-center justify-between gap-3 text-sm text-ink">
               <span>{UI_COPY.writing.memoryInjectionToggle}</span>
               <input
@@ -331,57 +340,6 @@ export function AiGenerateDrawer(props: Props) {
               </div>
             ) : null}
           </div>
-
-          <label className="grid gap-1">
-            <span className="text-xs text-subtext">目标字数（中文按字数=字符数）</span>
-            <input
-              className="input"
-              disabled={props.generating}
-              min={100}
-              name="target_word_count"
-              type="number"
-              value={props.genForm.target_word_count ?? ""}
-              onChange={(e) => {
-                const next = e.currentTarget.valueAsNumber;
-                props.setGenForm((v) => ({ ...v, target_word_count: Number.isNaN(next) ? null : next }));
-              }}
-            />
-          </label>
-
-          <label className="grid gap-1">
-            <span className="text-xs text-subtext">风格（style_id）</span>
-            <select
-              className="select"
-              disabled={props.generating || stylesLoading}
-              name="style_id"
-              value={props.genForm.style_id ?? ""}
-              onChange={(e) => {
-                const value = e.target.value;
-                props.setGenForm((v) => ({ ...v, style_id: value ? value : null }));
-              }}
-              aria-label="gen_style_id"
-            >
-              <option value="">自动（项目默认 → settings fallback）</option>
-              <optgroup label="系统预设">
-                {presets.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="我的风格">
-                {userStyles.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-            <div className="text-[11px] text-subtext">
-              项目默认：{projectDefaultStyle ? projectDefaultStyle.name : "（未设置）"}
-              {stylesError ? ` | 加载失败：${stylesError.code}` : ""}
-            </div>
-          </label>
         </div>
 
         {props.genForm.stream && props.generating && props.streamProgress ? (
@@ -406,22 +364,10 @@ export function AiGenerateDrawer(props: Props) {
           </div>
         ) : null}
 
-        <label className="grid gap-1">
-          <span className="text-xs text-subtext">用户指令</span>
-          <textarea
-            className="textarea atelier-content"
-            disabled={props.generating}
-            name="instruction"
-            rows={5}
-            value={props.genForm.instruction}
-            onChange={(e) => {
-              const value = e.target.value;
-              props.setGenForm((v) => ({ ...v, instruction: value }));
-            }}
-          />
-        </label>
-
-        <div className="grid gap-2">
+        <div className="panel p-3">
+          <div className="text-sm font-medium text-ink">上下文</div>
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-2">
           <div className="text-xs text-subtext">上下文注入</div>
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
@@ -507,9 +453,9 @@ export function AiGenerateDrawer(props: Props) {
             />
             严格顺序
           </label>
-        </div>
+            </div>
 
-        <label className="grid gap-1">
+            <label className="grid gap-1">
           <span className="text-xs text-subtext">上一章注入</span>
           <select
             className="select"
@@ -533,9 +479,9 @@ export function AiGenerateDrawer(props: Props) {
             <option value="content">正文</option>
           </select>
           <div className="text-[11px] text-subtext">结尾更利于强衔接，减少开头复述。</div>
-        </label>
+            </label>
 
-        <div className="grid gap-2">
+            <div className="grid gap-2">
           <div className="text-xs text-subtext">注入角色（可选）</div>
           {props.characters.length === 0 ? <div className="text-sm text-subtext">暂无角色</div> : null}
           <div className="max-h-40 overflow-auto rounded-atelier border border-border bg-surface p-2">
@@ -561,6 +507,104 @@ export function AiGenerateDrawer(props: Props) {
               </label>
             ))}
           </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel p-3">
+          <button
+            className="flex w-full items-center justify-between gap-3 text-left"
+            aria-controls={advancedPanelId}
+            aria-expanded={advancedOpen}
+            onClick={() => setAdvancedOpen((v) => !v)}
+            type="button"
+          >
+            <span className="text-sm font-medium text-ink">高级参数</span>
+            <span aria-hidden="true" className="text-xs text-subtext">
+              {advancedOpen ? "收起" : "展开"}
+            </span>
+          </button>
+
+          {!advancedOpen ? (
+            <div className="mt-2 text-[11px] text-subtext">默认折叠：流式生成、规划、润色等。</div>
+          ) : null}
+
+          {props.preset && props.genForm.stream && !streamProviderSupported ? (
+            <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+              不支持流式，生成时会自动回退非流式生成
+            </div>
+          ) : null}
+
+          {advancedOpen ? (
+            <div className="mt-3 grid gap-2" id={advancedPanelId}>
+              <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                <span>流式生成（beta）</span>
+                <input
+                  className="checkbox"
+                  checked={props.genForm.stream}
+                  disabled={props.generating}
+                  name="stream"
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    props.setGenForm((v) => ({ ...v, stream: checked }));
+                  }}
+                  type="checkbox"
+                />
+              </label>
+
+              <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                <span>先生成规划</span>
+                <input
+                  className="checkbox"
+                  checked={props.genForm.plan_first}
+                  disabled={props.generating}
+                  name="plan_first"
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    props.setGenForm((v) => ({ ...v, plan_first: checked }));
+                  }}
+                  type="checkbox"
+                />
+              </label>
+
+              <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                <span>润色</span>
+                <input
+                  className="checkbox"
+                  checked={props.genForm.post_edit}
+                  disabled={props.generating}
+                  name="post_edit"
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    props.setGenForm((v) => ({
+                      ...v,
+                      post_edit: checked,
+                      post_edit_sanitize: checked ? v.post_edit_sanitize : false,
+                    }));
+                  }}
+                  type="checkbox"
+                />
+              </label>
+
+              <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                <span>去味/一致性修复</span>
+                <input
+                  className="checkbox"
+                  checked={props.genForm.post_edit_sanitize}
+                  disabled={props.generating || !props.genForm.post_edit}
+                  name="post_edit_sanitize"
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    props.setGenForm((v) => ({ ...v, post_edit_sanitize: checked }));
+                  }}
+                  type="checkbox"
+                />
+              </label>
+              <div className="text-[11px] text-subtext">失败会降级保留原文，并记录原因。</div>
+            </div>
+          ) : (
+            <div id={advancedPanelId} hidden />
+          )}
         </div>
 
         <div className="panel p-3 text-xs text-subtext">

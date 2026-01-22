@@ -30,7 +30,8 @@ test("ui: stream enabled with non-openai provider shows downgrade notice", async
   const drawer = page.getByRole("dialog", { name: "AI 生成", exact: true });
   await expect(drawer).toBeVisible();
 
-  await drawer.getByRole("checkbox", { name: "流式生成（beta）" }).check();
+  await drawer.getByRole("button", { name: "高级参数", exact: true }).click();
+  await drawer.getByRole("checkbox", { name: "流式生成（beta）", exact: true }).check();
   await drawer.locator('textarea[name="instruction"]').fill("E2E_PROVIDER_UNSUPPORTED <<<CONTENT");
 
   await drawer.getByRole("button", { name: "生成", exact: true }).click();
@@ -40,4 +41,3 @@ test("ui: stream enabled with non-openai provider shows downgrade notice", async
 
   await expect(page.getByText(/不支持流式/)).toBeVisible();
 });
-

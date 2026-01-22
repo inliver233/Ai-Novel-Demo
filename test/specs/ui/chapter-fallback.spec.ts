@@ -19,9 +19,11 @@ test("ui: chapter stream failure falls back to non-stream", async ({ page, reque
   await expect(content).toHaveValue("");
 
   await page.getByRole("button", { name: "AI 生成" }).click();
-  await expect(page.getByRole("dialog", { name: "AI 生成" })).toBeVisible();
+  const drawer = page.getByRole("dialog", { name: "AI 生成" });
+  await expect(drawer).toBeVisible();
 
-  await page.getByRole("checkbox", { name: "流式生成（beta）" }).check();
+  await drawer.getByRole("button", { name: "高级参数", exact: true }).click();
+  await drawer.getByRole("checkbox", { name: "流式生成（beta）", exact: true }).check();
 
   let sawStreamCall = false;
   await page.route(`**/api/chapters/${chapterId}/generate-stream`, async (route) => {
@@ -47,4 +49,3 @@ test("ui: chapter stream failure falls back to non-stream", async ({ page, reque
   await expect(content).not.toHaveValue("", { timeout: 60_000 });
   await expect(content).toContainText("E2E");
 });
-

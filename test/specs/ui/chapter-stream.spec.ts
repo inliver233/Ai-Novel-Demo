@@ -18,9 +18,11 @@ test("ui: chapter stream generation updates editor", async ({ page, request }) =
 
   await expect(page.getByRole("button", { name: "AI 生成" })).toBeVisible();
   await page.getByRole("button", { name: "AI 生成" }).click();
-  await expect(page.getByRole("dialog", { name: "AI 生成" })).toBeVisible();
+  const drawer = page.getByRole("dialog", { name: "AI 生成" });
+  await expect(drawer).toBeVisible();
 
-  const streamCheckbox = page.getByRole("checkbox", { name: "流式生成（beta）" });
+  await drawer.getByRole("button", { name: "高级参数", exact: true }).click();
+  const streamCheckbox = drawer.getByRole("checkbox", { name: "流式生成（beta）", exact: true });
   await streamCheckbox.check();
 
   const content = page.locator('textarea[name="content_md"]');
@@ -51,7 +53,7 @@ test("ui: chapter stream generation updates editor", async ({ page, request }) =
     });
   });
 
-  await page.getByRole("button", { name: "生成", exact: true }).click();
+  await drawer.getByRole("button", { name: "生成", exact: true }).click();
 
   await expect(content).not.toHaveValue("", { timeout: 30_000 });
   await expect(content).toContainText("E2E");

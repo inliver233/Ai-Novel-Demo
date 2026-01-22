@@ -24,6 +24,7 @@ async function openAiDrawer(page: Page) {
   await page.getByRole("button", { name: "AI 生成", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: "AI 生成", exact: true });
   await expect(drawer).toBeVisible();
+  await drawer.getByRole("button", { name: "高级参数", exact: true }).click();
   return drawer;
 }
 
