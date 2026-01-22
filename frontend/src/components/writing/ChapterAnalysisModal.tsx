@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import { Modal } from "../ui/Modal";
 
 import type { ChapterAnalyzeResult } from "./types";
@@ -19,21 +21,24 @@ export function ChapterAnalysisModal(props: {
   onRewriteFromAnalysis: () => void;
 }) {
   const busy = props.analysisLoading || props.rewriteLoading || props.applyLoading;
+  const titleId = useId();
   return (
     <Modal
       open={props.open}
       onClose={busy ? undefined : props.onClose}
       panelClassName="surface max-w-3xl p-5"
-      ariaLabel="章节分析"
+      ariaLabelledBy={titleId}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="font-content text-xl text-ink">章节分析 / 建议</div>
+          <div className="font-content text-xl text-ink" id={titleId}>
+            章节分析
+          </div>
           <div className="mt-1 text-xs text-subtext">
             分析与重写只会写入“生成记录”；保存到记忆库会写入长期记忆（不影响章节正文）。
           </div>
         </div>
-        <button className="btn btn-secondary" onClick={props.onClose} disabled={busy} type="button">
+        <button className="btn btn-secondary" aria-label="关闭" onClick={props.onClose} disabled={busy} type="button">
           关闭
         </button>
       </div>

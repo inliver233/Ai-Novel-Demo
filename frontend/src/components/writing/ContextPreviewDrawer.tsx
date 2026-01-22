@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { UI_COPY } from "../../lib/uiCopy";
 import { ApiError, apiJson } from "../../services/apiClient";
@@ -229,6 +229,7 @@ export function ContextPreviewDrawer(props: Props) {
     genMemoryQueryText,
     genMemoryModules,
   } = props;
+  const titleId = useId();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [pack, setPack] = useState<MemoryContextPack>(EMPTY_PACK);
@@ -583,12 +584,14 @@ export function ContextPreviewDrawer(props: Props) {
     <Drawer
       open={open}
       onClose={onClose}
-      ariaLabel={UI_COPY.writing.contextPreviewTitle}
+      ariaLabelledBy={titleId}
       panelClassName="h-full w-full max-w-2xl overflow-y-auto border-l border-border bg-canvas p-6 shadow-sm"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-content text-2xl text-ink">{UI_COPY.writing.contextPreviewTitle}</div>
+          <div className="font-content text-2xl text-ink" id={titleId}>
+            {UI_COPY.writing.contextPreviewTitle}
+          </div>
           <div className="mt-1 text-xs text-subtext">
             {UI_COPY.writing.contextPreviewSubtitle}
             {requestId ? <span className="ml-2">request_id: {requestId}</span> : null}
@@ -611,7 +614,7 @@ export function ContextPreviewDrawer(props: Props) {
           >
             {UI_COPY.writing.contextPreviewRefresh}
           </button>
-          <button className="btn btn-secondary" onClick={onClose} type="button">
+          <button className="btn btn-secondary" aria-label="关闭" onClick={onClose} type="button">
             {UI_COPY.writing.contextPreviewClose}
           </button>
         </div>

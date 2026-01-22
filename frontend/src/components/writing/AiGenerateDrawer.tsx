@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useId, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
 import { Drawer } from "../ui/Drawer";
 import { UI_COPY } from "../../lib/uiCopy";
@@ -35,6 +35,7 @@ type WritingStyle = {
 export function AiGenerateDrawer(props: Props) {
   const { generating, onClose, open } = props;
   const streamProviderSupported = !!props.preset && props.preset.provider.startsWith("openai");
+  const titleId = useId();
 
   const [stylesLoading, setStylesLoading] = useState(false);
   const [presets, setPresets] = useState<WritingStyle[]>([]);
@@ -104,18 +105,20 @@ export function AiGenerateDrawer(props: Props) {
       open={open}
       onClose={onClose}
       side="bottom"
-      ariaLabel="AI 生成"
+      ariaLabelledBy={titleId}
       panelClassName="h-[85vh] w-full overflow-y-auto rounded-atelier border-t border-border bg-canvas p-6 shadow-sm sm:h-full sm:max-w-md sm:rounded-none sm:border-l sm:border-t-0"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-content text-2xl text-ink">AI 生成</div>
+          <div className="font-content text-2xl text-ink" id={titleId}>
+            AI 生成
+          </div>
           <div className="mt-1 text-xs text-subtext">
             {props.preset ? `${props.preset.provider} / ${props.preset.model}` : "未加载 LLM 配置"}
           </div>
         </div>
-        <button className="btn btn-secondary" onClick={onClose} type="button">
-          隐藏
+        <button className="btn btn-secondary" aria-label="关闭" onClick={onClose} type="button">
+          关闭
         </button>
       </div>
 

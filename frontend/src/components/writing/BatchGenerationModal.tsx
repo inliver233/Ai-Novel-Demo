@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import { Modal } from "../ui/Modal";
 
 import type { BatchGenerationTask, BatchGenerationTaskItem } from "./types";
@@ -17,21 +19,30 @@ export function BatchGenerationModal(props: {
   onStartTask: () => void;
   onApplyItemToEditor: (item: BatchGenerationTaskItem) => void;
 }) {
+  const titleId = useId();
   return (
     <Modal
       open={props.open}
       onClose={props.batchLoading ? undefined : props.onClose}
       panelClassName="surface max-w-2xl p-5"
-      ariaLabel="批量生成"
+      ariaLabelledBy={titleId}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="font-content text-xl text-ink">批量顺序生成</div>
+          <div className="font-content text-xl text-ink" id={titleId}>
+            批量生成
+          </div>
           <div className="mt-1 text-xs text-subtext">
             批量生成只会写入“生成记录”，不会自动保存到章节；你可以逐章“应用到编辑器”后再保存。
           </div>
         </div>
-        <button className="btn btn-secondary" onClick={props.onClose} disabled={props.batchLoading} type="button">
+        <button
+          className="btn btn-secondary"
+          aria-label="关闭"
+          onClick={props.onClose}
+          disabled={props.batchLoading}
+          type="button"
+        >
           关闭
         </button>
       </div>

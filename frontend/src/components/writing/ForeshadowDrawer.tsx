@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ApiError, apiJson } from "../../services/apiClient";
@@ -28,6 +28,7 @@ export function ForeshadowDrawer(props: {
   const toast = useToast();
   const confirm = useConfirm();
   const navigate = useNavigate();
+  const titleId = useId();
 
   const [loading, setLoading] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -111,12 +112,14 @@ export function ForeshadowDrawer(props: {
     <Drawer
       open={props.open}
       onClose={props.onClose}
-      ariaLabel="伏笔面板"
+      ariaLabelledBy={titleId}
       panelClassName="h-full w-full max-w-xl border-l border-border bg-canvas p-6 shadow-sm"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-content text-2xl text-ink">伏笔面板</div>
+          <div className="font-content text-2xl text-ink" id={titleId}>
+            伏笔面板
+          </div>
           <div className="mt-1 text-xs text-subtext">
             open_loops: {filtered.length}
             {filtered.length === items.length ? "" : ` / ${items.length}`}
@@ -133,7 +136,7 @@ export function ForeshadowDrawer(props: {
           >
             {loading ? "加载中…" : "刷新"}
           </button>
-          <button className="btn btn-secondary" onClick={props.onClose} type="button">
+          <button className="btn btn-secondary" aria-label="关闭" onClick={props.onClose} type="button">
             关闭
           </button>
         </div>

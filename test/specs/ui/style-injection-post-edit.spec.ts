@@ -48,7 +48,7 @@ test("ui: select style -> generate + post_edit_sanitize -> replay style_resoluti
   const genResp = await genRespP;
   expect(genResp.ok()).toBeTruthy();
 
-  await drawer.getByRole("button", { name: "隐藏", exact: true }).click();
+  await drawer.getByRole("button", { name: "关闭", exact: true }).click();
 
   await page.getByRole("button", { name: "生成记录", exact: true }).click();
   const history = page.getByRole("dialog", { name: "生成记录", exact: true });

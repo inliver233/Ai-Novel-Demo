@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
 import { ApiError, apiDownloadAttachment } from "../../services/apiClient";
 import { Drawer } from "../ui/Drawer";
@@ -17,6 +17,7 @@ type Props = {
 export function GenerationHistoryDrawer(props: Props) {
   const { onClose, open } = props;
   const toast = useToast();
+  const titleId = useId();
   const [downloading, setDownloading] = useState(false);
 
   const selectedRun = props.selectedRun;
@@ -70,15 +71,17 @@ export function GenerationHistoryDrawer(props: Props) {
     <Drawer
       open={open}
       onClose={onClose}
-      ariaLabel="生成记录"
+      ariaLabelledBy={titleId}
       panelClassName="h-full w-full max-w-2xl border-l border-border bg-canvas p-6 shadow-sm"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="font-content text-2xl text-ink">生成记录</div>
+          <div className="font-content text-2xl text-ink" id={titleId}>
+            生成记录
+          </div>
           <div className="mt-1 text-xs text-subtext">最近 5 条</div>
         </div>
-        <button className="btn btn-secondary" onClick={onClose} type="button">
+        <button className="btn btn-secondary" aria-label="关闭" onClick={onClose} type="button">
           关闭
         </button>
       </div>

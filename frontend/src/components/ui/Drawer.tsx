@@ -13,6 +13,7 @@ export function Drawer(props: {
   overlayClassName?: string;
   panelClassName?: string;
   ariaLabel?: string;
+  ariaLabelledBy?: string;
   children: React.ReactNode;
 }) {
   const reduceMotion = useReducedMotion();
@@ -55,7 +56,8 @@ export function Drawer(props: {
         className={props.panelClassName}
         role="dialog"
         aria-modal="true"
-        aria-label={props.ariaLabel}
+        aria-label={props.ariaLabelledBy ? undefined : props.ariaLabel}
+        aria-labelledby={props.ariaLabelledBy}
         initial={panelMotion.initial}
         animate={panelMotion.animate}
         exit={panelMotion.exit}

@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useId, type Dispatch, type SetStateAction } from "react";
 
 import { Modal } from "../ui/Modal";
 import type { CreateChapterForm } from "./types";
@@ -14,6 +14,7 @@ type Props = {
 
 export function CreateChapterDialog(props: Props) {
   const { onClose, open, saving } = props;
+  const titleId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -32,14 +33,16 @@ export function CreateChapterDialog(props: Props) {
       open={open}
       onClose={saving ? undefined : onClose}
       panelClassName="surface max-w-lg p-5"
-      ariaLabel="新增章节"
+      ariaLabelledBy={titleId}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="font-content text-xl text-ink">新增章节</div>
+          <div className="font-content text-xl text-ink" id={titleId}>
+            新增章节
+          </div>
           <div className="mt-1 text-xs text-subtext">章号 / 标题 / 要点</div>
         </div>
-        <button className="btn btn-secondary" onClick={onClose} disabled={saving} type="button">
+        <button className="btn btn-secondary" aria-label="关闭" onClick={onClose} disabled={saving} type="button">
           关闭
         </button>
       </div>

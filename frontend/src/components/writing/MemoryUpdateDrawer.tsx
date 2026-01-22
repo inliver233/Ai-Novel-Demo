@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ApiError, apiJson } from "../../services/apiClient";
@@ -129,6 +129,7 @@ export function MemoryUpdateDrawer(props: Props) {
   const navigate = useNavigate();
   const toast = useToast();
   const { chapterId, onClose, open, projectId } = props;
+  const titleId = useId();
   const [inputJson, setInputJson] = useState(EXAMPLE_OPS);
   const [autoFocus, setAutoFocus] = useState("");
 
@@ -383,13 +384,15 @@ export function MemoryUpdateDrawer(props: Props) {
     <Drawer
       open={open}
       onClose={onClose}
-      ariaLabel="Memory Update"
+      ariaLabelledBy={titleId}
       panelClassName="h-full w-full max-w-[860px] overflow-hidden border-l border-border bg-surface shadow-sm"
     >
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="min-w-0">
-            <div className="truncate text-sm text-ink">Memory Update</div>
+            <div className="truncate text-sm text-ink" id={titleId}>
+              Memory Update
+            </div>
             <div className="mt-0.5 truncate text-xs text-subtext">
               Propose（生成 diff）→ 人在环审核 → Apply（单事务）
             </div>
@@ -398,7 +401,7 @@ export function MemoryUpdateDrawer(props: Props) {
             <button className="btn btn-secondary" disabled={!projectId} onClick={openTaskCenter} type="button">
               任务中心
             </button>
-            <button className="btn btn-secondary" onClick={onClose} type="button">
+            <button className="btn btn-secondary" aria-label="关闭" onClick={onClose} type="button">
               关闭
             </button>
           </div>

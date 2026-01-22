@@ -65,7 +65,7 @@ test("ui: writing ContextPreviewDrawer syncs preview params from AI generate dra
   await genDrawer.getByRole("checkbox", { name: "世界书注入", exact: true }).check();
   await genDrawer.getByRole("checkbox", { name: "世界书（worldbook）", exact: true }).check();
   await genDrawer.getByLabel("memory_query_text", { exact: true }).fill("dragon");
-  await genDrawer.getByRole("button", { name: "隐藏", exact: true }).click();
+  await genDrawer.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(genDrawer).not.toBeVisible();
 
   await page.getByRole("button", { name: "上下文预览", exact: true }).click();

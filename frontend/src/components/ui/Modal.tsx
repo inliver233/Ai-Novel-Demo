@@ -10,6 +10,7 @@ export function Modal(props: {
   className?: string;
   panelClassName?: string;
   ariaLabel?: string;
+  ariaLabelledBy?: string;
   children: React.ReactNode;
 }) {
   const reduceMotion = useReducedMotion();
@@ -24,7 +25,8 @@ export function Modal(props: {
         className={clsx("w-full max-h-[calc(100vh-2rem)] overflow-y-auto", props.panelClassName)}
         role="dialog"
         aria-modal="true"
-        aria-label={props.ariaLabel}
+        aria-label={props.ariaLabelledBy ? undefined : props.ariaLabel}
+        aria-labelledby={props.ariaLabelledBy}
         initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.98 }}
         animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
         exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.98 }}
