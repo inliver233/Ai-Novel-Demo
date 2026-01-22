@@ -7,7 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.secrets import SecretCryptoError, decrypt_secret
+from app.core.secrets import SecretCryptoError, decrypt_secret, redact_api_keys
 from app.models.chapter import Chapter
 from app.models.project_settings import ProjectSettings
 from app.models.story_memory import StoryMemory
@@ -865,17 +865,19 @@ def retrieve_memory_context_pack(
     ]
 
     return MemoryContextPackOut.model_validate(
-        {
-            "worldbook": worldbook,
-            "story_memory": story_memory,
-            "semantic_history": semantic_history,
-            "foreshadow_open_loops": foreshadow_open_loops,
-            "structured": structured,
-            "vector_rag": vector_rag,
-            "graph": graph,
-            "fractal": fractal,
-            "logs": logs,
-        }
+        redact_api_keys(
+            {
+                "worldbook": worldbook,
+                "story_memory": story_memory,
+                "semantic_history": semantic_history,
+                "foreshadow_open_loops": foreshadow_open_loops,
+                "structured": structured,
+                "vector_rag": vector_rag,
+                "graph": graph,
+                "fractal": fractal,
+                "logs": logs,
+            }
+        )
     )
 
 
