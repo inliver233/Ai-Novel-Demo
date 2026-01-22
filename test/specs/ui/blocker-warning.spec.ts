@@ -15,10 +15,13 @@ test("ui: blocker warning not emitted across dirty navigation", async ({ page, r
   await expect(page.getByText("项目信息", { exact: true })).toBeVisible();
 
   // Make Settings dirty without auto-save interference.
+  const vectorPanel = page.locator('details[aria-label="向量检索（Vector RAG）"]');
+  await vectorPanel.evaluate((el) => ((el as HTMLDetailsElement).open = true));
+  await expect(vectorPanel.getByRole("button", { name: "恢复 env fallback（清除项目覆盖）", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "恢复 env fallback（清除项目覆盖）", exact: true }).click();
   await expect(page.getByRole("button", { name: "保存", exact: true })).toBeEnabled();
 
-  await page.getByRole("link", { name: "大纲", exact: true }).click();
+  await page.getByLabel("大纲 (nav_outline)", { exact: true }).click();
   const leave1 = page.getByRole("dialog", { name: "有未保存修改，确定离开？", exact: true });
   await expect(leave1).toBeVisible();
   await leave1.getByRole("button", { name: "离开", exact: true }).click();
@@ -28,7 +31,7 @@ test("ui: blocker warning not emitted across dirty navigation", async ({ page, r
   await page.locator('textarea[name="outline_content_md"]').fill(`E2E_OUTLINE_DIRTY_${Date.now()}`);
   await expect(page.getByRole("button", { name: "保存大纲", exact: true })).toBeEnabled();
 
-  await page.getByRole("link", { name: "模型配置", exact: true }).click();
+  await page.getByLabel("模型配置 (nav_prompts)", { exact: true }).click();
   const leave2 = page.getByRole("dialog", { name: "有未保存修改，确定离开？", exact: true });
   await expect(leave2).toBeVisible();
   await leave2.getByRole("button", { name: "离开", exact: true }).click();
@@ -41,4 +44,3 @@ test("ui: blocker warning not emitted across dirty navigation", async ({ page, r
   await page.waitForTimeout(200);
   expect(blockerWarnings).toHaveLength(0);
 });
-
