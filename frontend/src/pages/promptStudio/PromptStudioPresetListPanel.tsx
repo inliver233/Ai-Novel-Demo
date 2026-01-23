@@ -162,7 +162,7 @@ export function PromptStudioPresetListPanel(props: {
         <div className="grid gap-1">
           <div className="text-xs text-subtext">分类</div>
           <select
-            className="input"
+            className="select"
             value={effectiveCategoryFilter}
             onChange={(e) => setCategoryFilter(e.currentTarget.value)}
             disabled={busy || bulkBusy}
