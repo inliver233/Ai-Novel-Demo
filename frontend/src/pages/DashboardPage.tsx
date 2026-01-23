@@ -35,6 +35,8 @@ export function DashboardPage() {
   type WizardSummary = { percent: number; nextTitle: string | null; nextHref: string | null };
   const [wizardByProjectId, setWizardByProjectId] = useState<Record<string, WizardSummary>>({});
   const [wizardLoadingByProjectId, setWizardLoadingByProjectId] = useState<Record<string, boolean>>({});
+  const recommendedWizard = recommendedProject ? wizardByProjectId[recommendedProject.id] : null;
+  const recommendedWizardLoading = recommendedProject ? Boolean(wizardLoadingByProjectId[recommendedProject.id]) : false;
 
   useEffect(() => {
     let cancelled = false;
@@ -138,38 +140,78 @@ export function DashboardPage() {
               </button>
             ) : null}
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <button
-              className="btn btn-secondary justify-start"
-              disabled={!recommendedProject}
-              onClick={() => navigate(`/projects/${recommendedProject?.id ?? ""}/settings`)}
-              aria-label="项目设置 (dashboard_recommend_settings)"
-              type="button"
-            >
-              项目设置
-            </button>
-            <button
-              className="btn btn-secondary justify-start"
-              disabled={!recommendedProject}
-              onClick={() => navigate(`/projects/${recommendedProject?.id ?? ""}/wizard`)}
-              aria-label="开工向导 (dashboard_recommend_wizard)"
-              type="button"
-            >
-              开工向导
-            </button>
-            <button
-              className="btn btn-secondary justify-start"
-              disabled={!recommendedProject}
-              onClick={() => navigate(`/projects/${recommendedProject?.id ?? ""}/writing`)}
-              aria-label="写作 (dashboard_recommend_writing)"
-              type="button"
-            >
-              写作
-            </button>
-          </div>
-          {!recommendedProject ? (
-            <div className="mt-3 text-xs text-subtext">提示：先点击左侧 “新建项目” 创建一个项目。</div>
-          ) : null}
+          {recommendedProject ? (
+            <>
+              <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                <button
+                  className="btn btn-secondary justify-start"
+                  onClick={() => navigate(`/projects/${recommendedProject.id}/settings`)}
+                  aria-label="项目设置 (dashboard_recommend_settings)"
+                  type="button"
+                >
+                  项目设置
+                </button>
+                <button
+                  className="btn btn-secondary justify-start"
+                  onClick={() => navigate(`/projects/${recommendedProject.id}/wizard`)}
+                  aria-label="开工向导 (dashboard_recommend_wizard)"
+                  type="button"
+                >
+                  开工向导
+                </button>
+                <button
+                  className="btn btn-secondary justify-start"
+                  onClick={() => navigate(`/projects/${recommendedProject.id}/writing`)}
+                  aria-label="写作 (dashboard_recommend_writing)"
+                  type="button"
+                >
+                  写作
+                </button>
+              </div>
+
+              {recommendedWizardLoading ? (
+                <div className="mt-3 text-xs text-subtext">计算完成度...</div>
+              ) : recommendedWizard ? (
+                <div className="mt-3 rounded-atelier border border-border bg-canvas p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-subtext">
+                    <div>完成度：{recommendedWizard.percent}%</div>
+                    <div className="truncate">
+                      {recommendedWizard.nextTitle ? `下一步：${recommendedWizard.nextTitle}` : "已完成"}
+                    </div>
+                  </div>
+                  <div className="mt-2 h-2 w-full rounded-full bg-border/60">
+                    <div
+                      className="h-2 rounded-full bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
+                      style={{ width: `${recommendedWizard.percent}%` }}
+                    />
+                  </div>
+                  {recommendedWizard.nextHref ? (
+                    <button
+                      className="btn btn-primary mt-3 w-full"
+                      onClick={() => navigate(recommendedWizard.nextHref ?? "")}
+                      type="button"
+                    >
+                      {recommendedWizard.nextTitle ? `继续：${recommendedWizard.nextTitle}` : "继续"}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="mt-4 grid gap-2">
+              <div className="text-xs text-subtext">建议流程：</div>
+              <ol className="list-decimal pl-5 text-xs text-subtext">
+                <li>新建项目</li>
+                <li>项目设置：补齐世界观/风格/约束</li>
+                <li>模型配置：保存并测试连接</li>
+                <li>大纲 → 写作 → 预览/导出</li>
+              </ol>
+              <div className="mt-1 text-xs text-subtext">提示：也可以先新建项目，再从“推荐流程”一键进入下一步。</div>
+              <button className="btn btn-secondary mt-2 w-full" onClick={() => setCreateOpen(true)} type="button">
+                打开创建项目
+              </button>
+            </div>
+          )}
         </div>
 
         {loading ? (
