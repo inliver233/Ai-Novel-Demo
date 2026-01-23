@@ -196,7 +196,10 @@ export function StylesPage() {
           <div className="min-w-0">
             <div className="font-content text-2xl text-ink">风格</div>
             <div className="mt-1 text-xs text-subtext">
-              写作风格（Style Profiles）：管理预设与自定义风格，可设为项目默认。
+              写作风格：一段会在生成时注入的“写作要求”。可设为项目默认，也可在「AI 生成」里按章节临时选择。
+            </div>
+            <div className="mt-1 text-[11px] text-subtext">
+              提示：高级参数的「润色 / 去味」会对生成结果做二次处理，可与风格叠加使用。
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -223,6 +226,7 @@ export function StylesPage() {
                 <div className="mt-1 text-xs text-subtext" aria-label="project_default_style">
                   {defaultStyle ? resolveStyleLabel(defaultStyle) : "（未设置）"}
                 </div>
+                <div className="mt-1 text-[11px] text-subtext">未在「AI 生成」中手动选择风格时，会自动使用项目默认。</div>
               </div>
               <div className="flex items-center gap-2">
                 <button
