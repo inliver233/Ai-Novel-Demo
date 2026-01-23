@@ -14,7 +14,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.logging import log_event
+from app.core.logging import exception_log_fields, log_event
 from app.db.session import SessionLocal, engine
 from app.models.chapter import Chapter
 from app.models.outline import Outline
@@ -665,8 +665,8 @@ def _get_collection(*, project_id: str, kb_id: str | None = None):
                 from_collection=legacy_name,
                 to_collection=hash_name,
                 migrated=migrated,
-                error=str(exc),
                 error_type=type(exc).__name__,
+                **exception_log_fields(exc),
             )
         log_event(
             logger,
@@ -696,8 +696,8 @@ def _get_collection(*, project_id: str, kb_id: str | None = None):
             from_collection=legacy_name,
             to_collection=hash_name,
             migrated=migrated,
-            error=str(exc),
             error_type=type(exc).__name__,
+            **exception_log_fields(exc),
             timings_ms={"total": int((time.perf_counter() - t0) * 1000)},
         )
         return legacy_collection

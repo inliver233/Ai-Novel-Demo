@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy import and_, func, literal, or_, select
 from sqlalchemy.orm import Session, load_only
 
-from app.core.logging import log_event
+from app.core.logging import exception_log_fields, log_event
 from app.models.structured_memory import MemoryEntity, MemoryEvidence, MemoryRelation
 
 logger = logging.getLogger("ainovel")
@@ -497,12 +497,13 @@ def query_graph_context(
             event="GRAPH_CONTEXT",
             action="query",
             project_id=project_id,
-            error=str(exc),
+            **exception_log_fields(exc),
         )
+        safe_error = f"graph_query_failed:{type(exc).__name__}"
         return {
             "enabled": False,
             "disabled_reason": "error",
-            "error": str(exc),
+            "error": safe_error,
             "query_text": query_text,
             "params": {"hop": int(hop), "max_nodes": int(max_nodes), "max_edges": int(max_edges)},
             "matched": {"entity_ids": [], "entity_names": []},

@@ -325,7 +325,7 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
                 action="trigger_failed",
                 project_id=str(row.project_id),
                 chapter_id=str(row.id),
-                error=str(exc),
+                **exception_log_fields(exc),
             )
     return ok_payload(request_id=request_id, data={"chapter": ChapterOut.model_validate(row).model_dump()})
 
