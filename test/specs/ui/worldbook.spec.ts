@@ -1,7 +1,15 @@
+import type { Locator } from "@playwright/test";
 import { test, expect, waitForWorldbookBulkSelectedCount, waitForWorldbookEntryCardsLoaded } from "../../lib/ui-test";
 
 import { bootstrapProject } from "../../lib/bootstrap";
 import { loadState } from "../../lib/state";
+
+async function clickDialogButton(dialog: Locator, name: string): Promise<void> {
+  const button = dialog.getByRole("button", { name, exact: true });
+  await expect(button).toBeVisible();
+  await button.dispatchEvent("click");
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+}
 
 test("ui: worldbook CRUD + preview_trigger", async ({ page, request }) => {
   const { projectId } = await bootstrapProject(request);
@@ -52,7 +60,7 @@ test("ui: worldbook CRUD + preview_trigger", async ({ page, request }) => {
   await drawer.getByRole("button", { name: "删除", exact: true }).click();
   const confirm = page.getByRole("dialog", { name: "删除该条目？", exact: true });
   await expect(confirm).toBeVisible();
-  await confirm.getByRole("button", { name: "删除", exact: true }).click();
+  await clickDialogButton(confirm, "删除");
 
   await expect(page.getByText("暂无条目", { exact: true })).toBeVisible();
 });
@@ -207,7 +215,7 @@ test("ui: worldbook supports bulk actions + duplicate", async ({ page, request }
   await page.getByLabel("worldbook_bulk_disable", { exact: true }).click();
   const confirmDisable = page.getByRole("dialog", { name: "批量停用条目？", exact: true });
   await expect(confirmDisable).toBeVisible();
-  await confirmDisable.getByRole("button", { name: "确认", exact: true }).click();
+  await clickDialogButton(confirmDisable, "确认");
 
   await expect(page.getByRole("button", { name: /Alpha/ }).getByText("停用", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Beta/ }).getByText("停用", { exact: true })).toBeVisible();
@@ -216,14 +224,14 @@ test("ui: worldbook supports bulk actions + duplicate", async ({ page, request }
   await page.getByLabel("worldbook_bulk_apply_priority", { exact: true }).click();
   const confirmUpdate1 = page.getByRole("dialog", { name: "批量更新条目？", exact: true });
   await expect(confirmUpdate1).toBeVisible();
-  await confirmUpdate1.getByRole("button", { name: "确认", exact: true }).click();
+  await clickDialogButton(confirmUpdate1, "确认");
   await expect(page.getByRole("button", { name: /Alpha/ }).getByText("priority:must", { exact: true })).toBeVisible();
 
   await page.getByLabel("worldbook_bulk_char_limit", { exact: true }).fill("123");
   await page.getByLabel("worldbook_bulk_apply_char_limit", { exact: true }).click();
   const confirmUpdate2 = page.getByRole("dialog", { name: "批量更新条目？", exact: true });
   await expect(confirmUpdate2).toBeVisible();
-  await confirmUpdate2.getByRole("button", { name: "确认", exact: true }).click();
+  await clickDialogButton(confirmUpdate2, "确认");
   await expect(page.getByRole("button", { name: /Alpha/ }).getByText("limit:123", { exact: true })).toBeVisible();
 
   await page.getByLabel("worldbook_bulk_clear_selection", { exact: true }).click();
@@ -234,7 +242,7 @@ test("ui: worldbook supports bulk actions + duplicate", async ({ page, request }
   await page.getByLabel("worldbook_bulk_duplicate_edit", { exact: true }).click();
   const confirmDuplicate = page.getByRole("dialog", { name: "复制条目？", exact: true });
   await expect(confirmDuplicate).toBeVisible();
-  await confirmDuplicate.getByRole("button", { name: "复制", exact: true }).click();
+  await clickDialogButton(confirmDuplicate, "复制");
 
   const drawer = page.getByRole("dialog", { name: "编辑世界书条目", exact: true });
   await expect(drawer).toBeVisible();
@@ -250,7 +258,7 @@ test("ui: worldbook supports bulk actions + duplicate", async ({ page, request }
   await page.getByLabel("worldbook_bulk_delete", { exact: true }).click();
   const confirmDelete = page.getByRole("dialog", { name: "批量删除条目？", exact: true });
   await expect(confirmDelete).toBeVisible();
-  await confirmDelete.getByRole("button", { name: "删除", exact: true }).click();
+  await clickDialogButton(confirmDelete, "删除");
 
   await expect(page.getByText("暂无条目", { exact: true })).toBeVisible();
 });
