@@ -17,8 +17,12 @@ test("ui: blocker warning not emitted across dirty navigation", async ({ page, r
   // Make Settings dirty without auto-save interference.
   const vectorPanel = page.locator('details[aria-label="向量检索（Vector RAG）"]');
   await vectorPanel.evaluate((el) => ((el as HTMLDetailsElement).open = true));
-  await expect(vectorPanel.getByRole("button", { name: "恢复 env fallback（清除项目覆盖）", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "恢复 env fallback（清除项目覆盖）", exact: true }).click();
+  const embeddingPanel = vectorPanel.locator("details").filter({ hasText: "Embedding（向量化）配置" });
+  await embeddingPanel.evaluate((el) => ((el as HTMLDetailsElement).open = true));
+  await expect(
+    vectorPanel.getByRole("button", { name: "恢复使用后端环境变量（清除项目覆盖）", exact: true }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "恢复使用后端环境变量（清除项目覆盖）", exact: true }).click();
   await expect(page.getByRole("button", { name: "保存", exact: true })).toBeEnabled();
 
   await page.getByLabel("大纲 (nav_outline)", { exact: true }).click();
