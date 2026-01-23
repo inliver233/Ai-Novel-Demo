@@ -1,4 +1,4 @@
-import { test, expect } from "../../lib/ui-test";
+import { test, expect, waitForWorldbookEntryCardsLoaded } from "../../lib/ui-test";
 
 import { bootstrapProject } from "../../lib/bootstrap";
 import { loadState } from "../../lib/state";
@@ -33,8 +33,7 @@ test("ui: worldbook paginates large entry lists (perf guard)", async ({ page, re
   await page.goto(`/projects/${projectId}/worldbook`);
   await expect(page.getByText("条目列表", { exact: true })).toBeVisible();
 
-  const cards = page.locator("button.panel-interactive");
-  await expect.poll(() => cards.count()).toBeGreaterThan(0);
+  const cards = await waitForWorldbookEntryCardsLoaded(page, { minCount: 1 });
   const initialCount = await cards.count();
   expect(initialCount).toBeGreaterThan(0);
   expect(initialCount).toBeLessThan(entryCount);

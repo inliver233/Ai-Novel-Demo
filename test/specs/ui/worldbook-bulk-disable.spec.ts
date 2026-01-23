@@ -1,4 +1,4 @@
-import { test, expect } from "../../lib/ui-test";
+import { test, expect, waitForWorldbookBulkSelectedCount, waitForWorldbookEntryCardsLoaded } from "../../lib/ui-test";
 
 import { bootstrapProject } from "../../lib/bootstrap";
 import { loadState } from "../../lib/state";
@@ -27,13 +27,14 @@ test("ui: worldbook bulk disable (selection + confirm)", async ({ page, request 
   }
 
   await page.goto(`/projects/${projectId}/worldbook`);
+  await waitForWorldbookEntryCardsLoaded(page, { minCount: 1 });
   await expect(page.getByText("E2E WB Bulk A", { exact: true })).toBeVisible();
 
   await page.getByLabel("worldbook_bulk_mode", { exact: true }).check();
-  await expect(page.getByText(/已选\s*0\s*条/)).toBeVisible();
+  await waitForWorldbookBulkSelectedCount(page, 0);
   await page.getByText("E2E WB Bulk A", { exact: true }).click();
   await page.getByText("E2E WB Bulk B", { exact: true }).click();
-  await expect(page.getByText(/已选\s*2\s*条/)).toBeVisible();
+  await waitForWorldbookBulkSelectedCount(page, 2);
 
   const bulkUpdateRes = page.waitForResponse((res) => {
     if (res.request().method() !== "POST") return false;

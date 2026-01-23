@@ -1,4 +1,4 @@
-import { test, expect } from "../../lib/ui-test";
+import { test, expect, waitForWorldbookBulkSelectedCount, waitForWorldbookEntryCardsLoaded } from "../../lib/ui-test";
 
 import { bootstrapProject } from "../../lib/bootstrap";
 import { loadState } from "../../lib/state";
@@ -197,12 +197,11 @@ test("ui: worldbook supports bulk actions + duplicate", async ({ page, request }
   await page.goto(`/projects/${projectId}/worldbook`);
   await expect(page.getByText("条目列表", { exact: true })).toBeVisible();
 
-  const cards = page.locator("button.panel-interactive");
-  await expect.poll(() => cards.count()).toBe(2);
+  await waitForWorldbookEntryCardsLoaded(page, { exactCount: 2 });
 
   await page.getByLabel("worldbook_bulk_mode", { exact: true }).check();
   await page.getByLabel("worldbook_bulk_select_all", { exact: true }).click();
-  await expect(page.getByText("已选 2 条", { exact: true })).toBeVisible();
+  await waitForWorldbookBulkSelectedCount(page, 2);
 
   await page.getByLabel("worldbook_bulk_disable", { exact: true }).click();
   const confirmDisable = page.getByRole("dialog", { name: "批量停用条目？", exact: true });
@@ -227,9 +226,9 @@ test("ui: worldbook supports bulk actions + duplicate", async ({ page, request }
   await expect(page.getByRole("button", { name: /Alpha/ }).getByText("limit:123", { exact: true })).toBeVisible();
 
   await page.getByLabel("worldbook_bulk_clear_selection", { exact: true }).click();
-  await expect(page.getByText("已选 0 条", { exact: true })).toBeVisible();
+  await waitForWorldbookBulkSelectedCount(page, 0);
   await page.getByRole("button", { name: /Alpha/ }).click();
-  await expect(page.getByText("已选 1 条", { exact: true })).toBeVisible();
+  await waitForWorldbookBulkSelectedCount(page, 1);
   await expect(page.getByLabel("worldbook_bulk_duplicate_edit", { exact: true })).toBeEnabled();
   await page.getByLabel("worldbook_bulk_duplicate_edit", { exact: true }).click();
   const confirmDuplicate = page.getByRole("dialog", { name: "复制条目？", exact: true });
@@ -242,11 +241,11 @@ test("ui: worldbook supports bulk actions + duplicate", async ({ page, request }
   await drawer.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(drawer).toBeHidden();
 
-  await expect.poll(() => cards.count()).toBe(3);
+  await waitForWorldbookEntryCardsLoaded(page, { exactCount: 3 });
 
   await page.getByLabel("worldbook_bulk_mode", { exact: true }).check();
   await page.getByLabel("worldbook_bulk_select_all", { exact: true }).click();
-  await expect(page.getByText("已选 3 条", { exact: true })).toBeVisible();
+  await waitForWorldbookBulkSelectedCount(page, 3);
   await page.getByLabel("worldbook_bulk_delete", { exact: true }).click();
   const confirmDelete = page.getByRole("dialog", { name: "批量删除条目？", exact: true });
   await expect(confirmDelete).toBeVisible();

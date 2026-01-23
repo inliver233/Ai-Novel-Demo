@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 
-import { test, expect } from "../../lib/ui-test";
+import { test, expect, waitForWorldbookEntryCardsLoaded } from "../../lib/ui-test";
 
 import { bootstrapProject } from "../../lib/bootstrap";
 import { loadState } from "../../lib/state";
@@ -27,6 +27,7 @@ test("ui: worldbook import/export json (dry_run + apply)", async ({ page, reques
   expect(create.ok()).toBeTruthy();
 
   await page.goto(`/projects/${projectId}/worldbook`);
+  await waitForWorldbookEntryCardsLoaded(page, { minCount: 1 });
   await expect(page.getByText("Dragon", { exact: true })).toBeVisible();
 
   const download = await Promise.all([
