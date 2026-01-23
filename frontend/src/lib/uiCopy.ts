@@ -35,6 +35,7 @@ export const UI_COPY = {
     prompts: "模型配置",
     promptStudio: "提示词工作室",
     adminUsers: "用户管理",
+    help: "术语/帮助",
 
     navMenu: "导航菜单",
     openNav: "打开导航",
@@ -44,9 +45,30 @@ export const UI_COPY = {
     currentProject: "当前项目",
     backToHome: "返回首页",
   },
+  help: {
+    title: "术语/帮助",
+    subtitle: "常用术语速查 + 页面说明模板（何时用 / 风险 / 示例）。",
+    termsTitle: "常用术语（速查）",
+    terms: [
+      { label: "提示词（prompt）", description: "给模型的指令文本；一般由“目标 + 约束 + 输入/输出格式”组成。" },
+      { label: "向量化（embedding）", description: "把文本变成向量以便检索；需配置模型/接口，可能有成本与耗时。" },
+      { label: "重排（rerank）", description: "对候选结果二次排序，提高命中质量；通常会增加一次额外计算。" },
+      { label: "检索增强生成（RAG）", description: "先检索相关片段，再把片段注入生成上下文；用于增强一致性与引用。" },
+      { label: "知识库（KB）", description: "RAG 的数据分组与权重配置单位；可按用途拆分并单独启用/排序。" },
+      { label: "请求 ID（request_id）", description: "后端为一次请求生成的定位标识；遇到报错/异常优先记录它。" },
+      { label: "JSON", description: "结构化数据格式；在高级调试/导入导出时常见。" },
+    ],
+    tipsTitle: "排障小贴士",
+    tips: [
+      "遇到报错：先记录 请求 ID（request_id）与复现步骤（点了什么/输入了什么）。",
+      "遇到“加载慢/不稳定”：先看是否需要重建索引/入库，以及是否有大量数据导致分页/渲染压力。",
+    ],
+  },
   structuredMemory: {
     title: "结构化记忆",
     subtitle: "以表格化方式浏览并检索：实体 / 关系 / 事件 / 伏笔 / 证据。",
+    usageHint: "何时用：想快速查“人物/关系/事件/伏笔/证据”是否被写入记忆表，或需要按关键词检索与导出操作。",
+    exampleHint: "示例：在查询框输入“dragon”，再切换到“关系/事件”观察命中与数量变化。",
     bulkOpsHint: "批量操作会生成 Memory Update 的 ops JSON：复制后到 Memory Update 粘贴并 Apply 才会生效。",
     bulkOpsRisk: "风险：Apply 会直接修改记忆表；建议先确认选中范围，必要时先复制 JSON 备份。",
     tabs: {
@@ -257,6 +279,9 @@ export const UI_COPY = {
   rag: {
     title: "Vector RAG 管理",
     subtitle: "入库（ingest） / 重建索引（rebuild） / 状态 / 查询（用于排查注入与索引状态）",
+    usageHint: "何时用：写作时感觉“世界书/上下文注入不生效”或检索结果不稳定时，先来这里看状态与命中。",
+    exampleHint: "示例：输入章节片段或关键词（如“dragon”）点击“查询”，检查命中来源与注入结果。",
+    riskHint: "风险：入库/重建可能耗时；若配置为在线模型，可能产生费用。",
 
     settings: "项目设置（Settings）",
     ingest: "触发入库（Ingest）",
@@ -284,6 +309,9 @@ export const UI_COPY = {
   graph: {
     title: "图谱",
     subtitle: "图谱上下文（GraphContext）：命中实体 + 1-hop 扩散与回放。",
+    usageHint: "何时用：想确认“哪些实体/关系被识别并注入”，或排查图谱开关/命中不符合预期。",
+    exampleHint: "示例：把章节中的一句话粘贴到查询框，点击“查询”，查看命中实体与证据来源。",
+    riskHint: "风险：该页为高级调试，会展示部分原始结果与证据片段；请避免在共享环境泄露项目内容。",
 
     enabledToggle: "启用（enabled）",
     queryTextLabel: "查询文本（query_text）",
@@ -304,5 +332,11 @@ export const UI_COPY = {
     subtitle: "用于查看/回放分形记忆注入文本，帮助排查记忆注入与摘要是否按预期工作。",
     usageHint: "何时用：写作中出现“记忆注入不生效/摘要异常/上下文不稳定”等问题时。",
     riskHint: "风险：该页为高级调试，会展示部分 prompt/内部状态；请避免在共享环境泄露项目内容。",
+  },
+  taskCenter: {
+    title: "任务中心",
+    subtitle: "查看记忆变更集与后台任务的状态、错误与排障信息。",
+    usageHint: "何时用：生成/记忆更新后结果不符合预期，或需要查看后台任务是否失败/排队/运行中。",
+    riskHint: "风险：该页包含较多排障字段（request_id/error 等）；对外分享时注意脱敏。",
   },
 } as const;

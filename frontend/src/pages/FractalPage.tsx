@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { ApiError, apiJson } from "../services/apiClient";
 import { useToast } from "../components/ui/toast";
 import { UI_COPY } from "../lib/uiCopy";
@@ -129,9 +130,13 @@ export function FractalPage() {
               <span className="font-mono">{UI_COPY.fractal.tag}</span>
               <span className="ml-2">{UI_COPY.fractal.subtitle}</span>
             </div>
-            <div className="mt-3 rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
-              <div>{UI_COPY.fractal.usageHint}</div>
-              <div className="mt-1">{UI_COPY.fractal.riskHint}</div>
+            <div className="mt-3">
+              <DebugDetails title={UI_COPY.help.title}>
+                <div className="grid gap-2 text-xs text-subtext">
+                  <div>{UI_COPY.fractal.usageHint}</div>
+                  <div className="text-amber-700 dark:text-amber-300">{UI_COPY.fractal.riskHint}</div>
+                </div>
+              </DebugDetails>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">

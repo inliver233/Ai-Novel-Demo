@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { Drawer } from "../components/ui/Drawer";
 import { useProjectData } from "../hooks/useProjectData";
 import { humanizeChangeSetStatus, humanizeTaskStatus } from "../lib/humanize";
@@ -203,8 +204,8 @@ export function TaskCenterPage() {
       <div className="panel p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="font-content text-xl text-ink">任务中心</div>
-            <div className="mt-1 text-xs text-subtext">查看记忆变更集与后台任务的状态、错误与排障信息</div>
+            <div className="font-content text-xl text-ink">{UI_COPY.taskCenter.title}</div>
+            <div className="mt-1 text-xs text-subtext">{UI_COPY.taskCenter.subtitle}</div>
           </div>
           <button
             className="btn btn-secondary"
@@ -214,6 +215,15 @@ export function TaskCenterPage() {
           >
             刷新
           </button>
+        </div>
+
+        <div className="mt-3">
+          <DebugDetails title={UI_COPY.help.title}>
+            <div className="grid gap-2 text-xs text-subtext">
+              <div>{UI_COPY.taskCenter.usageHint}</div>
+              <div className="text-amber-700 dark:text-amber-300">{UI_COPY.taskCenter.riskHint}</div>
+            </div>
+          </DebugDetails>
         </div>
       </div>
 

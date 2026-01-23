@@ -119,6 +119,14 @@ export function GraphPage() {
         </>
       }
     >
+      <DebugDetails title={UI_COPY.help.title}>
+        <div className="grid gap-2 text-xs text-subtext">
+          <div>{UI_COPY.graph.usageHint}</div>
+          <div>{UI_COPY.graph.exampleHint}</div>
+          <div className="text-amber-700 dark:text-amber-300">{UI_COPY.graph.riskHint}</div>
+        </div>
+      </DebugDetails>
+
       <label className="block">
         <div className="text-xs text-subtext">{UI_COPY.graph.queryTextLabel}</div>
         <input

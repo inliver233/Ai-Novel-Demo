@@ -45,6 +45,10 @@
 | 设置 | 设置 / 项目设置 | Settings | 若为项目维度设置，标题用“项目设置”。 |
 | 管理 | 管理 | Admin | 管理用户/权限等。 |
 | 提示词工作室 | 提示词工作室 | Prompt Studio | 首次可写“提示词工作室（Prompt Studio）”。 |
+| 提示词 | 提示词（prompt） | prompt | 给模型的指令文本；建议提供示例与输出格式要求。 |
+| 模型提供方 | 提供方（provider） | provider | 例如：openai / azure_openai / anthropic / gemini（以实现为准）。 |
+| 模型 | 模型（model） | model | 例如：gpt-4.1-mini / claude-3.5-sonnet（以实现为准）。 |
+| Base URL | 接口地址（base_url） | base_url | OpenAI-compatible 常见形态为 `http(s)://host/v1`；不同 provider 可能不带 `/v1`。 |
 | 结构化记忆 | 结构化记忆 | Structured Memory | 表格化浏览实体/关系/事件等。 |
 | 记忆更新 | 记忆更新 | Memory Update | 以 change set/ops 形式对记忆做批量更新。 |
 | 长期记忆 | 长期记忆 | Long-term Memory | 文档中可缩写为 LMEM（首次注明）。 |
@@ -58,10 +62,12 @@
 | 入库/构建 | 入库 | ingest | 例如“触发入库（ingest）”。 |
 | 重建 | 重建 | rebuild | 例如“重建索引（rebuild）”。 |
 | 片段 | 片段 | chunk | 检索结果的文本片段。 |
+| 重排 | 重排（rerank） | rerank | 对候选结果二次排序，提高命中质量（通常增加一次额外计算）。 |
 | 候选 | 候选 | candidate(s) | 调试统计区使用“候选”。 |
 | 最终选中 | 最终选中 | final selected | 例如“最终选中 12 条”。 |
 | 丢弃 | 丢弃 | dropped | 例如“丢弃原因”。 |
 | 请求 ID | 请求 ID（request_id） | request_id | 统一格式：中文 + key，且支持复制。 |
+| JSON | JSON | JSON | 结构化数据格式；用于导入导出、调试信息、批量操作等场景。 |
 | 变更集 | 变更集（change_set） | change_set | Memory Update/审计场景。 |
 | 操作 | 操作（op） | op / upsert / delete | 例如“操作（op）= delete”。 |
 | 计划中 | 计划中（planned） | planned | UI 显示中文；调试区保留英文原值。 |
@@ -69,4 +75,3 @@
 | 运行中 | 运行中（running） | running | 同上。 |
 | 成功 | 成功（succeeded） | succeeded | 同上。 |
 | 失败 | 失败（failed） | failed | 同上。 |
-

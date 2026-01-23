@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
+import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
 import type { ProjectSettings } from "../types";
 import { RagAdvancedDebugPanel } from "./rag/RagAdvancedDebugPanel";
@@ -440,6 +442,14 @@ export function RagPage() {
   return (
     <div className="grid gap-4">
       <div className="panel p-5">
+        <DebugDetails title={UI_COPY.help.title}>
+          <div className="grid gap-2 text-xs text-subtext">
+            <div>{UI_COPY.rag.usageHint}</div>
+            <div>{UI_COPY.rag.exampleHint}</div>
+            <div className="text-amber-700 dark:text-amber-300">{UI_COPY.rag.riskHint}</div>
+          </div>
+        </DebugDetails>
+
         <RagHeaderPanel
           projectId={projectId}
           statusLoading={statusLoading}

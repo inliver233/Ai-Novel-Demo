@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
+import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { useToast } from "../components/ui/toast";
 import { MemoryUpdateDrawer } from "../components/writing/MemoryUpdateDrawer";
 import { useProjectData } from "../hooks/useProjectData";
@@ -296,12 +297,21 @@ export function StructuredMemoryPage() {
           <div>
             <div className="font-content text-xl text-ink">{UI_COPY.structuredMemory.title}</div>
             <div className="mt-1 text-xs text-subtext">{UI_COPY.structuredMemory.subtitle}</div>
-            <div className="mt-1 text-[11px] text-subtext">{UI_COPY.structuredMemory.bulkOpsHint}</div>
-            <div className="mt-1 text-[11px] text-subtext">{UI_COPY.structuredMemory.bulkOpsRisk}</div>
           </div>
           <button className="btn btn-secondary" onClick={() => void pageQuery.refresh()} type="button">
             刷新
           </button>
+        </div>
+
+        <div className="mt-3">
+          <DebugDetails title={UI_COPY.help.title}>
+            <div className="grid gap-2 text-xs text-subtext">
+              <div>{UI_COPY.structuredMemory.usageHint}</div>
+              <div>{UI_COPY.structuredMemory.exampleHint}</div>
+              <div>{UI_COPY.structuredMemory.bulkOpsHint}</div>
+              <div className="text-amber-700 dark:text-amber-300">{UI_COPY.structuredMemory.bulkOpsRisk}</div>
+            </div>
+          </DebugDetails>
         </div>
       </div>
 
