@@ -113,6 +113,10 @@
     @apply ui-focus-ring ui-pressable;
   }
 
+  .btn-sm {
+    @apply px-2 py-1 text-xs;
+  }
+
   .btn-secondary {
     @apply border border-border bg-canvas text-ink hover:bg-surface disabled:opacity-60 disabled:cursor-not-allowed;
   }
