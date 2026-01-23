@@ -196,7 +196,7 @@ export function RagQueryPanel(props: {
           <textarea
             id="rag-query-text"
             aria-label="query_text"
-            className="mt-1 w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none"
+            className="textarea mt-1"
             rows={3}
             value={queryText}
             onChange={(e) => setQueryText(e.target.value)}
