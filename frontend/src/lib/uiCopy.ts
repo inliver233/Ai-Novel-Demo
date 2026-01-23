@@ -12,7 +12,7 @@ export const UI_COPY = {
     home: "首页",
     groupWorkbench: "项目工作台",
     groupView: "查看",
-    groupAiConfig: "AI 配置",
+    groupAiConfig: "项目配置",
     groupAdvancedDebug: "高级调试",
     groupAdmin: "管理",
 
@@ -39,6 +39,7 @@ export const UI_COPY = {
     navMenu: "导航菜单",
     openNav: "打开导航",
     closeNav: "关闭导航",
+    advancedDebugToggle: "显示高级调试（仅用于排障）",
     chooseProjectHint: "请选择一个项目以进入编辑页。",
     currentProject: "当前项目",
     backToHome: "返回首页",
