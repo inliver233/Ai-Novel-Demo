@@ -41,7 +41,7 @@ export function PromptStudioPreviewPanel(props: {
           >
             {tasks.map((t) => (
               <option key={t.key} value={t.key}>
-                {t.key}
+                {t.label}
               </option>
             ))}
           </select>

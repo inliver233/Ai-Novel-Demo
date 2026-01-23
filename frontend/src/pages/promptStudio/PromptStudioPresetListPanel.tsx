@@ -4,11 +4,13 @@ import { useMemo, useRef, useState } from "react";
 
 import { transition } from "../../lib/motion";
 import type { PromptPreset } from "../../types";
+import type { PromptStudioTask } from "./types";
 
 export function PromptStudioPresetListPanel(props: {
   busy: boolean;
   importBusy: boolean;
   bulkBusy: boolean;
+  tasks: PromptStudioTask[];
   presets: PromptPreset[];
   selectedPresetId: string | null;
   setSelectedPresetId: (id: string | null) => void;
@@ -28,6 +30,7 @@ export function PromptStudioPresetListPanel(props: {
     importBusy,
     importPreset,
     presets,
+    tasks,
     selectedPresetId,
     setSelectedPresetId,
   } = props;
@@ -39,6 +42,8 @@ export function PromptStudioPresetListPanel(props: {
   const importAllInputRef = useRef<HTMLInputElement | null>(null);
 
   const [categoryFilter, setCategoryFilter] = useState<string>("__all__");
+
+  const taskLabelByKey = useMemo(() => new Map(tasks.map((t) => [t.key, t.label])), [tasks]);
 
   const presetCategoryGroups = useMemo(() => {
     const groups = new Map<string, PromptPreset[]>();
@@ -180,6 +185,10 @@ export function PromptStudioPresetListPanel(props: {
                   <div className={clsx("grid gap-1", showCategoryHeaders ? "mt-1" : null)}>
                     {items.map((p) => {
                       const active = p.id === selectedPresetId;
+                      const activeFor = (p.active_for ?? [])
+                        .map((key) => taskLabelByKey.get(key) ?? key)
+                        .filter((v) => typeof v === "string" && v.trim())
+                        .join(", ");
                       return (
                         <button
                           key={p.id}
@@ -201,7 +210,7 @@ export function PromptStudioPresetListPanel(props: {
                           ) : null}
                           <div className="relative z-10 truncate">{p.name}</div>
                           <div className="relative z-10 mt-1 text-xs opacity-80">
-                            {(p.active_for ?? []).join(", ") || "—"}
+                            {activeFor || "—"}
                           </div>
                         </button>
                       );
