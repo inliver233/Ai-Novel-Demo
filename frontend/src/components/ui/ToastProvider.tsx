@@ -91,10 +91,10 @@ export function ToastProvider(props: { children: React.ReactNode }) {
                 className={clsx(
                   "rounded-atelier border bg-surface/85 p-3 shadow-sm backdrop-blur",
                   t.variant === "error"
-                    ? "border-accent/60"
+                    ? "border-red-500/50"
                     : t.variant === "warning"
                       ? "border-amber-500/50"
-                      : "border-border",
+                      : "border-success/50",
                 )}
               >
                 <div className="flex items-start justify-between gap-3">
