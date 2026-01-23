@@ -413,6 +413,7 @@ export function MemoryUpdateDrawer(props: Props) {
               <div className="text-sm text-ink">{copy.step1}</div>
               <div className="mt-1 text-xs text-subtext">{copy.inputTitle}</div>
               <div className="mt-0.5 text-xs text-subtext">{copy.inputHint}</div>
+              <div className="mt-1 text-[11px] text-subtext">{copy.step1Hint}</div>
               <label className="mt-2 block text-xs text-subtext">
                 {copy.focusLabel}
                 <input
@@ -473,6 +474,7 @@ export function MemoryUpdateDrawer(props: Props) {
                     {proposeResult.items.length}
                   </div>
                 </div>
+                <div className="mt-1 text-[11px] text-subtext">{copy.step2Hint}</div>
                 <div className="mt-1 text-xs text-subtext">
                   change_set_id: {proposeResult.change_set.id}{" "}
                   {proposeResult.change_set.request_id ? `| request_id: ${proposeResult.change_set.request_id}` : ""}
@@ -544,6 +546,7 @@ export function MemoryUpdateDrawer(props: Props) {
                   </div>
                 ) : null}
               </div>
+              <div className="mt-1 text-[11px] text-subtext">{copy.step3Hint}</div>
 
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button
@@ -644,7 +647,7 @@ export function MemoryUpdateDrawer(props: Props) {
                   </div>
                 </div>
               ) : (
-                <div className="mt-2 text-xs text-subtext">提示：应用（Apply）后点“刷新”确认结构化事实已落库。</div>
+                <div className="mt-2 text-xs text-subtext">提示：应用后点“刷新”确认结构化事实已落库。</div>
               )}
             </div>
           </div>
