@@ -79,6 +79,7 @@ export function RagAdvancedDebugPanel(props: {
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
               <input
+                className="checkbox"
                 type="checkbox"
                 checked={rerankEnabled}
                 onChange={(e) => setRerankEnabled(e.target.checked)}

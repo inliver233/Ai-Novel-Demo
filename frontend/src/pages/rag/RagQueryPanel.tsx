@@ -180,7 +180,7 @@ export function RagQueryPanel(props: {
         <div className="mt-3 flex flex-wrap gap-3">
           {(["worldbook", "outline", "chapter"] as const).map((s) => (
             <label key={s} className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={sources.includes(s)} onChange={() => toggleSource(s)} />
+              <input className="checkbox" type="checkbox" checked={sources.includes(s)} onChange={() => toggleSource(s)} />
               <span>{SOURCE_LABEL[s]}</span>
             </label>
           ))}

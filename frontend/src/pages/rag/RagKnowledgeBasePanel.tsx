@@ -122,6 +122,7 @@ export function RagKnowledgeBasePanel(props: {
                   <div className="flex flex-wrap items-center gap-3">
                     <label className="flex items-center gap-2 text-sm text-ink">
                       <input
+                        className="checkbox"
                         type="checkbox"
                         checked={selectedKbIds.includes(kb.kb_id)}
                         onChange={() => toggleKbSelected(kb.kb_id)}
@@ -131,6 +132,7 @@ export function RagKnowledgeBasePanel(props: {
                     </label>
                     <label className="flex items-center gap-2 text-sm text-ink">
                       <input
+                        className="checkbox"
                         type="checkbox"
                         checked={Boolean(draft.enabled)}
                         onChange={(e) => updateKbDraft(kb.kb_id, { enabled: e.target.checked })}
