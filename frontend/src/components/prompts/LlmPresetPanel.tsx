@@ -94,6 +94,9 @@ export function LlmPresetPanel(props: Props) {
             <option value="anthropic">anthropic（Claude）</option>
             <option value="gemini">gemini</option>
           </select>
+          <div className="text-[11px] text-subtext">
+            openai_compatible：适用于本地 Mock/中转网关。不同服务商对 base_url 的格式要求不同，请按下方提示填写。
+          </div>
         </label>
         <label className="grid gap-1">
           <span className="text-xs text-subtext">模型（model）</span>
@@ -104,6 +107,7 @@ export function LlmPresetPanel(props: Props) {
             value={props.llmForm.model}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, model: e.target.value }))}
           />
+          <div className="text-[11px] text-subtext">填写服务端支持的模型名；报错时优先检查 model 是否拼写正确。</div>
         </label>
 
         <label className="grid gap-1 sm:col-span-2">
@@ -120,6 +124,10 @@ export function LlmPresetPanel(props: Props) {
             value={props.llmForm.base_url}
             onChange={(e) => props.setLlmForm((v) => ({ ...v, base_url: e.target.value }))}
           />
+          <div className="text-[11px] text-subtext">
+            OpenAI-compatible 通常以 <span className="font-mono">/v1</span> 结尾；Anthropic/Gemini 通常填写 host（不带{" "}
+            <span className="font-mono">/v1</span>）。
+          </div>
         </label>
       </div>
 
@@ -217,6 +225,10 @@ export function LlmPresetPanel(props: Props) {
               value={props.llmForm.extra}
               onChange={(e) => props.setLlmForm((v) => ({ ...v, extra: e.target.value }))}
             />
+            <div className="text-[11px] text-subtext">
+              必须是合法 JSON。示例：<span className="font-mono">{'{"response_format":{"type":"json_object"}}'}</span>
+              。不要在 extra 里填写 API Key。
+            </div>
           </label>
         </div>
       </details>
