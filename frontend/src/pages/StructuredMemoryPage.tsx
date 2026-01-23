@@ -511,7 +511,7 @@ export function StructuredMemoryPage() {
                       primary = `${readStringField(row, "event_type")}:${readStringField(row, "title") || id}`;
                       summary = safeSnippet(readTextField(row, "content_md"));
                     } else if (activeTable === "foreshadows") {
-                      primary = `${readBoolField(row, "resolved") ? "resolved" : "open"}:${readStringField(row, "title") || id}`;
+                      primary = `${readBoolField(row, "resolved") ? "已解决" : "未解决"}:${readStringField(row, "title") || id}`;
                       summary = safeSnippet(readTextField(row, "content_md"));
                     } else if (activeTable === "evidence") {
                       primary = `${readStringField(row, "source_type")}:${readStringField(row, "source_id") || "-"}`;
@@ -539,11 +539,11 @@ export function StructuredMemoryPage() {
                         <td className="p-2">
                           {deletedAt ? (
                             <span className="rounded bg-red-50 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-500/10 dark:text-red-300">
-                              deleted
+                              已删除
                             </span>
                           ) : (
                             <span className="rounded bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-                              active
+                              正常
                             </span>
                           )}
                         </td>
