@@ -112,6 +112,7 @@ export function GraphPage() {
         <>
           <label className="flex items-center gap-2 text-xs text-subtext">
             <input
+              className="checkbox"
               type="checkbox"
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
