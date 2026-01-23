@@ -40,6 +40,15 @@ Run-Step "Frontend unit tests" {
   }
 }
 
+Run-Step "Frontend lint" {
+  Push-Location (Join-Path $repoRoot "frontend")
+  try {
+    npm run lint
+  } finally {
+    Pop-Location
+  }
+}
+
 Run-Step "E2E (this test harness)" {
   Push-Location $PSScriptRoot
   try {
