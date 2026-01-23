@@ -538,11 +538,11 @@ export function StructuredMemoryPage() {
                         </td>
                         <td className="p-2">
                           {deletedAt ? (
-                            <span className="rounded bg-red-50 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                            <span className="inline-flex rounded bg-red-50 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-500/10 dark:text-red-300">
                               已删除
                             </span>
                           ) : (
-                            <span className="rounded bg-success/10 px-2 py-0.5 text-[11px] text-success">
+                            <span className="inline-flex rounded bg-success/10 px-2 py-0.5 text-[11px] text-success">
                               正常
                             </span>
                           )}
