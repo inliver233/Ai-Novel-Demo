@@ -27,4 +27,3 @@ export function downloadJson(filename: string, value: unknown): void {
   document.body.removeChild(a);
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-

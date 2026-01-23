@@ -206,7 +206,12 @@ export function TaskCenterPage() {
             <div className="font-content text-xl text-ink">任务中心</div>
             <div className="mt-1 text-xs text-subtext">查看记忆变更集与后台任务的状态、错误与排障信息</div>
           </div>
-          <button className="btn btn-secondary" onClick={refreshAll} aria-label="刷新 (taskcenter_refresh)" type="button">
+          <button
+            className="btn btn-secondary"
+            onClick={refreshAll}
+            aria-label="刷新 (taskcenter_refresh)"
+            type="button"
+          >
             刷新
           </button>
         </div>
@@ -294,7 +299,9 @@ export function TaskCenterPage() {
             <div>
               <div className="text-sm text-ink">任务（Tasks）</div>
               <div className="mt-1 text-xs text-subtext">失败任务会显示错误摘要与 {UI_COPY.common.requestIdLabel}</div>
-              <div className="mt-1 text-[11px] text-subtext">状态说明：排队中→运行中→完成/失败（如失败可用 request_id 查后端日志）</div>
+              <div className="mt-1 text-[11px] text-subtext">
+                状态说明：排队中→运行中→完成/失败（如失败可用 request_id 查后端日志）
+              </div>
               <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-subtext">
                 <span>总计 {taskSummary.all}</span>
                 <span>排队中 {taskSummary.queued}</span>
@@ -331,9 +338,7 @@ export function TaskCenterPage() {
           </div>
 
           {tasksQuery.loading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
-          {!tasksQuery.loading && tasks.length === 0 ? (
-            <div className="mt-3 text-sm text-subtext">暂无任务</div>
-          ) : null}
+          {!tasksQuery.loading && tasks.length === 0 ? <div className="mt-3 text-sm text-subtext">暂无任务</div> : null}
 
           <div className="mt-3 grid gap-2">
             {tasks.map((t) => (
@@ -391,7 +396,9 @@ export function TaskCenterPage() {
             {selected ? (
               <div className="mt-1 text-xs text-subtext">
                 ID：{selected.item.id}{" "}
-                {selected.kind === "task" ? `| ${UI_COPY.common.requestIdLabel}: ${selected.item.request_id ?? "-"}` : ""}
+                {selected.kind === "task"
+                  ? `| ${UI_COPY.common.requestIdLabel}: ${selected.item.request_id ?? "-"}`
+                  : ""}
               </div>
             ) : null}
           </div>

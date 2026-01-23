@@ -149,9 +149,7 @@ export function BatchGenerationModal(props: {
                 <div
                   className="h-2 rounded bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
                   style={{
-                    width: `${Math.round(
-                      (task.total_count > 0 ? task.completed_count / task.total_count : 0) * 100,
-                    )}%`,
+                    width: `${Math.round((task.total_count > 0 ? task.completed_count / task.total_count : 0) * 100)}%`,
                   }}
                 />
               </div>

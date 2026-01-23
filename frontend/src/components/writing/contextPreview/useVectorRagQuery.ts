@@ -210,4 +210,3 @@ export function useVectorRagQuery(params: { open: boolean; projectId?: string; t
     vectorSources,
   };
 }
-

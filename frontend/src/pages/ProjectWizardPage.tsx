@@ -265,11 +265,11 @@ export function ProjectWizardPage() {
 
       <section className="panel p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="grid gap-2">
-              <div className="font-content text-xl">自动模式（MVP）</div>
-              <div className="text-xs text-subtext">一键：生成大纲 → 保存 → 创建章节骨架 → 跳转写作页。</div>
-              <div className="text-xs text-subtext">建议先完成「项目设置 / 模型配置」，以避免生成失败。</div>
-            </div>
+          <div className="grid gap-2">
+            <div className="font-content text-xl">自动模式（MVP）</div>
+            <div className="text-xs text-subtext">一键：生成大纲 → 保存 → 创建章节骨架 → 跳转写作页。</div>
+            <div className="text-xs text-subtext">建议先完成「项目设置 / 模型配置」，以避免生成失败。</div>
+          </div>
           <button
             className="btn btn-primary"
             disabled={autoRunning}

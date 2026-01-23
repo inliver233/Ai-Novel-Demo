@@ -134,9 +134,10 @@ export function VectorRagDebugPanel(props: {
               <span>
                 {vectorResult.counts ? (
                   <>
-                    counts: total:{vectorResult.counts.candidates_total} | returned:{vectorResult.counts.candidates_returned} |
-                    unique_sources:{vectorResult.counts.unique_sources} | final_selected:{vectorResult.counts.final_selected} |
-                    dropped:{vectorResult.counts.dropped_total} | drop_by_reason:
+                    counts: total:{vectorResult.counts.candidates_total} | returned:
+                    {vectorResult.counts.candidates_returned} | unique_sources:{vectorResult.counts.unique_sources} |
+                    final_selected:{vectorResult.counts.final_selected} | dropped:{vectorResult.counts.dropped_total} |
+                    drop_by_reason:
                     {Object.keys(vectorResult.counts.dropped_by_reason).length
                       ? Object.entries(vectorResult.counts.dropped_by_reason)
                           .map(([k, v]) => `${k}:${v}`)
@@ -145,8 +146,8 @@ export function VectorRagDebugPanel(props: {
                   </>
                 ) : (
                   <>
-                    counts: candidates:{vectorResult.candidates.length} | final_chunks:{vectorResult.final.chunks.length} |
-                    dropped:{vectorResult.dropped.length}
+                    counts: candidates:{vectorResult.candidates.length} | final_chunks:
+                    {vectorResult.final.chunks.length} | dropped:{vectorResult.dropped.length}
                   </>
                 )}
               </span>
@@ -301,7 +302,9 @@ export function VectorRagDebugPanel(props: {
             </details>
           </>
         ) : (
-          <div className="text-sm text-subtext">提示：当前环境缺 embedding/chroma 时会返回 disabled_reason，但结构仍可用于排查。</div>
+          <div className="text-sm text-subtext">
+            提示：当前环境缺 embedding/chroma 时会返回 disabled_reason，但结构仍可用于排查。
+          </div>
         )}
       </div>
     </div>

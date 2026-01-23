@@ -74,7 +74,12 @@ export function PromptStudioPresetEditorPanel(props: {
         <div className="grid gap-4">
           <div className="grid gap-2">
             <div className="text-xs text-subtext">名称</div>
-            <input className="input" value={presetDraftName} onChange={(e) => setPresetDraftName(e.target.value)} disabled={busy} />
+            <input
+              className="input"
+              value={presetDraftName}
+              onChange={(e) => setPresetDraftName(e.target.value)}
+              disabled={busy}
+            />
           </div>
 
           <div className="grid gap-2">
@@ -87,7 +92,9 @@ export function PromptStudioPresetEditorPanel(props: {
                     key={t.key}
                     className={clsx(
                       "ui-transition-fast flex items-center gap-2 rounded-atelier border px-3 py-2 text-sm",
-                      checked ? "border-accent/40 bg-accent/10 text-ink" : "border-border bg-canvas text-subtext hover:bg-surface hover:text-ink",
+                      checked
+                        ? "border-accent/40 bg-accent/10 text-ink"
+                        : "border-border bg-canvas text-subtext hover:bg-surface hover:text-ink",
                       busy ? "opacity-60" : "cursor-pointer",
                     )}
                   >
@@ -115,7 +122,12 @@ export function PromptStudioPresetEditorPanel(props: {
       <div className="panel p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="text-sm font-semibold">提示块</div>
-          <button className="btn btn-secondary" onClick={() => void addBlock()} disabled={busy || !selectedPresetId} type="button">
+          <button
+            className="btn btn-secondary"
+            onClick={() => void addBlock()}
+            disabled={busy || !selectedPresetId}
+            type="button"
+          >
             添加块
           </button>
         </div>
@@ -297,7 +309,9 @@ export function PromptStudioPresetEditorPanel(props: {
                               key={t.key}
                               className={clsx(
                                 "ui-transition-fast flex items-center gap-2 rounded-atelier border px-3 py-2 text-sm",
-                                checked ? "border-accent/40 bg-accent/10 text-ink" : "border-border bg-canvas text-subtext hover:bg-surface hover:text-ink",
+                                checked
+                                  ? "border-accent/40 bg-accent/10 text-ink"
+                                  : "border-border bg-canvas text-subtext hover:bg-surface hover:text-ink",
                                 busy ? "opacity-60" : "cursor-pointer",
                               )}
                             >
@@ -355,8 +369,12 @@ export function PromptStudioPresetEditorPanel(props: {
                           }
                           placeholder="chapter_generate, outline_generate"
                         />
-                        {customTriggers.length ? <div className="text-xs text-subtext">自定义：{customTriggers.join(", ")}</div> : null}
-                        {invalidTriggers.length ? <div className="text-xs text-accent">无效 triggers：{invalidTriggers.join(", ")}</div> : null}
+                        {customTriggers.length ? (
+                          <div className="text-xs text-subtext">自定义：{customTriggers.join(", ")}</div>
+                        ) : null}
+                        {invalidTriggers.length ? (
+                          <div className="text-xs text-accent">无效 triggers：{invalidTriggers.join(", ")}</div>
+                        ) : null}
                       </div>
                     </div>
                     <div className="grid gap-1">
@@ -415,4 +433,3 @@ export function PromptStudioPresetEditorPanel(props: {
     </>
   );
 }
-

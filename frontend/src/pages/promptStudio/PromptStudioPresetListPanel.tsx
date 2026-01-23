@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { LayoutGroup, motion, useReducedMotion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { transition } from "../../lib/motion";
 import type { PromptPreset } from "../../types";
@@ -53,18 +53,17 @@ export function PromptStudioPresetListPanel(props: {
     return ordered;
   }, [presets]);
 
+  const effectiveCategoryFilter =
+    categoryFilter === "__all__" || presetCategoryGroups.some(([key]) => key === categoryFilter)
+      ? categoryFilter
+      : "__all__";
+
   const visiblePresetCategoryGroups = useMemo(() => {
-    if (categoryFilter === "__all__") return presetCategoryGroups;
-    return presetCategoryGroups.filter(([key]) => key === categoryFilter);
-  }, [categoryFilter, presetCategoryGroups]);
+    if (effectiveCategoryFilter === "__all__") return presetCategoryGroups;
+    return presetCategoryGroups.filter(([key]) => key === effectiveCategoryFilter);
+  }, [effectiveCategoryFilter, presetCategoryGroups]);
 
-  useEffect(() => {
-    if (categoryFilter === "__all__") return;
-    if (presetCategoryGroups.some(([key]) => key === categoryFilter)) return;
-    setCategoryFilter("__all__");
-  }, [categoryFilter, presetCategoryGroups]);
-
-  const showCategoryHeaders = categoryFilter === "__all__";
+  const showCategoryHeaders = effectiveCategoryFilter === "__all__";
 
   return (
     <div className="panel p-4">
@@ -126,7 +125,11 @@ export function PromptStudioPresetListPanel(props: {
           >
             导入
           </button>
-          <button className="btn btn-secondary w-full" onClick={() => void exportPreset()} disabled={busy || !selectedPresetId}>
+          <button
+            className="btn btn-secondary w-full"
+            onClick={() => void exportPreset()}
+            disabled={busy || !selectedPresetId}
+          >
             导出
           </button>
         </div>
@@ -155,7 +158,7 @@ export function PromptStudioPresetListPanel(props: {
           <div className="text-xs text-subtext">分类</div>
           <select
             className="input"
-            value={categoryFilter}
+            value={effectiveCategoryFilter}
             onChange={(e) => setCategoryFilter(e.currentTarget.value)}
             disabled={busy || bulkBusy}
           >
@@ -182,7 +185,9 @@ export function PromptStudioPresetListPanel(props: {
                           key={p.id}
                           className={clsx(
                             "ui-focus-ring ui-transition-fast group relative w-full overflow-hidden rounded-atelier border px-3 py-2 text-left text-sm motion-safe:active:scale-[0.99]",
-                            active ? "border-accent/40 text-ink" : "border-border text-subtext hover:bg-canvas hover:text-ink",
+                            active
+                              ? "border-accent/40 text-ink"
+                              : "border-border text-subtext hover:bg-canvas hover:text-ink",
                           )}
                           onClick={() => setSelectedPresetId(p.id)}
                           type="button"
@@ -195,7 +200,9 @@ export function PromptStudioPresetListPanel(props: {
                             />
                           ) : null}
                           <div className="relative z-10 truncate">{p.name}</div>
-                          <div className="relative z-10 mt-1 text-xs opacity-80">{(p.active_for ?? []).join(", ") || "—"}</div>
+                          <div className="relative z-10 mt-1 text-xs opacity-80">
+                            {(p.active_for ?? []).join(", ") || "—"}
+                          </div>
                         </button>
                       );
                     })}
@@ -213,4 +220,3 @@ export function PromptStudioPresetListPanel(props: {
     </div>
   );
 }
-

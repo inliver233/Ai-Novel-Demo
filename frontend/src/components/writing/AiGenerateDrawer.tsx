@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
 import { Drawer } from "../ui/Drawer";
 import { UI_COPY } from "../../lib/uiCopy";
@@ -33,7 +33,7 @@ type WritingStyle = {
 };
 
 export function AiGenerateDrawer(props: Props) {
-  const { generating, onClose, open } = props;
+  const { onClose, open } = props;
   const streamProviderSupported = !!props.preset && props.preset.provider.startsWith("openai");
   const titleId = useId();
   const advancedPanelId = useId();
@@ -51,21 +51,21 @@ export function AiGenerateDrawer(props: Props) {
     [allStyles, projectDefaultStyleId],
   );
 
+  const closeDrawer = useCallback(() => {
+    setAdvancedOpen(false);
+    onClose();
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
-      onClose();
+      closeDrawer();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [generating, onClose, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    setAdvancedOpen(false);
-  }, [open]);
+  }, [closeDrawer, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -110,7 +110,7 @@ export function AiGenerateDrawer(props: Props) {
   return (
     <Drawer
       open={open}
-      onClose={onClose}
+      onClose={closeDrawer}
       side="bottom"
       ariaLabelledBy={titleId}
       panelClassName="h-[85vh] w-full overflow-y-auto rounded-atelier border-t border-border bg-canvas p-6 shadow-sm sm:h-full sm:max-w-md sm:rounded-none sm:border-l sm:border-t-0"
@@ -124,7 +124,7 @@ export function AiGenerateDrawer(props: Props) {
             {props.preset ? `${props.preset.provider} / ${props.preset.model}` : "未加载 LLM 配置"}
           </div>
         </div>
-        <button className="btn btn-secondary" aria-label="关闭" onClick={onClose} type="button">
+        <button className="btn btn-secondary" aria-label="关闭" onClick={closeDrawer} type="button">
           关闭
         </button>
       </div>
@@ -368,145 +368,145 @@ export function AiGenerateDrawer(props: Props) {
           <div className="text-sm font-medium text-ink">上下文</div>
           <div className="mt-3 grid gap-3">
             <div className="grid gap-2">
-          <div className="text-xs text-subtext">上下文注入</div>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              className="checkbox"
-              checked={props.genForm.context.include_world_setting}
-              disabled={props.generating}
-              name="context_include_world_setting"
-              onChange={(e) => {
-                const checked = e.target.checked;
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_world_setting: checked } }));
-              }}
-              type="checkbox"
-            />
-            世界观
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              className="checkbox"
-              checked={props.genForm.context.include_style_guide}
-              disabled={props.generating}
-              name="context_include_style_guide"
-              onChange={(e) => {
-                const checked = e.target.checked;
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_style_guide: checked } }));
-              }}
-              type="checkbox"
-            />
-            风格
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              className="checkbox"
-              checked={props.genForm.context.include_constraints}
-              disabled={props.generating}
-              name="context_include_constraints"
-              onChange={(e) => {
-                const checked = e.target.checked;
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_constraints: checked } }));
-              }}
-              type="checkbox"
-            />
-            约束
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              className="checkbox"
-              checked={props.genForm.context.include_outline}
-              disabled={props.generating}
-              name="context_include_outline"
-              onChange={(e) => {
-                const checked = e.target.checked;
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_outline: checked } }));
-              }}
-              type="checkbox"
-            />
-            大纲
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              className="checkbox"
-              checked={props.genForm.context.include_smart_context}
-              disabled={props.generating}
-              name="context_include_smart_context"
-              onChange={(e) => {
-                const checked = e.target.checked;
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, include_smart_context: checked } }));
-              }}
-              type="checkbox"
-            />
-            智能上下文
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              className="checkbox"
-              checked={props.genForm.context.require_sequential}
-              disabled={props.generating}
-              name="context_require_sequential"
-              onChange={(e) => {
-                const checked = e.target.checked;
-                props.setGenForm((v) => ({ ...v, context: { ...v.context, require_sequential: checked } }));
-              }}
-              type="checkbox"
-            />
-            严格顺序
-          </label>
-            </div>
-
-            <label className="grid gap-1">
-          <span className="text-xs text-subtext">上一章注入</span>
-          <select
-            className="select"
-            disabled={props.generating}
-            name="previous_chapter"
-            value={props.genForm.context.previous_chapter}
-            onChange={(e) => {
-              const value = e.target.value as GenerateForm["context"]["previous_chapter"];
-              props.setGenForm((v) => ({
-                ...v,
-                context: {
-                  ...v.context,
-                  previous_chapter: value,
-                },
-              }));
-            }}
-          >
-            <option value="none">不注入</option>
-            <option value="tail">结尾（推荐）</option>
-            <option value="summary">摘要</option>
-            <option value="content">正文</option>
-          </select>
-          <div className="text-[11px] text-subtext">结尾更利于强衔接，减少开头复述。</div>
-            </label>
-
-            <div className="grid gap-2">
-          <div className="text-xs text-subtext">注入角色（可选）</div>
-          {props.characters.length === 0 ? <div className="text-sm text-subtext">暂无角色</div> : null}
-          <div className="max-h-40 overflow-auto rounded-atelier border border-border bg-surface p-2">
-            {props.characters.map((c) => (
-              <label key={c.id} className="flex items-center gap-2 px-2 py-1 text-sm text-ink">
+              <div className="text-xs text-subtext">上下文注入</div>
+              <label className="flex items-center gap-2 text-sm text-ink">
                 <input
                   className="checkbox"
-                  checked={props.genForm.context.character_ids.includes(c.id)}
+                  checked={props.genForm.context.include_world_setting}
                   disabled={props.generating}
-                  name={`character_${c.id}`}
+                  name="context_include_world_setting"
                   onChange={(e) => {
                     const checked = e.target.checked;
-                    props.setGenForm((v) => {
-                      const next = new Set(v.context.character_ids);
-                      if (checked) next.add(c.id);
-                      else next.delete(c.id);
-                      return { ...v, context: { ...v.context, character_ids: Array.from(next) } };
-                    });
+                    props.setGenForm((v) => ({ ...v, context: { ...v.context, include_world_setting: checked } }));
                   }}
                   type="checkbox"
                 />
-                <span className="truncate">{c.name}</span>
+                世界观
               </label>
-            ))}
-          </div>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  className="checkbox"
+                  checked={props.genForm.context.include_style_guide}
+                  disabled={props.generating}
+                  name="context_include_style_guide"
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    props.setGenForm((v) => ({ ...v, context: { ...v.context, include_style_guide: checked } }));
+                  }}
+                  type="checkbox"
+                />
+                风格
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  className="checkbox"
+                  checked={props.genForm.context.include_constraints}
+                  disabled={props.generating}
+                  name="context_include_constraints"
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    props.setGenForm((v) => ({ ...v, context: { ...v.context, include_constraints: checked } }));
+                  }}
+                  type="checkbox"
+                />
+                约束
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  className="checkbox"
+                  checked={props.genForm.context.include_outline}
+                  disabled={props.generating}
+                  name="context_include_outline"
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    props.setGenForm((v) => ({ ...v, context: { ...v.context, include_outline: checked } }));
+                  }}
+                  type="checkbox"
+                />
+                大纲
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  className="checkbox"
+                  checked={props.genForm.context.include_smart_context}
+                  disabled={props.generating}
+                  name="context_include_smart_context"
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    props.setGenForm((v) => ({ ...v, context: { ...v.context, include_smart_context: checked } }));
+                  }}
+                  type="checkbox"
+                />
+                智能上下文
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  className="checkbox"
+                  checked={props.genForm.context.require_sequential}
+                  disabled={props.generating}
+                  name="context_require_sequential"
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    props.setGenForm((v) => ({ ...v, context: { ...v.context, require_sequential: checked } }));
+                  }}
+                  type="checkbox"
+                />
+                严格顺序
+              </label>
+            </div>
+
+            <label className="grid gap-1">
+              <span className="text-xs text-subtext">上一章注入</span>
+              <select
+                className="select"
+                disabled={props.generating}
+                name="previous_chapter"
+                value={props.genForm.context.previous_chapter}
+                onChange={(e) => {
+                  const value = e.target.value as GenerateForm["context"]["previous_chapter"];
+                  props.setGenForm((v) => ({
+                    ...v,
+                    context: {
+                      ...v.context,
+                      previous_chapter: value,
+                    },
+                  }));
+                }}
+              >
+                <option value="none">不注入</option>
+                <option value="tail">结尾（推荐）</option>
+                <option value="summary">摘要</option>
+                <option value="content">正文</option>
+              </select>
+              <div className="text-[11px] text-subtext">结尾更利于强衔接，减少开头复述。</div>
+            </label>
+
+            <div className="grid gap-2">
+              <div className="text-xs text-subtext">注入角色（可选）</div>
+              {props.characters.length === 0 ? <div className="text-sm text-subtext">暂无角色</div> : null}
+              <div className="max-h-40 overflow-auto rounded-atelier border border-border bg-surface p-2">
+                {props.characters.map((c) => (
+                  <label key={c.id} className="flex items-center gap-2 px-2 py-1 text-sm text-ink">
+                    <input
+                      className="checkbox"
+                      checked={props.genForm.context.character_ids.includes(c.id)}
+                      disabled={props.generating}
+                      name={`character_${c.id}`}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        props.setGenForm((v) => {
+                          const next = new Set(v.context.character_ids);
+                          if (checked) next.add(c.id);
+                          else next.delete(c.id);
+                          return { ...v, context: { ...v.context, character_ids: Array.from(next) } };
+                        });
+                      }}
+                      type="checkbox"
+                    />
+                    <span className="truncate">{c.name}</span>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
         </div>

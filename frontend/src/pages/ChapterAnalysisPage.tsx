@@ -160,9 +160,7 @@ export function ChapterAnalysisPage() {
 
       <div className="panel p-4 text-sm text-subtext">
         <div className="text-ink">用途说明</div>
-        <div className="mt-1">
-          将“记忆标注”高亮映射回正文，便于核对与定位；点击高亮或右侧列表可跳转到对应片段。
-        </div>
+        <div className="mt-1">将“记忆标注”高亮映射回正文，便于核对与定位；点击高亮或右侧列表可跳转到对应片段。</div>
         <div className="mt-2">入口：写作页 → 章节工具栏 → “标注回溯”（需要 chapterId）。</div>
       </div>
 

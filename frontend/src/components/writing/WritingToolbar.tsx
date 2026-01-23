@@ -56,7 +56,12 @@ export function WritingToolbar(props: {
         <div className="grid gap-1">
           <div className="text-[11px] text-subtext">基础写作</div>
           <div className="flex flex-wrap items-center gap-2">
-            <button className="btn btn-secondary" disabled={props.aiGenerateDisabled} onClick={props.onOpenAiGenerate} type="button">
+            <button
+              className="btn btn-secondary"
+              disabled={props.aiGenerateDisabled}
+              onClick={props.onOpenAiGenerate}
+              type="button"
+            >
               AI 生成
             </button>
             <button className="btn btn-secondary" onClick={props.onOpenBatch} type="button">

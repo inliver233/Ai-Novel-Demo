@@ -114,4 +114,3 @@ export function formatOverfilter(raw: unknown): string {
   if (Number.isFinite(ftsK)) parts.push(`fts_k:${ftsK}`);
   return parts.join(" | ");
 }
-

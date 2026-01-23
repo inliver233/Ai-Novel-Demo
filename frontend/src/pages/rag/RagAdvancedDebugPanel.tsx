@@ -43,7 +43,9 @@ export function RagAdvancedDebugPanel(props: {
       open={debugOpen}
       onToggle={(e) => setDebugOpen((e.target as HTMLDetailsElement).open)}
     >
-      <summary className="cursor-pointer select-none text-sm font-medium text-ink">{UI_COPY.rag.advancedDebugTitle}</summary>
+      <summary className="cursor-pointer select-none text-sm font-medium text-ink">
+        {UI_COPY.rag.advancedDebugTitle}
+      </summary>
 
       <div className="mt-3 grid gap-4">
         <div className="rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
@@ -152,4 +154,3 @@ export function RagAdvancedDebugPanel(props: {
     </details>
   );
 }
-

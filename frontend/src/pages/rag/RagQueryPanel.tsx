@@ -286,7 +286,9 @@ export function RagQueryPanel(props: {
             {queryPreprocessObs ? (
               <details className="mt-2 rounded-atelier border border-border bg-canvas p-3">
                 <summary className="cursor-pointer select-none text-xs">preprocess_obs</summary>
-                <pre className="mt-2 max-h-64 overflow-auto text-[11px] leading-4 text-subtext">{safeJson(queryPreprocessObs)}</pre>
+                <pre className="mt-2 max-h-64 overflow-auto text-[11px] leading-4 text-subtext">
+                  {safeJson(queryPreprocessObs)}
+                </pre>
               </details>
             ) : null}
 
@@ -369,7 +371,9 @@ export function RagQueryPanel(props: {
 
             <details className="mt-3 rounded-atelier border border-border bg-canvas p-3">
               <summary className="cursor-pointer select-none text-xs">raw vector query result</summary>
-              <pre className="mt-2 max-h-80 overflow-auto text-[11px] leading-4 text-subtext">{safeJson(queryResult)}</pre>
+              <pre className="mt-2 max-h-80 overflow-auto text-[11px] leading-4 text-subtext">
+                {safeJson(queryResult)}
+              </pre>
             </details>
           </div>
         ) : (
@@ -379,4 +383,3 @@ export function RagQueryPanel(props: {
     </>
   );
 }
-

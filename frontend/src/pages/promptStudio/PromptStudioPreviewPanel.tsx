@@ -89,7 +89,9 @@ export function PromptStudioPreviewPanel(props: {
 
           {renderLog ? (
             <details className="rounded-atelier border border-border bg-surface/50 p-3">
-              <summary className="ui-transition-fast cursor-pointer text-sm hover:text-ink">查看 render_log（裁剪/原因/错误）</summary>
+              <summary className="ui-transition-fast cursor-pointer text-sm hover:text-ink">
+                查看 render_log（裁剪/原因/错误）
+              </summary>
               <pre className="mt-2 max-h-[260px] overflow-auto whitespace-pre-wrap break-words rounded-atelier border border-border bg-surface p-3 text-xs">
                 {JSON.stringify(renderLog, null, 2)}
               </pre>
@@ -99,11 +101,19 @@ export function PromptStudioPreviewPanel(props: {
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="grid gap-1">
               <div className="text-xs text-subtext">system</div>
-              <textarea readOnly className="textarea atelier-mono min-h-[180px] resize-y bg-surface py-2 text-xs" value={preview.system} />
+              <textarea
+                readOnly
+                className="textarea atelier-mono min-h-[180px] resize-y bg-surface py-2 text-xs"
+                value={preview.system}
+              />
             </div>
             <div className="grid gap-1">
               <div className="text-xs text-subtext">user</div>
-              <textarea readOnly className="textarea atelier-mono min-h-[180px] resize-y bg-surface py-2 text-xs" value={preview.user} />
+              <textarea
+                readOnly
+                className="textarea atelier-mono min-h-[180px] resize-y bg-surface py-2 text-xs"
+                value={preview.user}
+              />
             </div>
           </div>
 
@@ -135,4 +145,3 @@ export function PromptStudioPreviewPanel(props: {
     </div>
   );
 }
-

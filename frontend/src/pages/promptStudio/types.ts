@@ -13,4 +13,3 @@ export type BlockDraft = {
 };
 
 export type PromptStudioTask = { key: string; label: string };
-

@@ -195,7 +195,9 @@ export function StylesPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="font-content text-2xl text-ink">风格</div>
-            <div className="mt-1 text-xs text-subtext">写作风格（Style Profiles）：管理预设与自定义风格，可设为项目默认。</div>
+            <div className="mt-1 text-xs text-subtext">
+              写作风格（Style Profiles）：管理预设与自定义风格，可设为项目默认。
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button className="btn btn-secondary" onClick={() => void refresh()} disabled={loading} type="button">

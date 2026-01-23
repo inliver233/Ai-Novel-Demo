@@ -53,9 +53,7 @@ export function ProjectProviderGuard() {
     return (
       <div className="panel p-6">
         <div className="font-content text-xl text-ink">项目不存在或无权限</div>
-        <div className="mt-2 text-sm text-subtext">
-          请返回{UI_COPY.nav.home}重新选择项目，或在左侧切换其他项目。
-        </div>
+        <div className="mt-2 text-sm text-subtext">请返回{UI_COPY.nav.home}重新选择项目，或在左侧切换其他项目。</div>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Link className="btn btn-secondary" to="/" aria-label="返回首页 (project_guard_back_home)">
             {UI_COPY.nav.backToHome}

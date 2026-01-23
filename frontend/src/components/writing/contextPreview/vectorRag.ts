@@ -228,7 +228,9 @@ export function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null
     .filter((v): v is { id?: string; reason: string } => Boolean(v));
 
   const countsRaw =
-    hasOwn(o, "counts") && typeof o.counts === "object" && o.counts !== null ? (o.counts as Record<string, unknown>) : null;
+    hasOwn(o, "counts") && typeof o.counts === "object" && o.counts !== null
+      ? (o.counts as Record<string, unknown>)
+      : null;
   let counts: VectorRagCounts | undefined = undefined;
   if (countsRaw) {
     const candidatesTotal =
@@ -314,4 +316,3 @@ export function normalizeVectorResult(raw: unknown): VectorRagQueryResult | null
     counts,
   };
 }
-

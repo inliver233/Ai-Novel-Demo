@@ -437,7 +437,6 @@ export function RagPage() {
     }
   }, [projectId, queryText, selectedKbIds, sortedSources, toast]);
 
-
   return (
     <div className="grid gap-4">
       <div className="panel p-5">

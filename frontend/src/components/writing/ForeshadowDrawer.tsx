@@ -118,34 +118,34 @@ export function ForeshadowDrawer(props: {
       panelClassName="h-full w-full max-w-xl border-l border-border bg-canvas p-6 shadow-sm"
     >
       <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="font-content text-2xl text-ink" id={titleId}>
-              {copy.title}
-            </div>
-            <div className="mt-1 text-xs text-subtext">
-              {copy.openCountLabel}：{filtered.length}
-              {filtered.length === items.length ? "" : ` / ${items.length}`}
-              {hasMore ? copy.hasMoreTag : ""}
-              {requestId ? (
-                <span className="ml-2">
-                  {copy.requestIdPrefix} {requestId}
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-1 text-xs text-subtext">{copy.openOnlyHint}</div>
+        <div className="min-w-0">
+          <div className="font-content text-2xl text-ink" id={titleId}>
+            {copy.title}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="btn btn-secondary"
-              disabled={!props.projectId || loading}
-              onClick={() => void fetchOpenLoops()}
-              type="button"
-            >
-              {loading ? copy.refreshing : copy.refresh}
-            </button>
-            <button className="btn btn-secondary" aria-label="关闭" onClick={props.onClose} type="button">
-              关闭
-            </button>
+          <div className="mt-1 text-xs text-subtext">
+            {copy.openCountLabel}：{filtered.length}
+            {filtered.length === items.length ? "" : ` / ${items.length}`}
+            {hasMore ? copy.hasMoreTag : ""}
+            {requestId ? (
+              <span className="ml-2">
+                {copy.requestIdPrefix} {requestId}
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-1 text-xs text-subtext">{copy.openOnlyHint}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="btn btn-secondary"
+            disabled={!props.projectId || loading}
+            onClick={() => void fetchOpenLoops()}
+            type="button"
+          >
+            {loading ? copy.refreshing : copy.refresh}
+          </button>
+          <button className="btn btn-secondary" aria-label="关闭" onClick={props.onClose} type="button">
+            关闭
+          </button>
         </div>
       </div>
 
@@ -161,9 +161,7 @@ export function ForeshadowDrawer(props: {
         </label>
 
         {filtered.length === 0 ? (
-          <div className="text-sm text-subtext">
-            {copy.empty}
-          </div>
+          <div className="text-sm text-subtext">{copy.empty}</div>
         ) : (
           <div className="grid gap-2">
             {filtered.map((it) => (
@@ -172,8 +170,8 @@ export function ForeshadowDrawer(props: {
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-ink">{it.title || copy.noTitle}</div>
                     <div className="mt-1 text-[11px] text-subtext">
-                      {copy.metaChapterId}:{it.chapter_id || "-"} | {copy.metaScore}:{String(it.importance_score ?? 0)} |{" "}
-                      {copy.metaTimeline}:{String(it.story_timeline ?? 0)}
+                      {copy.metaChapterId}:{it.chapter_id || "-"} | {copy.metaScore}:{String(it.importance_score ?? 0)}{" "}
+                      | {copy.metaTimeline}:{String(it.story_timeline ?? 0)}
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
@@ -205,7 +203,9 @@ export function ForeshadowDrawer(props: {
                     </button>
                   </div>
                 </div>
-                <div className="mt-2 whitespace-pre-wrap text-xs text-subtext">{it.content_preview || copy.contentEmpty}</div>
+                <div className="mt-2 whitespace-pre-wrap text-xs text-subtext">
+                  {it.content_preview || copy.contentEmpty}
+                </div>
               </div>
             ))}
           </div>

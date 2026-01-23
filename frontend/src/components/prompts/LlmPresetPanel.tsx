@@ -125,7 +125,9 @@ export function LlmPresetPanel(props: Props) {
 
       <details className="surface mt-4 p-4">
         <summary className="cursor-pointer select-none text-sm text-ink">高级参数（可选）</summary>
-        <div className="mt-1 text-xs text-subtext">常见情况下保持默认即可；如需微调采样/停止词/超时/extra，可在此修改。</div>
+        <div className="mt-1 text-xs text-subtext">
+          常见情况下保持默认即可；如需微调采样/停止词/超时/extra，可在此修改。
+        </div>
         <div className="mt-3 grid gap-4 sm:grid-cols-3">
           <label className="grid gap-1">
             <span className="text-xs text-subtext">温度（temperature）</span>

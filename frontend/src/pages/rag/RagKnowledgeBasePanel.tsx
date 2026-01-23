@@ -53,7 +53,11 @@ export function RagKnowledgeBasePanel(props: {
   } = props;
 
   return (
-    <div className="mt-6 rounded-atelier border border-border bg-surface p-4" role="region" aria-label="知识库 (rag_kb_section)">
+    <div
+      className="mt-6 rounded-atelier border border-border bg-surface p-4"
+      role="region"
+      aria-label="知识库 (rag_kb_section)"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm font-medium text-ink">{UI_COPY.rag.kbTitle}</div>
         <div className="flex gap-2">
@@ -195,8 +199,8 @@ export function RagKnowledgeBasePanel(props: {
                   </div>
                   {counts ? (
                     <div>
-                      query_counts: {counts.candidates_total}/{counts.candidates_returned} | final:{counts.final_selected} |
-                      dropped:{counts.dropped_total}
+                      query_counts: {counts.candidates_total}/{counts.candidates_returned} | final:
+                      {counts.final_selected} | dropped:{counts.dropped_total}
                     </div>
                   ) : (
                     <div>query_counts: -</div>
@@ -236,4 +240,3 @@ export function RagKnowledgeBasePanel(props: {
     </div>
   );
 }
-

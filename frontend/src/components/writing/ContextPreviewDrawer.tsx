@@ -766,7 +766,9 @@ export function ContextPreviewDrawer(props: Props) {
 
         {memoryInjectionEnabled ? (
           <details className="panel p-4">
-            <summary className="ui-transition-fast cursor-pointer text-sm text-ink hover:text-ink">Pack sections</summary>
+            <summary className="ui-transition-fast cursor-pointer text-sm text-ink hover:text-ink">
+              Pack sections
+            </summary>
             {packLogs.length ? (
               <div className="mt-3 grid gap-2">
                 {packLogs.map((it) => (

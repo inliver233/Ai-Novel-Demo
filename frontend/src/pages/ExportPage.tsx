@@ -48,17 +48,17 @@ export function ExportPage() {
       const { filename, content } = await apiDownloadMarkdown(url);
       const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
       const objectUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = objectUrl;
-        a.download = filename || "ainovel.md";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-        toast.toastSuccess("已导出 Markdown，已开始下载");
-        markWizardExported(projectId);
-        bumpWizardLocal();
-        return true;
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename || "ainovel.md";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      toast.toastSuccess("已导出 Markdown，已开始下载");
+      markWizardExported(projectId);
+      bumpWizardLocal();
+      return true;
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);

@@ -5,7 +5,10 @@ export function RagStatusPanel(props: { status: VectorRagResult | null }) {
   const { status } = props;
 
   return (
-    <section className="mt-6 rounded-atelier border border-border bg-surface p-4" aria-label="状态 (rag_status_section)">
+    <section
+      className="mt-6 rounded-atelier border border-border bg-surface p-4"
+      aria-label="状态 (rag_status_section)"
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-medium text-ink">状态</div>
         <div className="text-xs text-subtext">
@@ -36,4 +39,3 @@ export function RagStatusPanel(props: { status: VectorRagResult | null }) {
     </section>
   );
 }
-

@@ -421,7 +421,8 @@ export function WritingPage() {
                     <option value="done">{humanizeChapterStatus("done")}</option>
                   </select>
                   <div className="text-[11px] text-subtext">
-                    提示：保存不等于定稿。仅状态为 {humanizeChapterStatus("done")} 的章节允许进行记忆更新（Memory Update）写入长期记忆。
+                    提示：保存不等于定稿。仅状态为 {humanizeChapterStatus("done")} 的章节允许进行记忆更新（Memory
+                    Update）写入长期记忆。
                   </div>
                 </label>
               </div>

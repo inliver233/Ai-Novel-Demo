@@ -293,7 +293,9 @@ export function AppShell() {
                     <div className="my-2 h-px bg-border" />
                     {projectId ? (
                       <>
-                        <div className="px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupWorkbench}</div>
+                        <div className="px-3 pt-2 text-[11px] font-medium text-subtext">
+                          {UI_COPY.nav.groupWorkbench}
+                        </div>
                         <SidebarLink
                           collapsed={false}
                           icon={<PenLine size={18} />}
@@ -327,7 +329,9 @@ export function AppShell() {
                           onClick={closeMobileNav}
                         />
 
-                        <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupView}</div>
+                        <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">
+                          {UI_COPY.nav.groupView}
+                        </div>
                         <SidebarLink
                           collapsed={false}
                           icon={<BookOpen size={18} />}
@@ -345,7 +349,9 @@ export function AppShell() {
                           onClick={closeMobileNav}
                         />
 
-                        <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupAiConfig}</div>
+                        <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">
+                          {UI_COPY.nav.groupAiConfig}
+                        </div>
                         <SidebarLink
                           collapsed={false}
                           icon={<Bot size={18} />}
@@ -560,7 +566,9 @@ export function AppShell() {
                   />
 
                   {collapsed ? null : (
-                    <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupAiConfig}</div>
+                    <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">
+                      {UI_COPY.nav.groupAiConfig}
+                    </div>
                   )}
                   <SidebarLink
                     collapsed={collapsed}
@@ -701,13 +709,13 @@ export function AppShell() {
               ) : (
                 <div
                   className={clsx(
-                      "rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext",
-                      collapsed && "hidden",
-                    )}
-                  >
-                    {UI_COPY.nav.chooseProjectHint}
-                  </div>
-                )}
+                    "rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext",
+                    collapsed && "hidden",
+                  )}
+                >
+                  {UI_COPY.nav.chooseProjectHint}
+                </div>
+              )}
               <div className="my-2 h-px bg-border" />
               {collapsed ? null : (
                 <div className="px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupAdmin}</div>
@@ -721,7 +729,7 @@ export function AppShell() {
               />
             </nav>
           </LayoutGroup>
-          </aside>
+        </aside>
 
         <main className="flex-1">
           <header className="border-b border-border bg-canvas">

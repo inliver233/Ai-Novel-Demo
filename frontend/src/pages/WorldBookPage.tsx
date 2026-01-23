@@ -929,7 +929,8 @@ export function WorldBookPage() {
           {paginateEntries ? (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-subtext">
               <div>
-                已显示 {visibleEntries.length}/{filteredEntries.length} 条（超过 {WORLD_BOOK_ENTRY_RENDER_THRESHOLD} 条时分页渲染）
+                已显示 {visibleEntries.length}/{filteredEntries.length} 条（超过 {WORLD_BOOK_ENTRY_RENDER_THRESHOLD}{" "}
+                条时分页渲染）
               </div>
               {visibleEntries.length < filteredEntries.length ? (
                 <button
@@ -1080,7 +1081,9 @@ export function WorldBookPage() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="font-content text-2xl text-ink">世界书导入</div>
-            <div className="mt-1 text-xs text-subtext">上传导出的整套 JSON（export_all），支持 dry_run 预演查看冲突并确认应用。</div>
+            <div className="mt-1 text-xs text-subtext">
+              上传导出的整套 JSON（export_all），支持 dry_run 预演查看冲突并确认应用。
+            </div>
           </div>
           <button className="btn btn-secondary" disabled={importLoading} onClick={closeImportDrawer} type="button">
             {UI_COPY.worldbook.close}
@@ -1170,7 +1173,9 @@ export function WorldBookPage() {
                   <span className="text-ink">{importReport.deleted}</span> | skipped:{" "}
                   <span className="text-ink">{importReport.skipped}</span>
                 </div>
-                <div className="text-[11px] text-subtext">created 新建 | updated 更新 | deleted 删除 | skipped 跳过</div>
+                <div className="text-[11px] text-subtext">
+                  created 新建 | updated 更新 | deleted 删除 | skipped 跳过
+                </div>
                 <div>
                   conflicts: <span className="text-ink">{importReport.conflicts?.length ?? 0}</span> | actions:{" "}
                   <span className="text-ink">{importReport.actions?.length ?? 0}</span>

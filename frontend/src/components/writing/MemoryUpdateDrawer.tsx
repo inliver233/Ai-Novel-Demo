@@ -469,7 +469,8 @@ export function MemoryUpdateDrawer(props: Props) {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm text-ink">{copy.step2}</div>
                   <div className="text-xs text-subtext">
-                    {copy.reviewTitle} | 状态：{humanStatus(proposeResult.change_set.status)} | 条目：{proposeResult.items.length}
+                    {copy.reviewTitle} | 状态：{humanStatus(proposeResult.change_set.status)} | 条目：
+                    {proposeResult.items.length}
                   </div>
                 </div>
                 <div className="mt-1 text-xs text-subtext">
