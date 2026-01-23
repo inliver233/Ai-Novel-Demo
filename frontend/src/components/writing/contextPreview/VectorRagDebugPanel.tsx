@@ -37,7 +37,7 @@ export function VectorRagDebugPanel(props: {
           <div className="mt-1 text-[11px] text-subtext">
             {vectorResult ? (
               vectorResult.enabled ? (
-                <span className="text-emerald-600 dark:text-emerald-400">enabled</span>
+                <span className="text-success">enabled</span>
               ) : (
                 <span className="text-amber-600 dark:text-amber-400">
                   disabled: {vectorResult.disabled_reason ?? "unknown"}

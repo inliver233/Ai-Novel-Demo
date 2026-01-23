@@ -52,7 +52,7 @@ function StatusBadge(props: { status: string; kind: "change_set" | "task" }) {
         ? "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
         : tone === "info"
           ? "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
-          : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300";
+          : "bg-success/10 text-success";
   const label = props.kind === "change_set" ? humanizeChangeSetStatus(props.status) : humanizeTaskStatus(props.status);
   return <span className={`inline-flex rounded px-2 py-0.5 text-[11px] ${cls}`}>{label}</span>;
 }

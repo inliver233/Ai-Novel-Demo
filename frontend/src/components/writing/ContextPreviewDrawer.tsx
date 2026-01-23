@@ -787,7 +787,7 @@ export function ContextPreviewDrawer(props: Props) {
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <span className="font-mono text-ink">{it.section}</span>
                       {it.enabled ? (
-                        <span className="text-emerald-600 dark:text-emerald-400">enabled</span>
+                        <span className="text-success">enabled</span>
                       ) : (
                         <span className="text-amber-600 dark:text-amber-400">
                           disabled: {it.disabled_reason ?? "unknown"}

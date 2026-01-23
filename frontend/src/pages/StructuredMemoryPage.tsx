@@ -542,7 +542,7 @@ export function StructuredMemoryPage() {
                               已删除
                             </span>
                           ) : (
-                            <span className="rounded bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                            <span className="rounded bg-success/10 px-2 py-0.5 text-[11px] text-success">
                               正常
                             </span>
                           )}
