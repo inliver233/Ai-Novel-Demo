@@ -656,7 +656,8 @@ export function ContextPreviewDrawer(props: Props) {
           </div>
           {memoryInjectionEnabled && packLogs.length ? (
             <div className="mt-2 text-[11px] text-subtext">
-              模块状态：已启用 {packLogStats.enabledCount} 项，已禁用 {packLogStats.disabledCount} 项（展开“Pack sections”查看原因）。
+              模块状态：已启用 {packLogStats.enabledCount} 项，已禁用 {packLogStats.disabledCount} 项（展开“Pack
+              sections”查看原因）。
             </div>
           ) : null}
         </div>
@@ -805,7 +806,9 @@ export function ContextPreviewDrawer(props: Props) {
 
         {memoryInjectionEnabled ? (
           <details className="panel p-4">
-            <summary className="ui-transition-fast cursor-pointer text-sm text-ink hover:text-ink">原始数据（JSON）</summary>
+            <summary className="ui-transition-fast cursor-pointer text-sm text-ink hover:text-ink">
+              原始数据（JSON）
+            </summary>
             <div className="mt-3 text-xs text-subtext">
               建议优先用顶部「下载预览 bundle」导出文件。需要复制粘贴时，可用下方按钮。
             </div>

@@ -36,7 +36,9 @@ export function DashboardPage() {
   const [wizardByProjectId, setWizardByProjectId] = useState<Record<string, WizardSummary>>({});
   const [wizardLoadingByProjectId, setWizardLoadingByProjectId] = useState<Record<string, boolean>>({});
   const recommendedWizard = recommendedProject ? wizardByProjectId[recommendedProject.id] : null;
-  const recommendedWizardLoading = recommendedProject ? Boolean(wizardLoadingByProjectId[recommendedProject.id]) : false;
+  const recommendedWizardLoading = recommendedProject
+    ? Boolean(wizardLoadingByProjectId[recommendedProject.id])
+    : false;
 
   useEffect(() => {
     let cancelled = false;

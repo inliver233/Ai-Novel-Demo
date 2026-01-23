@@ -209,9 +209,7 @@ export function PromptStudioPresetListPanel(props: {
                             />
                           ) : null}
                           <div className="relative z-10 truncate">{p.name}</div>
-                          <div className="relative z-10 mt-1 text-xs opacity-80">
-                            {activeFor || "—"}
-                          </div>
+                          <div className="relative z-10 mt-1 text-xs opacity-80">{activeFor || "—"}</div>
                         </button>
                       );
                     })}

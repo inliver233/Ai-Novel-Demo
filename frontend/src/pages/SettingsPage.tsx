@@ -689,9 +689,7 @@ export function SettingsPage() {
             <div className="text-xs text-subtext">
               Embedding 用于把文本变成向量以便检索；Rerank 用于对候选结果二次排序提升命中（可能增加耗时/成本）。
             </div>
-            <div className="text-xs text-subtext">
-              API Key 加密存储，仅回显 masked；留空可使用后端环境变量。
-            </div>
+            <div className="text-xs text-subtext">API Key 加密存储，仅回显 masked；留空可使用后端环境变量。</div>
           </div>
         </summary>
 
@@ -699,13 +697,15 @@ export function SettingsPage() {
           <div className="mt-4 grid gap-4">
             <div className="rounded-atelier border border-border bg-canvas p-4 text-xs text-subtext">
               <div>
-                当前生效：Embedding provider={baselineSettings.vector_embedding_effective_provider || "openai_compatible"}
+                当前生效：Embedding provider=
+                {baselineSettings.vector_embedding_effective_provider || "openai_compatible"}
                 （状态: {baselineSettings.vector_embedding_effective_disabled_reason ?? "enabled"}；来源:{" "}
                 {baselineSettings.vector_embedding_effective_source}）
               </div>
               <div className="mt-1">
                 Rerank：{baselineSettings.vector_rerank_effective_enabled ? "enabled" : "disabled"}（method:{" "}
-                {baselineSettings.vector_rerank_effective_method}；top_k: {baselineSettings.vector_rerank_effective_top_k}
+                {baselineSettings.vector_rerank_effective_method}；top_k:{" "}
+                {baselineSettings.vector_rerank_effective_top_k}
                 ；来源: {baselineSettings.vector_rerank_effective_source}）
               </div>
             </div>
@@ -789,9 +789,7 @@ export function SettingsPage() {
                 {embeddingProviderPreview === "azure_openai" ? (
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="grid gap-1">
-                      <span className="text-xs text-subtext">
-                        Azure deployment（项目覆盖；留空=使用后端环境变量）
-                      </span>
+                      <span className="text-xs text-subtext">Azure deployment（项目覆盖；留空=使用后端环境变量）</span>
                       <input
                         className="input"
                         value={settingsForm.vector_embedding_azure_deployment}

@@ -230,7 +230,7 @@ export function TaskCenterPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="panel p-4" aria-label="变更集 (taskcenter_changesets_section)">
           <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
+            <div>
               <div className="text-sm text-ink">变更集（Change Set）</div>
               <div className="mt-1 text-xs text-subtext">按状态筛选；点击条目查看摘要与原始数据（默认折叠）</div>
               <div className="mt-1 text-[11px] text-subtext">

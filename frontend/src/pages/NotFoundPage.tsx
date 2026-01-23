@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { UI_COPY } from "../lib/uiCopy";
 
 function getProjectIdFromPathname(pathname: string): string | null {
-  const match = /^\\/projects\\/([^/]+)/.exec(pathname);
+  const match = /^\/projects\/([^/]+)/.exec(pathname);
   if (!match) return null;
   return match[1] ?? null;
 }

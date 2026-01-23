@@ -81,7 +81,8 @@ export function RagKnowledgeBasePanel(props: {
       </div>
 
       <div className="mt-2 text-xs text-subtext">
-        当前选择（selected_kb_ids）: {selectedKbIds.length ? selectedKbIds.join(", ") : "（空：查询默认使用“已启用”的 KB）"}
+        当前选择（selected_kb_ids）:{" "}
+        {selectedKbIds.length ? selectedKbIds.join(", ") : "（空：查询默认使用“已启用”的 KB）"}
         {queryResult?.kbs?.selected?.length ? (
           <span className="ml-2">| 查询使用（query_selected）: {queryResult.kbs.selected.join(", ")}</span>
         ) : null}

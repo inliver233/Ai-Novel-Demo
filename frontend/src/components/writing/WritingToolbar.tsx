@@ -77,7 +77,12 @@ export function WritingToolbar(props: {
         <button className="btn btn-secondary" onClick={props.onOpenContextPreview} type="button">
           {UI_COPY.writing.contextPreview}
         </button>
-        <button className="btn btn-secondary" aria-label="Memory Update" onClick={props.onOpenMemoryUpdate} type="button">
+        <button
+          className="btn btn-secondary"
+          aria-label="Memory Update"
+          onClick={props.onOpenMemoryUpdate}
+          type="button"
+        >
           记忆更新（Memory Update）
         </button>
         <button className="btn btn-secondary" onClick={props.onOpenTaskCenter} type="button">

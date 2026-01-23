@@ -225,9 +225,7 @@ export function AdminUsersPage() {
       <div className="mx-auto max-w-screen-md px-4 py-10 sm:px-6 lg:px-8">
         <div className="rounded-atelier border border-border bg-surface p-6">
           <div className="font-content text-xl text-ink">管理员用户管理</div>
-          <div className="mt-2 text-sm text-subtext">
-            当前账号无管理员权限。请使用管理员账号登录。
-          </div>
+          <div className="mt-2 text-sm text-subtext">当前账号无管理员权限。请使用管理员账号登录。</div>
         </div>
       </div>
     );

@@ -178,7 +178,9 @@ export function FractalPage() {
               <div className="text-sm text-ink">确定性（deterministic）</div>
               <div className="text-xs text-subtext">{result?.prompt_block?.identifier ?? "-"}</div>
             </div>
-            <pre className="mt-2 max-h-96 overflow-auto text-xs text-ink">{result?.prompt_block?.text_md || "（空）"}</pre>
+            <pre className="mt-2 max-h-96 overflow-auto text-xs text-ink">
+              {result?.prompt_block?.text_md || "（空）"}
+            </pre>
           </div>
 
           <div className="rounded-atelier border border-border bg-canvas p-3">

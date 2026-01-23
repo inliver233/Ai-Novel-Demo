@@ -68,7 +68,8 @@ export function RagAdvancedDebugPanel(props: {
             {settingsQuery.data ? (
               <>
                 effective: enabled:{String(settingsQuery.data.vector_rerank_effective_enabled)} | method:
-                {settingsQuery.data.vector_rerank_effective_method} | top_k:{settingsQuery.data.vector_rerank_effective_top_k} | source:
+                {settingsQuery.data.vector_rerank_effective_method} | top_k:
+                {settingsQuery.data.vector_rerank_effective_top_k} | source:
                 {settingsQuery.data.vector_rerank_effective_source}
               </>
             ) : (

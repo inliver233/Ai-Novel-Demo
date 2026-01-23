@@ -226,7 +226,9 @@ export function StylesPage() {
                 <div className="mt-1 text-xs text-subtext" aria-label="project_default_style">
                   {defaultStyle ? resolveStyleLabel(defaultStyle) : "（未设置）"}
                 </div>
-                <div className="mt-1 text-[11px] text-subtext">未在「AI 生成」中手动选择风格时，会自动使用项目默认。</div>
+                <div className="mt-1 text-[11px] text-subtext">
+                  未在「AI 生成」中手动选择风格时，会自动使用项目默认。
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <button

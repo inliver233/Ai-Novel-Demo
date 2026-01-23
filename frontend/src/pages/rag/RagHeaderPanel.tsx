@@ -86,8 +86,8 @@ export function RagHeaderPanel(props: {
       <div className="mt-3 rounded-atelier border border-border bg-canvas p-3 text-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-subtext">
-            索引过期（dirty）: {vectorIndexDirty === null ? "loading…" : String(vectorIndexDirty)} | 上次构建（last_build_at）:{" "}
-            {lastVectorBuildAt ?? "-"}
+            索引过期（dirty）: {vectorIndexDirty === null ? "loading…" : String(vectorIndexDirty)} |
+            上次构建（last_build_at）: {lastVectorBuildAt ?? "-"}
             {lastVectorBuildAt ? `（${formatIsoToLocal(lastVectorBuildAt)}）` : ""}
           </div>
           {vectorIndexDirty === null ? (

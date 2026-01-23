@@ -706,15 +706,15 @@ export function WorldBookPage() {
             </label>
           </div>
 
-           {bulkMode ? (
-             <div className="mt-4 rounded-atelier border border-border bg-canvas p-3">
-               <div className="flex flex-wrap items-center justify-between gap-2">
-                 <div className="text-xs text-subtext">
-                   {UI_COPY.worldbook.bulkSelectedPrefix}
-                   {bulkSelectedIds.length}
-                   {UI_COPY.worldbook.bulkSelectedSuffix}
-                 </div>
-                 <div className="flex flex-wrap gap-2">
+          {bulkMode ? (
+            <div className="mt-4 rounded-atelier border border-border bg-canvas p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs text-subtext">
+                  {UI_COPY.worldbook.bulkSelectedPrefix}
+                  {bulkSelectedIds.length}
+                  {UI_COPY.worldbook.bulkSelectedSuffix}
+                </div>
+                <div className="flex flex-wrap gap-2">
                   <button
                     className="btn btn-secondary"
                     disabled={bulkLoading || loading}
@@ -733,13 +733,13 @@ export function WorldBookPage() {
                   >
                     {UI_COPY.worldbook.bulkClearSelection}
                   </button>
-                 </div>
-               </div>
-               <div className="mt-2 text-[11px] text-subtext">{UI_COPY.worldbook.bulkModeHint}</div>
+                </div>
+              </div>
+              <div className="mt-2 text-[11px] text-subtext">{UI_COPY.worldbook.bulkModeHint}</div>
 
-               <div className="mt-3 flex flex-wrap gap-2">
-                 <button
-                   className="btn btn-secondary"
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  className="btn btn-secondary"
                   disabled={bulkLoading || loading || drawerOpen}
                   onClick={() =>
                     void bulkUpdate({
