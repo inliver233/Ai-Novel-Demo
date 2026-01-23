@@ -113,7 +113,8 @@ export const UI_COPY = {
     contextPreviewLoadFailedTitle: "加载失败",
     contextPreviewMissingProjectId: "缺少 projectId",
     memoryInjectionToggle: "世界书注入",
-    memoryInjectionHint: "启用后，上下文预览会加载 WorldBook 触发结果（Phase 1 占位，暂未接入生成链路）。",
+    memoryInjectionHint:
+      "启用后：生成时会把世界书/记忆等模块的结果注入到提示词；上下文预览也会显示触发条目与最终注入文本。",
     memoryInjectionDisabledPreview: "世界书注入已关闭。开启后可查看触发条目与 text_md。",
     worldbookSectionTitle: "世界书（WorldBook）",
     contextPreviewRawPack: "raw MemoryContextPack",

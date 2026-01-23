@@ -177,7 +177,7 @@ export function AiGenerateDrawer(props: Props) {
                 }}
                 aria-label="gen_style_id"
               >
-                <option value="">自动（项目默认 → settings fallback）</option>
+                <option value="">自动（使用项目默认）</option>
                 <optgroup label="系统预设">
                   {presets.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -224,7 +224,7 @@ export function AiGenerateDrawer(props: Props) {
             {props.genForm.memory_injection_enabled ? (
               <div className="mt-2 rounded-atelier border border-border bg-surface p-3">
                 <label className="grid gap-1">
-                  <span className="text-xs text-subtext">记忆查询文本（vector/graph 等）</span>
+                  <span className="text-xs text-subtext">记忆查询关键词（可选）</span>
                   <input
                     className="input"
                     disabled={props.generating}
@@ -236,10 +236,12 @@ export function AiGenerateDrawer(props: Props) {
                     }}
                   />
                 </label>
-                <div className="mt-1 text-[11px] text-subtext">留空将自动使用 instruction + chapter_plan。</div>
+                <div className="mt-1 text-[11px] text-subtext">留空将自动使用“用户指令 + 章节计划”。</div>
 
                 <div className="mt-3 grid gap-2">
-                  <div className="text-xs text-subtext">模块开关（影响生成注入，且会写入生成记录）</div>
+                  <div className="text-xs text-subtext">注入模块</div>
+                  <div className="text-[11px] text-subtext">会影响本次生成提示词，并同步到「上下文预览」。</div>
+
                   <label className="flex items-center justify-between gap-3 text-sm text-ink">
                     <span>世界书（worldbook）</span>
                     <input
@@ -256,86 +258,92 @@ export function AiGenerateDrawer(props: Props) {
                       type="checkbox"
                     />
                   </label>
-                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
-                    <span>剧情记忆（story_memory）</span>
-                    <input
-                      className="checkbox"
-                      checked={props.genForm.memory_modules.story_memory}
-                      disabled={props.generating}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        props.setGenForm((v) => ({
-                          ...v,
-                          memory_modules: { ...v.memory_modules, story_memory: checked },
-                        }));
-                      }}
-                      type="checkbox"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
-                    <span>结构化记忆（structured）</span>
-                    <input
-                      className="checkbox"
-                      checked={props.genForm.memory_modules.structured}
-                      disabled={props.generating}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        props.setGenForm((v) => ({
-                          ...v,
-                          memory_modules: { ...v.memory_modules, structured: checked },
-                        }));
-                      }}
-                      type="checkbox"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
-                    <span>向量 RAG（vector_rag）</span>
-                    <input
-                      className="checkbox"
-                      checked={props.genForm.memory_modules.vector_rag}
-                      disabled={props.generating}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        props.setGenForm((v) => ({
-                          ...v,
-                          memory_modules: { ...v.memory_modules, vector_rag: checked },
-                        }));
-                      }}
-                      type="checkbox"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
-                    <span>关系图（graph）</span>
-                    <input
-                      className="checkbox"
-                      checked={props.genForm.memory_modules.graph}
-                      disabled={props.generating}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        props.setGenForm((v) => ({
-                          ...v,
-                          memory_modules: { ...v.memory_modules, graph: checked },
-                        }));
-                      }}
-                      type="checkbox"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
-                    <span>Fractal（fractal）</span>
-                    <input
-                      className="checkbox"
-                      checked={props.genForm.memory_modules.fractal}
-                      disabled={props.generating}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        props.setGenForm((v) => ({
-                          ...v,
-                          memory_modules: { ...v.memory_modules, fractal: checked },
-                        }));
-                      }}
-                      type="checkbox"
-                    />
-                  </label>
+
+                  <details className="rounded-atelier border border-border bg-surface p-2">
+                    <summary className="cursor-pointer text-sm text-ink">更多模块（高级）</summary>
+                    <div className="mt-2 grid gap-2">
+                      <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                        <span>剧情记忆（story_memory）</span>
+                        <input
+                          className="checkbox"
+                          checked={props.genForm.memory_modules.story_memory}
+                          disabled={props.generating}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            props.setGenForm((v) => ({
+                              ...v,
+                              memory_modules: { ...v.memory_modules, story_memory: checked },
+                            }));
+                          }}
+                          type="checkbox"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                        <span>结构化记忆（structured）</span>
+                        <input
+                          className="checkbox"
+                          checked={props.genForm.memory_modules.structured}
+                          disabled={props.generating}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            props.setGenForm((v) => ({
+                              ...v,
+                              memory_modules: { ...v.memory_modules, structured: checked },
+                            }));
+                          }}
+                          type="checkbox"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                        <span>向量 RAG（vector_rag）</span>
+                        <input
+                          className="checkbox"
+                          checked={props.genForm.memory_modules.vector_rag}
+                          disabled={props.generating}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            props.setGenForm((v) => ({
+                              ...v,
+                              memory_modules: { ...v.memory_modules, vector_rag: checked },
+                            }));
+                          }}
+                          type="checkbox"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                        <span>关系图（graph）</span>
+                        <input
+                          className="checkbox"
+                          checked={props.genForm.memory_modules.graph}
+                          disabled={props.generating}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            props.setGenForm((v) => ({
+                              ...v,
+                              memory_modules: { ...v.memory_modules, graph: checked },
+                            }));
+                          }}
+                          type="checkbox"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                        <span>Fractal（fractal）</span>
+                        <input
+                          className="checkbox"
+                          checked={props.genForm.memory_modules.fractal}
+                          disabled={props.generating}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            props.setGenForm((v) => ({
+                              ...v,
+                              memory_modules: { ...v.memory_modules, fractal: checked },
+                            }));
+                          }}
+                          type="checkbox"
+                        />
+                      </label>
+                    </div>
+                  </details>
                 </div>
               </div>
             ) : null}
