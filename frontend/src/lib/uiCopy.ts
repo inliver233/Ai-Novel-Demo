@@ -184,6 +184,7 @@ export const UI_COPY = {
     create: "新建条目",
 
     bulkMode: "批量模式",
+    bulkModeHint: "批量模式下：点击条目=选择/取消；全选会选中当前过滤结果全部条目。",
     bulkSelectedPrefix: "已选 ",
     bulkSelectedSuffix: " 条",
     bulkSelectAll: "全选",
@@ -214,7 +215,8 @@ export const UI_COPY = {
     bulkDuplicateDescSuffix: " 条并进入编辑。",
 
     entriesTitle: "条目列表",
-    entriesHint: "关键词条目会按匹配触发；常驻（constant）条目始终注入。点击条目进入编辑。",
+    entriesHint:
+      "关键词条目：命中关键词才会注入。常驻（constant）条目：始终注入、会占用预算，建议少量使用。条目很多时列表会分页渲染，点击“显示更多”继续加载。",
     empty: "暂无条目",
 
     tagEnabled: "启用",
