@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../contexts/auth";
 import { humanizeYesNo } from "../lib/humanize";
@@ -52,6 +53,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
 export function AdminUsersPage() {
   const auth = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -130,6 +132,14 @@ export function AdminUsersPage() {
   const resetPassword = useCallback(
     async (targetUserId: string) => {
       if (!canManage) return;
+      const ok = await confirm.confirm({
+        title: "重置密码？",
+        description: "将生成一次性密码。该密码只会在本页显示一次，复制后会自动隐藏。",
+        confirmText: "重置",
+        cancelText: "取消",
+        danger: true,
+      });
+      if (!ok) return;
       setSaving(true);
       try {
         const res = await apiJson<{ temp_password: string }>(`/api/auth/admin/users/${targetUserId}/password/reset`, {
@@ -148,12 +158,20 @@ export function AdminUsersPage() {
         setSaving(false);
       }
     },
-    [canManage, toast],
+    [canManage, confirm, toast],
   );
 
   const setDisabled = useCallback(
     async (targetUserId: string, disabled: boolean) => {
       if (!canManage) return;
+      const ok = await confirm.confirm({
+        title: disabled ? "禁用用户？" : "启用用户？",
+        description: disabled ? "禁用后该用户将无法登录。可以随时重新启用恢复。" : "启用后该用户将恢复登录权限。",
+        confirmText: disabled ? "禁用" : "启用",
+        cancelText: "取消",
+        danger: disabled,
+      });
+      if (!ok) return;
       setSaving(true);
       try {
         await apiJson<Record<string, never>>(`/api/auth/admin/users/${targetUserId}/disable`, {
@@ -172,7 +190,7 @@ export function AdminUsersPage() {
         setSaving(false);
       }
     },
-    [canManage, load, toast],
+    [canManage, confirm, load, toast],
   );
 
   const visibleUsers = useMemo(() => users, [users]);
@@ -208,7 +226,7 @@ export function AdminUsersPage() {
         <div className="rounded-atelier border border-border bg-surface p-6">
           <div className="font-content text-xl text-ink">管理员用户管理</div>
           <div className="mt-2 text-sm text-subtext">
-            当前账号无管理员权限（需要 authenticated admin）。如需启用，请使用 AUTH_ADMIN_* 创建管理员并登录。
+            当前账号无管理员权限。请使用管理员账号登录。
           </div>
         </div>
       </div>
