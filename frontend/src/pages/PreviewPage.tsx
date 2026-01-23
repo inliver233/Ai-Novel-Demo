@@ -9,7 +9,6 @@ import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { Drawer } from "../components/ui/Drawer";
 import { useProjectData } from "../hooks/useProjectData";
 import { useWizardProgress } from "../hooks/useWizardProgress";
-import { humanizeChapterStatus } from "../lib/humanize";
 import { apiJson } from "../services/apiClient";
 import { markWizardPreviewSeen } from "../services/wizard";
 import type { Chapter } from "../types";
@@ -17,6 +16,14 @@ import type { Chapter } from "../types";
 type PreviewLoaded = { chapters: Chapter[] };
 
 const EMPTY_CHAPTERS: Chapter[] = [];
+
+function humanizeChapterStatusZh(status: string): string {
+  const s = String(status || "").trim();
+  if (s === "planned") return "计划中";
+  if (s === "drafting") return "草稿";
+  if (s === "done") return "定稿";
+  return s || "未知";
+}
 
 export function PreviewPage() {
   const { projectId } = useParams();
@@ -159,7 +166,7 @@ export function PreviewPage() {
                   {c.number}. {c.title?.trim() ? c.title : "（未命名）"}
                 </span>
                 <span className={clsx("shrink-0 text-[11px]", c.status === "done" ? "text-accent" : "text-subtext")}>
-                  {humanizeChapterStatus(c.status)}
+                  {humanizeChapterStatusZh(c.status)}
                 </span>
               </button>
             );
@@ -204,6 +211,7 @@ export function PreviewPage() {
           >
             下一章
           </button>
+          <span className="text-[11px] text-subtext">快捷键：← / →</span>
         </div>
 
         <div className="min-w-0 truncate text-xs text-subtext">
@@ -235,8 +243,8 @@ export function PreviewPage() {
                   </div>
                   {activeChapter.status !== "done" ? (
                     <div className="mt-1 text-xs text-subtext">
-                      提示：本章状态为 {humanizeChapterStatus(activeChapter.status)}，向导会以{" "}
-                      {humanizeChapterStatus("done")} 作为“写完”判定。
+                      提示：本章状态为 {humanizeChapterStatusZh(activeChapter.status)}，向导会以{" "}
+                      {humanizeChapterStatusZh("done")} 作为“写完”判定。
                     </div>
                   ) : null}
                 </div>
