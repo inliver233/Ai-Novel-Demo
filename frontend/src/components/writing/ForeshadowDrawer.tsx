@@ -80,8 +80,8 @@ export function ForeshadowDrawer(props: {
       const ok = await confirm.confirm({
         title: copy.resolveConfirmTitle,
         description: props.activeChapterId
-          ? `将记录回收章节：${props.activeChapterId}（resolved_at_chapter_id）`
-          : "将标记为已回收（resolved_at_chapter_id 为空）",
+          ? "将把该伏笔标记为已回收，并记录回收发生在当前章节（用于回溯）。"
+          : "将把该伏笔标记为已回收，但不记录回收章节（因为当前未选中章节）。",
         confirmText: copy.resolveConfirmText,
         cancelText: copy.resolveCancelText,
       });
@@ -158,6 +158,7 @@ export function ForeshadowDrawer(props: {
             onChange={(e) => setFilterText(e.target.value)}
             placeholder={copy.filterPlaceholder}
           />
+          <div className="text-[11px] text-subtext">{copy.filterHint}</div>
         </label>
 
         {filtered.length === 0 ? (
