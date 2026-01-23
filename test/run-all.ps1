@@ -1,5 +1,16 @@
 $ErrorActionPreference = "Stop"
 
+# Force UTF-8 for console + child processes (Windows terminals can default to a legacy code page)
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $utf8NoBom
+[Console]::InputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+if ($IsWindows) {
+  try { chcp 65001 | Out-Null } catch {}
+}
+
 function Run-Step([string]$title, [scriptblock]$cmd) {
   Write-Host ""
   Write-Host "== $title =="
@@ -44,4 +55,3 @@ Run-Step "E2E (this test harness)" {
 
 Write-Host ""
 Write-Host "All checks passed."
-
