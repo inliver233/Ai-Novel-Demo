@@ -521,7 +521,7 @@ export function AiGenerateDrawer(props: Props) {
 
         <div className="panel p-3">
           <button
-            className="flex w-full items-center justify-between gap-3 text-left"
+            className="ui-focus-ring ui-pressable flex w-full items-center justify-between gap-3 rounded-atelier px-2 py-2 text-left hover:bg-canvas"
             aria-controls={advancedPanelId}
             aria-expanded={advancedOpen}
             onClick={() => setAdvancedOpen((v) => !v)}
