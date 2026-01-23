@@ -171,6 +171,7 @@ test("ui: worldbook supports search + sort", async ({ page, request }) => {
 });
 
 test("ui: worldbook supports bulk actions + duplicate", async ({ page, request }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   const state = loadState();
   const { projectId } = await bootstrapProject(request);
 
