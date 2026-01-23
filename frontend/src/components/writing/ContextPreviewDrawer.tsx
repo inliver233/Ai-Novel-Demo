@@ -383,6 +383,11 @@ export function ContextPreviewDrawer(props: Props) {
     return rawLogs.map(normalizePackLogItem).filter((v): v is MemoryContextPackLogItem => Boolean(v));
   }, [effectivePack.logs]);
 
+  const packLogStats = useMemo(() => {
+    const enabledCount = packLogs.filter((it) => it.enabled).length;
+    return { enabledCount, disabledCount: packLogs.length - enabledCount };
+  }, [packLogs]);
+
   const loadContextOptimizerSetting = useCallback(async () => {
     if (!projectId) return;
     setContextOptimizerSettingsLoading(true);
@@ -649,6 +654,11 @@ export function ContextPreviewDrawer(props: Props) {
               ? UI_COPY.writing.memoryInjectionHint
               : UI_COPY.writing.memoryInjectionDisabledPreview}
           </div>
+          {memoryInjectionEnabled && packLogs.length ? (
+            <div className="mt-2 text-[11px] text-subtext">
+              模块状态：已启用 {packLogStats.enabledCount} 项，已禁用 {packLogStats.disabledCount} 项（展开“Pack sections”查看原因）。
+            </div>
+          ) : null}
         </div>
 
         {memoryInjectionEnabled ? (
@@ -790,6 +800,74 @@ export function ContextPreviewDrawer(props: Props) {
             ) : (
               <div className="mt-3 text-sm text-subtext">No logs available.</div>
             )}
+          </details>
+        ) : null}
+
+        {memoryInjectionEnabled ? (
+          <details className="panel p-4">
+            <summary className="ui-transition-fast cursor-pointer text-sm text-ink hover:text-ink">原始数据（JSON）</summary>
+            <div className="mt-3 text-xs text-subtext">
+              建议优先用顶部「下载预览 bundle」导出文件。需要复制粘贴时，可用下方按钮。
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      await writeClipboardText(JSON.stringify(effectivePack ?? EMPTY_PACK, null, 2));
+                      toast.toastSuccess("已复制 pack JSON");
+                    } catch {
+                      toast.toastError("复制失败");
+                    }
+                  })();
+                }}
+                type="button"
+              >
+                复制 pack JSON
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      await writeClipboardText(
+                        JSON.stringify(
+                          {
+                            query_text: previewQueryText,
+                            sections: previewSections,
+                            budget_overrides: parsedBudgetOverrides,
+                            budget_override_inputs: budgetOverrideInputs,
+                            memory_injection_enabled: memoryInjectionEnabled,
+                          },
+                          null,
+                          2,
+                        ),
+                      );
+                      toast.toastSuccess("已复制预览设置 JSON");
+                    } catch {
+                      toast.toastError("复制失败");
+                    }
+                  })();
+                }}
+                type="button"
+              >
+                复制预览设置 JSON
+              </button>
+            </div>
+
+            <pre className="mt-3 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+              {JSON.stringify(
+                {
+                  query_text: previewQueryText,
+                  sections: previewSections,
+                  budget_overrides: parsedBudgetOverrides,
+                  memory_injection_enabled: memoryInjectionEnabled,
+                },
+                null,
+                2,
+              )}
+            </pre>
           </details>
         ) : null}
 
