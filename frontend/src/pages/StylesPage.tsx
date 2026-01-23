@@ -359,7 +359,7 @@ export function StylesPage() {
             <label className="block">
               <div className="text-xs text-subtext">名称</div>
               <input
-                className="mt-1 w-full rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink"
+                className="input mt-1"
                 value={draftName}
                 onChange={(e) => setDraftName(e.target.value)}
                 placeholder="例如：克制现实主义"
@@ -369,7 +369,7 @@ export function StylesPage() {
             <label className="block">
               <div className="text-xs text-subtext">描述（可选）</div>
               <input
-                className="mt-1 w-full rounded-atelier border border-border bg-surface px-3 py-2 text-sm text-ink"
+                className="input mt-1"
                 value={draftDescription}
                 onChange={(e) => setDraftDescription(e.target.value)}
                 placeholder="给自己一个提示，便于筛选"
@@ -379,7 +379,7 @@ export function StylesPage() {
             <label className="block">
               <div className="text-xs text-subtext">风格提示词（prompt_content）</div>
               <textarea
-                className="mt-1 min-h-[180px] w-full rounded-atelier border border-border bg-surface px-3 py-2 font-mono text-xs text-ink"
+                className="textarea mt-1 min-h-[180px] font-mono text-xs"
                 value={draftPromptContent}
                 onChange={(e) => setDraftPromptContent(e.target.value)}
                 placeholder="写作要求：..."
