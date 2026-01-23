@@ -10,6 +10,7 @@ import { useToast } from "../components/ui/toast";
 import { useProjects } from "../contexts/projects";
 import { useProjectData } from "../hooks/useProjectData";
 import { duration, transition } from "../lib/motion";
+import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
 import { computeWizardProgress, setWizardStepSkipped, type WizardStep, type WizardStepKey } from "../services/wizard";
 import type { Chapter, Character, LLMPreset, LLMProfile, Outline, ProjectSettings } from "../types";
@@ -110,7 +111,7 @@ export function ProjectWizardPage() {
   const autoOutlineAndChapters = useCallback(async () => {
     if (!projectId) return;
     if (!llmPreset) {
-      toast.toastError("未加载到模型配置，请先在 Prompts 页保存模型预设");
+      toast.toastError(`未加载到模型配置，请先在「${UI_COPY.nav.prompts}」页保存模型预设`);
       navigate(`/projects/${projectId}/prompts`);
       return;
     }
@@ -228,10 +229,16 @@ export function ProjectWizardPage() {
             <div className="text-xs text-subtext">
               {project ? (
                 <>
-                  当前项目：<span className="text-ink">{project.name}</span>
+                  {UI_COPY.nav.currentProject}：<span className="text-ink">{project.name}</span>
+                  <span className="mx-2 text-subtext/60">·</span>
+                  按步骤跑通闭环：{UI_COPY.nav.projectSettings} → {UI_COPY.nav.characters} → {UI_COPY.nav.prompts} →{" "}
+                  {UI_COPY.nav.outline} → {UI_COPY.nav.writing} → {UI_COPY.nav.preview} → {UI_COPY.nav.export}
                 </>
               ) : (
-                "按步骤跑通闭环：设定 → 角色 → 模型 → 大纲 → 章节 → 写作 → 导出"
+                <>
+                  按步骤跑通闭环：{UI_COPY.nav.projectSettings} → {UI_COPY.nav.characters} → {UI_COPY.nav.prompts} →{" "}
+                  {UI_COPY.nav.outline} → {UI_COPY.nav.writing} → {UI_COPY.nav.preview} → {UI_COPY.nav.export}
+                </>
               )}
             </div>
           </div>
@@ -247,7 +254,7 @@ export function ProjectWizardPage() {
               }}
               type="button"
             >
-              {progress.nextStep ? `继续：${progress.nextStep.title}` : "已完成"}
+              {progress.nextStep ? `下一步：${progress.nextStep.title}` : "已完成"}
             </button>
           </div>
         </div>
@@ -268,7 +275,9 @@ export function ProjectWizardPage() {
           <div className="grid gap-2">
             <div className="font-content text-xl">自动模式（MVP）</div>
             <div className="text-xs text-subtext">一键：生成大纲 → 保存 → 创建章节骨架 → 跳转写作页。</div>
-            <div className="text-xs text-subtext">建议先完成「项目设置 / 模型配置」，以避免生成失败。</div>
+            <div className="text-xs text-subtext">
+              建议先完成「{UI_COPY.nav.projectSettings} / {UI_COPY.nav.prompts}」，以避免生成失败。
+            </div>
           </div>
           <button
             className="btn btn-primary"
