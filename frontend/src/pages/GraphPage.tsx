@@ -98,6 +98,12 @@ export function GraphPage() {
     void runQuery();
   }, [projectId, runQuery]);
 
+  const statusText = result
+    ? result.enabled
+      ? "已启用"
+      : `未启用（${result.disabled_reason ?? "未知原因"}）`
+    : "未查询";
+
   return (
     <DebugPageShell
       title={UI_COPY.graph.title}
@@ -137,6 +143,15 @@ export function GraphPage() {
           aria-label="graph_query_text"
         />
       </label>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-subtext">
+        <span>示例：</span>
+        <button className="btn btn-ghost px-2 py-1 text-xs" onClick={() => setQueryText("Alice")} type="button">
+          Alice
+        </button>
+        <button className="btn btn-ghost px-2 py-1 text-xs" onClick={() => setQueryText("Bob")} type="button">
+          Bob
+        </button>
+      </div>
 
       {error ? (
         <div className="rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
@@ -147,8 +162,8 @@ export function GraphPage() {
       <div className="rounded-atelier border border-border bg-surface p-3">
         <div className="text-sm text-ink">{UI_COPY.graph.overviewTitle}</div>
         <div className="mt-1 text-xs text-subtext">
-          status: {result?.enabled ? "enabled" : `disabled (${result?.disabled_reason ?? "unknown"})`} | nodes:{" "}
-          {result?.nodes?.length ?? 0} | edges: {result?.edges?.length ?? 0} | evidence: {result?.evidence?.length ?? 0}
+          状态：{statusText} | 节点：{result?.nodes?.length ?? 0} | 关系：{result?.edges?.length ?? 0} | 证据：
+          {result?.evidence?.length ?? 0}
         </div>
       </div>
 
@@ -164,7 +179,7 @@ export function GraphPage() {
             <div className="text-sm text-ink">{UI_COPY.graph.nodesTitle}</div>
             <div className="text-xs text-subtext">
               {UI_COPY.graph.matchedLabel}: {(result?.matched?.entity_ids ?? []).length}
-              {result?.truncated?.nodes ? " | truncated" : ""}
+              {result?.truncated?.nodes ? " | 已截断（truncated）" : ""}
             </div>
           </div>
           <div className="mt-2 grid gap-2">
@@ -182,14 +197,14 @@ export function GraphPage() {
                 <div className="mt-0.5 text-[11px] text-subtext">{n.id}</div>
               </div>
             ))}
-            {(result?.nodes ?? []).length === 0 ? <div className="text-xs text-subtext">nodes: 0</div> : null}
+            {(result?.nodes ?? []).length === 0 ? <div className="text-xs text-subtext">暂无节点</div> : null}
           </div>
         </div>
 
         <div className="rounded-atelier border border-border bg-surface p-3">
           <div className="flex items-center justify-between gap-2">
             <div className="text-sm text-ink">{UI_COPY.graph.relationsTitle}</div>
-            <div className="text-xs text-subtext">{result?.truncated?.edges ? "truncated" : " "}</div>
+            <div className="text-xs text-subtext">{result?.truncated?.edges ? "已截断（truncated）" : ""}</div>
           </div>
           <div className="mt-2 grid gap-2">
             {(result?.edges ?? []).map((e) => (
@@ -200,7 +215,7 @@ export function GraphPage() {
                 {e.description_md ? <div className="mt-1 text-subtext">{e.description_md}</div> : null}
               </div>
             ))}
-            {(result?.edges ?? []).length === 0 ? <div className="text-xs text-subtext">edges: 0</div> : null}
+            {(result?.edges ?? []).length === 0 ? <div className="text-xs text-subtext">暂无关系</div> : null}
           </div>
         </div>
       </div>
@@ -211,12 +226,12 @@ export function GraphPage() {
           {(result?.evidence ?? []).slice(0, 12).map((ev) => (
             <div key={ev.id} className="rounded-atelier border border-border bg-surface p-2 text-xs">
               <div className="text-ink">
-                {ev.source_type}:{ev.source_id ?? "-"}
+                来源：{ev.source_type}:{ev.source_id ?? "-"}
               </div>
               <div className="mt-1 text-subtext">{ev.quote_md || "（空）"}</div>
             </div>
           ))}
-          {(result?.evidence ?? []).length === 0 ? <div className="text-xs text-subtext">evidence: 0</div> : null}
+          {(result?.evidence ?? []).length === 0 ? <div className="text-xs text-subtext">暂无证据</div> : null}
         </div>
       </div>
 
