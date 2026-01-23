@@ -270,7 +270,7 @@ export function TaskCenterPage() {
             {changeSets.map((it) => (
               <button
                 key={it.id}
-                className="surface ui-transition-fast w-full p-3 text-left hover:bg-canvas"
+                className="surface surface-interactive w-full p-3 text-left"
                 onClick={() => setSelected({ kind: "change_set", item: it })}
                 type="button"
               >
@@ -354,7 +354,7 @@ export function TaskCenterPage() {
             {tasks.map((t) => (
               <button
                 key={t.id}
-                className="surface ui-transition-fast w-full p-3 text-left hover:bg-canvas"
+                className="surface surface-interactive w-full p-3 text-left"
                 onClick={() => setSelected({ kind: "task", item: t })}
                 type="button"
               >

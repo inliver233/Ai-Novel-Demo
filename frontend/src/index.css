@@ -174,8 +174,7 @@
   }
 
   .surface-interactive {
-    @apply surface ui-transition cursor-pointer hover:bg-surface;
-    @apply motion-safe:active:scale-[0.99];
+    @apply surface ui-focus-ring ui-pressable cursor-pointer hover:bg-surface;
   }
 
   .skeleton {
