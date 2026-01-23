@@ -52,53 +52,41 @@ export function WritingToolbar(props: {
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
-        <div className="grid gap-1">
-          <div className="text-[11px] text-subtext">基础写作</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="btn btn-secondary"
-              disabled={props.aiGenerateDisabled}
-              onClick={props.onOpenAiGenerate}
-              type="button"
-            >
-              AI 生成
-            </button>
-            <button className="btn btn-secondary" onClick={props.onOpenBatch} type="button">
-              批量生成{props.batchProgressText}
-            </button>
-            <button className="btn btn-secondary" onClick={props.onOpenHistory} type="button">
-              生成记录
-            </button>
-            <button className="btn btn-secondary" onClick={props.onOpenForeshadow} type="button">
-              伏笔面板
-            </button>
-          </div>
-        </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-[11px] text-subtext">生成</span>
+        <button
+          className="btn btn-secondary"
+          disabled={props.aiGenerateDisabled}
+          onClick={props.onOpenAiGenerate}
+          type="button"
+        >
+          AI 生成
+        </button>
+        <button className="btn btn-secondary" onClick={props.onOpenBatch} type="button">
+          批量生成{props.batchProgressText}
+        </button>
+        <button className="btn btn-secondary" onClick={props.onOpenHistory} type="button">
+          生成记录
+        </button>
 
-        <div className="grid gap-1">
-          <div className="text-[11px] text-subtext">高级调试</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="btn btn-secondary"
-              aria-label="Memory Update"
-              onClick={props.onOpenMemoryUpdate}
-              type="button"
-            >
-              记忆更新（Memory Update）
-            </button>
-            <button className="btn btn-secondary" onClick={props.onOpenContextPreview} type="button">
-              {UI_COPY.writing.contextPreview}
-            </button>
-            <button className="btn btn-secondary" onClick={props.onOpenTaskCenter} type="button">
-              任务中心
-            </button>
-          </div>
-        </div>
+        <span className="mx-1 hidden h-4 w-px bg-border sm:block" aria-hidden />
+        <span className="text-[11px] text-subtext">工具</span>
+        <button className="btn btn-secondary" onClick={props.onOpenForeshadow} type="button">
+          伏笔面板
+        </button>
+        <button className="btn btn-secondary" onClick={props.onOpenContextPreview} type="button">
+          {UI_COPY.writing.contextPreview}
+        </button>
+        <button className="btn btn-secondary" aria-label="Memory Update" onClick={props.onOpenMemoryUpdate} type="button">
+          记忆更新（Memory Update）
+        </button>
+        <button className="btn btn-secondary" onClick={props.onOpenTaskCenter} type="button">
+          任务中心
+        </button>
       </div>
 
       <div className="mt-3 text-xs text-subtext">
-        基础写作：生成草稿、批量生成、回看生成记录、管理伏笔。高级调试：查看上下文注入、批量写入记忆、追踪后台任务。
+        提示：生成默认不会自动保存；若章节有未保存修改，会在生成前提示“保存并生成 / 直接生成”。
       </div>
     </div>
   );
