@@ -68,8 +68,7 @@ export function RagAdvancedDebugPanel(props: {
             {settingsQuery.data ? (
               <>
                 effective: enabled:{String(settingsQuery.data.vector_rerank_effective_enabled)} | method:
-                {settingsQuery.data.vector_rerank_effective_method} | top_k:
-                {settingsQuery.data.vector_rerank_effective_top_k} | source:
+                {settingsQuery.data.vector_rerank_effective_method} | top_k:{settingsQuery.data.vector_rerank_effective_top_k} | source:
                 {settingsQuery.data.vector_rerank_effective_source}
               </>
             ) : (
@@ -84,10 +83,10 @@ export function RagAdvancedDebugPanel(props: {
                 onChange={(e) => setRerankEnabled(e.target.checked)}
                 disabled={rerankSaving || settingsQuery.loading}
               />
-              启用 rerank
+              启用重排（rerank）
             </label>
             <label className="grid gap-1 sm:col-span-2">
-              <span className="text-xs text-subtext">rerank method</span>
+              <span className="text-xs text-subtext">方法（rerank method）</span>
               <select
                 className="select"
                 value={rerankMethod}
@@ -100,7 +99,7 @@ export function RagAdvancedDebugPanel(props: {
               </select>
             </label>
             <label className="grid gap-1">
-              <span className="text-xs text-subtext">rerank top_k</span>
+              <span className="text-xs text-subtext">Top K（rerank top_k）</span>
               <input
                 className="input"
                 type="number"
@@ -122,7 +121,7 @@ export function RagAdvancedDebugPanel(props: {
                 onClick={() => void applyRerank()}
                 type="button"
               >
-                {rerankSaving ? "保存中…" : "应用 rerank 配置"}
+                {rerankSaving ? "保存中…" : "应用重排配置"}
               </button>
             </div>
           </div>

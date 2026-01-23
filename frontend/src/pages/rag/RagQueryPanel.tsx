@@ -6,6 +6,12 @@ import { EMPTY_CHUNKS } from "./types";
 import type { VectorRagResult, VectorSource } from "./types";
 import { formatHybridCounts, formatOverfilter, formatRerankSummary, normalizeRerankObs, safeJson } from "./utils";
 
+const SOURCE_LABEL: Record<VectorSource, string> = {
+  worldbook: "世界书（worldbook）",
+  outline: "大纲（outline）",
+  chapter: "章节（chapter）",
+};
+
 export function RagQueryPanel(props: {
   busy: boolean;
   sources: VectorSource[];
@@ -175,7 +181,7 @@ export function RagQueryPanel(props: {
           {(["worldbook", "outline", "chapter"] as const).map((s) => (
             <label key={s} className="flex items-center gap-2 text-sm text-ink">
               <input type="checkbox" checked={sources.includes(s)} onChange={() => toggleSource(s)} />
-              <span>{s}</span>
+              <span>{SOURCE_LABEL[s]}</span>
             </label>
           ))}
         </div>
@@ -185,7 +191,7 @@ export function RagQueryPanel(props: {
         <div className="text-sm font-medium text-ink">{UI_COPY.rag.queryTitle}</div>
         <div className="mt-3">
           <label className="text-xs text-subtext" htmlFor="rag-query-text">
-            query_text
+            查询文本（query_text）
           </label>
           <textarea
             id="rag-query-text"
@@ -220,7 +226,7 @@ export function RagQueryPanel(props: {
               onClick={() => void copyQueryDebug()}
               type="button"
             >
-              复制 debug
+              复制排障信息
             </button>
             {queryResult?.counts ? (
               <div className="text-xs text-subtext">
@@ -270,13 +276,13 @@ export function RagQueryPanel(props: {
 
             <div className="mt-2 grid gap-3 sm:grid-cols-2">
               <div>
-                <div className="text-[11px] text-subtext">raw_query_text</div>
+                <div className="text-[11px] text-subtext">原始查询（raw_query_text）</div>
                 <pre className="mt-1 max-h-24 overflow-auto rounded-atelier border border-border bg-canvas p-2 text-[11px] leading-4 text-subtext">
                   {(rawQueryText ?? "").trim() || "（空）"}
                 </pre>
               </div>
               <div>
-                <div className="text-[11px] text-subtext">normalized_query_text</div>
+                <div className="text-[11px] text-subtext">规范化查询（normalized_query_text）</div>
                 <pre className="mt-1 max-h-24 overflow-auto rounded-atelier border border-border bg-canvas p-2 text-[11px] leading-4 text-subtext">
                   {(normalizedQueryText ?? "").trim() || "（空）"}
                 </pre>
@@ -285,7 +291,7 @@ export function RagQueryPanel(props: {
 
             {queryPreprocessObs ? (
               <details className="mt-2 rounded-atelier border border-border bg-canvas p-3">
-                <summary className="cursor-pointer select-none text-xs">preprocess_obs</summary>
+                <summary className="cursor-pointer select-none text-xs">预处理信息（preprocess_obs）</summary>
                 <pre className="mt-2 max-h-64 overflow-auto text-[11px] leading-4 text-subtext">
                   {safeJson(queryPreprocessObs)}
                 </pre>
@@ -293,7 +299,7 @@ export function RagQueryPanel(props: {
             ) : null}
 
             <div className="mt-2">
-              hybrid:{" "}
+              混合检索（hybrid）:{" "}
               {queryResult.hybrid
                 ? `enabled:${String(queryResult.hybrid.enabled)} | counts:${formatHybridCounts(queryResult.hybrid.counts)} | overfilter:${formatOverfilter(
                     queryResult.hybrid.overfilter,
@@ -302,7 +308,7 @@ export function RagQueryPanel(props: {
             </div>
 
             <div className="mt-1">
-              drop_by_reason:{" "}
+              丢弃原因（drop_by_reason）:{" "}
               {queryResult.counts
                 ? Object.keys(queryResult.counts.dropped_by_reason ?? {}).length
                   ? Object.entries(queryResult.counts.dropped_by_reason)
@@ -326,13 +332,13 @@ export function RagQueryPanel(props: {
                   <div className="text-[11px] text-subtext">（空）</div>
                 ) : (
                   groupedFinalChunks.map((src) => (
-                    <details key={src.source} className="rounded-atelier border border-border bg-surface p-2" open>
+                    <details key={src.source} className="rounded-atelier border border-border bg-surface p-2">
                       <summary className="cursor-pointer select-none text-xs text-subtext hover:text-ink">
                         source: {src.source}（{src.chapterGroups.reduce((acc, g) => acc + g.chunks.length, 0)}）
                       </summary>
                       <div className="mt-2 grid gap-2">
                         {src.chapterGroups.map((g) => (
-                          <details key={g.key} className="rounded-atelier border border-border bg-canvas p-2" open>
+                          <details key={g.key} className="rounded-atelier border border-border bg-canvas p-2">
                             <summary className="cursor-pointer select-none text-xs text-subtext hover:text-ink">
                               {g.chapterNumber != null ? `chapter ${g.chapterNumber}` : "entry"}
                               {g.title ? ` | ${g.title}` : ""}

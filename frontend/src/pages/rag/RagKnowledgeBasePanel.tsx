@@ -81,9 +81,9 @@ export function RagKnowledgeBasePanel(props: {
       </div>
 
       <div className="mt-2 text-xs text-subtext">
-        selected_kb_ids: {selectedKbIds.length ? selectedKbIds.join(", ") : "（空：query 默认用 enabled 集合）"}
+        当前选择（selected_kb_ids）: {selectedKbIds.length ? selectedKbIds.join(", ") : "（空：查询默认使用“已启用”的 KB）"}
         {queryResult?.kbs?.selected?.length ? (
-          <span className="ml-2">| query_selected: {queryResult.kbs.selected.join(", ")}</span>
+          <span className="ml-2">| 查询使用（query_selected）: {queryResult.kbs.selected.join(", ")}</span>
         ) : null}
       </div>
 
@@ -138,7 +138,7 @@ export function RagKnowledgeBasePanel(props: {
                       启用
                     </label>
                     <label className="flex items-center gap-2 text-sm text-ink">
-                      <span className="text-xs text-subtext">weight</span>
+                      <span className="text-xs text-subtext">权重（weight）</span>
                       <input
                         className="input w-24"
                         type="number"
