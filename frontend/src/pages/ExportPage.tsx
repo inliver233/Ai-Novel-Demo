@@ -74,7 +74,9 @@ export function ExportPage() {
         <div className="flex items-start justify-between gap-4">
           <div className="grid gap-2">
             <div className="font-content text-xl">导出 Markdown</div>
-            <div className="text-xs text-subtext">按选项生成并下载 `.md` 文件</div>
+            <div className="text-xs text-subtext">
+              按选项生成并下载 `.md` 文件（如浏览器拦截下载，请允许该站点下载）。
+            </div>
           </div>
           <button
             className="btn btn-primary"
@@ -148,13 +150,15 @@ export function ExportPage() {
                 onChange={() => setForm((v) => ({ ...v, chapters: "done" }))}
                 type="radio"
               />
-              仅定稿章节（done）
+              仅定稿章节
             </label>
+            <div className="text-[11px] text-subtext">定稿章节：章节状态为“定稿（done）”。</div>
           </div>
 
-          <div className="surface p-3 text-xs text-subtext">
-            请求：<span className="break-all">{url || "（请选择项目）"}</span>
-          </div>
+          <details className="surface p-3 text-xs text-subtext">
+            <summary className="ui-transition-fast cursor-pointer hover:text-ink">排障信息（请求 URL）</summary>
+            <div className="mt-2 break-all">{url || "（请选择项目）"}</div>
+          </details>
         </div>
       </section>
 
