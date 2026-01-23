@@ -107,7 +107,7 @@ export function ForeshadowDrawer(props: {
         setLoading(false);
       }
     },
-    [confirm, props.activeChapterId, props.projectId, toast],
+    [confirm, copy, props.activeChapterId, props.projectId, toast],
   );
 
   return (

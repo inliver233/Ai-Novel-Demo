@@ -114,8 +114,8 @@ export function TaskCenterPage() {
     void refreshTasks();
   }, [projectId, refreshTasks, taskStatus]);
 
-  const changeSets = changeSetsQuery.data?.items ?? [];
-  const tasks = tasksQuery.data?.items ?? [];
+  const changeSets = useMemo(() => changeSetsQuery.data?.items ?? [], [changeSetsQuery.data?.items]);
+  const tasks = useMemo(() => tasksQuery.data?.items ?? [], [tasksQuery.data?.items]);
 
   const changeSetSummary = useMemo(() => {
     const out = { all: changeSets.length, proposed: 0, applied: 0, rolled_back: 0, failed: 0, other: 0 };

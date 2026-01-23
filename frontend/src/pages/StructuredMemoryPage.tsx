@@ -189,9 +189,12 @@ export function StructuredMemoryPage() {
     void refresh();
   }, [activeTable, includeDeleted, projectId, queryText, refresh]);
 
-  const counts = pageQuery.data?.counts ?? { entities: 0, relations: 0, events: 0, foreshadows: 0, evidence: 0 };
+  const counts = useMemo(
+    () => pageQuery.data?.counts ?? { entities: 0, relations: 0, events: 0, foreshadows: 0, evidence: 0 },
+    [pageQuery.data?.counts],
+  );
   const cursor = pageQuery.data?.cursor ?? null;
-  const items = pageQuery.data?.items ?? [];
+  const items = useMemo(() => pageQuery.data?.items ?? [], [pageQuery.data?.items]);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);

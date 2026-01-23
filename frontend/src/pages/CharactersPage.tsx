@@ -34,7 +34,7 @@ export function CharactersPage() {
     const res = await apiJson<{ characters: Character[] }>(`/api/projects/${id}/characters`);
     return res.data.characters;
   });
-  const characters = charactersQuery.data ?? [];
+  const characters = useMemo(() => charactersQuery.data ?? [], [charactersQuery.data]);
   const loading = charactersQuery.loading;
 
   const [drawerOpen, setDrawerOpen] = useState(false);
