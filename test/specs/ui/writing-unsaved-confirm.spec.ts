@@ -32,6 +32,7 @@ test("ui: writing dirty -> save and generate", async ({ page, request }) => {
   const { projectId, chapterId } = await setupProjectAndChapter(request);
 
   await page.goto(`/projects/${projectId}/writing?chapterId=${chapterId}`);
+  await expect(page.getByRole("textbox", { name: "标题", exact: true })).toHaveValue("E2E 第一章", { timeout: 60_000 });
   const content = page.locator('textarea[name="content_md"]');
   await expect(content).toBeVisible();
 
@@ -84,6 +85,7 @@ test("ui: writing dirty -> generate without saving", async ({ page, request }) =
   const { projectId, chapterId } = await setupProjectAndChapter(request);
 
   await page.goto(`/projects/${projectId}/writing?chapterId=${chapterId}`);
+  await expect(page.getByRole("textbox", { name: "标题", exact: true })).toHaveValue("E2E 第一章", { timeout: 60_000 });
   const content = page.locator('textarea[name="content_md"]');
   await expect(content).toBeVisible();
 
@@ -131,6 +133,7 @@ test("ui: writing dirty -> cancel generate", async ({ page, request }) => {
   const { projectId, chapterId } = await setupProjectAndChapter(request);
 
   await page.goto(`/projects/${projectId}/writing?chapterId=${chapterId}`);
+  await expect(page.getByRole("textbox", { name: "标题", exact: true })).toHaveValue("E2E 第一章", { timeout: 60_000 });
   const content = page.locator('textarea[name="content_md"]');
   await expect(content).toBeVisible();
 
