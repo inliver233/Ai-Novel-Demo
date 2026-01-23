@@ -230,9 +230,9 @@ export function TaskCenterPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="panel p-4" aria-label="变更集 (taskcenter_changesets_section)">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="text-sm text-ink">变更集（ChangeSets）</div>
-              <div className="mt-1 text-xs text-subtext">按状态筛选；点击条目查看摘要与原始 JSON</div>
+              <div>
+              <div className="text-sm text-ink">变更集（Change Set）</div>
+              <div className="mt-1 text-xs text-subtext">按状态筛选；点击条目查看摘要与原始数据（默认折叠）</div>
               <div className="mt-1 text-[11px] text-subtext">
                 状态说明：未应用=仅提议 | 已应用=已落库 | 已回滚=已撤销 | 失败=执行异常
               </div>
@@ -307,7 +307,7 @@ export function TaskCenterPage() {
         <section className="panel p-4" aria-label="任务列表 (taskcenter_tasks_section)">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="text-sm text-ink">任务（Tasks）</div>
+              <div className="text-sm text-ink">任务（Task）</div>
               <div className="mt-1 text-xs text-subtext">失败任务会显示错误摘要与 {UI_COPY.common.requestIdLabel}</div>
               <div className="mt-1 text-[11px] text-subtext">
                 状态说明：排队中→运行中→完成/失败（如失败可用 request_id 查后端日志）
@@ -382,7 +382,7 @@ export function TaskCenterPage() {
                     ) : null}
                     {t.status === "failed" ? (
                       <div className="mt-1 truncate text-xs text-red-700 dark:text-red-300">
-                        {t.error_type || "ERROR"}: {t.error_message || "unknown"}
+                        {t.error_type || "ERROR"}: {t.error_message || "未知错误"}
                       </div>
                     ) : null}
                   </div>
