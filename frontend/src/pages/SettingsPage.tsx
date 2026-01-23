@@ -604,9 +604,9 @@ export function SettingsPage() {
         <div className="flex items-start justify-between gap-4">
           <div className="grid gap-2">
             <div className="font-content text-xl">项目信息</div>
-            <div className="text-xs text-subtext">名称 / 类型 / Logline</div>
+            <div className="text-xs text-subtext">名称 / 题材 / 一句话梗概（logline）</div>
           </div>
-          <button className="btn btn-primary" disabled={!dirty || saving} onClick={() => void save()} type="button">
+          <button className="btn btn-primary" disabled={!dirty} onClick={() => void save()} type="button">
             保存
           </button>
         </div>
@@ -622,7 +622,7 @@ export function SettingsPage() {
             />
           </label>
           <label className="grid gap-1 sm:col-span-1">
-            <span className="text-xs text-subtext">类型</span>
+            <span className="text-xs text-subtext">题材</span>
             <input
               className="input"
               name="project_genre"
@@ -631,7 +631,7 @@ export function SettingsPage() {
             />
           </label>
           <label className="grid gap-1 sm:col-span-3">
-            <span className="text-xs text-subtext">Logline</span>
+            <span className="text-xs text-subtext">一句话梗概（logline）</span>
             <textarea
               className="textarea"
               name="project_logline"
@@ -644,7 +644,10 @@ export function SettingsPage() {
       </section>
 
       <section className="panel p-6">
-        <div className="font-content text-xl">设定</div>
+        <div className="grid gap-1">
+          <div className="font-content text-xl">创作设定（必填）</div>
+          <div className="text-xs text-subtext">写作/大纲生成会引用这里的内容；建议尽量具体。</div>
+        </div>
         <div className="mt-4 grid gap-4">
           <label className="grid gap-1">
             <span className="text-xs text-subtext">世界观</span>
@@ -684,221 +687,245 @@ export function SettingsPage() {
           <div className="grid gap-1">
             <div className="font-content text-xl text-ink">向量检索（Vector RAG）</div>
             <div className="text-xs text-subtext">
-              Embedding 配置支持项目级覆盖（API Key 加密存储，仅回显 masked），并可 fallback 到后端 env。
+              Embedding 用于把文本变成向量以便检索；Rerank 用于对候选结果二次排序提升命中（可能增加耗时/成本）。
             </div>
             <div className="text-xs text-subtext">
-              provider: {baselineSettings.vector_embedding_effective_provider || "openai_compatible"} | status:{" "}
-              {baselineSettings.vector_embedding_effective_disabled_reason ?? "enabled"} | source:{" "}
-              {baselineSettings.vector_embedding_effective_source}
-            </div>
-            <div className="text-xs text-subtext">
-              rerank: {baselineSettings.vector_rerank_effective_enabled ? "enabled" : "disabled"} | method:{" "}
-              {baselineSettings.vector_rerank_effective_method} | top_k:{" "}
-              {baselineSettings.vector_rerank_effective_top_k} | source:{" "}
-              {baselineSettings.vector_rerank_effective_source}
+              API Key 加密存储，仅回显 masked；留空可使用后端环境变量。
             </div>
           </div>
         </summary>
 
         <div className="px-6 pb-6 pt-0">
           <div className="mt-4 grid gap-4">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
-                <input
-                  className="checkbox"
-                  checked={settingsForm.vector_rerank_enabled}
-                  onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_enabled: e.target.checked }))}
-                  type="checkbox"
-                />
-                启用 rerank（对 candidates 做相关性重排）
-              </label>
-              <label className="grid gap-1 sm:col-span-2">
-                <span className="text-xs text-subtext">rerank method</span>
-                <select
-                  className="select"
-                  value={settingsForm.vector_rerank_method}
-                  onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_method: e.target.value }))}
-                >
-                  <option value="auto">auto</option>
-                  <option value="rapidfuzz_token_set_ratio">rapidfuzz_token_set_ratio</option>
-                  <option value="token_overlap">token_overlap</option>
-                </select>
-              </label>
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">rerank top_k</span>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={1000}
-                  value={settingsForm.vector_rerank_top_k}
-                  onChange={(e) => {
-                    const next = Math.floor(Number(e.target.value));
-                    setSettingsForm((v) => ({
-                      ...v,
-                      vector_rerank_top_k: Number.isFinite(next)
-                        ? Math.max(1, Math.min(1000, next))
-                        : v.vector_rerank_top_k,
-                    }));
-                  }}
-                />
-              </label>
+            <div className="rounded-atelier border border-border bg-canvas p-4 text-xs text-subtext">
+              <div>
+                当前生效：Embedding provider={baselineSettings.vector_embedding_effective_provider || "openai_compatible"}
+                （状态: {baselineSettings.vector_embedding_effective_disabled_reason ?? "enabled"}；来源:{" "}
+                {baselineSettings.vector_embedding_effective_source}）
+              </div>
+              <div className="mt-1">
+                Rerank：{baselineSettings.vector_rerank_effective_enabled ? "enabled" : "disabled"}（method:{" "}
+                {baselineSettings.vector_rerank_effective_method}；top_k: {baselineSettings.vector_rerank_effective_top_k}
+                ；来源: {baselineSettings.vector_rerank_effective_source}）
+              </div>
             </div>
 
-            <label className="grid gap-1">
-              <span className="text-xs text-subtext">Provider（项目覆盖；留空=env fallback）</span>
-              <select
-                className="select"
-                value={settingsForm.vector_embedding_provider}
-                onChange={(e) => setSettingsForm((v) => ({ ...v, vector_embedding_provider: e.target.value }))}
-              >
-                <option value="">（env fallback）</option>
-                <option value="openai_compatible">openai_compatible</option>
-                <option value="azure_openai">azure_openai</option>
-                <option value="google">google</option>
-                <option value="custom">custom</option>
-                <option value="local_proxy">local_proxy</option>
-                <option value="sentence_transformers">sentence_transformers</option>
-              </select>
+            <div className="grid gap-2">
+              <div className="text-sm text-ink">Rerank（重排）</div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
+                  <input
+                    className="checkbox"
+                    checked={settingsForm.vector_rerank_enabled}
+                    onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_enabled: e.target.checked }))}
+                    type="checkbox"
+                  />
+                  启用 rerank（对候选片段做相关性重排）
+                </label>
+                <label className="grid gap-1 sm:col-span-2">
+                  <span className="text-xs text-subtext">重排算法（rerank method）</span>
+                  <select
+                    className="select"
+                    value={settingsForm.vector_rerank_method}
+                    onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_method: e.target.value }))}
+                  >
+                    <option value="auto">auto</option>
+                    <option value="rapidfuzz_token_set_ratio">rapidfuzz_token_set_ratio</option>
+                    <option value="token_overlap">token_overlap</option>
+                  </select>
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">候选数量（top_k）</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={settingsForm.vector_rerank_top_k}
+                    onChange={(e) => {
+                      const next = Math.floor(Number(e.target.value));
+                      setSettingsForm((v) => ({
+                        ...v,
+                        vector_rerank_top_k: Number.isFinite(next)
+                          ? Math.max(1, Math.min(1000, next))
+                          : v.vector_rerank_top_k,
+                      }));
+                    }}
+                  />
+                </label>
+              </div>
               <div className="text-[11px] text-subtext">
-                当前有效：{baselineSettings.vector_embedding_effective_provider || "openai_compatible"}
+                提示：启用后会对候选结果做二次排序，通常命中更好，但可能增加耗时/成本。
               </div>
-            </label>
+            </div>
 
-            {embeddingProviderPreview === "azure_openai" ? (
-              <div className="grid gap-4 sm:grid-cols-2">
+            <details className="rounded-atelier border border-border bg-canvas p-4">
+              <summary className="ui-transition-fast cursor-pointer select-none text-sm text-ink hover:text-ink">
+                Embedding（向量化）配置
+              </summary>
+              <div className="mt-4 grid gap-4">
+                <div className="text-xs text-subtext">不确定怎么配时，可保持留空让后端从环境变量读取。</div>
+
                 <label className="grid gap-1">
-                  <span className="text-xs text-subtext">Azure deployment（项目覆盖；留空=env fallback）</span>
-                  <input
-                    className="input"
-                    value={settingsForm.vector_embedding_azure_deployment}
-                    onChange={(e) =>
-                      setSettingsForm((v) => ({ ...v, vector_embedding_azure_deployment: e.target.value }))
-                    }
-                  />
+                  <span className="text-xs text-subtext">Embedding Provider（项目覆盖；留空=使用后端环境变量）</span>
+                  <select
+                    className="select"
+                    value={settingsForm.vector_embedding_provider}
+                    onChange={(e) => setSettingsForm((v) => ({ ...v, vector_embedding_provider: e.target.value }))}
+                  >
+                    <option value="">（使用后端环境变量）</option>
+                    <option value="openai_compatible">openai_compatible</option>
+                    <option value="azure_openai">azure_openai</option>
+                    <option value="google">google</option>
+                    <option value="custom">custom</option>
+                    <option value="local_proxy">local_proxy</option>
+                    <option value="sentence_transformers">sentence_transformers</option>
+                  </select>
                   <div className="text-[11px] text-subtext">
-                    当前有效：{baselineSettings.vector_embedding_effective_azure_deployment || "（空）"}
+                    当前有效：{baselineSettings.vector_embedding_effective_provider || "openai_compatible"}
                   </div>
                 </label>
+
+                {embeddingProviderPreview === "azure_openai" ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="grid gap-1">
+                      <span className="text-xs text-subtext">
+                        Azure deployment（项目覆盖；留空=使用后端环境变量）
+                      </span>
+                      <input
+                        className="input"
+                        value={settingsForm.vector_embedding_azure_deployment}
+                        onChange={(e) =>
+                          setSettingsForm((v) => ({ ...v, vector_embedding_azure_deployment: e.target.value }))
+                        }
+                      />
+                      <div className="text-[11px] text-subtext">
+                        当前有效：{baselineSettings.vector_embedding_effective_azure_deployment || "（空）"}
+                      </div>
+                    </label>
+                    <label className="grid gap-1">
+                      <span className="text-xs text-subtext">Azure api_version（项目覆盖；留空=使用后端环境变量）</span>
+                      <input
+                        className="input"
+                        value={settingsForm.vector_embedding_azure_api_version}
+                        onChange={(e) =>
+                          setSettingsForm((v) => ({ ...v, vector_embedding_azure_api_version: e.target.value }))
+                        }
+                      />
+                      <div className="text-[11px] text-subtext">
+                        当前有效：{baselineSettings.vector_embedding_effective_azure_api_version || "（空）"}
+                      </div>
+                    </label>
+                  </div>
+                ) : null}
+
+                {embeddingProviderPreview === "sentence_transformers" ? (
+                  <label className="grid gap-1">
+                    <span className="text-xs text-subtext">
+                      SentenceTransformers 模型（项目覆盖；留空=使用后端环境变量）
+                    </span>
+                    <input
+                      className="input"
+                      value={settingsForm.vector_embedding_sentence_transformers_model}
+                      onChange={(e) =>
+                        setSettingsForm((v) => ({ ...v, vector_embedding_sentence_transformers_model: e.target.value }))
+                      }
+                    />
+                    <div className="text-[11px] text-subtext">
+                      当前有效：{baselineSettings.vector_embedding_effective_sentence_transformers_model || "（空）"}
+                    </div>
+                  </label>
+                ) : null}
+
                 <label className="grid gap-1">
-                  <span className="text-xs text-subtext">Azure api_version（项目覆盖；留空=env fallback）</span>
+                  <span className="text-xs text-subtext">Embedding Base URL（项目覆盖；留空=使用后端环境变量）</span>
                   <input
                     className="input"
-                    value={settingsForm.vector_embedding_azure_api_version}
-                    onChange={(e) =>
-                      setSettingsForm((v) => ({ ...v, vector_embedding_azure_api_version: e.target.value }))
-                    }
+                    id="vector_embedding_base_url"
+                    name="vector_embedding_base_url"
+                    value={settingsForm.vector_embedding_base_url}
+                    onChange={(e) => setSettingsForm((v) => ({ ...v, vector_embedding_base_url: e.target.value }))}
                   />
                   <div className="text-[11px] text-subtext">
-                    当前有效：{baselineSettings.vector_embedding_effective_azure_api_version || "（空）"}
+                    当前有效：{baselineSettings.vector_embedding_effective_base_url || "（空）"}
                   </div>
                 </label>
-              </div>
-            ) : null}
 
-            {embeddingProviderPreview === "sentence_transformers" ? (
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">SentenceTransformers 模型（项目覆盖；留空=env fallback）</span>
-                <input
-                  className="input"
-                  value={settingsForm.vector_embedding_sentence_transformers_model}
-                  onChange={(e) =>
-                    setSettingsForm((v) => ({ ...v, vector_embedding_sentence_transformers_model: e.target.value }))
-                  }
-                />
-                <div className="text-[11px] text-subtext">
-                  当前有效：{baselineSettings.vector_embedding_effective_sentence_transformers_model || "（空）"}
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">Embedding Model（项目覆盖；留空=使用后端环境变量）</span>
+                  <input
+                    className="input"
+                    id="vector_embedding_model"
+                    name="vector_embedding_model"
+                    value={settingsForm.vector_embedding_model}
+                    onChange={(e) => setSettingsForm((v) => ({ ...v, vector_embedding_model: e.target.value }))}
+                  />
+                  <div className="text-[11px] text-subtext">
+                    当前有效：{baselineSettings.vector_embedding_effective_model || "（空）"}
+                  </div>
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">API Key（项目覆盖；留空不修改）</span>
+                  <input
+                    className="input"
+                    id="vector_embedding_api_key"
+                    name="vector_embedding_api_key"
+                    type="password"
+                    autoComplete="off"
+                    value={vectorApiKeyDraft}
+                    onChange={(e) => {
+                      setVectorApiKeyDraft(e.target.value);
+                      setVectorApiKeyClearRequested(false);
+                    }}
+                  />
+                  <div className="text-[11px] text-subtext">
+                    已保存（项目覆盖）：
+                    {baselineSettings.vector_embedding_has_api_key
+                      ? baselineSettings.vector_embedding_masked_api_key
+                      : "（无）"}
+                    {baselineSettings.vector_embedding_effective_has_api_key
+                      ? ` | 当前有效：${baselineSettings.vector_embedding_effective_masked_api_key}`
+                      : " | 当前有效：（无）"}
+                    {vectorApiKeyClearRequested ? " | 将在保存时清除" : ""}
+                  </div>
+                </label>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={saving || !baselineSettings.vector_embedding_has_api_key}
+                    onClick={() => {
+                      setVectorApiKeyDraft("");
+                      setVectorApiKeyClearRequested(true);
+                    }}
+                    type="button"
+                  >
+                    清除项目级 API Key
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={saving}
+                    onClick={() => {
+                      setSettingsForm((v) => ({
+                        ...v,
+                        vector_embedding_provider: "",
+                        vector_embedding_base_url: "",
+                        vector_embedding_model: "",
+                        vector_embedding_azure_deployment: "",
+                        vector_embedding_azure_api_version: "",
+                        vector_embedding_sentence_transformers_model: "",
+                      }));
+                      setVectorApiKeyDraft("");
+                      setVectorApiKeyClearRequested(true);
+                    }}
+                    type="button"
+                  >
+                    恢复使用后端环境变量（清除项目覆盖）
+                  </button>
                 </div>
-              </label>
-            ) : null}
-
-            <label className="grid gap-1">
-              <span className="text-xs text-subtext">Base URL（项目覆盖；留空=env fallback）</span>
-              <input
-                className="input"
-                id="vector_embedding_base_url"
-                name="vector_embedding_base_url"
-                value={settingsForm.vector_embedding_base_url}
-                onChange={(e) => setSettingsForm((v) => ({ ...v, vector_embedding_base_url: e.target.value }))}
-              />
-              <div className="text-[11px] text-subtext">
-                当前有效：{baselineSettings.vector_embedding_effective_base_url || "（空）"}
               </div>
-            </label>
-
-            <label className="grid gap-1">
-              <span className="text-xs text-subtext">Model（项目覆盖；留空=env fallback）</span>
-              <input
-                className="input"
-                id="vector_embedding_model"
-                name="vector_embedding_model"
-                value={settingsForm.vector_embedding_model}
-                onChange={(e) => setSettingsForm((v) => ({ ...v, vector_embedding_model: e.target.value }))}
-              />
-              <div className="text-[11px] text-subtext">
-                当前有效：{baselineSettings.vector_embedding_effective_model || "（空）"}
-              </div>
-            </label>
-
-            <label className="grid gap-1">
-              <span className="text-xs text-subtext">API Key（项目覆盖；留空不修改）</span>
-              <input
-                className="input"
-                id="vector_embedding_api_key"
-                name="vector_embedding_api_key"
-                type="password"
-                autoComplete="off"
-                value={vectorApiKeyDraft}
-                onChange={(e) => {
-                  setVectorApiKeyDraft(e.target.value);
-                  setVectorApiKeyClearRequested(false);
-                }}
-              />
-              <div className="text-[11px] text-subtext">
-                已保存（项目覆盖）：
-                {baselineSettings.vector_embedding_has_api_key
-                  ? baselineSettings.vector_embedding_masked_api_key
-                  : "（无）"}
-                {baselineSettings.vector_embedding_effective_has_api_key
-                  ? ` | 当前有效：${baselineSettings.vector_embedding_effective_masked_api_key}`
-                  : " | 当前有效：（无）"}
-                {vectorApiKeyClearRequested ? " | 将在保存时清除" : ""}
-              </div>
-            </label>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="btn btn-secondary"
-                disabled={saving || !baselineSettings.vector_embedding_has_api_key}
-                onClick={() => {
-                  setVectorApiKeyDraft("");
-                  setVectorApiKeyClearRequested(true);
-                }}
-                type="button"
-              >
-                清除项目 API Key
-              </button>
-              <button
-                className="btn btn-secondary"
-                disabled={saving}
-                onClick={() => {
-                  setSettingsForm((v) => ({
-                    ...v,
-                    vector_embedding_provider: "",
-                    vector_embedding_base_url: "",
-                    vector_embedding_model: "",
-                    vector_embedding_azure_deployment: "",
-                    vector_embedding_azure_api_version: "",
-                    vector_embedding_sentence_transformers_model: "",
-                  }));
-                  setVectorApiKeyDraft("");
-                  setVectorApiKeyClearRequested(true);
-                }}
-                type="button"
-              >
-                恢复 env fallback（清除项目覆盖）
-              </button>
-            </div>
+            </details>
           </div>
         </div>
       </details>
@@ -908,12 +935,10 @@ export function SettingsPage() {
           <div className="grid gap-1">
             <div className="font-content text-xl text-ink">Query 预处理（Query Preprocessing）</div>
             <div className="text-xs text-subtext">
-              用于统一 WorldBook / VectorRAG / Graph / 生成链路的 query_text 处理（默认关闭）。tags 支持从 query_text
-              中提取 #tag；exclusion_rules 会从 query_text 中移除。
+              用于把 query_text 先“标准化/去噪”，让 WorldBook / Vector RAG / Graph 的检索更稳定（默认关闭）。
             </div>
             <div className="text-xs text-subtext">
-              status: {baselineSettings.query_preprocessing_effective?.enabled ? "enabled" : "disabled"} | source:{" "}
-              {baselineSettings.query_preprocessing_effective_source ?? "unknown"}
+              功能：提取 #tag、移除 exclusion_rules、可选识别章节引用（index_ref_enhance）。
             </div>
           </div>
         </summary>
@@ -930,108 +955,121 @@ export function SettingsPage() {
               启用 query_preprocessing（默认关闭）
             </label>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">tags（每行一条；匹配 #tag；留空=提取所有 tag）</span>
-                <textarea
-                  className="textarea"
-                  name="query_preprocessing_tags"
-                  rows={5}
-                  value={settingsForm.query_preprocessing_tags}
-                  onChange={(e) => setSettingsForm((v) => ({ ...v, query_preprocessing_tags: e.target.value }))}
-                  placeholder={"例如：\nfoo\nbar"}
-                />
-                <div className="text-[11px] text-subtext">最大 50 条；每条最多 64 字符。</div>
-              </label>
-
-              <label className="grid gap-1">
-                <span className="text-xs text-subtext">exclusion_rules（每行一条；出现则移除）</span>
-                <textarea
-                  className="textarea"
-                  name="query_preprocessing_exclusion_rules"
-                  rows={5}
-                  value={settingsForm.query_preprocessing_exclusion_rules}
-                  onChange={(e) =>
-                    setSettingsForm((v) => ({ ...v, query_preprocessing_exclusion_rules: e.target.value }))
-                  }
-                  placeholder={"例如：\n忽略这段\nREMOVE"}
-                />
-                <div className="text-[11px] text-subtext">最大 50 条；每条最多 256 字符。</div>
-              </label>
+            <div className="text-[11px] text-subtext">
+              当前生效：{baselineSettings.query_preprocessing_effective?.enabled ? "enabled" : "disabled"}；来源：
+              {baselineSettings.query_preprocessing_effective_source ?? "unknown"}
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input
-                className="checkbox"
-                checked={settingsForm.query_preprocessing_index_ref_enhance}
-                onChange={(e) =>
-                  setSettingsForm((v) => ({ ...v, query_preprocessing_index_ref_enhance: e.target.checked }))
-                }
-                type="checkbox"
-              />
-              index_ref_enhance（识别“第N章 / chapter N”并追加引用 token）
-            </label>
+            {settingsForm.query_preprocessing_enabled ? (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-1">
+                    <span className="text-xs text-subtext">tags（每行一条；匹配 #tag；留空=提取所有 tag）</span>
+                    <textarea
+                      className="textarea"
+                      name="query_preprocessing_tags"
+                      rows={5}
+                      value={settingsForm.query_preprocessing_tags}
+                      onChange={(e) => setSettingsForm((v) => ({ ...v, query_preprocessing_tags: e.target.value }))}
+                      placeholder={"例如：\nfoo\nbar"}
+                    />
+                    <div className="text-[11px] text-subtext">最大 50 条；每条最多 64 字符。</div>
+                  </label>
 
-            <div className="rounded-atelier border border-border bg-canvas p-4">
-              <div className="text-sm text-ink">示例 normalize（基于已保存的 effective 配置）</div>
-              <div className="mt-1 text-xs text-subtext">修改配置后请先保存，再点击预览。</div>
-
-              <label className="mt-3 grid gap-1 text-xs text-subtext">
-                query_text
-                <textarea
-                  className="textarea mt-1 min-h-20 w-full"
-                  value={qpPreviewQueryText}
-                  onChange={(e) => setQpPreviewQueryText(e.target.value)}
-                  placeholder="例如：回顾第1章 #foo REMOVE"
-                />
-              </label>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  className="btn btn-secondary"
-                  disabled={qpPreviewLoading || !projectId}
-                  onClick={() => void runQpPreview()}
-                  type="button"
-                >
-                  {qpPreviewLoading ? "预览中…" : "预览"}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  disabled={qpPreviewLoading}
-                  onClick={() => {
-                    setQpPreview(null);
-                    setQpPreviewError(null);
-                  }}
-                  type="button"
-                >
-                  清空结果
-                </button>
-              </div>
-
-              {qpPreviewError ? (
-                <div className="mt-3 text-xs text-amber-600 dark:text-amber-400">{qpPreviewError}</div>
-              ) : null}
-
-              {qpPreview ? (
-                <div className="mt-3 grid gap-3">
-                  <div className="text-xs text-subtext">request_id: {qpPreview.requestId}</div>
-                  <div>
-                    <div className="text-xs text-subtext">normalized_query_text</div>
-                    <pre className="mt-1 max-h-40 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
-                      {qpPreview.normalized}
-                    </pre>
-                  </div>
-                  <details>
-                    <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
-                      preprocess_obs
-                    </summary>
-                    <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
-                      {JSON.stringify(qpPreview.obs ?? null, null, 2)}
-                    </pre>
-                  </details>
+                  <label className="grid gap-1">
+                    <span className="text-xs text-subtext">exclusion_rules（每行一条；出现则移除）</span>
+                    <textarea
+                      className="textarea"
+                      name="query_preprocessing_exclusion_rules"
+                      rows={5}
+                      value={settingsForm.query_preprocessing_exclusion_rules}
+                      onChange={(e) =>
+                        setSettingsForm((v) => ({ ...v, query_preprocessing_exclusion_rules: e.target.value }))
+                      }
+                      placeholder={"例如：\n忽略这段\nREMOVE"}
+                    />
+                    <div className="text-[11px] text-subtext">最大 50 条；每条最多 256 字符。</div>
+                  </label>
                 </div>
-              ) : null}
-            </div>
+
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input
+                    className="checkbox"
+                    checked={settingsForm.query_preprocessing_index_ref_enhance}
+                    onChange={(e) =>
+                      setSettingsForm((v) => ({ ...v, query_preprocessing_index_ref_enhance: e.target.checked }))
+                    }
+                    type="checkbox"
+                  />
+                  index_ref_enhance（识别“第N章 / chapter N”并追加引用 token）
+                </label>
+
+                <div className="rounded-atelier border border-border bg-canvas p-4">
+                  <div className="text-sm text-ink">示例 normalize（基于已保存的 effective 配置）</div>
+                  <div className="mt-1 text-xs text-subtext">修改配置后请先保存，再点击预览。</div>
+
+                  <label className="mt-3 grid gap-1 text-xs text-subtext">
+                    query_text
+                    <textarea
+                      className="textarea mt-1 min-h-20 w-full"
+                      value={qpPreviewQueryText}
+                      onChange={(e) => setQpPreviewQueryText(e.target.value)}
+                      placeholder="例如：回顾第1章 #foo REMOVE"
+                    />
+                  </label>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      className="btn btn-secondary"
+                      disabled={qpPreviewLoading || !projectId}
+                      onClick={() => void runQpPreview()}
+                      type="button"
+                    >
+                      {qpPreviewLoading ? "预览中…" : "预览"}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      disabled={qpPreviewLoading}
+                      onClick={() => {
+                        setQpPreview(null);
+                        setQpPreviewError(null);
+                      }}
+                      type="button"
+                    >
+                      清空结果
+                    </button>
+                  </div>
+
+                  {qpPreviewError ? (
+                    <div className="mt-3 text-xs text-amber-600 dark:text-amber-400">{qpPreviewError}</div>
+                  ) : null}
+
+                  {qpPreview ? (
+                    <div className="mt-3 grid gap-3">
+                      <div className="text-xs text-subtext">request_id: {qpPreview.requestId}</div>
+                      <div>
+                        <div className="text-xs text-subtext">normalized_query_text</div>
+                        <pre className="mt-1 max-h-40 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                          {qpPreview.normalized}
+                        </pre>
+                      </div>
+                      <details>
+                        <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                          preprocess_obs
+                        </summary>
+                        <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                          {JSON.stringify(qpPreview.obs ?? null, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-atelier border border-border bg-canvas p-4 text-xs text-subtext">
+                启用后可配置 tags / exclusion_rules，并可在下方预览 normalized_query_text（保存后生效）。
+              </div>
+            )}
           </div>
         </div>
       </details>
