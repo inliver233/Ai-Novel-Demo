@@ -12,6 +12,11 @@
     --color-border: var(--theme-border);
     --color-subtext: var(--theme-subtext);
     --color-success: var(--theme-success);
+    --color-warning: var(--theme-warning);
+    --color-danger: var(--theme-danger);
+    --color-info: var(--theme-info);
+
+    /* Migration: prefer bg/text-(warning|danger|info) over hard-coded amber/red/sky. */
 
     --font-ui: var(--theme-font-ui);
     --font-content: var(--theme-font-content);
@@ -39,6 +44,9 @@
     --theme-border: 230 226 220;
     --theme-accent: 188 93 67;
     --theme-success: 63 99 89;
+    --theme-warning: 171 120 52;
+    --theme-danger: 169 74 67;
+    --theme-info: 76 122 156;
     --theme-font-ui: "Inter", "Geist Sans", ui-sans-serif, system-ui, sans-serif;
     --theme-font-content: "Merriweather", "Source Serif 4", ui-serif, serif;
     --theme-font-mono:
@@ -56,6 +64,9 @@
     --theme-border: 46 44 41;
     --theme-accent: 217 119 87;
     --theme-success: 94 138 124;
+    --theme-warning: 214 166 96;
+    --theme-danger: 224 129 121;
+    --theme-info: 142 187 218;
     --shadow-panel-hover: 0 14px 40px -16px rgb(0 0 0 / 0.6);
   }
 

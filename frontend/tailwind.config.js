@@ -11,6 +11,9 @@ export default {
         subtext: "rgb(var(--color-subtext) / <alpha-value>)",
         accent: "rgb(var(--color-accent) / <alpha-value>)",
         success: "rgb(var(--color-success) / <alpha-value>)",
+        warning: "rgb(var(--color-warning) / <alpha-value>)",
+        danger: "rgb(var(--color-danger) / <alpha-value>)",
+        info: "rgb(var(--color-info) / <alpha-value>)",
         border: "rgb(var(--color-border) / <alpha-value>)",
       },
       fontFamily: {
