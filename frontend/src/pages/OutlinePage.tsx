@@ -620,6 +620,7 @@ export function OutlinePage() {
         <div className="mt-4 grid gap-4">
           <div className="rounded-atelier border border-border bg-canvas p-4">
             <div className="text-sm text-ink">基础参数</div>
+            <div className="mt-1 text-xs text-subtext">先用章节数 / 基调 / 节奏定方向；生成后可在预览里再微调。</div>
             <div className="mt-3 grid gap-4 sm:grid-cols-3">
               <label className="grid gap-1">
                 <span className="text-xs text-subtext">章节数</span>
@@ -631,6 +632,7 @@ export function OutlinePage() {
                   value={genForm.chapter_count}
                   onChange={(e) => setGenForm((v) => ({ ...v, chapter_count: Number(e.target.value) }))}
                 />
+                <div className="text-[11px] text-subtext">建议 8-20；后续可在大纲/写作中增删。</div>
               </label>
               <label className="grid gap-1 sm:col-span-2">
                 <span className="text-xs text-subtext">基调</span>
@@ -639,6 +641,7 @@ export function OutlinePage() {
                   name="tone"
                   value={genForm.tone}
                   onChange={(e) => setGenForm((v) => ({ ...v, tone: e.target.value }))}
+                  placeholder="例如：现实主义，克制但有爆点"
                 />
               </label>
               <label className="grid gap-1 sm:col-span-3">
@@ -648,6 +651,7 @@ export function OutlinePage() {
                   name="pacing"
                   value={genForm.pacing}
                   onChange={(e) => setGenForm((v) => ({ ...v, pacing: e.target.value }))}
+                  placeholder="例如：前3章强钩子，中段升级，结尾反转"
                 />
               </label>
             </div>
@@ -655,6 +659,9 @@ export function OutlinePage() {
 
           <div className="rounded-atelier border border-border bg-canvas p-4">
             <div className="text-sm text-ink">高级参数</div>
+            <div className="mt-1 text-xs text-subtext">
+              注入世界观/角色卡可让生成更贴近项目设定；流式生成会更快看到输出（偶发会自动回退非流式）。
+            </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               <label className="flex items-center gap-2 text-sm text-ink">
                 <input
@@ -720,6 +727,9 @@ export function OutlinePage() {
           </div>
         ) : null}
 
+        <div className="mt-5 text-xs text-subtext">
+          风险提示：生成会调用模型，可能消耗 token 与时间；请先预览再应用（推荐先另存为新大纲）。
+        </div>
         <div className="mt-5 flex justify-end gap-2">
           <button
             className="btn btn-secondary"
