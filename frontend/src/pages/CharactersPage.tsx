@@ -101,7 +101,7 @@ export function CharactersPage() {
     if (dirty) {
       const ok = await confirm.confirm({
         title: "放弃未保存修改？",
-        description: "关闭后未保存内容会丢失。",
+        description: "关闭后未保存内容会丢失。你可以先点击“保存”再关闭。",
         confirmText: "放弃",
         cancelText: "取消",
         danger: true,
@@ -345,7 +345,7 @@ export function CharactersPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="font-content text-2xl text-ink">{editing ? "编辑角色" : "新增角色"}</div>
-            <div className="mt-1 text-xs text-subtext">{dirty ? "未保存" : "已同步"}</div>
+            <div className="mt-1 text-xs text-subtext">{dirty ? "未保存" : "已保存"}</div>
           </div>
           <div className="flex gap-2">
             <button className="btn btn-secondary" onClick={() => void closeDrawer()} type="button">
