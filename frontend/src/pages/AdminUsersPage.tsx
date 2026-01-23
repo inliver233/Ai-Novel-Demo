@@ -294,6 +294,7 @@ export function AdminUsersPage() {
         <div className="mt-3 flex items-center justify-between gap-3">
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
+              className="checkbox"
               type="checkbox"
               checked={form.is_admin}
               onChange={(e) => setForm((v) => ({ ...v, is_admin: e.target.checked }))}
