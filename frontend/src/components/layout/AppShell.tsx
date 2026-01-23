@@ -426,6 +426,7 @@ export function AppShell() {
                         <label className="mt-2 flex items-center justify-between gap-2 rounded-atelier border border-border bg-canvas px-3 py-2 text-xs text-subtext">
                           <span>{UI_COPY.nav.advancedDebugToggle}</span>
                           <input
+                            className="checkbox"
                             checked={advancedDebugVisible}
                             aria-label="显示高级调试 (toggle_advanced_debug)"
                             onChange={(e) => {
@@ -648,6 +649,7 @@ export function AppShell() {
                     <label className="mt-2 flex items-center justify-between gap-2 rounded-atelier border border-border bg-canvas px-3 py-2 text-xs text-subtext">
                       <span>{UI_COPY.nav.advancedDebugToggle}</span>
                       <input
+                        className="checkbox"
                         checked={advancedDebugVisible}
                         aria-label="显示高级调试 (toggle_advanced_debug)"
                         onChange={(e) => {
