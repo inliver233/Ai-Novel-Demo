@@ -254,7 +254,7 @@ export function AdminUsersPage() {
           <label className="text-sm text-ink">
             <div className="text-xs text-subtext">用户 ID（user_id）</div>
             <input
-              className="mt-1 w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm"
+              className="input mt-1"
               value={form.user_id}
               onChange={(e) => setForm((v) => ({ ...v, user_id: e.target.value }))}
               placeholder="例如：admin2"
@@ -263,7 +263,7 @@ export function AdminUsersPage() {
           <label className="text-sm text-ink">
             <div className="text-xs text-subtext">显示名（display_name）</div>
             <input
-              className="mt-1 w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm"
+              className="input mt-1"
               value={form.display_name}
               onChange={(e) => setForm((v) => ({ ...v, display_name: e.target.value }))}
               placeholder="例如：管理员 2"
@@ -272,7 +272,7 @@ export function AdminUsersPage() {
           <label className="text-sm text-ink">
             <div className="text-xs text-subtext">邮箱（email，可选）</div>
             <input
-              className="mt-1 w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm"
+              className="input mt-1"
               value={form.email}
               onChange={(e) => setForm((v) => ({ ...v, email: e.target.value }))}
               placeholder="例如：admin2@example.com"
@@ -281,7 +281,7 @@ export function AdminUsersPage() {
           <label className="text-sm text-ink">
             <div className="text-xs text-subtext">初始密码（password，可选）</div>
             <input
-              className="mt-1 w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm"
+              className="input mt-1"
               type="password"
               autoComplete="new-password"
               value={form.password}
