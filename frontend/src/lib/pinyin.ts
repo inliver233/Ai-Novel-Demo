@@ -24,7 +24,9 @@ function normalizeAsciiToken(value: string): string {
 }
 
 export function tokenizeSearch(value: string): string[] {
-  const raw = String(value || "").trim().toLowerCase();
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
   if (!raw) return [];
   return raw.split(/\s+/g).filter(Boolean);
 }
@@ -79,4 +81,3 @@ export function containsPinyinMatch(text: string, token: string): PinyinMatchRes
   if (idx.initials.includes(t)) return { matched: true, mode: "pinyin_initials" };
   return { matched: false, mode: null };
 }
-

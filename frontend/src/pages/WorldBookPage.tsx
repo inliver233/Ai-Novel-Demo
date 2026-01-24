@@ -50,9 +50,7 @@ function highlightText(text: string, tokens: string[]): ReactNode {
   if (!tokens.length) return raw;
 
   const lower = raw.toLowerCase();
-  const active = tokens
-    .map((t) => String(t || "").toLowerCase())
-    .filter((t) => t.length > 0 && lower.includes(t));
+  const active = tokens.map((t) => String(t || "").toLowerCase()).filter((t) => t.length > 0 && lower.includes(t));
   if (!active.length) return raw;
 
   const uniq = [...new Set(active)].sort((a, b) => b.length - a.length);
@@ -941,8 +939,7 @@ export function WorldBookPage() {
               visibleEntries.map((e) => {
                 const selected = bulkSelectedSet.has(e.id);
                 const meta = filterState.metaById.get(e.id) ?? { pinyinHit: false };
-                const keywordSnippet =
-                  (e.keywords ?? []).slice(0, 6).join("、") || UI_COPY.worldbook.keywordsNone;
+                const keywordSnippet = (e.keywords ?? []).slice(0, 6).join("、") || UI_COPY.worldbook.keywordsNone;
                 return (
                   <button
                     key={e.id}

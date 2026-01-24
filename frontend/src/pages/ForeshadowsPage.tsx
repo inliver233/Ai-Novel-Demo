@@ -319,7 +319,12 @@ export function ForeshadowsPage() {
                   >
                     标注页
                   </button>
-                  <button className="btn btn-primary" disabled={loading} onClick={() => void resolve(it.id)} type="button">
+                  <button
+                    className="btn btn-primary"
+                    disabled={loading}
+                    onClick={() => void resolve(it.id)}
+                    type="button"
+                  >
                     标记回收
                   </button>
                 </div>
@@ -332,4 +337,3 @@ export function ForeshadowsPage() {
     </DebugPageShell>
   );
 }
-
