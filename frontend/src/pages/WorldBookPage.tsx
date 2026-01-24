@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 
 import { Drawer } from "../components/ui/Drawer";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
+import { containsPinyinMatch, looksLikePinyinToken, tokenizeSearch } from "../lib/pinyin";
 import { UI_COPY } from "../lib/uiCopy";
 import type { ApiError } from "../services/apiClient";
 import {
@@ -42,6 +43,52 @@ const EMPTY_WORLD_BOOK_ENTRIES: WorldBookEntry[] = [];
 
 const WORLD_BOOK_ENTRY_RENDER_THRESHOLD = 150;
 const WORLD_BOOK_ENTRY_PAGE_SIZE = 100;
+
+function highlightText(text: string, tokens: string[]): ReactNode {
+  const raw = String(text ?? "");
+  if (!raw) return raw;
+  if (!tokens.length) return raw;
+
+  const lower = raw.toLowerCase();
+  const active = tokens
+    .map((t) => String(t || "").toLowerCase())
+    .filter((t) => t.length > 0 && lower.includes(t));
+  if (!active.length) return raw;
+
+  const uniq = [...new Set(active)].sort((a, b) => b.length - a.length);
+  const out: ReactNode[] = [];
+  let cursor = 0;
+
+  while (cursor < raw.length) {
+    let bestIdx = -1;
+    let bestToken = "";
+    for (const t of uniq) {
+      const idx = lower.indexOf(t, cursor);
+      if (idx < 0) continue;
+      if (bestIdx < 0 || idx < bestIdx || (idx === bestIdx && t.length > bestToken.length)) {
+        bestIdx = idx;
+        bestToken = t;
+      }
+    }
+    if (bestIdx < 0) {
+      out.push(raw.slice(cursor));
+      break;
+    }
+    if (bestIdx > cursor) out.push(raw.slice(cursor, bestIdx));
+    const seg = raw.slice(bestIdx, bestIdx + bestToken.length);
+    out.push(
+      <mark
+        key={`${bestIdx}:${bestToken}:${cursor}`}
+        className="rounded bg-amber-200/60 px-0.5 text-ink dark:bg-amber-300/20"
+      >
+        {seg}
+      </mark>,
+    );
+    cursor = bestIdx + bestToken.length;
+  }
+
+  return <>{out}</>;
+}
 
 function parseKeywords(raw: string): string[] {
   const tokens = raw
@@ -272,9 +319,8 @@ export function WorldBookPage() {
     }
   }, [projectId, searchText, sortMode]);
 
-  const filteredEntries = useMemo(() => {
-    const q = searchText.trim().toLowerCase();
-    const tokens = q ? q.split(/\s+/g).filter(Boolean) : [];
+  const filterState = useMemo(() => {
+    const tokens = tokenizeSearch(searchText);
     const priorityRank: Record<WorldBookPriority, number> = {
       must: 3,
       important: 2,
@@ -282,11 +328,27 @@ export function WorldBookPage() {
       drop_first: 0,
     };
 
+    const metaById = new Map<string, { pinyinHit: boolean }>();
+
     const filtered = tokens.length
       ? entries.filter((e) => {
-          const title = String(e.title || "").toLowerCase();
-          const keywords = (e.keywords ?? []).map((k) => String(k || "").toLowerCase());
-          return tokens.every((t) => title.includes(t) || keywords.some((k) => k.includes(t)));
+          const titleRaw = String(e.title || "");
+          const title = titleRaw.toLowerCase();
+          const keywordsRaw = (e.keywords ?? []).map((k) => String(k || ""));
+          const keywords = keywordsRaw.map((k) => k.toLowerCase());
+          const combined = `${titleRaw} ${keywordsRaw.join(" ")}`;
+          let pinyinHit = false;
+          const ok = tokens.every((t) => {
+            if (title.includes(t)) return true;
+            if (keywords.some((k) => k.includes(t))) return true;
+            if (!looksLikePinyinToken(t)) return false;
+            const m = containsPinyinMatch(combined, t);
+            if (!m.matched) return false;
+            pinyinHit = true;
+            return true;
+          });
+          if (ok) metaById.set(e.id, { pinyinHit });
+          return ok;
         })
       : entries;
 
@@ -311,8 +373,10 @@ export function WorldBookPage() {
       return byUpdatedAt(b, a) || a.id.localeCompare(b.id);
     });
 
-    return out;
+    return { tokens, metaById, entries: out };
   }, [entries, searchText, sortMode]);
+
+  const filteredEntries = filterState.entries;
 
   const [visibleEntryCount, setVisibleEntryCount] = useState(WORLD_BOOK_ENTRY_PAGE_SIZE);
 
@@ -876,6 +940,9 @@ export function WorldBookPage() {
             ) : (
               visibleEntries.map((e) => {
                 const selected = bulkSelectedSet.has(e.id);
+                const meta = filterState.metaById.get(e.id) ?? { pinyinHit: false };
+                const keywordSnippet =
+                  (e.keywords ?? []).slice(0, 6).join("、") || UI_COPY.worldbook.keywordsNone;
                 return (
                   <button
                     key={e.id}
@@ -904,12 +971,19 @@ export function WorldBookPage() {
                           </div>
                         ) : null}
                         <div className="min-w-0">
-                          <div className="truncate font-content text-lg text-ink">{e.title}</div>
+                          <div className="truncate font-content text-lg text-ink">
+                            {highlightText(e.title, filterState.tokens)}
+                          </div>
                           <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-subtext">
                             <span>{e.enabled ? UI_COPY.worldbook.tagEnabled : UI_COPY.worldbook.tagDisabled}</span>
                             <span>{e.constant ? UI_COPY.worldbook.tagBlue : UI_COPY.worldbook.tagGreen}</span>
                             <span>{UI_COPY.worldbook.tagPriorityPrefix + e.priority}</span>
                             <span>{UI_COPY.worldbook.tagCharLimitPrefix + e.char_limit}</span>
+                            {filterState.tokens.length && meta.pinyinHit ? (
+                              <span className="rounded border border-border bg-surface px-1 py-0.5 text-[10px] text-subtext">
+                                拼音
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -918,7 +992,7 @@ export function WorldBookPage() {
                     {e.constant ? null : (
                       <div className="mt-2 line-clamp-2 text-xs text-subtext">
                         {UI_COPY.worldbook.keywordsPrefix}
-                        {(e.keywords ?? []).slice(0, 6).join("、") || UI_COPY.worldbook.keywordsNone}
+                        {highlightText(keywordSnippet, filterState.tokens)}
                       </div>
                     )}
                   </button>

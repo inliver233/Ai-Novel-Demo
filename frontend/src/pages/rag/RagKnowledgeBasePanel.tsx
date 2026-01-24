@@ -1,5 +1,54 @@
+import { useMemo, useState, type ReactNode } from "react";
+
 import { UI_COPY } from "../../lib/uiCopy";
+import { containsPinyinMatch, looksLikePinyinToken, tokenizeSearch } from "../../lib/pinyin";
 import type { KnowledgeBase, VectorRagResult } from "./types";
+
+function highlightText(text: string, tokens: string[]): ReactNode {
+  const raw = String(text ?? "");
+  if (!raw) return raw;
+  if (!tokens.length) return raw;
+
+  const lower = raw.toLowerCase();
+  const active = tokens
+    .map((t) => String(t || "").toLowerCase())
+    .filter((t) => t.length > 0 && lower.includes(t));
+  if (!active.length) return raw;
+
+  const uniq = [...new Set(active)].sort((a, b) => b.length - a.length);
+  const out: ReactNode[] = [];
+  let cursor = 0;
+
+  while (cursor < raw.length) {
+    let bestIdx = -1;
+    let bestToken = "";
+    for (const t of uniq) {
+      const idx = lower.indexOf(t, cursor);
+      if (idx < 0) continue;
+      if (bestIdx < 0 || idx < bestIdx || (idx === bestIdx && t.length > bestToken.length)) {
+        bestIdx = idx;
+        bestToken = t;
+      }
+    }
+    if (bestIdx < 0) {
+      out.push(raw.slice(cursor));
+      break;
+    }
+    if (bestIdx > cursor) out.push(raw.slice(cursor, bestIdx));
+    const seg = raw.slice(bestIdx, bestIdx + bestToken.length);
+    out.push(
+      <mark
+        key={`${bestIdx}:${bestToken}:${cursor}`}
+        className="rounded bg-amber-200/60 px-0.5 text-ink dark:bg-amber-300/20"
+      >
+        {seg}
+      </mark>,
+    );
+    cursor = bestIdx + bestToken.length;
+  }
+
+  return <>{out}</>;
+}
 
 export function RagKnowledgeBasePanel(props: {
   projectId: string | undefined;
@@ -52,6 +101,39 @@ export function RagKnowledgeBasePanel(props: {
     updateKbDraft,
   } = props;
 
+  const [kbSearchText, setKbSearchText] = useState("");
+  const kbTokens = useMemo(() => tokenizeSearch(kbSearchText), [kbSearchText]);
+
+  const kbSearchMeta = useMemo(() => {
+    const tokens = kbTokens;
+    const metaById = new Map<string, { pinyinHit: boolean }>();
+    if (!tokens.length) return { list: kbs, metaById, tokens };
+
+    const list = kbs.filter((kb) => {
+      const draft = kbDraftById[kb.kb_id] ?? { name: kb.name, enabled: kb.enabled, weight: kb.weight };
+      const haystackId = String(kb.kb_id ?? "").toLowerCase();
+      const haystackName = String(draft.name ?? "").toLowerCase();
+      const combined = `${kb.kb_id} ${draft.name ?? ""}`;
+      let pinyinHit = false;
+
+      const ok = tokens.every((t) => {
+        if (haystackId.includes(t)) return true;
+        if (haystackName.includes(t)) return true;
+        if (!looksLikePinyinToken(t)) return false;
+        const m = containsPinyinMatch(combined, t);
+        if (!m.matched) return false;
+        pinyinHit = true;
+        return true;
+      });
+      if (ok) metaById.set(kb.kb_id, { pinyinHit });
+      return ok;
+    });
+
+    return { list, metaById, tokens };
+  }, [kbDraftById, kbTokens, kbs]);
+
+  const filteredKbs = kbSearchMeta.list;
+
   return (
     <div
       className="mt-6 rounded-atelier border border-border bg-surface p-4"
@@ -88,14 +170,33 @@ export function RagKnowledgeBasePanel(props: {
         ) : null}
       </div>
 
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <label className="grid gap-1">
+          <span className="text-xs text-subtext">搜索 KB（支持拼音/首字母）</span>
+          <input
+            className="input"
+            value={kbSearchText}
+            onChange={(e) => setKbSearchText(e.target.value)}
+            aria-label="rag_kb_search"
+            placeholder="例如：beijing / bj / 世界书"
+          />
+          <div className="text-[11px] text-subtext">匹配：kb_id / 名称；拼音匹配失败时自动降级为普通包含匹配。</div>
+        </label>
+        <div className="flex items-end justify-end text-xs text-subtext">
+          显示 {filteredKbs.length}/{kbs.length} 条
+        </div>
+      </div>
+
       <div className="mt-3 grid gap-2">
         {kbs.length ? (
-          kbs.map((kb) => {
+          filteredKbs.length ? (
+            filteredKbs.map((kb) => {
             const draft = kbDraftById[kb.kb_id] ?? { name: kb.name, enabled: kb.enabled, weight: kb.weight };
             const dirty = Boolean(kbDirtyById[kb.kb_id]);
             const perKb = queryResult?.kbs?.per_kb?.[kb.kb_id];
             const counts = perKb?.counts;
             const isDragging = kbDragId === kb.kb_id;
+            const meta = kbSearchMeta.metaById.get(kb.kb_id) ?? { pinyinHit: false };
 
             return (
               <div
@@ -128,7 +229,12 @@ export function RagKnowledgeBasePanel(props: {
                         onChange={() => toggleKbSelected(kb.kb_id)}
                         aria-label={`选择 KB ${kb.kb_id}`}
                       />
-                      <span className="font-medium">{kb.kb_id}</span>
+                      <span className="font-medium">{highlightText(kb.kb_id, kbSearchMeta.tokens)}</span>
+                      {meta.pinyinHit ? (
+                        <span className="rounded border border-border bg-surface px-1 py-0.5 text-[10px] text-subtext">
+                          拼音
+                        </span>
+                      ) : null}
                     </label>
                     <label className="flex items-center gap-2 text-sm text-ink">
                       <input
@@ -212,6 +318,9 @@ export function RagKnowledgeBasePanel(props: {
               </div>
             );
           })
+          ) : (
+            <div className="text-xs text-subtext">无匹配 KB。</div>
+          )
         ) : (
           <div className="text-xs text-subtext">暂无 KB（将自动创建 default）。</div>
         )}
