@@ -3033,6 +3033,13 @@
         },
         {
           "dflt_value": null,
+          "name": "resource_key",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
           "name": "scope",
           "notnull": 1,
           "pk": 0,

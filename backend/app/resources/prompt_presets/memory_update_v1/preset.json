@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "name": "默认·Memory Update v1（推荐）",
+  "category": "记忆",
   "scope": "project",
   "version": 1,
   "activation_tasks": [
@@ -66,4 +67,3 @@
     }
   ]
 }
-

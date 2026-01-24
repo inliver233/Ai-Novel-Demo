@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "name": "Fractal v2 摘要 v1（可选）",
+  "category": "记忆",
   "scope": "project",
   "version": 1,
   "activation_tasks": [],
@@ -38,4 +39,3 @@
     }
   ]
 }
-

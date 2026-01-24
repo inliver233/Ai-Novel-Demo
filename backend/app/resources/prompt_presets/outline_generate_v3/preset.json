@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "name": "默认·大纲生成 v3（推荐）",
+  "category": "大纲",
   "scope": "project",
   "version": 3,
   "activation_tasks": [

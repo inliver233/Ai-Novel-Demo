@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "name": "Default plan_chapter v1",
+  "category": "规划",
   "scope": "project",
   "version": 1,
   "activation_tasks": [

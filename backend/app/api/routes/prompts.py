@@ -23,11 +23,13 @@ from app.schemas.prompt_presets import (
     PromptPresetImportAllRequest,
     PromptPresetImportRequest,
     PromptPresetOut,
+    PromptPresetResourceOut,
     PromptPresetUpdate,
     PromptPreviewBlock,
     PromptPreviewOut,
     PromptPreviewRequest,
 )
+from app.services.prompt_preset_resources import list_available_preset_resources, load_preset_resource
 from app.services.prompt_presets import (
     ensure_default_plan_preset,
     ensure_default_post_edit_preset,
@@ -37,6 +39,8 @@ from app.services.prompt_presets import (
     ensure_default_chapter_rewrite_preset,
     parse_json_dict,
     parse_json_list,
+    reset_prompt_block_to_default_resource,
+    reset_prompt_preset_to_default_resource,
     render_preset_for_task,
 )
 
@@ -48,6 +52,7 @@ def _preset_to_out(row: PromptPreset) -> dict:
         id=row.id,
         project_id=row.project_id,
         name=row.name,
+        resource_key=row.resource_key,
         category=row.category,
         scope=row.scope,
         version=row.version,
@@ -100,6 +105,36 @@ def list_prompt_presets(request: Request, db: DbDep, user_id: UserIdDep, project
     )
 
     return ok_payload(request_id=request_id, data={"presets": [_preset_to_out(p) for p in presets]})
+
+
+@router.get("/projects/{project_id}/prompt_preset_resources")
+def list_prompt_preset_resources(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    presets = db.execute(select(PromptPreset).where(PromptPreset.project_id == project_id)).scalars().all()
+    by_resource_key = {str(p.resource_key): p for p in presets if p.resource_key}
+    by_name = {str(p.name): p for p in presets if p.name}
+
+    resources: list[dict] = []
+    for key in list_available_preset_resources():
+        res = load_preset_resource(key)
+        preset = by_resource_key.get(key) or by_name.get(res.name)
+        resources.append(
+            PromptPresetResourceOut(
+                key=res.key,
+                name=res.name,
+                category=res.category,
+                scope=res.scope,
+                version=res.version,
+                activation_tasks=list(res.activation_tasks or []),
+                preset_id=(preset.id if preset is not None else None),
+                preset_version=(preset.version if preset is not None else None),
+                preset_updated_at=(preset.updated_at if preset is not None else None),
+            ).model_dump()
+        )
+
+    return ok_payload(request_id=request_id, data={"resources": resources})
 
 
 @router.post("/projects/{project_id}/prompt_presets")
@@ -163,6 +198,23 @@ def update_prompt_preset(request: Request, db: DbDep, user_id: UserIdDep, preset
     db.commit()
     db.refresh(preset)
     return ok_payload(request_id=request_id, data={"preset": _preset_to_out(preset)})
+
+
+@router.post("/prompt_presets/{preset_id}/reset_to_default")
+def reset_prompt_preset_to_default(request: Request, db: DbDep, user_id: UserIdDep, preset_id: str) -> dict:
+    request_id = request.state.request_id
+    preset = db.get(PromptPreset, preset_id)
+    if preset is None:
+        raise AppError.not_found()
+    require_project_editor(db, project_id=preset.project_id, user_id=user_id)
+
+    preset = reset_prompt_preset_to_default_resource(db, preset=preset)
+    blocks = (
+        db.execute(select(PromptBlock).where(PromptBlock.preset_id == preset.id).order_by(PromptBlock.injection_order.asc()))
+        .scalars()
+        .all()
+    )
+    return ok_payload(request_id=request_id, data={"preset": _preset_to_out(preset), "blocks": [_block_to_out(b) for b in blocks]})
 
 
 @router.delete("/prompt_presets/{preset_id}")
@@ -249,6 +301,21 @@ def update_prompt_block(request: Request, db: DbDep, user_id: UserIdDep, block_i
     preset.updated_at = utc_now()
     db.commit()
     db.refresh(block)
+    return ok_payload(request_id=request_id, data={"block": _block_to_out(block)})
+
+
+@router.post("/prompt_blocks/{block_id}/reset_to_default")
+def reset_prompt_block_to_default(request: Request, db: DbDep, user_id: UserIdDep, block_id: str) -> dict:
+    request_id = request.state.request_id
+    block = db.get(PromptBlock, block_id)
+    if block is None:
+        raise AppError.not_found()
+    preset = db.get(PromptPreset, block.preset_id)
+    if preset is None:
+        raise AppError.not_found()
+    require_project_editor(db, project_id=preset.project_id, user_id=user_id)
+
+    block = reset_prompt_block_to_default_resource(db, preset=preset, block=block)
     return ok_payload(request_id=request_id, data={"block": _block_to_out(block)})
 
 

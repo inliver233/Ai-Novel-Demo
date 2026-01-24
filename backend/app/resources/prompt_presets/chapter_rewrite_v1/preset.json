@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "name": "默认·章节重写 v1（推荐）",
+  "category": "重写",
   "scope": "project",
   "version": 1,
   "activation_tasks": [

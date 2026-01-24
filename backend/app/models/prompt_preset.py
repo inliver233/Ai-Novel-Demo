@@ -15,6 +15,7 @@ class PromptPreset(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    resource_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
     scope: Mapped[str] = mapped_column(String(32), nullable=False, default="project")
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

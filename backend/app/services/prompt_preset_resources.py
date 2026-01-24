@@ -31,6 +31,7 @@ class PromptPresetResourceBlock:
 class PromptPresetResource:
     key: str
     name: str
+    category: str | None
     scope: str
     version: int
     activation_tasks: list[str]
@@ -46,6 +47,24 @@ def _ensure_str(value: Any, *, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise AppError(code="PROMPT_RESOURCE_INVALID", message="内置 Prompt 资源无效", status_code=500, details={"field": field})
     return value
+
+
+def _ensure_optional_str(value: Any, *, field: str, max_length: int) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise AppError(code="PROMPT_RESOURCE_INVALID", message="内置 Prompt 资源无效", status_code=500, details={"field": field})
+    out = value.strip()
+    if not out:
+        return None
+    if len(out) > max_length:
+        raise AppError(
+            code="PROMPT_RESOURCE_INVALID",
+            message="内置 Prompt 资源无效",
+            status_code=500,
+            details={"field": field, "reason": "max_length", "max_length": max_length},
+        )
+    return out
 
 
 def _ensure_bool(value: Any, *, field: str) -> bool:
@@ -162,6 +181,7 @@ def load_preset_resource(resource_key: str) -> PromptPresetResource:
         )
 
     name = _ensure_str(raw.get("name"), field="name")
+    category = _ensure_optional_str(raw.get("category"), field="category", max_length=64)
     scope = _ensure_str(raw.get("scope"), field="scope")
     version = _ensure_int(raw.get("version"), field="version")
     if version < 1:
@@ -270,6 +290,7 @@ def load_preset_resource(resource_key: str) -> PromptPresetResource:
     return PromptPresetResource(
         key=resource_key,
         name=name,
+        category=category,
         scope=scope,
         version=version,
         activation_tasks=activation_tasks,
@@ -283,4 +304,3 @@ def list_available_preset_resources() -> list[str]:
     if not base_dir.exists():
         return []
     return sorted([p.name for p in base_dir.iterdir() if p.is_dir()])
-

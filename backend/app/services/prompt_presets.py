@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.db.utils import new_id
+from app.db.utils import new_id, utc_now
 from app.llm.capabilities import max_context_tokens_limit, max_output_tokens_limit
 from app.llm.messages import ChatMessage, flatten_messages, normalize_role
 from app.models.llm_preset import LLMPreset
@@ -20,7 +20,7 @@ from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
 from app.services.context_optimizer import ContextOptimizer
 from app.services.prompt_budget import estimate_tokens, trim_text_to_tokens
-from app.services.prompt_preset_resources import load_preset_resource
+from app.services.prompt_preset_resources import list_available_preset_resources, load_preset_resource
 from app.services.prompting import render_template
 
 
@@ -133,13 +133,27 @@ def _ensure_default_preset_from_resource(
     resource = load_preset_resource(resource_key)
 
     preset = (
-        db.execute(select(PromptPreset).where(PromptPreset.project_id == project_id, PromptPreset.name == resource.name))
+        db.execute(select(PromptPreset).where(PromptPreset.project_id == project_id, PromptPreset.resource_key == resource_key))
         .scalars()
         .first()
     )
+    if preset is None:
+        preset = (
+            db.execute(select(PromptPreset).where(PromptPreset.project_id == project_id, PromptPreset.name == resource.name))
+            .scalars()
+            .first()
+        )
 
     changed = False
     if preset is not None:
+        if not preset.resource_key:
+            preset.resource_key = resource_key
+            changed = True
+
+        if not preset.category and resource.category:
+            preset.category = resource.category
+            changed = True
+
         if activate and resource.activation_tasks:
             active_for = parse_json_list(preset.active_for_json)
             merged = list(dict.fromkeys([*active_for, *resource.activation_tasks]))
@@ -173,6 +187,8 @@ def _ensure_default_preset_from_resource(
         id=new_id(),
         project_id=project_id,
         name=resource.name,
+        resource_key=resource_key,
+        category=resource.category,
         scope=resource.scope,
         version=resource.version,
         active_for_json=json.dumps(resource.activation_tasks if activate else [], ensure_ascii=False),
@@ -229,6 +245,84 @@ def ensure_default_chapter_rewrite_preset(db: Session, *, project_id: str, activ
         resource_key="chapter_rewrite_v1",
         activate=activate,
     )
+
+
+def resolve_resource_key_for_preset(db: Session, *, preset: PromptPreset) -> str | None:
+    if preset.resource_key:
+        return str(preset.resource_key)
+
+    name = str(preset.name or "").strip()
+    if not name:
+        return None
+
+    for key in list_available_preset_resources():
+        try:
+            resource = load_preset_resource(key)
+        except Exception:
+            continue
+        if resource.name == name:
+            preset.resource_key = key
+            return key
+    return None
+
+
+def reset_prompt_preset_to_default_resource(db: Session, *, preset: PromptPreset) -> PromptPreset:
+    resource_key = resolve_resource_key_for_preset(db, preset=preset)
+    if not resource_key:
+        raise AppError.validation(message="该 PromptPreset 未绑定内置资源，无法重置到默认版本")
+
+    resource = load_preset_resource(resource_key)
+
+    preset.resource_key = resource_key
+    preset.scope = resource.scope
+    preset.version = resource.version
+    if resource.category:
+        preset.category = resource.category
+    preset.updated_at = utc_now()
+
+    existing_blocks = db.execute(select(PromptBlock).where(PromptBlock.preset_id == preset.id)).scalars().all()
+    for b in existing_blocks:
+        db.delete(b)
+    db.flush()
+
+    blocks = [_prompt_block_from_resource(preset.id, b) for b in resource.blocks]
+    db.add_all(blocks)
+    db.commit()
+    db.refresh(preset)
+    return preset
+
+
+def reset_prompt_block_to_default_resource(db: Session, *, preset: PromptPreset, block: PromptBlock) -> PromptBlock:
+    resource_key = resolve_resource_key_for_preset(db, preset=preset)
+    if not resource_key:
+        raise AppError.validation(message="该 PromptPreset 未绑定内置资源，无法重置 block 到默认版本")
+
+    resource = load_preset_resource(resource_key)
+    res_block = next((b for b in resource.blocks if b.identifier == block.identifier), None)
+    if res_block is None:
+        raise AppError.validation(
+            message="该 PromptBlock 不属于内置资源，无法重置到默认版本",
+            details={"resource": resource_key, "identifier": block.identifier},
+        )
+
+    block.identifier = str(res_block.identifier)
+    block.name = str(res_block.name)
+    block.role = str(res_block.role)
+    block.enabled = bool(res_block.enabled)
+    block.template = str(res_block.template or "")
+    block.marker_key = res_block.marker_key
+    block.injection_position = str(res_block.injection_position)
+    block.injection_depth = res_block.injection_depth
+    block.injection_order = int(res_block.injection_order)
+    block.triggers_json = json.dumps(list(res_block.triggers or []), ensure_ascii=False)
+    block.forbid_overrides = bool(res_block.forbid_overrides)
+    block.budget_json = json.dumps(res_block.budget, ensure_ascii=False) if res_block.budget else None
+    block.cache_json = json.dumps(res_block.cache, ensure_ascii=False) if res_block.cache else None
+
+    preset.updated_at = utc_now()
+    db.commit()
+    db.refresh(block)
+    return block
 
 
 def get_active_preset_for_task(db: Session, *, project_id: str, task: str, allow_autocreate: bool = True) -> PromptPreset:

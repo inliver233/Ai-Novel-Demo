@@ -12,6 +12,7 @@ class PromptPresetOut(BaseModel):
     id: str
     project_id: str
     name: str
+    resource_key: str | None = None
     category: str | None = None
     scope: str
     version: int
@@ -34,6 +35,19 @@ class PromptPresetUpdate(BaseModel):
     scope: str | None = Field(default=None, min_length=1, max_length=32)
     version: int | None = Field(default=None, ge=1)
     active_for: list[str] | None = Field(default=None, max_length=50)
+
+
+class PromptPresetResourceOut(BaseModel):
+    key: str
+    name: str
+    category: str | None = None
+    scope: str
+    version: int
+    activation_tasks: list[str] = Field(default_factory=list)
+    preset_id: str | None = None
+    preset_version: int | None = None
+    preset_updated_at: datetime | None = None
+
 
 
 class PromptBlockOut(BaseModel):

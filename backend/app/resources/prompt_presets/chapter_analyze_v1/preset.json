@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "name": "默认·章节分析 v1（推荐）",
+  "category": "分析",
   "scope": "project",
   "version": 1,
   "activation_tasks": [

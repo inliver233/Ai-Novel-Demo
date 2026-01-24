@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "name": "默认·章节生成 v4（推荐）",
+  "category": "正文",
   "scope": "project",
   "version": 4,
   "activation_tasks": [
