@@ -23,6 +23,7 @@ from app.api.routes import (
     projects,
     prompts,
     settings,
+    tables,
     vector,
     worldbook,
     writing_styles,
@@ -34,6 +35,7 @@ api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(projects.router, tags=["projects"])
 api_router.include_router(memory.router, tags=["memory"])
+api_router.include_router(tables.router, tags=["tables"])
 api_router.include_router(vector.router, tags=["vector"])
 api_router.include_router(graph.router, tags=["graph"])
 api_router.include_router(fractal.router, tags=["fractal"])
