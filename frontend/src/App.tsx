@@ -79,6 +79,11 @@ const PromptStudioPage = lazy(async () => {
   return { default: mod.PromptStudioPage };
 });
 
+const PromptTemplatesPage = lazy(async () => {
+  const mod = await import("./pages/PromptTemplatesPage");
+  return { default: mod.PromptTemplatesPage };
+});
+
 const ExportPage = lazy(async () => {
   const mod = await import("./pages/ExportPage");
   return { default: mod.ExportPage };
@@ -186,6 +191,10 @@ const router = createBrowserRouter([
               {
                 path: "prompt-studio",
                 element: <PromptStudioPage />,
+              },
+              {
+                path: "prompt-templates",
+                element: <PromptTemplatesPage />,
               },
               {
                 path: "export",
