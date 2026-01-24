@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { ApiError, apiDownloadAttachment } from "../../services/apiClient";
+import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
+import { ApiError, apiDownloadAttachment, apiJson } from "../../services/apiClient";
 import { Drawer } from "../ui/Drawer";
 import { useToast } from "../ui/toast";
 import type { GenerationRun } from "./types";
@@ -19,6 +20,12 @@ export function GenerationHistoryDrawer(props: Props) {
   const toast = useToast();
   const titleId = useId();
   const [downloading, setDownloading] = useState(false);
+  const [pipelineLoading, setPipelineLoading] = useState(false);
+  const [pipelineRuns, setPipelineRuns] = useState<GenerationRun[]>([]);
+  const [pipelineError, setPipelineError] = useState<{ code: string; message: string; requestId?: string } | null>(
+    null,
+  );
+  const pipelineGuardRef = useRef(createRequestSeqGuard());
 
   const selectedRun = props.selectedRun;
   const paramsObj =
@@ -41,6 +48,11 @@ export function GenerationHistoryDrawer(props: Props) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, open]);
+
+  useEffect(() => {
+    const guard = pipelineGuardRef.current;
+    return () => guard.invalidate();
+  }, []);
 
   const downloadDebugBundle = useCallback(async () => {
     if (!selectedRun) return;
@@ -66,6 +78,61 @@ export function GenerationHistoryDrawer(props: Props) {
       setDownloading(false);
     }
   }, [downloading, selectedRun, toast]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!selectedRun?.project_id || !selectedRun.request_id) {
+      setPipelineRuns([]);
+      setPipelineError(null);
+      setPipelineLoading(false);
+      return;
+    }
+    const seq = pipelineGuardRef.current.next();
+    setPipelineLoading(true);
+    setPipelineError(null);
+
+    const qs = new URLSearchParams();
+    qs.set("limit", "50");
+    qs.set("request_id", selectedRun.request_id);
+    if (selectedRun.chapter_id) qs.set("chapter_id", selectedRun.chapter_id);
+
+    void apiJson<{ runs: GenerationRun[] }>(`/api/projects/${selectedRun.project_id}/generation_runs?${qs.toString()}`)
+      .then((res) => {
+        if (!pipelineGuardRef.current.isLatest(seq)) return;
+        setPipelineRuns(res.data.runs ?? []);
+      })
+      .catch((e) => {
+        if (!pipelineGuardRef.current.isLatest(seq)) return;
+        const err =
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        setPipelineError({ code: err.code, message: err.message, requestId: err.requestId });
+      })
+      .finally(() => {
+        if (pipelineGuardRef.current.isLatest(seq)) setPipelineLoading(false);
+      });
+  }, [open, selectedRun?.chapter_id, selectedRun?.project_id, selectedRun?.request_id]);
+
+  const pipelineSteps = useMemo(() => {
+    const sorted = [...pipelineRuns].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    return sorted.map((r) => {
+      const type = String(r.type ?? "");
+      const stage =
+        type === "plan_chapter"
+          ? "plan"
+          : type === "chapter" || type === "chapter_stream"
+            ? "generate"
+            : type === "post_edit" || type === "post_edit_sanitize"
+              ? "post_edit"
+              : type.startsWith("memory_update")
+                ? "memory_update"
+                : type || "unknown";
+      return { run: r, stage };
+    });
+  }, [pipelineRuns]);
 
   return (
     <Drawer
@@ -176,6 +243,64 @@ export function GenerationHistoryDrawer(props: Props) {
                     </ul>
                   </div>
                 </div>
+
+                <details open>
+                  <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                    流水线视图（按 request_id 串联）
+                  </summary>
+                  <div className="mt-2 grid gap-2">
+                    {pipelineLoading ? <div className="text-xs text-subtext">加载中...</div> : null}
+                    {pipelineError ? (
+                      <div className="text-xs text-rose-600 dark:text-rose-400">
+                        {pipelineError.code}: {pipelineError.message}
+                        {pipelineError.requestId ? (
+                          <span className="ml-2">request_id: {pipelineError.requestId}</span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {pipelineSteps.length === 0 && !pipelineLoading ? (
+                      <div className="text-xs text-subtext">
+                        暂无可串联的流水线 runs（该 run 可能缺少 request_id）。
+                      </div>
+                    ) : (
+                      <div className="grid gap-2">
+                        {pipelineSteps.map(({ run, stage }) => {
+                          const active = run.id === selectedRun.id;
+                          const failed = Boolean(run.error);
+                          return (
+                            <button
+                              key={run.id}
+                              aria-label={`pipeline run_id: ${String(run.id ?? "")} ${failed ? "failed" : "ok"}`}
+                              className={
+                                active
+                                  ? "ui-focus-ring ui-transition-fast rounded-atelier border border-accent/40 bg-accent/10 px-3 py-2 text-left text-xs text-ink"
+                                  : "ui-focus-ring ui-transition-fast rounded-atelier border border-border bg-canvas px-3 py-2 text-left text-xs text-subtext hover:bg-surface hover:text-ink"
+                              }
+                              onClick={() => props.onSelectRun(run)}
+                              type="button"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0 truncate">
+                                  <span className="mr-2 font-mono">{stage}</span>
+                                  <span className="mr-2 font-mono">{String(run.type ?? "")}</span>
+                                  <span className="truncate font-mono">run_id: {String(run.id ?? "")}</span>
+                                </div>
+                                <span className="shrink-0 font-mono text-[11px] text-subtext">
+                                  {failed ? "failed" : "ok"}
+                                </span>
+                              </div>
+                              {run.request_id ? (
+                                <div className="mt-1 truncate font-mono text-[11px] text-subtext">
+                                  request_id: {String(run.request_id ?? "")}
+                                </div>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </details>
 
                 {memoryLog ? (
                   <details open>

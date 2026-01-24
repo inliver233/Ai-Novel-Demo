@@ -67,19 +67,17 @@ def list_runs(
     user_id: UserIdDep,
     project_id: str,
     limit: int = Query(default=5, ge=1, le=50),
+    chapter_id: str | None = Query(default=None, max_length=36),
+    run_request_id: str | None = Query(default=None, alias="request_id", max_length=64),
 ) -> dict:
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
-    rows = (
-        db.execute(
-            select(GenerationRun)
-            .where(GenerationRun.project_id == project_id)
-            .order_by(GenerationRun.created_at.desc())
-            .limit(limit)
-        )
-        .scalars()
-        .all()
-    )
+    q = select(GenerationRun).where(GenerationRun.project_id == project_id)
+    if chapter_id:
+        q = q.where(GenerationRun.chapter_id == chapter_id)
+    if run_request_id:
+        q = q.where(GenerationRun.request_id == run_request_id)
+    rows = db.execute(q.order_by(GenerationRun.created_at.desc()).limit(limit)).scalars().all()
 
     def _to_out(r: GenerationRun) -> dict:
         params = {}
