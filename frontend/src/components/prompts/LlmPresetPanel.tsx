@@ -15,6 +15,7 @@ type Props = {
     context_window_limit: number | null;
   } | null;
   onTestConnection: () => void;
+  testConnectionDisabledReason?: string | null;
   onSave: () => void;
 
   profiles: LLMProfile[];
@@ -37,6 +38,7 @@ export function LlmPresetPanel(props: Props) {
   const selectedProfile = props.selectedProfileId
     ? (props.profiles.find((p) => p.id === props.selectedProfileId) ?? null)
     : null;
+  const testDisabledReason = (props.testConnectionDisabledReason ?? "").trim();
 
   const maxTokensHint = (() => {
     if (!props.capabilities) return "";
@@ -56,18 +58,26 @@ export function LlmPresetPanel(props: Props) {
             必填：服务商/接口地址/模型名（API Key 后端加密存储，不会回显明文）
           </div>
         </div>
-        <div className="flex gap-2">
-          <button className="btn btn-secondary" disabled={props.testing} onClick={props.onTestConnection} type="button">
-            {props.testing ? "测试中..." : "测试连接"}
-          </button>
-          <button
-            className="btn btn-primary"
-            disabled={!props.presetDirty || props.saving}
-            onClick={props.onSave}
-            type="button"
-          >
-            保存
-          </button>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex gap-2">
+            <button
+              className="btn btn-secondary"
+              disabled={props.testing || props.profileBusy || Boolean(testDisabledReason)}
+              onClick={props.onTestConnection}
+              type="button"
+            >
+              {props.testing ? "测试中..." : "测试连接"}
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={!props.presetDirty || props.saving}
+              onClick={props.onSave}
+              type="button"
+            >
+              保存
+            </button>
+          </div>
+          {testDisabledReason ? <div className="text-[11px] text-subtext">{testDisabledReason}</div> : null}
         </div>
       </div>
 

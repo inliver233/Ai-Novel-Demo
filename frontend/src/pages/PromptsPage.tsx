@@ -221,6 +221,11 @@ export function PromptsPage() {
 
   const selectedProfileId = project?.llm_profile_id ?? null;
   const selectedProfile = selectedProfileId ? (profiles.find((p) => p.id === selectedProfileId) ?? null) : null;
+  const llmCtaBlockedReason = useMemo(() => {
+    if (!selectedProfileId) return "请先选择或新建一个后端配置";
+    if (!selectedProfile?.has_api_key) return "请先保存 API Key";
+    return null;
+  }, [selectedProfile?.has_api_key, selectedProfileId]);
 
   const saveAll = useCallback(
     async (opts?: { silent?: boolean; snapshot?: LlmForm }): Promise<boolean> => {
@@ -621,8 +626,8 @@ export function PromptsPage() {
     const model = llmForm.model.trim();
     const baseUrl = llmForm.base_url.trim();
     if (!selectedProfile?.has_api_key) {
-      const okSave = await saveApiKeyToProfile();
-      if (!okSave) return false;
+      toast.toastError("请先保存 API Key");
+      return false;
     }
 
     setTesting(true);
@@ -711,15 +716,7 @@ export function PromptsPage() {
     } finally {
       setTesting(false);
     }
-  }, [
-    bumpWizardLocal,
-    llmForm,
-    projectId,
-    saveApiKeyToProfile,
-    selectedProfile?.has_api_key,
-    selectedProfileId,
-    toast,
-  ]);
+  }, [bumpWizardLocal, llmForm, projectId, selectedProfile?.has_api_key, selectedProfileId, toast]);
 
   const nextAfterLlm = useMemo(() => {
     const idx = wizard.progress.steps.findIndex((s) => s.key === "llm");
@@ -758,6 +755,7 @@ export function PromptsPage() {
         testing={testing}
         capabilities={capabilities}
         onTestConnection={() => void testConnection()}
+        testConnectionDisabledReason={llmCtaBlockedReason}
         onSave={() => void saveAll()}
         profiles={profiles}
         selectedProfileId={selectedProfileId}
@@ -803,8 +801,8 @@ export function PromptsPage() {
         primaryAction={
           wizard.progress.nextStep?.key === "llm"
             ? {
-                label: `测试连接并下一步：${nextAfterLlm ? nextAfterLlm.title : "继续"}`,
-                disabled: Boolean(savingPreset || testing),
+                label: llmCtaBlockedReason ?? `测试连接并下一步：${nextAfterLlm ? nextAfterLlm.title : "继续"}`,
+                disabled: Boolean(savingPreset || testing || llmCtaBlockedReason),
                 onClick: testAndGoNext,
               }
             : undefined
