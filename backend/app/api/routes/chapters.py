@@ -23,6 +23,7 @@ from app.core.logging import exception_log_fields, log_event
 from app.db.session import SessionLocal
 from app.db.utils import new_id
 from app.llm.client import call_llm_stream_messages
+from app.llm.messages import ChatMessage, coalesce_system, flatten_messages
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.llm_preset import LLMPreset
@@ -63,6 +64,46 @@ logger = logging.getLogger("ainovel")
 
 PREVIOUS_CHAPTER_ENDING_CHARS = 1000
 CURRENT_DRAFT_TAIL_CHARS = 1200
+_MAX_MACRO_SEED_CHARS = 256
+
+
+def _resolve_macro_seed(*, request_id: str, body: object) -> str:
+    seed = str(getattr(body, "macro_seed", "") or "").strip()
+    if not seed:
+        return request_id
+    return seed[:_MAX_MACRO_SEED_CHARS]
+
+
+def _apply_prompt_override(
+    *,
+    prompt_system: str,
+    prompt_user: str,
+    prompt_messages: list[ChatMessage],
+    body: ChapterGenerateRequest,
+) -> tuple[str, str, list[ChatMessage], bool]:
+    override = body.prompt_override
+    if override is None:
+        return prompt_system, prompt_user, prompt_messages, False
+
+    override_messages: list[ChatMessage] = []
+    for item in override.messages or []:
+        role = str(item.role or "user").strip() or "user"
+        content = str(item.content or "")
+        name = str(item.name).strip() if isinstance(item.name, str) and item.name.strip() else None
+        override_messages.append(ChatMessage(role=role, content=content, name=name))
+    if override_messages:
+        system, non_system = coalesce_system(override_messages)
+        user = flatten_messages(non_system)
+        return system, user, override_messages, True
+
+    next_system = prompt_system if override.system is None else str(override.system or "")
+    next_user = prompt_user if override.user is None else str(override.user or "")
+    next_messages: list[ChatMessage] = []
+    if next_system.strip():
+        next_messages.append(ChatMessage(role="system", content=next_system))
+    if next_user.strip():
+        next_messages.append(ChatMessage(role="user", content=next_user))
+    return next_system, next_user, next_messages, True
 
 
 def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
@@ -350,6 +391,7 @@ def plan_chapter(
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ) -> dict:
     request_id = request.state.request_id
+    macro_seed = _resolve_macro_seed(request_id=request_id, body=body)
     resolved_api_key = ""
 
     prompt_system = ""
@@ -507,6 +549,159 @@ def plan_chapter(
     return ok_payload(request_id=request_id, data=data)
 
 
+@router.post("/chapters/{chapter_id}/generate-precheck")
+def generate_chapter_precheck(
+    request: Request,
+    chapter_id: str,
+    body: ChapterGenerateRequest,
+    user_id: UserIdDep,
+    x_llm_provider: str | None = Header(default=None, alias="X-LLM-Provider", max_length=64),
+    x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
+) -> dict:
+    request_id = request.state.request_id
+    if body.plan_first:
+        raise AppError.validation(message="生成预检不支持 plan_first（该模式依赖 LLM 产出的 plan）")
+
+    macro_seed = _resolve_macro_seed(request_id=request_id, body=body)
+
+    prompt_system = ""
+    prompt_user = ""
+    prompt_messages: list[ChatMessage] = []
+    render_log: dict | None = None
+
+    memory_pack = None
+    memory_retrieval_log_json: dict[str, object] | None = None
+    memory_injection_config: dict[str, object] | None = None
+
+    db = SessionLocal()
+    try:
+        chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
+        project_id = chapter.project_id
+        project = db.get(Project, project_id)
+        if project is None:
+            raise AppError.not_found()
+
+        preset = db.get(LLMPreset, project_id)
+        if preset is None:
+            raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
+        if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
+            raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
+
+        values, base_instruction, _, style_resolution = build_chapter_generate_render_values(
+            db,
+            project=project,
+            chapter=chapter,
+            body=body,
+            user_id=user_id,
+        )
+        settings_row = db.get(ProjectSettings, project_id)
+        values["context_optimizer_enabled"] = bool(getattr(settings_row, "context_optimizer_enabled", False))
+
+        pack = None
+        pack_errors = None
+        memory_query_text = ""
+        query_text_source = "auto"
+        memory_modules = {"worldbook": True, "story_memory": True, "structured": True, "vector_rag": True, "graph": True, "fractal": True}
+        raw_query_text = ""
+        preprocess_obs = None
+        if body.memory_injection_enabled:
+            requested_query_text = str(body.memory_query_text or "").strip()
+            if requested_query_text:
+                memory_query_text = requested_query_text[:5000]
+                query_text_source = "user"
+            else:
+                memory_query_text = base_instruction
+                if chapter.plan:
+                    memory_query_text = f"{memory_query_text}\n\n{chapter.plan}".strip()
+                memory_query_text = memory_query_text[:5000]
+
+            raw_modules = body.memory_modules or {}
+            memory_modules = {
+                "worldbook": bool(raw_modules.get("worldbook", True)),
+                "story_memory": bool(raw_modules.get("story_memory", True)),
+                "structured": bool(raw_modules.get("structured", True)),
+                "vector_rag": bool(raw_modules.get("vector_rag", True)),
+                "graph": bool(raw_modules.get("graph", True)),
+                "fractal": bool(raw_modules.get("fractal", True)),
+            }
+
+            raw_query_text = memory_query_text
+            qp_cfg = parse_query_preprocessing_config(
+                (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
+            )
+            memory_query_text, preprocess_obs = normalize_query_text(query_text=raw_query_text, config=qp_cfg)
+            try:
+                pack = retrieve_memory_context_pack(
+                    db=db,
+                    project_id=project_id,
+                    query_text=memory_query_text,
+                    section_enabled=memory_modules,
+                )
+                values["memory"] = pack.model_dump()
+            except Exception:
+                pack = None
+                pack_errors = ["memory_pack_error"]
+
+        # Mirror generation_runs.params_json fields for observability + replay.
+        if body.memory_injection_enabled:
+            memory_injection_config = {
+                "query_text": memory_query_text,
+                "query_text_source": query_text_source,
+                "modules": memory_modules,
+                "raw_query_text": raw_query_text,
+                "normalized_query_text": memory_query_text,
+                "preprocess_obs": preprocess_obs,
+            }
+            memory_retrieval_log_json = build_memory_retrieval_log_json(
+                enabled=True,
+                query_text=memory_query_text,
+                pack=pack,
+                errors=pack_errors,
+            )
+            memory_pack = pack.model_dump() if pack is not None else None
+
+        prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
+            db,
+            project_id=project_id,
+            task="chapter_generate",
+            values=values,  # type: ignore[arg-type]
+            macro_seed=macro_seed,
+            provider=preset.provider,
+        )
+        prompt_system, prompt_user, prompt_messages, override_applied = _apply_prompt_override(
+            prompt_system=prompt_system,
+            prompt_user=prompt_user,
+            prompt_messages=prompt_messages,
+            body=body,
+        )
+    finally:
+        db.close()
+
+    if render_log is None:
+        raise AppError(code="INTERNAL_ERROR", message="提示词渲染失败", status_code=500)
+    if not prompt_system.strip() and not prompt_user.strip():
+        raise AppError(code="PROMPT_CONFIG_ERROR", message="缺少 chapter_generate 提示词预设/提示块", status_code=400)
+
+    return ok_payload(
+        request_id=request_id,
+        data={
+            "precheck": {
+                "task": "chapter_generate",
+                "macro_seed": macro_seed,
+                "prompt_system": prompt_system,
+                "prompt_user": prompt_user,
+                "messages": [{"role": m.role, "content": m.content, "name": m.name} for m in prompt_messages],
+                "render_log": render_log,
+                "style_resolution": style_resolution,
+                "memory_pack": memory_pack,
+                "memory_injection_config": memory_injection_config,
+                "memory_retrieval_log_json": memory_retrieval_log_json,
+                "prompt_overridden": bool(override_applied),
+            }
+        },
+    )
+
+
 @router.post("/chapters/{chapter_id}/generate")
 def generate_chapter(
     request: Request,
@@ -517,6 +712,7 @@ def generate_chapter(
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ) -> dict:
     request_id = request.state.request_id
+    macro_seed = _resolve_macro_seed(request_id=request_id, body=body)
     resolved_api_key = ""
 
     prompt_system = ""
@@ -647,7 +843,7 @@ def generate_chapter(
                 project_id=project_id,
                 task="plan_chapter",
                 values=plan_values,  # type: ignore[arg-type]
-                macro_seed=f"{request_id}:plan",
+                macro_seed=f"{macro_seed}:plan",
                 provider=preset.provider,
             )
             plan_prompt_render_log_json = json.dumps(plan_render_log, ensure_ascii=False)
@@ -657,8 +853,14 @@ def generate_chapter(
                 project_id=project_id,
                 task="chapter_generate",
                 values=values,  # type: ignore[arg-type]
-                macro_seed=request_id,
+                macro_seed=macro_seed,
                 provider=preset.provider,
+            )
+            prompt_system, prompt_user, prompt_messages, _ = _apply_prompt_override(
+                prompt_system=prompt_system,
+                prompt_user=prompt_user,
+                prompt_messages=prompt_messages,
+                body=body,
             )
             prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
@@ -709,16 +911,26 @@ def generate_chapter(
                 project_id=project_id,
                 task="chapter_generate",
                 values=render_values,  # type: ignore[arg-type]
-                macro_seed=request_id,
+                macro_seed=macro_seed,
                 provider=llm_call.provider,
             )
+        prompt_system, prompt_user, prompt_messages, _ = _apply_prompt_override(
+            prompt_system=prompt_system,
+            prompt_user=prompt_user,
+            prompt_messages=prompt_messages,
+            body=body,
+        )
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
     if body.target_word_count is not None:
-            llm_call = with_param_overrides(
-                llm_call,
-                {"max_tokens": estimate_max_tokens(target_word_count=body.target_word_count, provider=llm_call.provider, model=llm_call.model)},
-            )
+        llm_call = with_param_overrides(
+            llm_call,
+            {
+                "max_tokens": estimate_max_tokens(
+                    target_word_count=body.target_word_count, provider=llm_call.provider, model=llm_call.model
+                )
+            },
+        )
 
     gen_step = run_chapter_generate_llm_step(
         logger=logger,
@@ -754,7 +966,7 @@ def generate_chapter(
                 llm_call=llm_call,
                 render_values=render_values or {},
                 raw_content=raw_content,
-                macro_seed=f"{request_id}:post_edit",
+                macro_seed=f"{macro_seed}:post_edit",
                 post_edit_sanitize=bool(body.post_edit_sanitize),
                 run_params_extra_json={**(run_params_extra_json or {}), "post_edit_sanitize": bool(body.post_edit_sanitize)},
             )
@@ -801,6 +1013,7 @@ def generate_chapter_stream(
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ):
     request_id = request.state.request_id
+    macro_seed = _resolve_macro_seed(request_id=request_id, body=body)
 
     if body.context.require_sequential:
         with SessionLocal() as db:
@@ -866,6 +1079,8 @@ def generate_chapter_stream(
                 body=body,
                 user_id=user_id,
             )
+            settings_row = db.get(ProjectSettings, project_id)
+            values["context_optimizer_enabled"] = bool(getattr(settings_row, "context_optimizer_enabled", False))
             pack = None
             pack_errors = None
             if body.memory_injection_enabled:
@@ -894,7 +1109,6 @@ def generate_chapter_stream(
                 }
 
                 raw_query_text = memory_query_text
-                settings_row = db.get(ProjectSettings, project_id)
                 qp_cfg = parse_query_preprocessing_config(
                     (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
                 )
@@ -941,7 +1155,7 @@ def generate_chapter_stream(
                     project_id=project_id,
                     task="plan_chapter",
                     values=plan_values,  # type: ignore[arg-type]
-                    macro_seed=f"{request_id}:plan",
+                    macro_seed=f"{macro_seed}:plan",
                     provider=preset.provider,
                 )
                 plan_prompt_render_log_json = json.dumps(plan_render_log, ensure_ascii=False)
@@ -951,8 +1165,14 @@ def generate_chapter_stream(
                     project_id=project_id,
                     task="chapter_generate",
                     values=values,  # type: ignore[arg-type]
-                    macro_seed=request_id,
+                    macro_seed=macro_seed,
                     provider=preset.provider,
+                )
+                prompt_system, prompt_user, prompt_messages, _ = _apply_prompt_override(
+                    prompt_system=prompt_system,
+                    prompt_user=prompt_user,
+                    prompt_messages=prompt_messages,
+                    body=body,
                 )
                 prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
@@ -1037,9 +1257,15 @@ def generate_chapter_stream(
                         project_id=project_id,
                         task="chapter_generate",
                         values=render_values,  # type: ignore[arg-type]
-                        macro_seed=request_id,
+                        macro_seed=macro_seed,
                         provider=llm_call.provider,
                     )
+                prompt_system, prompt_user, prompt_messages, _ = _apply_prompt_override(
+                    prompt_system=prompt_system,
+                    prompt_user=prompt_user,
+                    prompt_messages=prompt_messages,
+                    body=body,
+                )
                 prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
 
             if body.target_word_count is not None:
@@ -1147,7 +1373,7 @@ def generate_chapter_stream(
                         llm_call=llm_call,
                         render_values=render_values or {},
                         raw_content=raw_content,
-                        macro_seed=f"{request_id}:post_edit",
+                        macro_seed=f"{macro_seed}:post_edit",
                         post_edit_sanitize=bool(body.post_edit_sanitize),
                         run_params_extra_json={**(run_params_extra_json or {}), "post_edit_sanitize": bool(body.post_edit_sanitize)},
                     )

@@ -5,6 +5,18 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 
+class PromptOverrideMessage(BaseModel):
+    role: str = Field(default="user", max_length=32)
+    content: str = Field(default="", max_length=20000)
+    name: str | None = Field(default=None, max_length=64)
+
+
+class PromptOverride(BaseModel):
+    system: str | None = Field(default=None, max_length=20000)
+    user: str | None = Field(default=None, max_length=20000)
+    messages: list[PromptOverrideMessage] = Field(default_factory=list, max_length=100)
+
+
 class ChapterGenerateContext(BaseModel):
     include_world_setting: bool = True
     include_style_guide: bool = True
@@ -39,6 +51,8 @@ class ChapterGenerateRequest(BaseModel):
     plan_first: bool = False
     post_edit: bool = False
     post_edit_sanitize: bool = False
+    macro_seed: str | None = Field(default=None, max_length=256)
+    prompt_override: PromptOverride | None = None
     style_id: str | None = Field(default=None, max_length=36)
     memory_injection_enabled: bool = False
     memory_query_text: str | None = Field(default=None, max_length=5000)
