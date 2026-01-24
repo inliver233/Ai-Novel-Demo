@@ -40,8 +40,10 @@ from app.services.memory_update_service import (
     list_memory_tasks,
     memory_task_to_dict,
     propose_chapter_memory_change_set,
+    propose_project_table_change_set,
     rollback_memory_change_set,
 )
+from app.services.table_executor import TableUpdateV1Request
 from app.services.output_contracts import contract_for_task
 from app.services.prompt_presets import _ensure_default_preset_from_resource, render_preset_for_task
 
@@ -515,6 +517,26 @@ def propose_chapter_memory_update(
     chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
     _require_chapter_done_for_memory_update(db=db, chapter=chapter, user_id=user_id, allow_draft=allow_draft)
     out = propose_chapter_memory_change_set(db=db, request_id=request_id, actor_user_id=user_id, chapter=chapter, payload=body)
+    return ok_payload(request_id=request_id, data=out)
+
+
+@router.post("/projects/{project_id}/tables/change_sets/propose")
+def propose_project_table_update(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    body: TableUpdateV1Request,
+) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+    out = propose_project_table_change_set(
+        db=db,
+        request_id=request_id,
+        actor_user_id=user_id,
+        project_id=project_id,
+        payload=body,
+    )
     return ok_payload(request_id=request_id, data=out)
 
 

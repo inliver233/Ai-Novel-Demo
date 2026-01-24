@@ -154,7 +154,7 @@ class MemoryChangeSetItem(Base):
         UniqueConstraint("change_set_id", "item_index", name="uq_memory_change_set_items_change_set_index"),
         CheckConstraint("op IN ('upsert','delete')", name="ck_memory_change_set_items_op"),
         CheckConstraint(
-            "target_table IN ('entities','relations','events','foreshadows','evidence')",
+            "target_table IN ('entities','relations','events','foreshadows','evidence','project_table_rows')",
             name="ck_memory_change_set_items_target_table",
         ),
     )

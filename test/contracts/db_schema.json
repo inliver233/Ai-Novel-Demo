@@ -1663,7 +1663,7 @@
     "memory_change_set_items": {
       "checks": [
         "op IN ('upsert','delete')",
-        "target_table IN ('entities','relations','events','foreshadows','evidence')"
+        "target_table IN ('entities','relations','events','foreshadows','evidence','project_table_rows')"
       ],
       "columns": [
         {

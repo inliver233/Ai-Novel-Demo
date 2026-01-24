@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
 from app.models.generation_run import GenerationRun
 from app.models.memory_task import MemoryTask
+from app.models.project_table import ProjectTable, ProjectTableRow
 from app.models.project_settings import ProjectSettings
 from app.models.structured_memory import (
     MemoryChangeSet,
@@ -28,6 +29,7 @@ from app.models.structured_memory import (
     MemoryRelation,
 )
 from app.schemas.memory_update import AFTER_MODEL_BY_TABLE, MemoryUpdateV1Request
+from app.services.table_executor import TableUpdateV1Request, validate_row_data_for_table
 from app.services.fractal_memory_service import rebuild_fractal_memory
 from app.services.vector_embedding_overrides import vector_embedding_overrides
 from app.services.vector_rag_service import build_project_chunks, rebuild_project, vector_rag_status
@@ -41,6 +43,7 @@ _MODEL_BY_TABLE: dict[str, type] = {
     "events": MemoryEvent,
     "foreshadows": MemoryForeshadow,
     "evidence": MemoryEvidence,
+    "project_table_rows": ProjectTableRow,
 }
 
 
@@ -141,6 +144,15 @@ def _row_payload(target_table: str, row: Any) -> dict[str, Any]:
             "quote_md": str(row.quote_md or ""),
             "attributes": _parse_attributes_json(row.attributes_json),
             "deleted_at": _iso(row.deleted_at),
+        }
+    if target_table == "project_table_rows":
+        data_obj = _compact_json_loads(getattr(row, "data_json", None))
+        data = data_obj if isinstance(data_obj, dict) else {}
+        return {
+            "id": str(row.id),
+            "table_id": str(row.table_id),
+            "row_index": int(getattr(row, "row_index", 0) or 0),
+            "data": data,
         }
     raise AppError.validation(details={"target_table": target_table})
 
@@ -561,6 +573,188 @@ def propose_chapter_memory_change_set(
     }
 
 
+def propose_project_table_change_set(
+    *,
+    db: Session,
+    request_id: str,
+    actor_user_id: str,
+    project_id: str,
+    payload: TableUpdateV1Request,
+) -> dict[str, Any]:
+    existing = (
+        db.execute(
+            select(MemoryChangeSet).where(
+                MemoryChangeSet.project_id == project_id,
+                MemoryChangeSet.idempotency_key == payload.idempotency_key,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if existing is not None:
+        items = (
+            db.execute(
+                select(MemoryChangeSetItem)
+                .where(MemoryChangeSetItem.change_set_id == existing.id)
+                .order_by(MemoryChangeSetItem.item_index.asc())
+            )
+            .scalars()
+            .all()
+        )
+        return {
+            "idempotent": True,
+            "change_set": _change_set_to_dict(existing),
+            "items": [_item_to_dict(i) for i in items],
+        }
+
+    generation_run_id = new_id()
+    db.add(
+        GenerationRun(
+            id=generation_run_id,
+            project_id=project_id,
+            actor_user_id=actor_user_id,
+            chapter_id=None,
+            type="table_update_propose",
+            provider=None,
+            model=None,
+            request_id=request_id,
+            prompt_system="",
+            prompt_user="",
+            prompt_render_log_json=None,
+            params_json=_compact_json_dumps(
+                {
+                    "schema_version": payload.schema_version,
+                    "idempotency_key": payload.idempotency_key,
+                    "ops_count": len(payload.ops),
+                }
+            ),
+            output_text=_compact_json_dumps(payload.model_dump()),
+            error_json=None,
+        )
+    )
+
+    change_set = MemoryChangeSet(
+        id=new_id(),
+        project_id=project_id,
+        actor_user_id=actor_user_id,
+        generation_run_id=generation_run_id,
+        request_id=request_id,
+        idempotency_key=payload.idempotency_key,
+        title=payload.title,
+        summary_md=payload.summary_md,
+        status="proposed",
+    )
+    db.add(change_set)
+
+    items: list[MemoryChangeSetItem] = []
+    for idx, op in enumerate(payload.ops):
+        table_id = str(op.table_id or "").strip()
+        if not table_id:
+            raise AppError.validation(details={"item_index": idx, "reason": "table_id_missing"})
+        table = db.get(ProjectTable, table_id)
+        if table is None or str(table.project_id) != str(project_id):
+            raise AppError.validation(details={"item_index": idx, "reason": "table_not_found", "table_id": table_id})
+
+        target_table = "project_table_rows"
+        after_dict: dict[str, Any] | None = None
+
+        if op.op == "delete":
+            target_id = str(op.row_id or "").strip()
+            if not target_id:
+                raise AppError.validation(details={"item_index": idx, "reason": "row_id_missing"})
+            row = db.get(ProjectTableRow, target_id)
+            if row is None or str(row.project_id) != str(project_id) or str(row.table_id) != str(table_id):
+                raise AppError.validation(details={"item_index": idx, "reason": "target_not_found", "row_id": target_id})
+            before_row = row
+        else:
+            target_id = str(op.row_id or "").strip() or new_id()
+            before_row = db.get(ProjectTableRow, target_id)
+            if before_row is not None and (str(before_row.project_id) != str(project_id) or str(before_row.table_id) != str(table_id)):
+                raise AppError.validation(details={"item_index": idx, "reason": "row_table_mismatch", "row_id": target_id})
+
+            if op.row_index is not None:
+                row_index = int(op.row_index)
+            elif before_row is not None:
+                row_index = int(getattr(before_row, "row_index", 0) or 0)
+            else:
+                max_idx = (
+                    db.execute(select(func.max(ProjectTableRow.row_index)).where(ProjectTableRow.table_id == table_id)).scalar()
+                )
+                row_index = int(max_idx or 0) + 1
+
+            data_norm = validate_row_data_for_table(schema_json=str(table.schema_json or "{}"), data=op.data)
+            after_dict = {"table_id": table_id, "row_index": int(row_index), "data": data_norm}
+
+        before_dict = _row_payload(target_table, before_row) if before_row is not None else None
+        item = MemoryChangeSetItem(
+            id=new_id(),
+            project_id=project_id,
+            change_set_id=str(change_set.id),
+            item_index=idx,
+            target_table=target_table,
+            target_id=target_id,
+            op=str(op.op),
+            before_json=_compact_json_dumps(before_dict) if before_dict is not None else None,
+            after_json=_compact_json_dumps(after_dict) if after_dict is not None else None,
+            evidence_ids_json=None,
+        )
+        items.append(item)
+        db.add(item)
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        log_event(
+            logger,
+            "warning",
+            event="MEMORY_CHANGESET_PROPOSE_CONFLICT",
+            project_id=project_id,
+            idempotency_key=payload.idempotency_key,
+            **exception_log_fields(exc),
+        )
+        existing2 = (
+            db.execute(
+                select(MemoryChangeSet).where(
+                    MemoryChangeSet.project_id == project_id,
+                    MemoryChangeSet.idempotency_key == payload.idempotency_key,
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if existing2 is not None:
+            items2 = (
+                db.execute(
+                    select(MemoryChangeSetItem)
+                    .where(MemoryChangeSetItem.change_set_id == existing2.id)
+                    .order_by(MemoryChangeSetItem.item_index.asc())
+                )
+                .scalars()
+                .all()
+            )
+            return {
+                "idempotent": True,
+                "change_set": _change_set_to_dict(existing2),
+                "items": [_item_to_dict(i) for i in items2],
+            }
+        raise
+
+    log_event(
+        logger,
+        "info",
+        event="TABLE_CHANGESET_PROPOSED",
+        change_set_id=str(change_set.id),
+        project_id=project_id,
+        items_count=len(items),
+    )
+    return {
+        "idempotent": False,
+        "change_set": _change_set_to_dict(change_set),
+        "items": [_item_to_dict(i) for i in items],
+    }
+
+
 def _apply_upsert(
     db: Session, *, target_table: str, project_id: str, target_id: str, after: dict[str, Any]
 ) -> Any:
@@ -647,6 +841,34 @@ def _apply_upsert(
         row.deleted_at = None  # type: ignore[attr-defined]
         return row
 
+    if target_table == "project_table_rows":
+        table_id = str(after.get("table_id") or "").strip()
+        if not table_id:
+            raise AppError.validation(details={"target_table": target_table, "reason": "table_id_missing"})
+        table = db.get(ProjectTable, table_id)
+        if table is None or str(table.project_id) != str(project_id):
+            raise AppError.validation(details={"target_table": target_table, "reason": "table_not_found", "table_id": table_id})
+
+        row_index_raw = after.get("row_index")
+        try:
+            row_index = int(row_index_raw)  # type: ignore[arg-type]
+        except Exception:
+            raise AppError.validation(details={"target_table": target_table, "reason": "row_index_invalid"}) from None
+        if row_index < 0:
+            raise AppError.validation(details={"target_table": target_table, "reason": "row_index_invalid"})
+
+        data_norm = validate_row_data_for_table(schema_json=str(table.schema_json or "{}"), data=after.get("data"))
+        if str(getattr(row, "table_id", "") or "") and str(getattr(row, "table_id", "")) != str(table_id):
+            raise AppError.conflict(
+                message="Row already belongs to another table",
+                details={"target_table": target_table, "target_id": target_id, "table_id": table_id},
+            )
+
+        row.table_id = table_id  # type: ignore[attr-defined]
+        row.row_index = row_index  # type: ignore[attr-defined]
+        row.data_json = _compact_json_dumps(data_norm)  # type: ignore[attr-defined]
+        return row
+
     raise AppError.validation(details={"target_table": target_table})
 
 
@@ -711,7 +933,10 @@ def apply_memory_change_set(
                         }
                     )
                     continue
-                current_row.deleted_at = utc_now()  # type: ignore[attr-defined]
+                if target_table == "project_table_rows":
+                    db.delete(current_row)
+                else:
+                    current_row.deleted_at = utc_now()  # type: ignore[attr-defined]
                 continue
 
             after_value = _compact_json_loads(item.after_json)
@@ -968,6 +1193,28 @@ def rollback_memory_change_set(
             current_row = _load_target_row(db, target_table=target_table, project_id=project_id, target_id=target_id)
 
             if item.op == "delete":
+                if target_table == "project_table_rows":
+                    if not isinstance(before_value, dict):
+                        warnings.append(
+                            {
+                                "code": "MISSING_BEFORE",
+                                "message": "Missing before_json for table row rollback; skipped",
+                                "item_id": str(item.id),
+                                "target_table": target_table,
+                                "target_id": target_id,
+                            }
+                        )
+                        continue
+                    after_restore = dict(before_value)
+                    after_restore.pop("id", None)
+                    _apply_upsert(
+                        db,
+                        target_table=target_table,
+                        project_id=project_id,
+                        target_id=target_id,
+                        after=after_restore,
+                    )
+                    continue
                 if current_row is None:
                     warnings.append(
                         {
@@ -999,14 +1246,18 @@ def rollback_memory_change_set(
                 continue
 
             if not isinstance(before_value, dict):
-                # Created during apply: soft-delete it.
-                current_row.deleted_at = utc_now()  # type: ignore[attr-defined]
+                if target_table == "project_table_rows":
+                    db.delete(current_row)
+                else:
+                    # Created during apply: soft-delete it.
+                    current_row.deleted_at = utc_now()  # type: ignore[attr-defined]
                 continue
 
             # Restore fields.
             after_restore = dict(before_value)
             after_restore.pop("id", None)
-            after_restore["deleted_at"] = before_value.get("deleted_at")
+            if target_table != "project_table_rows":
+                after_restore["deleted_at"] = before_value.get("deleted_at")
             _apply_upsert(
                 db,
                 target_table=target_table,
@@ -1014,7 +1265,8 @@ def rollback_memory_change_set(
                 target_id=target_id,
                 after=after_restore,
             )
-            current_row.deleted_at = _parse_dt(before_value.get("deleted_at"))  # type: ignore[attr-defined]
+            if target_table != "project_table_rows":
+                current_row.deleted_at = _parse_dt(before_value.get("deleted_at"))  # type: ignore[attr-defined]
 
         change_set.status = "rolled_back"
         change_set.rolled_back_at = utc_now()
