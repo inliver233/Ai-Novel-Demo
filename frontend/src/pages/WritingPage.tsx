@@ -16,6 +16,7 @@ import { GenerationHistoryDrawer } from "../components/writing/GenerationHistory
 import { MemoryUpdateDrawer } from "../components/writing/MemoryUpdateDrawer";
 import { PostEditCompareDrawer } from "../components/writing/PostEditCompareDrawer";
 import { PromptInspectorDrawer } from "../components/writing/PromptInspectorDrawer";
+import { TablesPanel } from "../components/writing/TablesPanel";
 import { WritingToolbar } from "../components/writing/WritingToolbar";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
@@ -102,6 +103,7 @@ export function WritingPage() {
   const [aiOpen, setAiOpen] = useState(false);
   const [promptInspectorOpen, setPromptInspectorOpen] = useState(false);
   const [postEditCompareOpen, setPostEditCompareOpen] = useState(false);
+  const [tablesOpen, setTablesOpen] = useState(false);
   const [contextPreviewOpen, setContextPreviewOpen] = useState(false);
   const [memoryUpdateOpen, setMemoryUpdateOpen] = useState(false);
   const [foreshadowOpen, setForeshadowOpen] = useState(false);
@@ -320,6 +322,7 @@ export function WritingPage() {
           navigate(`/projects/${projectId}/tasks${qs.toString() ? `?${qs.toString()}` : ""}`);
         }}
         onOpenForeshadow={() => setForeshadowOpen(true)}
+        onOpenTables={() => setTablesOpen(true)}
         onOpenContextPreview={() => setContextPreviewOpen(true)}
         onCreateChapter={chapterCrud.openCreate}
       />
@@ -652,6 +655,8 @@ export function WritingPage() {
           setGenForm((v) => ({ ...v, memory_injection_enabled: Boolean(enabled) }))
         }
       />
+
+      <TablesPanel open={tablesOpen} onClose={() => setTablesOpen(false)} projectId={projectId} />
 
       <MemoryUpdateDrawer
         open={memoryUpdateOpen}
