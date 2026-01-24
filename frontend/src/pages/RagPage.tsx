@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { useToast } from "../components/ui/toast";
@@ -446,6 +446,19 @@ export function RagPage() {
           <div className="grid gap-2 text-xs text-subtext">
             <div>{UI_COPY.rag.usageHint}</div>
             <div>{UI_COPY.rag.exampleHint}</div>
+            <div>
+              快速开始：创建/启用 KB → 点击“{UI_COPY.rag.ingest}”导入 → “{UI_COPY.rag.rebuild}”构建索引 → 在下方 Query
+              预览命中。
+            </div>
+            {projectId ? (
+              <div>
+                配置入口：到{" "}
+                <Link className="underline" to={`/projects/${projectId}/settings`}>
+                  项目设置
+                </Link>{" "}
+                完成 Embedding/Rerank 配置后再重建索引。
+              </div>
+            ) : null}
             <div className="text-amber-700 dark:text-amber-300">{UI_COPY.rag.riskHint}</div>
           </div>
         </DebugDetails>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { useToast } from "../components/ui/toast";
@@ -308,6 +308,23 @@ export function StructuredMemoryPage() {
             <div className="grid gap-2 text-xs text-subtext">
               <div>{UI_COPY.structuredMemory.usageHint}</div>
               <div>{UI_COPY.structuredMemory.exampleHint}</div>
+              {projectId ? (
+                <div>
+                  常用入口：从{" "}
+                  <Link className="underline" to={`/projects/${projectId}/writing`}>
+                    写作页
+                  </Link>{" "}
+                  或{" "}
+                  <Link className="underline" to={`/projects/${projectId}/chapter-analysis`}>
+                    章节分析
+                  </Link>{" "}
+                  触发“Memory Update”，再在{" "}
+                  <Link className="underline" to={`/projects/${projectId}/tasks`}>
+                    任务中心
+                  </Link>{" "}
+                  追踪 ChangeSet/任务状态。
+                </div>
+              ) : null}
               <div>{UI_COPY.structuredMemory.bulkOpsHint}</div>
               <div className="text-amber-700 dark:text-amber-300">{UI_COPY.structuredMemory.bulkOpsRisk}</div>
             </div>

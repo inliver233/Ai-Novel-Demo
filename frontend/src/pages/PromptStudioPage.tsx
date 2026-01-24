@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
+import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson, sanitizeFilename } from "../services/apiClient";
 import type { Character, Outline, Project, ProjectSettings, PromptBlock, PromptPreset, PromptPreview } from "../types";
 import { PromptStudioPresetEditorPanel } from "./promptStudio/PromptStudioPresetEditorPanel";
@@ -591,6 +593,14 @@ export function PromptStudioPage() {
               <Link className="underline" to={`/projects/${projectId}/prompts`}>
                 返回模型配置
               </Link>
+              {" · "}
+              <Link className="underline" to={`/projects/${projectId}/prompt-templates`}>
+                新手：Prompt 模板
+              </Link>
+              {" · "}
+              <Link className="underline" to={`/projects/${projectId}/writing`}>
+                去写作
+              </Link>
             </div>
           </div>
           <div className="text-xs text-subtext">{busy || importBusy || bulkBusy ? "处理中…" : ""}</div>
@@ -598,6 +608,15 @@ export function PromptStudioPage() {
 
         <div className="mt-3 grid gap-3">
           <div className="text-sm text-subtext">在这里管理预设与提示块，并生成后端渲染预览。</div>
+          <DebugDetails title={UI_COPY.help.title}>
+            <div className="grid gap-2 text-xs text-subtext">
+              <div>推荐流程：模型配置 →（新手模板/工作室）→ 大纲生成 → 章节生成 → 记忆更新。</div>
+              <div>快速开始：选中预设 → 编辑模板片段 → 右侧预览 → 回到写作页点击“AI 生成”。</div>
+              <div className="text-amber-700 dark:text-amber-300">
+                提示：这里是高级模式；若你只想改“关键提示词”，建议从“新手：Prompt 模板”开始。
+              </div>
+            </div>
+          </DebugDetails>
           <details className="rounded-atelier border border-border bg-surface/50 p-3">
             <summary className="ui-transition-fast cursor-pointer text-sm hover:text-ink">
               概念说明（预设/提示块/优先级）

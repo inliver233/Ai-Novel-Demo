@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { Drawer } from "../components/ui/Drawer";
@@ -221,6 +221,19 @@ export function TaskCenterPage() {
           <DebugDetails title={UI_COPY.help.title}>
             <div className="grid gap-2 text-xs text-subtext">
               <div>{UI_COPY.taskCenter.usageHint}</div>
+              {projectId ? (
+                <div>
+                  常用入口：{" "}
+                  <Link className="underline" to={`/projects/${projectId}/structured-memory`}>
+                    结构化记忆
+                  </Link>{" "}
+                  与{" "}
+                  <Link className="underline" to={`/projects/${projectId}/writing`}>
+                    写作页
+                  </Link>{" "}
+                  之间来回跳转，查看“提议→应用→回滚”的全链路。
+                </div>
+              ) : null}
               <div className="text-amber-700 dark:text-amber-300">{UI_COPY.taskCenter.riskHint}</div>
             </div>
           </DebugDetails>
