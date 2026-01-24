@@ -24,6 +24,7 @@ type Props = {
   onGenerateAppend: () => void;
   onGenerateReplace: () => void;
   onCancelGenerate?: () => void;
+  onOpenPromptInspector: () => void;
 };
 
 type WritingStyle = {
@@ -37,6 +38,7 @@ export function AiGenerateDrawer(props: Props) {
   const streamProviderSupported = !!props.preset && props.preset.provider.startsWith("openai");
   const titleId = useId();
   const advancedPanelId = useId();
+  const hasPromptOverride = props.genForm.prompt_override != null;
 
   const [stylesLoading, setStylesLoading] = useState(false);
   const [presets, setPresets] = useState<WritingStyle[]>([]);
@@ -123,6 +125,11 @@ export function AiGenerateDrawer(props: Props) {
           <div className="mt-1 text-xs text-subtext">
             {props.preset ? `${props.preset.provider} / ${props.preset.model}` : "未加载 LLM 配置"}
           </div>
+          {hasPromptOverride ? (
+            <div className="mt-2 rounded-atelier border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              已启用 Prompt 覆盖：生成将使用覆盖文本（可在 Prompt Inspector 回退默认）。
+            </div>
+          ) : null}
         </div>
         <button className="btn btn-secondary" aria-label="关闭" onClick={closeDrawer} type="button">
           关闭
@@ -621,6 +628,24 @@ export function AiGenerateDrawer(props: Props) {
       </div>
 
       <div className="mt-5 flex flex-wrap justify-end gap-2">
+        <button
+          className="btn btn-secondary"
+          disabled={props.generating || !props.activeChapter}
+          onClick={props.onOpenPromptInspector}
+          type="button"
+        >
+          预检/审查{hasPromptOverride ? "（覆盖中）" : ""}
+        </button>
+        {hasPromptOverride ? (
+          <button
+            className="btn btn-secondary"
+            disabled={props.generating}
+            onClick={() => props.setGenForm((v) => ({ ...v, prompt_override: null }))}
+            type="button"
+          >
+            回退默认
+          </button>
+        ) : null}
         <button
           className="btn btn-primary"
           disabled={props.generating || !props.activeChapter}

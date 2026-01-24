@@ -14,6 +14,7 @@ import { ContextPreviewDrawer } from "../components/writing/ContextPreviewDrawer
 import { ForeshadowDrawer } from "../components/writing/ForeshadowDrawer";
 import { GenerationHistoryDrawer } from "../components/writing/GenerationHistoryDrawer";
 import { MemoryUpdateDrawer } from "../components/writing/MemoryUpdateDrawer";
+import { PromptInspectorDrawer } from "../components/writing/PromptInspectorDrawer";
 import { WritingToolbar } from "../components/writing/WritingToolbar";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
@@ -98,6 +99,7 @@ export function WritingPage() {
   const [contentEditorTab, setContentEditorTab] = useState<"edit" | "preview">("edit");
 
   const [aiOpen, setAiOpen] = useState(false);
+  const [promptInspectorOpen, setPromptInspectorOpen] = useState(false);
   const [contextPreviewOpen, setContextPreviewOpen] = useState(false);
   const [memoryUpdateOpen, setMemoryUpdateOpen] = useState(false);
   const [foreshadowOpen, setForeshadowOpen] = useState(false);
@@ -597,6 +599,19 @@ export function WritingPage() {
         onGenerateAppend={() => void generate("append")}
         onGenerateReplace={() => void generate("replace")}
         onCancelGenerate={abortGenerate}
+        onOpenPromptInspector={() => setPromptInspectorOpen(true)}
+      />
+
+      <PromptInspectorDrawer
+        open={promptInspectorOpen}
+        onClose={() => setPromptInspectorOpen(false)}
+        preset={preset}
+        chapterId={activeChapter?.id ?? undefined}
+        draftContentMd={form?.content_md ?? ""}
+        generating={generating}
+        genForm={genForm}
+        setGenForm={setGenForm}
+        onGenerate={generate}
       />
 
       <ContextPreviewDrawer

@@ -4,9 +4,23 @@ export type CreateChapterForm = {
   plan: string;
 };
 
+export type PromptOverrideMessage = {
+  role: string;
+  content: string;
+  name?: string | null;
+};
+
+export type PromptOverride = {
+  system?: string | null;
+  user?: string | null;
+  messages?: PromptOverrideMessage[];
+};
+
 export type GenerateForm = {
   instruction: string;
   target_word_count: number | null;
+  macro_seed?: string;
+  prompt_override?: PromptOverride | null;
   stream: boolean;
   plan_first: boolean;
   post_edit: boolean;

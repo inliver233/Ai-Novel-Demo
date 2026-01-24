@@ -123,7 +123,10 @@ export function useChapterGeneration(args: {
   const abortGenerate = useCallback(() => genStreamClientRef.current?.abort(), []);
 
   const generate = useCallback(
-    async (mode: "replace" | "append") => {
+    async (
+      mode: "replace" | "append",
+      overrides?: { macro_seed?: string | null; prompt_override?: GenerateForm["prompt_override"] },
+    ) => {
       if (!activeChapter || !form) return;
       if (!preset) {
         toast.toastError("请先在 Prompts 页保存 LLM 配置");
@@ -153,6 +156,15 @@ export function useChapterGeneration(args: {
       genStreamClientRef.current = null;
       genStreamHasChunkRef.current = false;
       try {
+        const macroSeed =
+          overrides && Object.prototype.hasOwnProperty.call(overrides, "macro_seed")
+            ? overrides.macro_seed
+            : genForm.macro_seed;
+        const promptOverride =
+          overrides && Object.prototype.hasOwnProperty.call(overrides, "prompt_override")
+            ? overrides.prompt_override
+            : genForm.prompt_override;
+
         const currentDraftTail = mode === "append" ? (form.content_md ?? "").trimEnd().slice(-1200) : null;
         const safeTargetWordCount =
           typeof genForm.target_word_count === "number" && genForm.target_word_count >= 100
@@ -166,6 +178,8 @@ export function useChapterGeneration(args: {
           plan_first: genForm.plan_first,
           post_edit: genForm.post_edit,
           post_edit_sanitize: genForm.post_edit_sanitize,
+          ...(typeof macroSeed === "string" && macroSeed.trim() ? { macro_seed: macroSeed.trim() } : {}),
+          ...(promptOverride != null ? { prompt_override: promptOverride } : {}),
           style_id: genForm.style_id,
           memory_injection_enabled: genForm.memory_injection_enabled,
           memory_query_text: genForm.memory_query_text.trim() ? genForm.memory_query_text : null,
