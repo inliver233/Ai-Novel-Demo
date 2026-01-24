@@ -711,7 +711,16 @@ def generate_chapter_precheck(
         pack_errors = None
         memory_query_text = ""
         query_text_source = "auto"
-        memory_modules = {"worldbook": True, "story_memory": True, "structured": True, "vector_rag": True, "graph": True, "fractal": True}
+        memory_modules = {
+            "worldbook": True,
+            "story_memory": True,
+            "semantic_history": False,
+            "foreshadow_open_loops": False,
+            "structured": True,
+            "vector_rag": True,
+            "graph": True,
+            "fractal": True,
+        }
         raw_query_text = ""
         preprocess_obs = None
         if body.memory_injection_enabled:
@@ -729,6 +738,8 @@ def generate_chapter_precheck(
             memory_modules = {
                 "worldbook": bool(raw_modules.get("worldbook", True)),
                 "story_memory": bool(raw_modules.get("story_memory", True)),
+                "semantic_history": bool(raw_modules.get("semantic_history", False)),
+                "foreshadow_open_loops": bool(raw_modules.get("foreshadow_open_loops", False)),
                 "structured": bool(raw_modules.get("structured", True)),
                 "vector_rag": bool(raw_modules.get("vector_rag", True)),
                 "graph": bool(raw_modules.get("graph", True)),
@@ -882,7 +893,16 @@ def generate_chapter(
         pack_errors = None
         memory_query_text = ""
         query_text_source = "auto"
-        memory_modules = {"worldbook": True, "story_memory": True, "structured": True, "vector_rag": True, "graph": True, "fractal": True}
+        memory_modules = {
+            "worldbook": True,
+            "story_memory": True,
+            "semantic_history": False,
+            "foreshadow_open_loops": False,
+            "structured": True,
+            "vector_rag": True,
+            "graph": True,
+            "fractal": True,
+        }
         raw_query_text = ""
         preprocess_obs = None
         if body.memory_injection_enabled:
@@ -900,6 +920,8 @@ def generate_chapter(
             memory_modules = {
                 "worldbook": bool(raw_modules.get("worldbook", True)),
                 "story_memory": bool(raw_modules.get("story_memory", True)),
+                "semantic_history": bool(raw_modules.get("semantic_history", False)),
+                "foreshadow_open_loops": bool(raw_modules.get("foreshadow_open_loops", False)),
                 "structured": bool(raw_modules.get("structured", True)),
                 "vector_rag": bool(raw_modules.get("vector_rag", True)),
                 "graph": bool(raw_modules.get("graph", True)),
@@ -1228,7 +1250,16 @@ def generate_chapter_stream(
             pack_errors = None
             if body.memory_injection_enabled:
                 query_text_source = "auto"
-                memory_modules = {"worldbook": True, "story_memory": True, "structured": True, "vector_rag": True, "graph": True, "fractal": True}
+                memory_modules = {
+                    "worldbook": True,
+                    "story_memory": True,
+                    "semantic_history": False,
+                    "foreshadow_open_loops": False,
+                    "structured": True,
+                    "vector_rag": True,
+                    "graph": True,
+                    "fractal": True,
+                }
                 raw_query_text = ""
                 preprocess_obs = None
                 requested_query_text = str(body.memory_query_text or "").strip()
@@ -1245,6 +1276,8 @@ def generate_chapter_stream(
                 memory_modules = {
                     "worldbook": bool(raw_modules.get("worldbook", True)),
                     "story_memory": bool(raw_modules.get("story_memory", True)),
+                    "semantic_history": bool(raw_modules.get("semantic_history", False)),
+                    "foreshadow_open_loops": bool(raw_modules.get("foreshadow_open_loops", False)),
                     "structured": bool(raw_modules.get("structured", True)),
                     "vector_rag": bool(raw_modules.get("vector_rag", True)),
                     "graph": bool(raw_modules.get("graph", True)),

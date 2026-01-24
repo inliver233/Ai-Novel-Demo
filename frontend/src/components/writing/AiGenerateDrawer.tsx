@@ -288,6 +288,38 @@ export function AiGenerateDrawer(props: Props) {
                         />
                       </label>
                       <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                        <span>语义历史（semantic_history）</span>
+                        <input
+                          className="checkbox"
+                          checked={props.genForm.memory_modules.semantic_history}
+                          disabled={props.generating}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            props.setGenForm((v) => ({
+                              ...v,
+                              memory_modules: { ...v.memory_modules, semantic_history: checked },
+                            }));
+                          }}
+                          type="checkbox"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                        <span>未回收伏笔（foreshadow_open_loops）</span>
+                        <input
+                          className="checkbox"
+                          checked={props.genForm.memory_modules.foreshadow_open_loops}
+                          disabled={props.generating}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            props.setGenForm((v) => ({
+                              ...v,
+                              memory_modules: { ...v.memory_modules, foreshadow_open_loops: checked },
+                            }));
+                          }}
+                          type="checkbox"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between gap-3 text-sm text-ink">
                         <span>结构化记忆（structured）</span>
                         <input
                           className="checkbox"
