@@ -387,7 +387,15 @@ class TestWorldBookServiceTrigger(unittest.TestCase):
 
     def test_preview_trigger_pinyin_matching_optional_dependency(self) -> None:
         try:
-            import pypinyin  # noqa: F401  # type: ignore[import-not-found]
+            import warnings
+
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    category=DeprecationWarning,
+                    message=r".*codecs\.open\(\) is deprecated.*",
+                )
+                import pypinyin  # noqa: F401  # type: ignore[import-not-found]
         except Exception:
             self.skipTest("pypinyin not installed")
 

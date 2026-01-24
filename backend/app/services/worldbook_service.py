@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -83,13 +84,21 @@ def _contains_pinyin_match(text: str, query_ascii: str, *, cache: dict[str, tupl
         return query_ascii in full or query_ascii in abbr
 
     try:
-        from pypinyin import Style, lazy_pinyin  # type: ignore[import-not-found]
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                category=DeprecationWarning,
+                message=r".*codecs\.open\(\) is deprecated.*",
+                module=r"^pypinyin(\..*)?$",
+            )
+            from pypinyin import Style, lazy_pinyin  # type: ignore[import-not-found]
+
+            full = "".join(lazy_pinyin(text, style=Style.NORMAL, errors="ignore")).lower()
+            abbr = "".join(lazy_pinyin(text, style=Style.FIRST_LETTER, errors="ignore")).lower()
     except Exception:
         cache[text] = ("", "")
         return False
 
-    full = "".join(lazy_pinyin(text, style=Style.NORMAL, errors="ignore")).lower()
-    abbr = "".join(lazy_pinyin(text, style=Style.FIRST_LETTER, errors="ignore")).lower()
     cache[text] = (full, abbr)
     return query_ascii in full or query_ascii in abbr
 
