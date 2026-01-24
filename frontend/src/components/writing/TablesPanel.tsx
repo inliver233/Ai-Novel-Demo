@@ -290,7 +290,9 @@ export function TablesPanel(props: { open: boolean; onClose: () => void; project
     if (!ok) return;
 
     try {
-      await apiJson<{ deleted: boolean }>(`/api/projects/${projectId}/tables/${selectedTable.id}`, { method: "DELETE" });
+      await apiJson<{ deleted: boolean }>(`/api/projects/${projectId}/tables/${selectedTable.id}`, {
+        method: "DELETE",
+      });
       toast.toastSuccess("已删除表格");
       setSelectedTableId("");
       setRows([]);
@@ -437,7 +439,12 @@ export function TablesPanel(props: { open: boolean; onClose: () => void; project
           <div className="mt-1 text-xs text-subtext">用于维护写作过程中的结构化状态（project_tables）。</div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="btn btn-secondary" disabled={!props.projectId || tablesLoading} onClick={loadTables} type="button">
+          <button
+            className="btn btn-secondary"
+            disabled={!props.projectId || tablesLoading}
+            onClick={loadTables}
+            type="button"
+          >
             刷新
           </button>
           <button className="btn btn-secondary" aria-label="关闭" onClick={props.onClose} type="button">
@@ -522,7 +529,12 @@ export function TablesPanel(props: { open: boolean; onClose: () => void; project
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <button className="btn btn-secondary" disabled={renaming} onClick={() => void renameTable()} type="button">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={renaming}
+                    onClick={() => void renameTable()}
+                    type="button"
+                  >
                     保存表名
                   </button>
                   <button className="btn btn-secondary" onClick={() => void deleteTable()} type="button">
@@ -547,10 +559,20 @@ export function TablesPanel(props: { open: boolean; onClose: () => void; project
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm text-ink">表内容</div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button className="btn btn-secondary" disabled={rowsLoading} onClick={() => void loadRows()} type="button">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={rowsLoading}
+                    onClick={() => void loadRows()}
+                    type="button"
+                  >
                     刷新行
                   </button>
-                  <button className="btn btn-primary" disabled={rowsLoading} onClick={() => void addRow()} type="button">
+                  <button
+                    className="btn btn-primary"
+                    disabled={rowsLoading}
+                    onClick={() => void addRow()}
+                    type="button"
+                  >
                     新增行
                   </button>
                 </div>
@@ -689,4 +711,3 @@ export function TablesPanel(props: { open: boolean; onClose: () => void; project
     </Drawer>
   );
 }
-

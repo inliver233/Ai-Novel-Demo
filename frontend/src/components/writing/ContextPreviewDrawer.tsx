@@ -141,7 +141,11 @@ function clampTablesCharLimit(raw: string, fallback: number): number {
   return Math.max(0, Math.min(TABLES_PREVIEW_MAX_CHAR_LIMIT, Math.floor(parsed)));
 }
 
-function wrapTaggedBlockWithLimit(tag: string, inner: string, charLimit: number): { textMd: string; truncated: boolean; originalChars: number } {
+function wrapTaggedBlockWithLimit(
+  tag: string,
+  inner: string,
+  charLimit: number,
+): { textMd: string; truncated: boolean; originalChars: number } {
   const prefix = `<${tag}>\n`;
   const suffix = `\n</${tag}>`;
   const body = (inner || "").trim();
@@ -355,9 +359,11 @@ export function ContextPreviewDrawer(props: Props) {
     [tablesCharLimitInput],
   );
   const [tablesPreviewLoading, setTablesPreviewLoading] = useState(false);
-  const [tablesPreviewError, setTablesPreviewError] = useState<{ code: string; message: string; requestId?: string } | null>(
-    null,
-  );
+  const [tablesPreviewError, setTablesPreviewError] = useState<{
+    code: string;
+    message: string;
+    requestId?: string;
+  } | null>(null);
   const [tablesPreview, setTablesPreview] = useState<TablesInjectionPreview>({
     text_md: "",
     truncated: false,
@@ -400,7 +406,9 @@ export function ContextPreviewDrawer(props: Props) {
     setTablesPreviewLoading(true);
     setTablesPreviewError(null);
     try {
-      const res = await apiJson<{ tables: ProjectTablePreview[] }>(`/api/projects/${projectId}/tables?include_schema=true`);
+      const res = await apiJson<{ tables: ProjectTablePreview[] }>(
+        `/api/projects/${projectId}/tables?include_schema=true`,
+      );
       const rawList = Array.isArray(res.data?.tables) ? res.data.tables : [];
       const list: ProjectTablePreview[] = rawList
         .map((t) => ({
@@ -1279,14 +1287,17 @@ export function ContextPreviewDrawer(props: Props) {
                 />
               </label>
               <div className="text-[11px] text-subtext">
-                tables:{tablesPreview.tables} · rows:{tablesPreview.rows} · original_chars:{tablesPreview.original_chars} ·
-                char_limit:{tablesPreview.char_limit} · truncated:{tablesPreview.truncated ? "true" : "false"}
+                tables:{tablesPreview.tables} · rows:{tablesPreview.rows} · original_chars:
+                {tablesPreview.original_chars} · char_limit:{tablesPreview.char_limit} · truncated:
+                {tablesPreview.truncated ? "true" : "false"}
               </div>
 
               {tablesPreviewError ? (
                 <div className="text-xs text-amber-700 dark:text-amber-300">
                   {tablesPreviewError.message} ({tablesPreviewError.code})
-                  {tablesPreviewError.requestId ? <span className="ml-2">request_id: {tablesPreviewError.requestId}</span> : null}
+                  {tablesPreviewError.requestId ? (
+                    <span className="ml-2">request_id: {tablesPreviewError.requestId}</span>
+                  ) : null}
                 </div>
               ) : null}
 
