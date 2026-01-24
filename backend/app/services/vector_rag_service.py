@@ -134,6 +134,181 @@ def _vector_candidate_chunk_key(candidate: dict[str, Any]) -> tuple[str, str, in
     return (str(meta.get("source") or ""), str(meta.get("source_id") or ""), chunk_index)
 
 
+def _normalize_kb_priority_group(value: str | None) -> str:
+    raw = str(value or "").strip().lower()
+    return raw if raw in ("normal", "high") else "normal"
+
+
+def _merge_kb_candidates_rrf(
+    *,
+    kb_ids: list[str],
+    per_kb_candidates: dict[str, list[dict[str, Any]]],
+    kb_weights: dict[str, float],
+    kb_orders: dict[str, int],
+    rrf_k: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """
+    Merge multiple kb candidate lists using weighted RRF.
+
+    Deterministic order:
+      - score desc
+      - kb_order asc
+      - distance asc
+      - id asc
+    """
+
+    merged_obs: dict[str, Any] = {"mode": "rrf", "kb_ids": list(kb_ids), "rrf_k": int(rrf_k)}
+    if len(kb_ids) <= 1:
+        only = kb_ids[0] if kb_ids else None
+        merged = list(per_kb_candidates.get(str(only or "")) or []) if only else []
+        merged_obs["mode"] = "single"
+        merged_obs["candidate_count"] = int(len(merged))
+        return merged, merged_obs
+
+    scored: dict[str, dict[str, Any]] = {}
+    for kid in kb_ids:
+        cand_list = per_kb_candidates.get(kid) or []
+        weight = float(kb_weights.get(kid, 1.0))
+        kb_order = int(kb_orders.get(kid, 999))
+        for rank, c in enumerate(cand_list, start=1):
+            cid = str(c.get("id") or "")
+            if not cid:
+                continue
+            contrib = float(weight) * _rrf_contrib(rank, k=rrf_k)
+            dist = float(c.get("distance") or 0.0)
+            entry = scored.get(cid)
+            if entry is None:
+                scored[cid] = {"candidate": c, "score": contrib, "distance": dist, "kb_order": kb_order, "id": cid}
+            else:
+                entry["score"] = float(entry.get("score") or 0.0) + contrib
+                prev_dist = entry.get("distance")
+                if prev_dist is None or dist < float(prev_dist):
+                    entry["candidate"] = c
+                    entry["distance"] = dist
+                prev_order = entry.get("kb_order")
+                entry["kb_order"] = min(int(prev_order) if prev_order is not None else kb_order, kb_order)
+    merged = list(scored.values())
+    merged.sort(
+        key=lambda x: (
+            -float(x.get("score") or 0.0),
+            int(x.get("kb_order")) if x.get("kb_order") is not None else 999,
+            float(x.get("distance")) if x.get("distance") is not None else 0.0,
+            str(x.get("id") or ""),
+        )
+    )
+    candidates = [dict(x.get("candidate") or {}) for x in merged]
+    for c in candidates:
+        c.pop("_rrf_score", None)
+
+    merged_obs["candidate_count"] = int(len(candidates))
+    return candidates, merged_obs
+
+
+def _merge_kb_candidates(
+    *,
+    kb_ids: list[str],
+    per_kb_candidates: dict[str, list[dict[str, Any]]],
+    kb_weights: dict[str, float],
+    kb_orders: dict[str, int],
+    kb_priority_groups: dict[str, str],
+    top_k: int,
+    priority_enabled: bool,
+    rrf_k: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if not bool(priority_enabled):
+        candidates, obs = _merge_kb_candidates_rrf(
+            kb_ids=kb_ids,
+            per_kb_candidates=per_kb_candidates,
+            kb_weights=kb_weights,
+            kb_orders=kb_orders,
+            rrf_k=rrf_k,
+        )
+        obs["priority_enabled"] = False
+        obs.setdefault("candidate_count", int(len(candidates)))
+        return candidates, obs
+
+    high_kb_ids = [kid for kid in kb_ids if kb_priority_groups.get(kid) == "high"]
+    if not high_kb_ids:
+        candidates, obs = _merge_kb_candidates_rrf(
+            kb_ids=kb_ids,
+            per_kb_candidates=per_kb_candidates,
+            kb_weights=kb_weights,
+            kb_orders=kb_orders,
+            rrf_k=rrf_k,
+        )
+        obs["priority_enabled"] = True
+        obs.setdefault("candidate_count", int(len(candidates)))
+        obs.setdefault("note", "no_high_priority_kbs")
+        return candidates, obs
+
+    high_set = set(high_kb_ids)
+    normal_kb_ids = [kid for kid in kb_ids if kid not in high_set]
+    if not normal_kb_ids:
+        candidates, obs = _merge_kb_candidates_rrf(
+            kb_ids=kb_ids,
+            per_kb_candidates=per_kb_candidates,
+            kb_weights=kb_weights,
+            kb_orders=kb_orders,
+            rrf_k=rrf_k,
+        )
+        obs["priority_enabled"] = True
+        obs.setdefault("candidate_count", int(len(candidates)))
+        obs.setdefault("note", "only_high_priority_kbs")
+        return candidates, obs
+
+    high_candidates, high_obs = _merge_kb_candidates_rrf(
+        kb_ids=high_kb_ids,
+        per_kb_candidates=per_kb_candidates,
+        kb_weights=kb_weights,
+        kb_orders=kb_orders,
+        rrf_k=rrf_k,
+    )
+
+    combined: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for c in high_candidates:
+        cid = str(c.get("id") or "")
+        if not cid or cid in seen_ids:
+            continue
+        seen_ids.add(cid)
+        combined.append(c)
+        if len(combined) >= int(top_k):
+            break
+
+    used_normal = False
+    normal_obs: dict[str, Any] | None = None
+    if len(combined) < int(top_k):
+        used_normal = True
+        normal_candidates, normal_obs = _merge_kb_candidates_rrf(
+            kb_ids=normal_kb_ids,
+            per_kb_candidates=per_kb_candidates,
+            kb_weights=kb_weights,
+            kb_orders=kb_orders,
+            rrf_k=rrf_k,
+        )
+        for c in normal_candidates:
+            cid = str(c.get("id") or "")
+            if not cid or cid in seen_ids:
+                continue
+            seen_ids.add(cid)
+            combined.append(c)
+            if len(combined) >= int(top_k):
+                break
+
+    obs = {
+        "mode": "priority",
+        "priority_enabled": True,
+        "rrf_k": int(rrf_k),
+        "top_k": int(top_k),
+        "groups": {"high": list(high_kb_ids), "normal": list(normal_kb_ids)},
+        "high": high_obs,
+        "normal": normal_obs,
+        "used_normal": bool(used_normal),
+        "candidate_count": int(len(combined)),
+    }
+    return combined, obs
+
+
 def _parse_vector_source_order() -> list[str] | None:
     raw = str(getattr(settings, "vector_source_order", "") or "").strip()
     if not raw:
@@ -1438,6 +1613,7 @@ def query_project(
     rerank: dict[str, Any] | None = None,
     kb_weights: dict[str, float] | None = None,
     kb_orders: dict[str, int] | None = None,
+    kb_priority_groups: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     raw_kb_ids = kb_ids if kb_ids is not None else ([kb_id] if kb_id is not None else [])
     selected_kb_ids: list[str] = []
@@ -1451,11 +1627,25 @@ def query_project(
     if not selected_kb_ids:
         selected_kb_ids = [_normalize_kb_id(None)]
 
-    if _prefer_pgvector() and len(selected_kb_ids) > 1:
-        selected_kb_ids = [selected_kb_ids[0]]
+    weights_by_kb_full = {kb: float((kb_weights or {}).get(kb, 1.0)) for kb in selected_kb_ids}
+    orders_by_kb_full = {kb: int((kb_orders or {}).get(kb, 999)) for kb in selected_kb_ids}
+    priority_groups_by_kb_full = {kb: _normalize_kb_priority_group((kb_priority_groups or {}).get(kb)) for kb in selected_kb_ids}
 
-    weights_by_kb = {kb: float((kb_weights or {}).get(kb, 1.0)) for kb in selected_kb_ids}
-    orders_by_kb = {kb: int((kb_orders or {}).get(kb, 999)) for kb in selected_kb_ids}
+    if _prefer_pgvector() and len(selected_kb_ids) > 1:
+        selected_kb_ids = [
+            sorted(
+                selected_kb_ids,
+                key=lambda kb: (
+                    0 if priority_groups_by_kb_full.get(kb) == "high" else 1,
+                    int(orders_by_kb_full.get(kb, 999)),
+                    str(kb),
+                ),
+            )[0]
+        ]
+
+    weights_by_kb = {kb: float(weights_by_kb_full.get(kb, 1.0)) for kb in selected_kb_ids}
+    orders_by_kb = {kb: int(orders_by_kb_full.get(kb, 999)) for kb in selected_kb_ids}
+    priority_groups_by_kb = {kb: str(priority_groups_by_kb_full.get(kb, "normal") or "normal") for kb in selected_kb_ids}
 
     sources = sources or list(_ALL_SOURCES)
     enabled, disabled_reason = _vector_enabled_reason(embedding=embedding)
@@ -1488,7 +1678,14 @@ def query_project(
             "counts": _build_vector_query_counts(candidates_total=0, returned_candidates=[], final_selected=0, dropped=[]),
             "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
             "rerank": rerank_obs,
-            "kbs": {"selected": selected_kb_ids, "weights": weights_by_kb, "orders": orders_by_kb, "per_kb": {}},
+            "kbs": {
+                "selected": selected_kb_ids,
+                "weights": weights_by_kb,
+                "orders": orders_by_kb,
+                "priority_groups": priority_groups_by_kb,
+                "merge": {"mode": "none", "reason": "vector_disabled"},
+                "per_kb": {},
+            },
         }
 
     start = time.perf_counter()
@@ -1526,7 +1723,14 @@ def query_project(
             "counts": _build_vector_query_counts(candidates_total=0, returned_candidates=[], final_selected=0, dropped=[]),
             "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": ""},
             "rerank": rerank_obs,
-            "kbs": {"selected": selected_kb_ids, "weights": weights_by_kb, "orders": orders_by_kb, "per_kb": {}},
+            "kbs": {
+                "selected": selected_kb_ids,
+                "weights": weights_by_kb,
+                "orders": orders_by_kb,
+                "priority_groups": priority_groups_by_kb,
+                "merge": {"mode": "none", "reason": str(disabled)},
+                "per_kb": {},
+            },
         }
 
     qvec = (embed_out.get("vectors") or [[]])[0]
@@ -1687,6 +1891,7 @@ def query_project(
                 "overfilter": None,
                 "weight": float(weights_by_kb.get(kid, 1.0)),
                 "order": int(orders_by_kb.get(kid, 999)),
+                "priority_group": str(priority_groups_by_kb.get(kid, "normal") or "normal"),
             }
             continue
 
@@ -1731,6 +1936,7 @@ def query_project(
             "overfilter": None,
             "weight": float(weights_by_kb.get(kid, 1.0)),
             "order": int(orders_by_kb.get(kid, 999)),
+            "priority_group": str(priority_groups_by_kb.get(kid, "normal") or "normal"),
         }
 
     if not per_kb_candidates:
@@ -1761,43 +1967,31 @@ def query_project(
                 "timing_ms": 0,
                 "errors": [],
             },
-            "kbs": {"selected": selected_kb_ids, "weights": weights_by_kb, "orders": orders_by_kb, "per_kb": per_kb},
+            "kbs": {
+                "selected": selected_kb_ids,
+                "weights": weights_by_kb,
+                "orders": orders_by_kb,
+                "priority_groups": priority_groups_by_kb,
+                "merge": {"mode": "none", "reason": "no_collections"},
+                "per_kb": per_kb,
+            },
         }
         if pgvector_error:
             out["fallback"] = {"from": "pgvector", "to": "chroma", "error": pgvector_error}
         return out
 
-    candidates: list[dict[str, Any]] = []
-    if len(selected_kb_ids) <= 1:
-        only = selected_kb_ids[0]
-        candidates = list(per_kb_candidates.get(only) or [])
-    else:
-        rrf_k = int(settings.vector_hybrid_rrf_k or 60)
-        scored: dict[str, dict[str, Any]] = {}
-        for kid in selected_kb_ids:
-            cand_list = per_kb_candidates.get(kid) or []
-            weight = float(weights_by_kb.get(kid, 1.0))
-            kb_order = int(orders_by_kb.get(kid, 999))
-            for rank, c in enumerate(cand_list, start=1):
-                cid = str(c.get("id") or "")
-                if not cid:
-                    continue
-                contrib = float(weight) * _rrf_contrib(rank, k=rrf_k)
-                dist = float(c.get("distance") or 0.0)
-                entry = scored.get(cid)
-                if entry is None:
-                    scored[cid] = {"candidate": c, "score": contrib, "distance": dist, "kb_order": kb_order, "id": cid}
-                else:
-                    entry["score"] = float(entry.get("score") or 0.0) + contrib
-                    if dist < float(entry.get("distance") or dist):
-                        entry["candidate"] = c
-                        entry["distance"] = dist
-                    entry["kb_order"] = min(int(entry.get("kb_order") or kb_order), kb_order)
-        merged = list(scored.values())
-        merged.sort(key=lambda x: (-float(x.get("score") or 0.0), int(x.get("kb_order") or 999), float(x.get("distance") or 0.0), str(x.get("id") or "")))
-        candidates = [dict(x.get("candidate") or {}) for x in merged]
-        for c in candidates:
-            c.pop("_rrf_score", None)
+    rrf_k = int(settings.vector_hybrid_rrf_k or 60)
+    priority_enabled = bool(getattr(settings, "vector_priority_retrieval_enabled", False))
+    candidates, merge_obs = _merge_kb_candidates(
+        kb_ids=selected_kb_ids,
+        per_kb_candidates=per_kb_candidates,
+        kb_weights=weights_by_kb,
+        kb_orders=orders_by_kb,
+        kb_priority_groups=priority_groups_by_kb,
+        top_k=top_k,
+        priority_enabled=priority_enabled,
+        rrf_k=rrf_k,
+    )
 
     trimmed_candidates = candidates[:top_k]
     if not rerank_enabled:
@@ -1910,7 +2104,14 @@ def query_project(
         "super_sort": super_sort_obs,
         "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},
         "backend": "chroma",
-        "kbs": {"selected": selected_kb_ids, "weights": weights_by_kb, "orders": orders_by_kb, "per_kb": per_kb},
+        "kbs": {
+            "selected": selected_kb_ids,
+            "weights": weights_by_kb,
+            "orders": orders_by_kb,
+            "priority_groups": priority_groups_by_kb,
+            "merge": merge_obs,
+            "per_kb": per_kb,
+        },
     }
     if pgvector_error:
         out["fallback"] = {"from": "pgvector", "to": "chroma", "error": pgvector_error}

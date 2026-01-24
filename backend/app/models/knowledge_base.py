@@ -21,6 +21,7 @@ class KnowledgeBase(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    priority_group: Mapped[str] = mapped_column(String(16), nullable=False, default="normal")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

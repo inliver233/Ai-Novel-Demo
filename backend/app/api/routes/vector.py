@@ -74,6 +74,7 @@ def _kb_public(row: KnowledgeBase) -> dict[str, object]:
         "enabled": bool(row.enabled),
         "weight": float(row.weight),
         "order": int(row.order_index),
+        "priority_group": str(getattr(row, "priority_group", "normal") or "normal"),
         "created_at": created_at.isoformat() if created_at else None,
         "updated_at": updated_at.isoformat() if updated_at else None,
     }
@@ -102,12 +103,14 @@ class VectorKbCreateRequest(BaseModel):
     kb_id: str | None = Field(default=None, max_length=64)
     enabled: bool = Field(default=True)
     weight: float = Field(default=1.0)
+    priority_group: str | None = Field(default=None, max_length=16)
 
 
 class VectorKbUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     enabled: bool | None = Field(default=None)
     weight: float | None = Field(default=None)
+    priority_group: str | None = Field(default=None, max_length=16)
 
 
 class VectorKbReorderRequest(BaseModel):
@@ -299,6 +302,7 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
     selected_kb_ids = [r.kb_id for r in selected_kbs]
     kb_weights = {r.kb_id: float(r.weight) for r in selected_kbs}
     kb_orders = {r.kb_id: int(r.order_index) for r in selected_kbs}
+    kb_priority_groups = {r.kb_id: str(getattr(r, "priority_group", "normal") or "normal") for r in selected_kbs}
 
     normalized, preprocess_obs = normalize_query_text(query_text=body.query_text, config=qp_cfg)
     result = query_project(
@@ -310,6 +314,7 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
         rerank=rerank,
         kb_weights=kb_weights,
         kb_orders=kb_orders,
+        kb_priority_groups=kb_priority_groups,
     )
     return ok_payload(
         request_id=request_id,
@@ -349,6 +354,7 @@ def create_vector_knowledge_base(request: Request, user_id: UserIdDep, project_i
             kb_id=body.kb_id,
             enabled=body.enabled,
             weight=body.weight,
+            priority_group=body.priority_group,
         )
         return ok_payload(request_id=request_id, data={"kb": _kb_public(row)})
     finally:
@@ -372,6 +378,7 @@ def update_vector_knowledge_base(request: Request, user_id: UserIdDep, project_i
             name=body.name,
             enabled=body.enabled,
             weight=body.weight,
+            priority_group=body.priority_group,
         )
         return ok_payload(request_id=request_id, data={"kb": _kb_public(row)})
     finally:

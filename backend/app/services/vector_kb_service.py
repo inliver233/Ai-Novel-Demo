@@ -14,6 +14,7 @@ from app.models.knowledge_base import KnowledgeBase
 
 _DEFAULT_KB_ID = "default"
 _KB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_KB_PRIORITY_GROUPS = {"normal", "high"}
 
 
 def ensure_default_kb(db: Session, *, project_id: str) -> KnowledgeBase:
@@ -38,6 +39,7 @@ def ensure_default_kb(db: Session, *, project_id: str) -> KnowledgeBase:
         enabled=True,
         weight=1.0,
         order_index=0,
+        priority_group="normal",
     )
     db.add(row)
     db.commit()
@@ -82,6 +84,7 @@ def create_kb(
     kb_id: str | None = None,
     enabled: bool = True,
     weight: float = 1.0,
+    priority_group: str | None = None,
 ) -> KnowledgeBase:
     ensure_default_kb(db, project_id=project_id)
 
@@ -120,6 +123,9 @@ def create_kb(
 
     max_order = db.execute(select(func.max(KnowledgeBase.order_index)).where(KnowledgeBase.project_id == project_id)).scalar()
     next_order = int(max_order or 0) + 1
+    priority = str(priority_group or "").strip().lower() or "normal"
+    if priority not in _KB_PRIORITY_GROUPS:
+        raise AppError.validation("priority_group 仅允许 normal|high")
 
     row = KnowledgeBase(
         id=new_id(),
@@ -129,6 +135,7 @@ def create_kb(
         enabled=bool(enabled),
         weight=float(weight),
         order_index=next_order,
+        priority_group=priority,
     )
     db.add(row)
     try:
@@ -148,6 +155,7 @@ def update_kb(
     name: str | None = None,
     enabled: bool | None = None,
     weight: float | None = None,
+    priority_group: str | None = None,
 ) -> KnowledgeBase:
     ensure_default_kb(db, project_id=project_id)
     row = get_kb(db, project_id=project_id, kb_id=kb_id)
@@ -161,6 +169,11 @@ def update_kb(
         row.enabled = bool(enabled)
     if weight is not None:
         row.weight = float(weight)
+    if priority_group is not None:
+        priority = str(priority_group or "").strip().lower() or "normal"
+        if priority not in _KB_PRIORITY_GROUPS:
+            raise AppError.validation("priority_group 仅允许 normal|high")
+        row.priority_group = priority
 
     db.commit()
     db.refresh(row)

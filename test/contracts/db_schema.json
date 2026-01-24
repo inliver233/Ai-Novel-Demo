@@ -1352,6 +1352,13 @@
         },
         {
           "dflt_value": null,
+          "name": "priority_group",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(16)"
+        },
+        {
+          "dflt_value": null,
           "name": "project_id",
           "notnull": 1,
           "pk": 0,

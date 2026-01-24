@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     vector_embedding_sentence_transformers_device: str | None = None
     vector_backend: VectorBackend = "auto"
     vector_hybrid_enabled: bool = True
+    vector_priority_retrieval_enabled: bool = False
     vector_rerank_enabled: bool = False
     vector_rerank_external_base_url: str | None = None
     vector_rerank_external_model: str | None = None
