@@ -25,6 +25,8 @@ type Props = {
   onGenerateReplace: () => void;
   onCancelGenerate?: () => void;
   onOpenPromptInspector: () => void;
+  postEditCompareAvailable?: boolean;
+  onOpenPostEditCompare?: () => void;
 };
 
 type WritingStyle = {
@@ -636,6 +638,16 @@ export function AiGenerateDrawer(props: Props) {
         >
           预检/审查{hasPromptOverride ? "（覆盖中）" : ""}
         </button>
+        {props.postEditCompareAvailable ? (
+          <button
+            className="btn btn-secondary"
+            disabled={props.generating || !props.onOpenPostEditCompare}
+            onClick={() => props.onOpenPostEditCompare?.()}
+            type="button"
+          >
+            润色对比/回退
+          </button>
+        ) : null}
         {hasPromptOverride ? (
           <button
             className="btn btn-secondary"

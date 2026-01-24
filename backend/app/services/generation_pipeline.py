@@ -15,6 +15,7 @@ from app.db.session import SessionLocal
 @dataclass(frozen=True, slots=True)
 class PostEditStepResult:
     applied: bool
+    run_id: str
     edited_content_md: str
     warnings: list[str]
     parse_error: dict[str, object] | None
@@ -102,6 +103,7 @@ def run_post_edit_step(
 
     return PostEditStepResult(
         applied=applied,
+        run_id=post_result.run_id,
         edited_content_md=edited,
         warnings=warnings,
         parse_error=parse_error,

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import logging
 import time
+from typing import Literal
 
 from fastapi import APIRouter, Header, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -27,6 +30,7 @@ from app.llm.messages import ChatMessage, coalesce_system, flatten_messages
 from app.llm.redaction import redact_text
 from app.models.chapter import Chapter
 from app.models.character import Character
+from app.models.generation_run import GenerationRun
 from app.models.llm_preset import LLMPreset
 from app.models.outline import Outline
 from app.models.project import Project
@@ -66,6 +70,12 @@ logger = logging.getLogger("ainovel")
 PREVIOUS_CHAPTER_ENDING_CHARS = 1000
 CURRENT_DRAFT_TAIL_CHARS = 1200
 _MAX_MACRO_SEED_CHARS = 256
+
+
+class ChapterPostEditAdoption(BaseModel):
+    generation_run_id: str = Field(max_length=36)
+    post_edit_run_id: str | None = Field(default=None, max_length=36)
+    choice: Literal["raw", "post_edit"]
 
 
 def _resolve_macro_seed(*, request_id: str, body: object) -> str:
@@ -432,6 +442,43 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
                 **exception_log_fields(exc),
             )
     return ok_payload(request_id=request_id, data={"chapter": ChapterOut.model_validate(row).model_dump()})
+
+
+@router.post("/chapters/{chapter_id}/post_edit_adoption")
+def record_post_edit_adoption(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    chapter_id: str,
+    body: ChapterPostEditAdoption,
+) -> dict:
+    request_id = request.state.request_id
+    chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
+    run = db.get(GenerationRun, str(body.generation_run_id))
+    if not run:
+        raise AppError.not_found("生成记录不存在")
+    if str(run.project_id) != str(chapter.project_id) or str(run.chapter_id or "") != str(chapter_id):
+        raise AppError.not_found("生成记录不存在")
+
+    params: dict[str, object]
+    if run.params_json:
+        try:
+            parsed = json.loads(run.params_json)
+            params = parsed if isinstance(parsed, dict) else {"_raw": run.params_json}
+        except Exception:
+            params = {"_raw": run.params_json}
+    else:
+        params = {}
+
+    params["post_edit_adoption"] = {
+        "choice": body.choice,
+        "post_edit_run_id": body.post_edit_run_id,
+        "recorded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    run.params_json = json.dumps(params, ensure_ascii=False)
+    db.commit()
+
+    return ok_payload(request_id=request_id, data={"ok": True})
 
 
 @router.delete("/chapters/{chapter_id}")
@@ -1049,6 +1096,7 @@ def generate_chapter(
         post_edit_parse_error: dict[str, object] | None = None
 
         if raw_content:
+            data["post_edit_raw_content_md"] = raw_content
             step = run_post_edit_step(
                 logger=logger,
                 request_id=request_id,
@@ -1065,6 +1113,8 @@ def generate_chapter(
             )
             post_edit_warnings = step.warnings
             post_edit_parse_error = step.parse_error
+            data["post_edit_run_id"] = step.run_id
+            data["post_edit_edited_content_md"] = step.edited_content_md
             if step.applied:
                 data["content_md"] = step.edited_content_md
                 post_edit_applied = True
@@ -1491,6 +1541,7 @@ def generate_chapter_stream(
                 post_edit_parse_error: dict[str, object] | None = None
 
                 if raw_content:
+                    data["post_edit_raw_content_md"] = raw_content
                     yield sse_progress(message="润色中...", progress=95)
                     step = run_post_edit_step(
                         logger=logger,
@@ -1508,6 +1559,8 @@ def generate_chapter_stream(
                     )
                     post_edit_warnings = step.warnings
                     post_edit_parse_error = step.parse_error
+                    data["post_edit_run_id"] = step.run_id
+                    data["post_edit_edited_content_md"] = step.edited_content_md
                     if step.applied:
                         data["content_md"] = step.edited_content_md
                         post_edit_applied = True

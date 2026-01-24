@@ -27,6 +27,20 @@ type GenerateResponse = {
   summary: string;
   raw_output: string;
   dropped_params?: string[];
+  generation_run_id?: string;
+  post_edit_applied?: boolean;
+  post_edit_raw_content_md?: string;
+  post_edit_edited_content_md?: string;
+  post_edit_run_id?: string;
+};
+
+export type PostEditCompare = {
+  requestId: string | null;
+  generationRunId: string | null;
+  postEditRunId: string | null;
+  rawContentMd: string;
+  editedContentMd: string;
+  appliedChoice: "raw" | "post_edit";
 };
 
 const DEFAULT_GEN_FORM: GenerateForm = {
@@ -101,6 +115,7 @@ export function useChapterGeneration(args: {
   const [genStreamProgress, setGenStreamProgress] = useState<StreamProgress | null>(null);
   const genStreamClientRef = useRef<SSEPostClient | null>(null);
   const genStreamHasChunkRef = useRef(false);
+  const [postEditCompare, setPostEditCompare] = useState<PostEditCompare | null>(null);
 
   const [genForm, setGenForm] = useState<GenerateForm>(() => ({
     ...DEFAULT_GEN_FORM,
@@ -115,12 +130,49 @@ export function useChapterGeneration(args: {
   }, [projectId]);
 
   useEffect(() => {
+    setPostEditCompare(null);
+  }, [activeChapter?.id]);
+
+  useEffect(() => {
     if (!projectId) return;
     const key = writingMemoryInjectionEnabledStorageKey(getCurrentUserId(), projectId);
     localStorage.setItem(key, genForm.memory_injection_enabled ? "1" : "0");
   }, [genForm.memory_injection_enabled, projectId]);
 
   const abortGenerate = useCallback(() => genStreamClientRef.current?.abort(), []);
+
+  const applyPostEditVariant = useCallback(
+    async (choice: PostEditCompare["appliedChoice"]) => {
+      if (!activeChapter) return;
+      if (!postEditCompare) return;
+      const nextContent = choice === "raw" ? postEditCompare.rawContentMd : postEditCompare.editedContentMd;
+      setForm((prev) => {
+        if (!prev) return prev;
+        return { ...prev, content_md: nextContent, status: "drafting" };
+      });
+      setPostEditCompare((prev) => (prev ? { ...prev, appliedChoice: choice } : prev));
+      toast.toastSuccess(
+        choice === "raw" ? "已采用原稿（别忘了保存）" : "已采用后处理稿（别忘了保存）",
+        postEditCompare.requestId ?? undefined,
+      );
+
+      if (!postEditCompare.generationRunId) return;
+      try {
+        await apiJson(`/api/chapters/${activeChapter.id}/post_edit_adoption`, {
+          method: "POST",
+          body: JSON.stringify({
+            generation_run_id: postEditCompare.generationRunId,
+            post_edit_run_id: postEditCompare.postEditRunId,
+            choice,
+          }),
+        });
+      } catch (e) {
+        const err = e as ApiError;
+        toast.toastWarning(`记录采用策略失败：${err.message} (${err.code})`, err.requestId);
+      }
+    },
+    [activeChapter, postEditCompare, setForm, toast],
+  );
 
   const generate = useCallback(
     async (
@@ -135,6 +187,7 @@ export function useChapterGeneration(args: {
       const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
       const streamProviderSupported = preset.provider.startsWith("openai");
 
+      setPostEditCompare(null);
       if (dirty) {
         const choice = await confirm.choose({
           title: "章节有未保存修改，如何生成？",
@@ -259,6 +312,13 @@ export function useChapterGeneration(args: {
               const obj = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
               const content = typeof obj?.content_md === "string" ? obj.content_md : "";
               const summary = typeof obj?.summary === "string" ? obj.summary : "";
+              const genRunId = typeof obj?.generation_run_id === "string" ? obj.generation_run_id : null;
+              const postEditApplied = Boolean(obj?.post_edit_applied);
+              const postEditRaw =
+                typeof obj?.post_edit_raw_content_md === "string" ? obj.post_edit_raw_content_md : null;
+              const postEditEdited =
+                typeof obj?.post_edit_edited_content_md === "string" ? obj.post_edit_edited_content_md : null;
+              const postEditRunId = typeof obj?.post_edit_run_id === "string" ? obj.post_edit_run_id : null;
               const dropped = Array.isArray(obj?.dropped_params)
                 ? obj.dropped_params.filter((p): p is string => typeof p === "string" && p.trim().length > 0)
                 : [];
@@ -285,6 +345,28 @@ export function useChapterGeneration(args: {
                   status: "drafting",
                 };
               });
+
+              const postEditRawTrimmed = postEditRaw?.trim() ?? "";
+              const postEditEditedTrimmed = postEditEdited?.trim() ?? "";
+              if (
+                genForm.post_edit &&
+                postEditRawTrimmed &&
+                postEditEditedTrimmed &&
+                postEditRawTrimmed !== postEditEditedTrimmed
+              ) {
+                const rawFull =
+                  mode === "append" ? appendMarkdown(baseContent, postEditRawTrimmed) : postEditRawTrimmed;
+                const editedFull =
+                  mode === "append" ? appendMarkdown(baseContent, postEditEditedTrimmed) : postEditEditedTrimmed;
+                setPostEditCompare({
+                  requestId: requestId ?? null,
+                  generationRunId: genRunId,
+                  postEditRunId,
+                  rawContentMd: rawFull,
+                  editedContentMd: editedFull,
+                  appliedChoice: postEditApplied ? "post_edit" : "raw",
+                });
+              }
             },
           });
           genStreamClientRef.current = client;
@@ -323,6 +405,9 @@ export function useChapterGeneration(args: {
                   body: JSON.stringify(payload),
                 });
 
+                const postEditRawTrimmed = (res.data.post_edit_raw_content_md ?? "").trim();
+                const postEditEditedTrimmed = (res.data.post_edit_edited_content_md ?? "").trim();
+
                 setForm((prev) => {
                   if (!prev) return prev;
                   const nextContent =
@@ -336,6 +421,26 @@ export function useChapterGeneration(args: {
                     status: "drafting",
                   };
                 });
+
+                if (
+                  genForm.post_edit &&
+                  postEditRawTrimmed &&
+                  postEditEditedTrimmed &&
+                  postEditRawTrimmed !== postEditEditedTrimmed
+                ) {
+                  const rawFull =
+                    mode === "append" ? appendMarkdown(baseContent, postEditRawTrimmed) : postEditRawTrimmed;
+                  const editedFull =
+                    mode === "append" ? appendMarkdown(baseContent, postEditEditedTrimmed) : postEditEditedTrimmed;
+                  setPostEditCompare({
+                    requestId: res.request_id ?? null,
+                    generationRunId: res.data.generation_run_id ?? null,
+                    postEditRunId: res.data.post_edit_run_id ?? null,
+                    rawContentMd: rawFull,
+                    editedContentMd: editedFull,
+                    appliedChoice: res.data.post_edit_applied ? "post_edit" : "raw",
+                  });
+                }
 
                 toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
                 const dp = res.data.dropped_params ?? [];
@@ -380,6 +485,9 @@ export function useChapterGeneration(args: {
             body: JSON.stringify(payload),
           });
 
+          const postEditRawTrimmed = (res.data.post_edit_raw_content_md ?? "").trim();
+          const postEditEditedTrimmed = (res.data.post_edit_edited_content_md ?? "").trim();
+
           setForm((prev) => {
             if (!prev) return prev;
             const nextContent =
@@ -393,6 +501,25 @@ export function useChapterGeneration(args: {
               status: "drafting",
             };
           });
+
+          if (
+            genForm.post_edit &&
+            postEditRawTrimmed &&
+            postEditEditedTrimmed &&
+            postEditRawTrimmed !== postEditEditedTrimmed
+          ) {
+            const rawFull = mode === "append" ? appendMarkdown(baseContent, postEditRawTrimmed) : postEditRawTrimmed;
+            const editedFull =
+              mode === "append" ? appendMarkdown(baseContent, postEditEditedTrimmed) : postEditEditedTrimmed;
+            setPostEditCompare({
+              requestId: res.request_id ?? null,
+              generationRunId: res.data.generation_run_id ?? null,
+              postEditRunId: res.data.post_edit_run_id ?? null,
+              rawContentMd: rawFull,
+              editedContentMd: editedFull,
+              appliedChoice: res.data.post_edit_applied ? "post_edit" : "raw",
+            });
+          }
 
           toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
           const dp = res.data.dropped_params ?? [];
@@ -433,6 +560,8 @@ export function useChapterGeneration(args: {
     genStreamClientRef,
     genForm,
     setGenForm,
+    postEditCompare,
+    applyPostEditVariant,
     generate,
     abortGenerate,
   };

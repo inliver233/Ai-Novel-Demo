@@ -14,6 +14,7 @@ import { ContextPreviewDrawer } from "../components/writing/ContextPreviewDrawer
 import { ForeshadowDrawer } from "../components/writing/ForeshadowDrawer";
 import { GenerationHistoryDrawer } from "../components/writing/GenerationHistoryDrawer";
 import { MemoryUpdateDrawer } from "../components/writing/MemoryUpdateDrawer";
+import { PostEditCompareDrawer } from "../components/writing/PostEditCompareDrawer";
 import { PromptInspectorDrawer } from "../components/writing/PromptInspectorDrawer";
 import { WritingToolbar } from "../components/writing/WritingToolbar";
 import { useConfirm } from "../components/ui/confirm";
@@ -100,6 +101,7 @@ export function WritingPage() {
 
   const [aiOpen, setAiOpen] = useState(false);
   const [promptInspectorOpen, setPromptInspectorOpen] = useState(false);
+  const [postEditCompareOpen, setPostEditCompareOpen] = useState(false);
   const [contextPreviewOpen, setContextPreviewOpen] = useState(false);
   const [memoryUpdateOpen, setMemoryUpdateOpen] = useState(false);
   const [foreshadowOpen, setForeshadowOpen] = useState(false);
@@ -162,7 +164,17 @@ export function WritingPage() {
     toast,
     confirm,
   });
-  const { generating, genRequestId, genStreamProgress, genForm, setGenForm, generate, abortGenerate } = generation;
+  const {
+    generating,
+    genRequestId,
+    genStreamProgress,
+    genForm,
+    setGenForm,
+    postEditCompare,
+    applyPostEditVariant,
+    generate,
+    abortGenerate,
+  } = generation;
 
   const batch = useBatchGeneration({
     projectId,
@@ -600,6 +612,19 @@ export function WritingPage() {
         onGenerateReplace={() => void generate("replace")}
         onCancelGenerate={abortGenerate}
         onOpenPromptInspector={() => setPromptInspectorOpen(true)}
+        postEditCompareAvailable={Boolean(postEditCompare)}
+        onOpenPostEditCompare={() => setPostEditCompareOpen(true)}
+      />
+
+      <PostEditCompareDrawer
+        open={postEditCompareOpen && Boolean(postEditCompare)}
+        onClose={() => setPostEditCompareOpen(false)}
+        rawContentMd={postEditCompare?.rawContentMd ?? ""}
+        editedContentMd={postEditCompare?.editedContentMd ?? ""}
+        requestId={postEditCompare?.requestId ?? null}
+        appliedChoice={postEditCompare?.appliedChoice ?? "post_edit"}
+        onApplyRaw={() => void applyPostEditVariant("raw")}
+        onApplyPostEdit={() => void applyPostEditVariant("post_edit")}
       />
 
       <PromptInspectorDrawer
