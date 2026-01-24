@@ -59,6 +59,11 @@ const StructuredMemoryPage = lazy(async () => {
   return { default: mod.StructuredMemoryPage };
 });
 
+const ForeshadowsPage = lazy(async () => {
+  const mod = await import("./pages/ForeshadowsPage");
+  return { default: mod.ForeshadowsPage };
+});
+
 const ChapterAnalysisPage = lazy(async () => {
   const mod = await import("./pages/ChapterAnalysisPage");
   return { default: mod.ChapterAnalysisPage };
@@ -175,6 +180,10 @@ const router = createBrowserRouter([
               {
                 path: "structured-memory",
                 element: <StructuredMemoryPage />,
+              },
+              {
+                path: "foreshadows",
+                element: <ForeshadowsPage />,
               },
               {
                 path: "chapter-analysis",

@@ -113,17 +113,39 @@ def list_story_memory_foreshadow_open_loops(
     user_id: UserIdDep,
     project_id: str,
     limit: int = Query(default=50, ge=1, le=200),
+    q: str | None = Query(default=None, max_length=200),
+    order: str = Query(default="timeline_desc", max_length=32),
 ) -> dict:
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
 
+    q_norm = str(q or "").strip()
+    order_norm = str(order or "").strip().lower() or "timeline_desc"
+    allowed_orders = {"timeline_desc", "importance_desc", "updated_desc"}
+    if order_norm not in allowed_orders:
+        raise AppError.validation(message="不支持的排序字段", details={"order": order_norm, "allowed": sorted(allowed_orders)})
+
+    filters = [
+        StoryMemory.project_id == project_id,
+        StoryMemory.is_foreshadow == 1,  # noqa: E712
+        StoryMemory.foreshadow_resolved_at_chapter_id.is_(None),
+    ]
+    if q_norm:
+        pattern = f"%{q_norm}%"
+        filters.append(or_(StoryMemory.title.ilike(pattern), StoryMemory.content.ilike(pattern)))
+
+    if order_norm == "importance_desc":
+        order_by = (StoryMemory.importance_score.desc(), StoryMemory.story_timeline.desc(), StoryMemory.updated_at.desc())
+    elif order_norm == "updated_desc":
+        order_by = (StoryMemory.updated_at.desc(), StoryMemory.story_timeline.desc(), StoryMemory.importance_score.desc())
+    else:
+        order_by = (StoryMemory.story_timeline.desc(), StoryMemory.importance_score.desc(), StoryMemory.updated_at.desc())
+
     rows = (
         db.execute(
             select(StoryMemory)
-            .where(StoryMemory.project_id == project_id)
-            .where(StoryMemory.is_foreshadow == 1)  # noqa: E712
-            .where(StoryMemory.foreshadow_resolved_at_chapter_id.is_(None))
-            .order_by(StoryMemory.story_timeline.desc(), StoryMemory.importance_score.desc(), StoryMemory.updated_at.desc())
+            .where(*filters)
+            .order_by(*order_by)
             .limit(int(limit) + 1)
         )
         .scalars()
