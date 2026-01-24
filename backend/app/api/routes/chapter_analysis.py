@@ -14,13 +14,16 @@ from app.models.llm_preset import LLMPreset
 from app.models.project import Project
 from app.models.story_memory import StoryMemory
 from app.schemas.chapter_analysis import ChapterAnalyzeRequest, ChapterAnalysisApplyRequest, ChapterRewriteRequest
+from app.schemas.memory_update import MemoryUpdateV1Request
 from app.services.annotations_service import build_annotations_from_story_memories
 from app.services.chapter_context_service import build_chapter_analyze_render_values, build_chapter_rewrite_render_values
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.memory_update_service import propose_chapter_memory_change_set
 from app.services.output_contracts import contract_for_task
 from app.services.plot_analysis_service import apply_chapter_analysis as apply_plot_analysis
 from app.services.prompt_presets import (
+    _ensure_default_preset_from_resource,
     ensure_default_chapter_analyze_preset,
     ensure_default_chapter_rewrite_preset,
     render_preset_for_task,
@@ -47,6 +50,17 @@ def analyze_chapter(
     prompt_render_log_json: str | None = None
     llm_call = None
     project_id = ""
+
+    auto_memupd = bool(getattr(body, "auto_propose_memory_update", False))
+    memupd_focus = str(getattr(body, "memory_update_focus", "") or "").strip()
+    memupd_idempotency_key = str(getattr(body, "memory_update_idempotency_key", "") or "").strip() or None
+
+    memupd_skip_reason: str | None = None
+    memupd_prompt_system = ""
+    memupd_prompt_user = ""
+    memupd_prompt_render_log_json: str | None = None
+    memupd_prompt_messages = None
+    memupd_llm_call = None
 
     db = SessionLocal()
     try:
@@ -76,6 +90,48 @@ def analyze_chapter(
         )
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
         llm_call = prepare_llm_call(preset)
+
+        if auto_memupd:
+            # Avoid draft pollution: only run auto-propose against persisted + done chapters.
+            if (
+                body.draft_title is not None
+                or body.draft_plan is not None
+                or body.draft_summary is not None
+                or body.draft_content_md is not None
+            ):
+                memupd_skip_reason = "draft_override"
+            chapter_status = str(getattr(chapter, "status", "") or "").strip().lower()
+            if chapter_status != "done":
+                memupd_skip_reason = memupd_skip_reason or "chapter_not_done"
+
+            if memupd_skip_reason is None:
+                _ensure_default_preset_from_resource(db, project_id=project_id, resource_key="memory_update_v1", activate=True)
+                memupd_values = {
+                    "chapter_id": str(chapter.id),
+                    "chapter_number": int(chapter.number),
+                    "chapter_title": str(chapter.title or ""),
+                    "chapter_plan": str(chapter.plan or ""),
+                    "chapter_content_md": str(chapter.content_md or ""),
+                    "focus": memupd_focus,
+                }
+                (
+                    memupd_prompt_system,
+                    memupd_prompt_user,
+                    memupd_prompt_messages,
+                    _,
+                    _,
+                    _,
+                    memupd_render_log,
+                ) = render_preset_for_task(
+                    db,
+                    project_id=project_id,
+                    task="memory_update",
+                    values=memupd_values,
+                    macro_seed=f"{request_id}:memory_update",
+                    provider=preset.provider,
+                )
+                memupd_prompt_render_log_json = json.dumps(memupd_render_log, ensure_ascii=False)
+                memupd_llm_call = prepare_llm_call(preset)
     finally:
         db.close()
 
@@ -113,6 +169,100 @@ def analyze_chapter(
         data["parse_error"] = parse_error
     if llm_result.finish_reason is not None:
         data["finish_reason"] = llm_result.finish_reason
+
+    if auto_memupd:
+        if memupd_skip_reason is not None:
+            data["memory_update_auto_propose"] = {"enabled": True, "ok": False, "skipped": True, "reason": memupd_skip_reason}
+        elif memupd_llm_call is None:
+            data["memory_update_auto_propose"] = {"enabled": True, "ok": False, "skipped": True, "reason": "memupd_prepare_failed"}
+        elif not memupd_prompt_system.strip() and not memupd_prompt_user.strip():
+            data["memory_update_auto_propose"] = {"enabled": True, "ok": False, "skipped": True, "reason": "memupd_prompt_missing"}
+        else:
+            try:
+                memupd_llm_call2 = with_param_overrides(memupd_llm_call, {"temperature": 0.2, "max_tokens": 2048})
+                memupd_llm_result = call_llm_and_record(
+                    logger=logger,
+                    request_id=request_id,
+                    actor_user_id=user_id,
+                    project_id=project_id,
+                    chapter_id=chapter_id,
+                    run_type="memory_update_auto_propose",
+                    api_key=str(resolved_api_key),
+                    prompt_system=memupd_prompt_system,
+                    prompt_user=memupd_prompt_user,
+                    prompt_messages=memupd_prompt_messages,
+                    prompt_render_log_json=memupd_prompt_render_log_json,
+                    llm_call=memupd_llm_call2,
+                )
+
+                contract2 = contract_for_task("memory_update")
+                parsed2 = contract2.parse(memupd_llm_result.text, finish_reason=memupd_llm_result.finish_reason)
+                if parsed2.parse_error is not None:
+                    data["memory_update_auto_propose"] = {
+                        "enabled": True,
+                        "ok": False,
+                        "skipped": True,
+                        "reason": "memupd_parse_error",
+                        "llm_generation_run_id": memupd_llm_result.run_id,
+                        "finish_reason": memupd_llm_result.finish_reason,
+                        "parse_error": parsed2.parse_error,
+                        "warnings": parsed2.warnings,
+                    }
+                else:
+                    idempotency_key = memupd_idempotency_key or f"anlz-memupd-{str(llm_result.run_id or '')[:8]}"
+                    payload = MemoryUpdateV1Request(
+                        schema_version="memory_update_v1",
+                        idempotency_key=idempotency_key,
+                        title=str(parsed2.data.get("title") or "Memory Update (auto)").strip() or "Memory Update (auto)",
+                        summary_md=str(parsed2.data.get("summary_md") or "").strip() or None,
+                        ops=list(parsed2.data.get("ops") or []),
+                    )
+
+                    db2 = SessionLocal()
+                    try:
+                        chapter2 = require_chapter_editor(db2, chapter_id=chapter_id, user_id=user_id)
+                        status2 = str(getattr(chapter2, "status", "") or "").strip().lower()
+                        if status2 != "done":
+                            data["memory_update_auto_propose"] = {
+                                "enabled": True,
+                                "ok": False,
+                                "skipped": True,
+                                "reason": "chapter_not_done",
+                                "llm_generation_run_id": memupd_llm_result.run_id,
+                            }
+                        else:
+                            out = propose_chapter_memory_change_set(
+                                db=db2, request_id=request_id, actor_user_id=user_id, chapter=chapter2, payload=payload
+                            )
+                            change_set = out.get("change_set") if isinstance(out, dict) else None
+                            change_set_id = change_set.get("id") if isinstance(change_set, dict) else None
+                            data["memory_update_auto_propose"] = {
+                                "enabled": True,
+                                "ok": True,
+                                "skipped": False,
+                                "idempotent": bool(out.get("idempotent")) if isinstance(out, dict) else False,
+                                "change_set_id": change_set_id,
+                                "llm_generation_run_id": memupd_llm_result.run_id,
+                            }
+                    finally:
+                        db2.close()
+            except AppError as exc:
+                data["memory_update_auto_propose"] = {
+                    "enabled": True,
+                    "ok": False,
+                    "skipped": True,
+                    "reason": "memupd_error",
+                    "error": {"code": str(exc.code), "message": str(exc.message)},
+                }
+            except Exception as exc:
+                log_event(logger, "warning", event="CHAPTER_ANALYZE_AUTO_MEMUPD_FAILED", chapter_id=chapter_id, error=str(exc))
+                data["memory_update_auto_propose"] = {
+                    "enabled": True,
+                    "ok": False,
+                    "skipped": True,
+                    "reason": "memupd_error",
+                    "error": {"code": "INTERNAL_ERROR", "message": "自动记忆更新生成失败"},
+                }
     return ok_payload(request_id=request_id, data=data)
 
 

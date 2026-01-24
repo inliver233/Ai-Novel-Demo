@@ -18,6 +18,11 @@ class ChapterAnalyzeRequest(BaseModel):
     draft_summary: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
     draft_content_md: str | None = Field(default=None, max_length=MAX_MD_CHARS)
 
+    # Optional: after analysis finishes, auto propose a Memory Update ChangeSet (never auto-apply).
+    auto_propose_memory_update: bool = Field(default=False)
+    memory_update_focus: str | None = Field(default=None, max_length=4000)
+    memory_update_idempotency_key: str | None = Field(default=None, max_length=64)
+
 
 class ChapterRewriteRequest(BaseModel):
     instruction: str = Field(default="", max_length=2000)
