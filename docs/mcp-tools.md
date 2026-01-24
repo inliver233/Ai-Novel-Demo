@@ -40,3 +40,6 @@ Source: `codex mcp list --json` + runtime tool introspection
 ### context7
 - context7:resolve-library-id — Resolve a package/product name to a Context7-compatible library ID.
 - context7:query-docs — Fetch up-to-date documentation/code examples for a library (resolve-library-id first unless you already have an exact ID).
+
+## Troubleshooting
+- chrome-devtools 挂起/超时：见 `docs/mcp-chrome-devtools-troubleshooting.md`
