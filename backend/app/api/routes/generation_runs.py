@@ -10,6 +10,7 @@ from app.api.deps import DbDep, UserIdDep, require_generation_run_viewer, requir
 from app.core.config import settings
 from app.core.errors import ok_payload
 from app.core.secrets import redact_api_keys
+from app.llm.redaction import redact_text
 from app.models.generation_run import GenerationRun
 from app.models.project_settings import ProjectSettings
 from app.schemas.generation_runs import GenerationRunOut
@@ -17,6 +18,12 @@ from app.services.vector_embedding_overrides import vector_embedding_overrides
 from app.services.vector_rag_service import VectorSource, query_project, vector_rag_status
 
 router = APIRouter()
+
+
+def _as_bool(value: str | None, default: bool) -> bool:
+    if value is None:
+        return default
+    return value not in ("0", "false", "False", "FALSE", "")
 
 
 def _safe_json_dict(raw: str | None) -> dict:
@@ -102,8 +109,8 @@ def list_runs(
             provider=r.provider,
             model=r.model,
             request_id=r.request_id,
-            prompt_system=r.prompt_system,
-            prompt_user=r.prompt_user,
+            prompt_system=redact_text(r.prompt_system) if r.prompt_system else None,
+            prompt_user=redact_text(r.prompt_user) if r.prompt_user else None,
             prompt_render_log=render_log,
             params=params,
             output_text=r.output_text,
@@ -145,8 +152,8 @@ def get_run(request: Request, db: DbDep, user_id: UserIdDep, run_id: str) -> dic
         provider=row.provider,
         model=row.model,
         request_id=row.request_id,
-        prompt_system=row.prompt_system,
-        prompt_user=row.prompt_user,
+        prompt_system=redact_text(row.prompt_system) if row.prompt_system else None,
+        prompt_user=redact_text(row.prompt_user) if row.prompt_user else None,
         prompt_render_log=render_log,
         params=params,
         output_text=row.output_text,
@@ -157,11 +164,19 @@ def get_run(request: Request, db: DbDep, user_id: UserIdDep, run_id: str) -> dic
 
 
 @router.get("/generation_runs/{run_id}/debug_bundle")
-def download_debug_bundle(request: Request, db: DbDep, user_id: UserIdDep, run_id: str) -> Response:
+def download_debug_bundle(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    run_id: str,
+    include_prompt_inspector: str | None = Query(default="0"),
+) -> Response:
     request_id = request.state.request_id
     row = require_generation_run_viewer(db, run_id=run_id, user_id=user_id)
 
     params = _safe_json_dict(row.params_json)
+    if not _as_bool(include_prompt_inspector, False):
+        params.pop("prompt_inspector", None)
     render_log = _safe_json_dict_or_none(row.prompt_render_log_json)
     err = _safe_json_dict_or_none(row.error_json)
 
@@ -222,8 +237,8 @@ def download_debug_bundle(request: Request, db: DbDep, user_id: UserIdDep, run_i
             "created_at": row.created_at.isoformat().replace("+00:00", "Z"),
         },
         "prompt": {
-            "system": str(row.prompt_system or ""),
-            "user": str(row.prompt_user or ""),
+            "system": redact_text(str(row.prompt_system or "")),
+            "user": redact_text(str(row.prompt_user or "")),
             "render_log": render_log,
         },
         "params": params,

@@ -24,6 +24,7 @@ from app.db.session import SessionLocal
 from app.db.utils import new_id
 from app.llm.client import call_llm_stream_messages
 from app.llm.messages import ChatMessage, coalesce_system, flatten_messages
+from app.llm.redaction import redact_text
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.llm_preset import LLMPreset
@@ -104,6 +105,68 @@ def _apply_prompt_override(
     if next_user.strip():
         next_messages.append(ChatMessage(role="user", content=next_user))
     return next_system, next_user, next_messages, True
+
+
+def _redact_prompt_override_for_params(body: ChapterGenerateRequest) -> dict[str, object] | None:
+    override = body.prompt_override
+    if override is None:
+        return None
+    data = override.model_dump()
+    if isinstance(data.get("system"), str):
+        data["system"] = redact_text(data["system"])
+    if isinstance(data.get("user"), str):
+        data["user"] = redact_text(data["user"])
+
+    messages = data.get("messages")
+    if isinstance(messages, list):
+        for item in messages:
+            if not isinstance(item, dict):
+                continue
+            if isinstance(item.get("content"), str):
+                item["content"] = redact_text(item["content"])
+    return data
+
+
+def _redact_prompt_preview_for_params(
+    *, prompt_system: str, prompt_user: str, prompt_messages: list[ChatMessage]
+) -> dict[str, object]:
+    return {
+        "system": redact_text(prompt_system or ""),
+        "user": redact_text(prompt_user or ""),
+        "messages": [{"role": m.role, "content": redact_text(m.content or ""), "name": m.name} for m in prompt_messages],
+    }
+
+
+def _build_prompt_inspector_params(
+    *,
+    macro_seed: str,
+    prompt_overridden: bool,
+    body: ChapterGenerateRequest,
+    precheck_prompt_system: str,
+    precheck_prompt_user: str,
+    precheck_prompt_messages: list[ChatMessage],
+    final_prompt_system: str,
+    final_prompt_user: str,
+    final_prompt_messages: list[ChatMessage],
+) -> dict[str, object]:
+    out: dict[str, object] = {
+        "macro_seed": macro_seed,
+        "prompt_overridden": bool(prompt_overridden),
+        "precheck": _redact_prompt_preview_for_params(
+            prompt_system=precheck_prompt_system,
+            prompt_user=precheck_prompt_user,
+            prompt_messages=precheck_prompt_messages,
+        ),
+        "final": _redact_prompt_preview_for_params(
+            prompt_system=final_prompt_system,
+            prompt_user=final_prompt_user,
+            prompt_messages=final_prompt_messages,
+        ),
+    }
+    override = _redact_prompt_override_for_params(body)
+    if override is not None:
+        out["override"] = override
+    return out
 
 
 def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
@@ -856,13 +919,28 @@ def generate_chapter(
                 macro_seed=macro_seed,
                 provider=preset.provider,
             )
-            prompt_system, prompt_user, prompt_messages, _ = _apply_prompt_override(
+            precheck_prompt_system = prompt_system
+            precheck_prompt_user = prompt_user
+            precheck_prompt_messages = prompt_messages
+            prompt_system, prompt_user, prompt_messages, override_applied = _apply_prompt_override(
                 prompt_system=prompt_system,
                 prompt_user=prompt_user,
                 prompt_messages=prompt_messages,
                 body=body,
             )
             prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
+            run_params_extra_json = run_params_extra_json or {}
+            run_params_extra_json["prompt_inspector"] = _build_prompt_inspector_params(
+                macro_seed=macro_seed,
+                prompt_overridden=override_applied,
+                body=body,
+                precheck_prompt_system=precheck_prompt_system,
+                precheck_prompt_user=precheck_prompt_user,
+                precheck_prompt_messages=precheck_prompt_messages,
+                final_prompt_system=prompt_system,
+                final_prompt_user=prompt_user,
+                final_prompt_messages=prompt_messages,
+            )
 
         llm_call = prepare_llm_call(preset)
     finally:
@@ -914,13 +992,28 @@ def generate_chapter(
                 macro_seed=macro_seed,
                 provider=llm_call.provider,
             )
-        prompt_system, prompt_user, prompt_messages, _ = _apply_prompt_override(
+        precheck_prompt_system = prompt_system
+        precheck_prompt_user = prompt_user
+        precheck_prompt_messages = prompt_messages
+        prompt_system, prompt_user, prompt_messages, override_applied = _apply_prompt_override(
             prompt_system=prompt_system,
             prompt_user=prompt_user,
             prompt_messages=prompt_messages,
             body=body,
         )
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
+        run_params_extra_json = run_params_extra_json or {}
+        run_params_extra_json["prompt_inspector"] = _build_prompt_inspector_params(
+            macro_seed=macro_seed,
+            prompt_overridden=override_applied,
+            body=body,
+            precheck_prompt_system=precheck_prompt_system,
+            precheck_prompt_user=precheck_prompt_user,
+            precheck_prompt_messages=precheck_prompt_messages,
+            final_prompt_system=prompt_system,
+            final_prompt_user=prompt_user,
+            final_prompt_messages=prompt_messages,
+        )
 
     if body.target_word_count is not None:
         llm_call = with_param_overrides(
@@ -1168,13 +1261,28 @@ def generate_chapter_stream(
                     macro_seed=macro_seed,
                     provider=preset.provider,
                 )
-                prompt_system, prompt_user, prompt_messages, _ = _apply_prompt_override(
+                precheck_prompt_system = prompt_system
+                precheck_prompt_user = prompt_user
+                precheck_prompt_messages = prompt_messages
+                prompt_system, prompt_user, prompt_messages, override_applied = _apply_prompt_override(
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
                     prompt_messages=prompt_messages,
                     body=body,
                 )
                 prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
+                run_params_extra_json = run_params_extra_json or {}
+                run_params_extra_json["prompt_inspector"] = _build_prompt_inspector_params(
+                    macro_seed=macro_seed,
+                    prompt_overridden=override_applied,
+                    body=body,
+                    precheck_prompt_system=precheck_prompt_system,
+                    precheck_prompt_user=precheck_prompt_user,
+                    precheck_prompt_messages=precheck_prompt_messages,
+                    final_prompt_system=prompt_system,
+                    final_prompt_user=prompt_user,
+                    final_prompt_messages=prompt_messages,
+                )
 
             llm_call = prepare_llm_call(preset)
             run_params_json = build_run_params_json(
@@ -1260,13 +1368,34 @@ def generate_chapter_stream(
                         macro_seed=macro_seed,
                         provider=llm_call.provider,
                     )
-                prompt_system, prompt_user, prompt_messages, _ = _apply_prompt_override(
+
+                precheck_prompt_system = prompt_system
+                precheck_prompt_user = prompt_user
+                precheck_prompt_messages = prompt_messages
+                prompt_system, prompt_user, prompt_messages, override_applied = _apply_prompt_override(
                     prompt_system=prompt_system,
                     prompt_user=prompt_user,
                     prompt_messages=prompt_messages,
                     body=body,
                 )
                 prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
+                run_params_extra_json = run_params_extra_json or {}
+                run_params_extra_json["prompt_inspector"] = _build_prompt_inspector_params(
+                    macro_seed=macro_seed,
+                    prompt_overridden=override_applied,
+                    body=body,
+                    precheck_prompt_system=precheck_prompt_system,
+                    precheck_prompt_user=precheck_prompt_user,
+                    precheck_prompt_messages=precheck_prompt_messages,
+                    final_prompt_system=prompt_system,
+                    final_prompt_user=prompt_user,
+                    final_prompt_messages=prompt_messages,
+                )
+                run_params_json = build_run_params_json(
+                    params_json=llm_call.params_json,
+                    memory_retrieval_log_json=None,
+                    extra_json=run_params_extra_json,
+                )
 
             if body.target_word_count is not None:
                 llm_call = with_param_overrides(
