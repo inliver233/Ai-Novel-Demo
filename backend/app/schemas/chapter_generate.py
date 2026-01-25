@@ -17,6 +17,44 @@ class PromptOverride(BaseModel):
     messages: list[PromptOverrideMessage] = Field(default_factory=list, max_length=100)
 
 
+class McpToolCall(BaseModel):
+    tool_name: str = Field(default="", max_length=128)
+    args: dict[str, object] = Field(default_factory=dict)
+
+    @field_validator("tool_name")
+    @classmethod
+    def _validate_tool_name(cls, v: str) -> str:
+        name = str(v or "").strip()
+        if not name:
+            return ""
+        if len(name) > 128:
+            raise ValueError("tool_name too long")
+        return name
+
+
+class McpResearchConfig(BaseModel):
+    enabled: bool = False
+    allowlist: list[str] = Field(default_factory=list, max_length=50)
+    calls: list[McpToolCall] = Field(default_factory=list, max_length=50)
+    timeout_seconds: float | None = Field(default=None, ge=0.1, le=60.0)
+    max_output_chars: int | None = Field(default=None, ge=0, le=20000)
+
+    @field_validator("allowlist")
+    @classmethod
+    def _validate_allowlist(cls, v: list[str]) -> list[str]:
+        out: list[str] = []
+        for item in v or []:
+            if not isinstance(item, str):
+                raise ValueError("allowlist items must be strings")
+            item = item.strip()
+            if not item:
+                raise ValueError("allowlist cannot contain empty strings")
+            if len(item) > 128:
+                raise ValueError("allowlist item too long")
+            out.append(item)
+        return out
+
+
 class ChapterGenerateContext(BaseModel):
     include_world_setting: bool = True
     include_style_guide: bool = True
@@ -59,3 +97,4 @@ class ChapterGenerateRequest(BaseModel):
     memory_query_text: str | None = Field(default=None, max_length=5000)
     memory_modules: dict[str, bool] = Field(default_factory=dict)
     context: ChapterGenerateContext = Field(default_factory=ChapterGenerateContext)
+    mcp_research: McpResearchConfig = Field(default_factory=McpResearchConfig)

@@ -39,9 +39,17 @@ from app.schemas.chapters import BulkCreateRequest, ChapterCreate, ChapterOut, C
 from app.schemas.chapter_generate import ChapterGenerateRequest
 from app.schemas.chapter_plan import ChapterPlanRequest
 from app.services.generation_service import build_run_params_json, call_llm_and_record, prepare_llm_call, with_param_overrides
-from app.services.generation_pipeline import run_chapter_generate_llm_step, run_content_optimize_step, run_plan_llm_step, run_post_edit_step
+from app.services.generation_pipeline import (
+    run_chapter_generate_llm_step,
+    run_content_optimize_step,
+    run_mcp_research_step,
+    run_plan_llm_step,
+    run_post_edit_step,
+)
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.length_control import estimate_max_tokens
+from app.services.mcp.service import McpResearchConfig as McpResearchConfigSvc
+from app.services.mcp.service import McpToolCall as McpToolCallSvc
 from app.services.output_contracts import contract_for_task
 from app.services.outline_store import ensure_active_outline
 from app.services.chapter_context_service import (
@@ -178,6 +186,53 @@ def _build_prompt_inspector_params(
     if override is not None:
         out["override"] = override
     return out
+
+
+def _build_mcp_research_config(body: ChapterGenerateRequest) -> McpResearchConfigSvc:
+    cfg = getattr(body, "mcp_research", None)
+    if cfg is None:
+        return McpResearchConfigSvc(enabled=False, allowlist=[], calls=[])
+
+    calls: list[McpToolCallSvc] = []
+    for item in getattr(cfg, "calls", None) or []:
+        tool_name = str(getattr(item, "tool_name", "") or "").strip()
+        if not tool_name:
+            continue
+        args = getattr(item, "args", None)
+        calls.append(McpToolCallSvc(tool_name=tool_name, args=args if isinstance(args, dict) else {}))
+
+    allowlist = list(getattr(cfg, "allowlist", None) or [])
+    return McpResearchConfigSvc(
+        enabled=bool(getattr(cfg, "enabled", False)),
+        allowlist=[str(x).strip() for x in allowlist if isinstance(x, str) and str(x).strip()],
+        calls=calls,
+        timeout_seconds=getattr(cfg, "timeout_seconds", None),
+        max_output_chars=getattr(cfg, "max_output_chars", None),
+    )
+
+
+def _inject_mcp_research_into_values(*, values: dict[str, object], context_md: str) -> None:
+    text = str(context_md or "").strip()
+    if not text:
+        return
+
+    base_instruction = str(values.get("instruction") or "").rstrip()
+    user_obj = values.get("user")
+    if isinstance(user_obj, dict):
+        base = str(user_obj.get("instruction") or "").rstrip()
+        user_obj["instruction"] = (base + "\n\n【资料收集 - 参考资料】\n" + text).strip()
+    values["instruction"] = (base_instruction + "\n\n【资料收集 - 参考资料】\n" + text).strip()
+    values["mcp_research"] = text
+
+
+def _mcp_research_params(*, cfg: McpResearchConfigSvc, applied: bool, tool_run_ids: list[str], warnings: list[str]) -> dict[str, object]:
+    return {
+        "enabled": bool(cfg.enabled),
+        "applied": bool(applied),
+        "allowlist": list(cfg.allowlist or []),
+        "tool_run_ids": list(tool_run_ids),
+        "warnings": list(warnings or []),
+    }
 
 
 def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
@@ -683,6 +738,7 @@ def generate_chapter_precheck(
     memory_pack = None
     memory_retrieval_log_json: dict[str, object] | None = None
     memory_injection_config: dict[str, object] | None = None
+    mcp_research: dict[str, object] | None = None
 
     db = SessionLocal()
     try:
@@ -782,6 +838,24 @@ def generate_chapter_precheck(
             )
             memory_pack = pack.model_dump() if pack is not None else None
 
+        mcp_cfg = _build_mcp_research_config(body)
+        mcp_step = run_mcp_research_step(
+            logger=logger,
+            request_id=request_id,
+            actor_user_id=user_id,
+            project_id=project_id,
+            chapter_id=chapter_id,
+            config=mcp_cfg,
+        )
+        _inject_mcp_research_into_values(values=values, context_md=mcp_step.context_md)
+        if mcp_cfg.enabled or mcp_step.warnings:
+            mcp_research = _mcp_research_params(
+                cfg=mcp_cfg,
+                applied=mcp_step.applied,
+                tool_run_ids=[r.run_id for r in mcp_step.tool_runs],
+                warnings=mcp_step.warnings,
+            )
+
         prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
             db,
             project_id=project_id,
@@ -818,6 +892,7 @@ def generate_chapter_precheck(
                 "memory_pack": memory_pack,
                 "memory_injection_config": memory_injection_config,
                 "memory_retrieval_log_json": memory_retrieval_log_json,
+                "mcp_research": mcp_research,
                 "prompt_overridden": bool(override_applied),
             }
         },
@@ -964,6 +1039,25 @@ def generate_chapter(
                 query_text=memory_query_text,
                 pack=pack,
                 errors=pack_errors,
+            )
+
+        mcp_cfg = _build_mcp_research_config(body)
+        mcp_step = run_mcp_research_step(
+            logger=logger,
+            request_id=request_id,
+            actor_user_id=user_id,
+            project_id=project_id,
+            chapter_id=chapter_id,
+            config=mcp_cfg,
+        )
+        _inject_mcp_research_into_values(values=values, context_md=mcp_step.context_md)
+        if mcp_cfg.enabled or mcp_step.warnings:
+            run_params_extra_json = run_params_extra_json or {}
+            run_params_extra_json["mcp_research"] = _mcp_research_params(
+                cfg=mcp_cfg,
+                applied=mcp_step.applied,
+                tool_run_ids=[r.run_id for r in mcp_step.tool_runs],
+                warnings=mcp_step.warnings,
             )
 
         if body.plan_first:
@@ -1358,6 +1452,25 @@ def generate_chapter_stream(
                     query_text=memory_query_text,
                     pack=pack,
                     errors=pack_errors,
+                )
+
+            mcp_cfg = _build_mcp_research_config(body)
+            mcp_step = run_mcp_research_step(
+                logger=logger,
+                request_id=request_id,
+                actor_user_id=user_id,
+                project_id=project_id,
+                chapter_id=chapter_id,
+                config=mcp_cfg,
+            )
+            _inject_mcp_research_into_values(values=values, context_md=mcp_step.context_md)
+            if mcp_cfg.enabled or mcp_step.warnings:
+                run_params_extra_json = run_params_extra_json or {}
+                run_params_extra_json["mcp_research"] = _mcp_research_params(
+                    cfg=mcp_cfg,
+                    applied=mcp_step.applied,
+                    tool_run_ids=[r.run_id for r in mcp_step.tool_runs],
+                    warnings=mcp_step.warnings,
                 )
 
             if body.plan_first:

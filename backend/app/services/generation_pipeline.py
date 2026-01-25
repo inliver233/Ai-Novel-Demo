@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from app.services.chapter_context_service import build_post_edit_render_values
 from app.services.generation_service import PreparedLlmCall, call_llm_and_record, with_param_overrides
+from app.services.mcp.service import McpResearchConfig, McpToolCallResult, run_mcp_research_and_record
 from app.services.post_edit_validation import validate_content_optimize_output, validate_post_edit_output
 from app.services.output_contracts import contract_for_task
 from app.services.prompt_presets import ensure_default_content_optimize_preset, ensure_default_post_edit_preset, render_preset_for_task
@@ -47,6 +48,50 @@ class ChapterGenerateStepResult:
     dropped_params: list[str]
     latency_ms: int
     run_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class McpResearchStepResult:
+    applied: bool
+    context_md: str
+    tool_runs: list[McpToolCallResult]
+    warnings: list[str]
+
+
+def run_mcp_research_step(
+    *,
+    logger: logging.Logger,
+    request_id: str,
+    actor_user_id: str,
+    project_id: str,
+    chapter_id: str | None,
+    config: McpResearchConfig,
+) -> McpResearchStepResult:
+    if not config.enabled:
+        return McpResearchStepResult(applied=False, context_md="", tool_runs=[], warnings=[])
+
+    try:
+        context, results, warnings = run_mcp_research_and_record(
+            request_id=request_id,
+            actor_user_id=actor_user_id,
+            project_id=project_id,
+            chapter_id=chapter_id,
+            config=config,
+        )
+        return McpResearchStepResult(
+            applied=bool(context.strip()),
+            context_md=context,
+            tool_runs=results,
+            warnings=warnings,
+        )
+    except Exception:
+        logger.exception("mcp_research_step_failed")
+        return McpResearchStepResult(
+            applied=False,
+            context_md="",
+            tool_runs=[],
+            warnings=["mcp_research_failed"],
+        )
 
 
 def run_post_edit_step(
