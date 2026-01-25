@@ -8,7 +8,7 @@ from app.core.errors import AppError
 
 
 TaskQueueBackend = Literal["rq", "inline"]
-TaskKind = Literal["batch_generation", "memory_task"]
+TaskKind = Literal["batch_generation", "memory_task", "import_task"]
 
 
 class TaskQueue(Protocol):
@@ -26,6 +26,11 @@ class InlineTaskQueue:
             from app.services.batch_generation_service import run_batch_generation_task
 
             run_batch_generation_task(task_id=task_id)
+            return task_id
+        if kind == "import_task":
+            from app.services.import_export_service import run_import_task
+
+            run_import_task(task_id=task_id)
             return task_id
         if kind == "memory_task":
             # NOTE: memory_tasks are intentionally NOT executed inline to keep request latency stable.
@@ -59,6 +64,10 @@ class RqTaskQueue:
                 from app.services.batch_generation_service import run_batch_generation_task
 
                 fn = run_batch_generation_task
+            elif kind == "import_task":
+                from app.services.import_export_service import run_import_task
+
+                fn = run_import_task
             elif kind == "memory_task":
                 from app.services.memory_update_service import run_memory_task
 

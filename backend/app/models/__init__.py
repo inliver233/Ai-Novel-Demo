@@ -12,6 +12,7 @@ from app.models.project import Project
 from app.models.project_membership import ProjectMembership
 from app.models.project_settings import ProjectSettings
 from app.models.project_table import ProjectTable, ProjectTableRow
+from app.models.project_source_document import ProjectSourceDocument, ProjectSourceDocumentChunk
 from app.models.project_default_style import ProjectDefaultStyle
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
@@ -49,6 +50,8 @@ __all__ = [
     "ProjectSettings",
     "ProjectTable",
     "ProjectTableRow",
+    "ProjectSourceDocument",
+    "ProjectSourceDocumentChunk",
     "PromptBlock",
     "PromptPreset",
     "PlotAnalysis",

@@ -13,6 +13,7 @@ from app.api.routes import (
     graph,
     generation_runs,
     health,
+    import_export,
     llm,
     llm_capabilities,
     llm_preset,
@@ -52,6 +53,7 @@ api_router.include_router(llm.router, tags=["llm"])
 api_router.include_router(llm_profiles.router, tags=["llm_profiles"])
 api_router.include_router(outlines.router, tags=["outlines"])
 api_router.include_router(export.router, tags=["export"])
+api_router.include_router(import_export.router, tags=["import_export"])
 api_router.include_router(generation_runs.router, tags=["generation_runs"])
 api_router.include_router(worldbook.router, tags=["worldbook"])
 api_router.include_router(writing_styles.router, tags=["writing_styles"])
