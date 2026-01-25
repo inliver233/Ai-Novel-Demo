@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import json
 import re
 from urllib.parse import quote
 
 from fastapi import APIRouter, Query, Request, Response
 from sqlalchemy import select
 
-from app.api.deps import DbDep, UserIdDep, require_project_viewer
+from app.api.deps import DbDep, UserIdDep, require_project_editor, require_project_viewer
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.outline import Outline
 from app.models.project_settings import ProjectSettings
+from app.services.import_export_service import export_project_bundle
 
 router = APIRouter()
 
@@ -136,3 +138,22 @@ def export_markdown(
         "X-Request-Id": request.state.request_id,
     }
     return Response(content=content, media_type="text/markdown; charset=utf-8", headers=headers)
+
+
+@router.get("/projects/{project_id}/export/bundle")
+def export_bundle(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> Response:
+    project = require_project_editor(db, project_id=project_id, user_id=user_id)
+    export_obj = export_project_bundle(db, project_id=project_id)
+
+    payload = json.dumps(export_obj, ensure_ascii=False, indent=2) + "\n"
+
+    base_utf8 = _safe_filename(project.name)
+    filename_utf8 = f"{base_utf8}.bundle.json"
+    base_ascii = re.sub(r"[^A-Za-z0-9._-]+", "_", base_utf8).strip("._-") or "ainovel"
+    filename_ascii = f"{base_ascii}.bundle.json"
+    quoted = quote(filename_utf8)
+    headers = {
+        "Content-Disposition": f"attachment; filename=\"{filename_ascii}\"; filename*=UTF-8''{quoted}",
+        "X-Request-Id": request.state.request_id,
+    }
+    return Response(content=payload.encode("utf-8"), media_type="application/json; charset=utf-8", headers=headers)
