@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
@@ -56,6 +56,7 @@ function safeStringify(value: unknown): string {
 
 export function ImportPage() {
   const { projectId } = useParams();
+  const [searchParams] = useSearchParams();
   const toast = useToast();
 
   const [file, setFile] = useState<File | null>(null);
@@ -73,6 +74,8 @@ export function ImportPage() {
 
   const [applyWorldbookLoading, setApplyWorldbookLoading] = useState(false);
   const [applyStoryMemoryLoading, setApplyStoryMemoryLoading] = useState(false);
+
+  const autoOpenedDocIdRef = useRef<string | null>(null);
 
   const selectedDoc = useMemo(() => {
     if (!selectedId) return null;
@@ -254,6 +257,18 @@ export function ImportPage() {
       setApplyStoryMemoryLoading(false);
     }
   }, [applyStoryMemoryLoading, detail, projectId, toast]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const requested = String(searchParams.get("docId") ?? "").trim();
+    void Promise.resolve().then(async () => {
+      await loadList();
+      if (!requested) return;
+      if (autoOpenedDocIdRef.current === requested) return;
+      autoOpenedDocIdRef.current = requested;
+      await selectDocAndLoad(requested);
+    });
+  }, [loadList, projectId, searchParams, selectDocAndLoad]);
 
   return (
     <DebugPageShell

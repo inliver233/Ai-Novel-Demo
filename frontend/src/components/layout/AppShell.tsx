@@ -53,6 +53,7 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
 
   ["/worldbook", UI_COPY.nav.worldBook],
   ["/rag", UI_COPY.nav.rag],
+  ["/glossary", UI_COPY.nav.glossary],
   ["/graph", UI_COPY.nav.graph],
   ["/fractal", UI_COPY.nav.fractal],
   ["/styles", UI_COPY.nav.styles],
@@ -469,6 +470,14 @@ export function AppShell() {
                               />
                               <SidebarLink
                                 collapsed={false}
+                                icon={<Book size={18} />}
+                                label={UI_COPY.nav.glossary}
+                                ariaLabel="术语表 (nav_glossary)"
+                                to={`/projects/${projectId}/glossary`}
+                                onClick={closeMobileNav}
+                              />
+                              <SidebarLink
+                                collapsed={false}
                                 icon={<Share2 size={18} />}
                                 label={UI_COPY.nav.graph}
                                 ariaLabel="图谱 (nav_graph)"
@@ -690,6 +699,13 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={collapsed}
+                          icon={<Book size={18} />}
+                          label={UI_COPY.nav.glossary}
+                          ariaLabel="术语表 (nav_glossary)"
+                          to={`/projects/${projectId}/glossary`}
+                        />
+                        <SidebarLink
+                          collapsed={collapsed}
                           icon={<Share2 size={18} />}
                           label={UI_COPY.nav.graph}
                           ariaLabel="图谱 (nav_graph)"
@@ -735,6 +751,13 @@ export function AppShell() {
                             label={UI_COPY.nav.rag}
                             ariaLabel="知识库（RAG） (nav_rag)"
                             to={`/projects/${projectId}/rag`}
+                          />
+                          <SidebarLink
+                            collapsed={collapsed}
+                            icon={<Book size={18} />}
+                            label={UI_COPY.nav.glossary}
+                            ariaLabel="术语表 (nav_glossary)"
+                            to={`/projects/${projectId}/glossary`}
                           />
                           <SidebarLink
                             collapsed={collapsed}
