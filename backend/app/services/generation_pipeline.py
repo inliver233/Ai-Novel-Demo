@@ -6,9 +6,9 @@ from dataclasses import dataclass
 
 from app.services.chapter_context_service import build_post_edit_render_values
 from app.services.generation_service import PreparedLlmCall, call_llm_and_record, with_param_overrides
-from app.services.post_edit_validation import validate_post_edit_output
+from app.services.post_edit_validation import validate_content_optimize_output, validate_post_edit_output
 from app.services.output_contracts import contract_for_task
-from app.services.prompt_presets import ensure_default_post_edit_preset, render_preset_for_task
+from app.services.prompt_presets import ensure_default_content_optimize_preset, ensure_default_post_edit_preset, render_preset_for_task
 from app.db.session import SessionLocal
 
 
@@ -17,6 +17,15 @@ class PostEditStepResult:
     applied: bool
     run_id: str
     edited_content_md: str
+    warnings: list[str]
+    parse_error: dict[str, object] | None
+
+
+@dataclass(frozen=True, slots=True)
+class ContentOptimizeStepResult:
+    applied: bool
+    run_id: str
+    optimized_content_md: str
     warnings: list[str]
     parse_error: dict[str, object] | None
 
@@ -105,6 +114,74 @@ def run_post_edit_step(
         applied=applied,
         run_id=post_result.run_id,
         edited_content_md=edited,
+        warnings=warnings,
+        parse_error=parse_error,
+    )
+
+
+def run_content_optimize_step(
+    *,
+    logger: logging.Logger,
+    request_id: str,
+    actor_user_id: str,
+    project_id: str,
+    chapter_id: str | None,
+    api_key: str,
+    llm_call: PreparedLlmCall,
+    render_values: dict[str, object],
+    raw_content: str,
+    macro_seed: str,
+    run_params_extra_json: dict[str, object] | None = None,
+) -> ContentOptimizeStepResult:
+    with SessionLocal() as db:
+        ensure_default_content_optimize_preset(db, project_id=project_id)
+        values = build_post_edit_render_values(render_values, raw_content=raw_content)
+
+        opt_system, opt_user, opt_messages, _, _, _, opt_render_log = render_preset_for_task(
+            db,
+            project_id=project_id,
+            task="content_optimize",
+            values=values,  # type: ignore[arg-type]
+            macro_seed=macro_seed,
+            provider=llm_call.provider,
+        )
+    opt_render_log_json = json.dumps(opt_render_log, ensure_ascii=False)
+
+    opt_call = with_param_overrides(llm_call, {"temperature": 0.35})
+    opt_result = call_llm_and_record(
+        logger=logger,
+        request_id=request_id,
+        actor_user_id=actor_user_id,
+        project_id=project_id,
+        chapter_id=chapter_id,
+        run_type="content_optimize",
+        api_key=api_key,
+        prompt_system=opt_system,
+        prompt_user=opt_user,
+        prompt_messages=opt_messages,
+        prompt_render_log_json=opt_render_log_json,
+        llm_call=opt_call,
+        run_params_extra_json=run_params_extra_json,
+    )
+
+    opt_contract = contract_for_task("content_optimize")
+    opt_parsed = opt_contract.parse(opt_result.text, finish_reason=opt_result.finish_reason)
+    warnings = list(opt_parsed.warnings)
+    parse_error = opt_parsed.parse_error
+    optimized = str(opt_parsed.data.get("content_md") or "").strip()
+    applied = parse_error is None and bool(optimized)
+    if applied:
+        extra_warnings = validate_content_optimize_output(raw_content=raw_content, optimized_content=optimized)
+        if extra_warnings:
+            warnings.extend(extra_warnings)
+            applied = False
+    if not applied:
+        warnings.append("content_optimize_failed")
+
+    return ContentOptimizeStepResult(
+        applied=applied,
+        run_id=opt_result.run_id,
+        optimized_content_md=optimized,
         warnings=warnings,
         parse_error=parse_error,
     )

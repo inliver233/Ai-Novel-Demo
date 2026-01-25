@@ -27,6 +27,7 @@ from app.services.prompting import render_template
 LEGACY_IMPORTED_SCOPE = "legacy_imported"
 DEFAULT_PLAN_PRESET_NAME = "Default plan_chapter v1"
 DEFAULT_POST_EDIT_PRESET_NAME = "Default post_edit v1"
+DEFAULT_CONTENT_OPTIMIZE_PRESET_NAME = "Default content_optimize v1"
 DEFAULT_OUTLINE_PRESET_NAME = "默认·大纲生成 v3（推荐）"
 DEFAULT_CHAPTER_PRESET_NAME = "默认·章节生成 v3（推荐）"
 DEFAULT_CHAPTER_ANALYZE_PRESET_NAME = "默认·章节分析 v1（推荐）"
@@ -209,6 +210,12 @@ def ensure_default_plan_preset(db: Session, *, project_id: str) -> PromptPreset:
 
 def ensure_default_post_edit_preset(db: Session, *, project_id: str) -> PromptPreset:
     return _ensure_default_preset_from_resource(db, project_id=project_id, resource_key="post_edit_v1", activate=True)
+
+
+def ensure_default_content_optimize_preset(db: Session, *, project_id: str) -> PromptPreset:
+    return _ensure_default_preset_from_resource(
+        db, project_id=project_id, resource_key="content_optimize_v1", activate=True
+    )
 
 
 def ensure_default_outline_preset(db: Session, *, project_id: str, activate: bool = False) -> PromptPreset:

@@ -39,7 +39,7 @@ from app.schemas.chapters import BulkCreateRequest, ChapterCreate, ChapterOut, C
 from app.schemas.chapter_generate import ChapterGenerateRequest
 from app.schemas.chapter_plan import ChapterPlanRequest
 from app.services.generation_service import build_run_params_json, call_llm_and_record, prepare_llm_call, with_param_overrides
-from app.services.generation_pipeline import run_chapter_generate_llm_step, run_plan_llm_step, run_post_edit_step
+from app.services.generation_pipeline import run_chapter_generate_llm_step, run_content_optimize_step, run_plan_llm_step, run_post_edit_step
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.length_control import estimate_max_tokens
 from app.services.output_contracts import contract_for_task
@@ -1150,6 +1150,43 @@ def generate_chapter(
         if post_edit_parse_error is not None:
             data["post_edit_parse_error"] = post_edit_parse_error
 
+    if body.content_optimize:
+        raw_content = str(data.get("content_md") or "").strip()
+        content_optimize_applied = False
+        content_optimize_warnings: list[str] = []
+        content_optimize_parse_error: dict[str, object] | None = None
+
+        if raw_content:
+            data["content_optimize_raw_content_md"] = raw_content
+            step = run_content_optimize_step(
+                logger=logger,
+                request_id=request_id,
+                actor_user_id=user_id,
+                project_id=project_id,
+                chapter_id=chapter_id,
+                api_key=str(resolved_api_key),
+                llm_call=llm_call,
+                render_values=render_values or {},
+                raw_content=raw_content,
+                macro_seed=f"{macro_seed}:content_optimize",
+                run_params_extra_json={**(run_params_extra_json or {}), "content_optimize": True},
+            )
+            content_optimize_warnings = step.warnings
+            content_optimize_parse_error = step.parse_error
+            data["content_optimize_run_id"] = step.run_id
+            data["content_optimize_optimized_content_md"] = step.optimized_content_md
+            if step.applied:
+                data["content_md"] = step.optimized_content_md
+                content_optimize_applied = True
+        else:
+            content_optimize_warnings.append("content_optimize_no_content")
+
+        data["content_optimize_applied"] = content_optimize_applied
+        if content_optimize_warnings:
+            data["content_optimize_warnings"] = content_optimize_warnings
+        if content_optimize_parse_error is not None:
+            data["content_optimize_parse_error"] = content_optimize_parse_error
+
     if warnings:
         data["warnings"] = warnings
     if parse_error is not None:
@@ -1607,6 +1644,44 @@ def generate_chapter_stream(
                     data["post_edit_warnings"] = post_edit_warnings
                 if post_edit_parse_error is not None:
                     data["post_edit_parse_error"] = post_edit_parse_error
+
+            if body.content_optimize:
+                raw_content = str(data.get("content_md") or "").strip()
+                content_optimize_applied = False
+                content_optimize_warnings: list[str] = []
+                content_optimize_parse_error: dict[str, object] | None = None
+
+                if raw_content:
+                    data["content_optimize_raw_content_md"] = raw_content
+                    yield sse_progress(message="正文优化中...", progress=97)
+                    step = run_content_optimize_step(
+                        logger=logger,
+                        request_id=request_id,
+                        actor_user_id=user_id,
+                        project_id=project_id,
+                        chapter_id=chapter_id,
+                        api_key=str(resolved_api_key),
+                        llm_call=llm_call,
+                        render_values=render_values or {},
+                        raw_content=raw_content,
+                        macro_seed=f"{macro_seed}:content_optimize",
+                        run_params_extra_json={**(run_params_extra_json or {}), "content_optimize": True},
+                    )
+                    content_optimize_warnings = step.warnings
+                    content_optimize_parse_error = step.parse_error
+                    data["content_optimize_run_id"] = step.run_id
+                    data["content_optimize_optimized_content_md"] = step.optimized_content_md
+                    if step.applied:
+                        data["content_md"] = step.optimized_content_md
+                        content_optimize_applied = True
+                else:
+                    content_optimize_warnings.append("content_optimize_no_content")
+
+                data["content_optimize_applied"] = content_optimize_applied
+                if content_optimize_warnings:
+                    data["content_optimize_warnings"] = content_optimize_warnings
+                if content_optimize_parse_error is not None:
+                    data["content_optimize_parse_error"] = content_optimize_parse_error
 
             if warnings:
                 data["warnings"] = warnings

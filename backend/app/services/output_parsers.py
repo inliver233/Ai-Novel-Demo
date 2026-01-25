@@ -356,13 +356,55 @@ def extract_tag_block(text: str, *, tag: str) -> tuple[str | None, dict[str, Any
     tag_name = tag.strip().strip("<>").lower()
     if not tag_name:
         return None, {"code": "TAG_PARSE_ERROR", "message": "tag 不能为空"}
-    pattern = re.compile(rf"(?is)<\s*{re.escape(tag_name)}\s*>([\s\S]*?)<\s*/\s*{re.escape(tag_name)}\s*>")
+    pattern = re.compile(rf"(?is)<\s*{re.escape(tag_name)}\b[^>]*>([\s\S]*?)<\s*/\s*{re.escape(tag_name)}\s*>")
     matches = list(pattern.finditer(text))
     if not matches:
         return None, {"code": "TAG_PARSE_ERROR", "message": f"未找到 <{tag_name}>...</{tag_name}> 标签块"}
     m = matches[-1]
     inner = (m.group(1) or "").strip()
     return inner, None
+
+
+def extract_full_tag_block(text: str, *, tag: str) -> tuple[str | None, dict[str, Any] | None]:
+    """
+    Extract the last complete <tag ...>...</tag> block (case-insensitive).
+    Returns (full_block, parse_error).
+    """
+    if not text:
+        return None, {"code": "TAG_PARSE_ERROR", "message": "输出为空"}
+    tag_name = tag.strip().strip("<>").lower()
+    if not tag_name:
+        return None, {"code": "TAG_PARSE_ERROR", "message": "tag 不能为空"}
+    pattern = re.compile(rf"(?is)<\s*{re.escape(tag_name)}\b[^>]*>[\s\S]*?<\s*/\s*{re.escape(tag_name)}\s*>")
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return None, {"code": "TAG_PARSE_ERROR", "message": f"未找到 <{tag_name}>...</{tag_name}> 标签块"}
+    m = matches[-1]
+    return (m.group(0) or "").strip(), None
+
+
+def replace_tag_content(text: str, *, tag: str, inner_text: str) -> tuple[str | None, dict[str, Any] | None]:
+    """
+    Replace the inner text of the last complete <tag ...>...</tag> block (case-insensitive).
+    Returns (updated_text, parse_error).
+    """
+    if not text:
+        return None, {"code": "TAG_REPLACE_ERROR", "message": "输入为空"}
+    tag_name = tag.strip().strip("<>").lower()
+    if not tag_name:
+        return None, {"code": "TAG_REPLACE_ERROR", "message": "tag 不能为空"}
+
+    pattern = re.compile(
+        rf"(?is)(<\s*{re.escape(tag_name)}\b[^>]*>)([\s\S]*?)(<\s*/\s*{re.escape(tag_name)}\s*>)"
+    )
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return None, {"code": "TAG_REPLACE_ERROR", "message": f"未找到 <{tag_name}>...</{tag_name}> 标签块"}
+    m = matches[-1]
+
+    next_inner = str(inner_text or "")
+    updated = text[: m.start(2)] + next_inner + text[m.end(2) :]
+    return updated, None
 
 
 def parse_tag_output(
@@ -383,7 +425,7 @@ def parse_tag_output(
     tag_name = tag.strip().strip("<>").lower()
     m_all = list(
         re.finditer(
-            rf"(?is)<\s*{re.escape(tag_name)}\s*>[\s\S]*?<\s*/\s*{re.escape(tag_name)}\s*>",
+            rf"(?is)<\s*{re.escape(tag_name)}\b[^>]*>[\s\S]*?<\s*/\s*{re.escape(tag_name)}\s*>",
             text,
         )
     )

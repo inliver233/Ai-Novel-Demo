@@ -150,6 +150,8 @@ def contract_for_task(task: str) -> OutputContract:
         return OutputContract(type="tags", tag="plan", output_key="plan")
     if task == "post_edit":
         return OutputContract(type="tags", tag="rewrite", output_key="content_md")
+    if task == "content_optimize":
+        return OutputContract(type="tags", tag="content", output_key="content_md")
     if task == "chapter_rewrite":
         return OutputContract(type="tags", tag="rewrite", output_key="content_md")
     return OutputContract(type="markers")

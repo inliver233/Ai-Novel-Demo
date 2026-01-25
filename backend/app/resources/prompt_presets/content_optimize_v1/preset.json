@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "name": "Default content_optimize v1",
+  "category": "正文优化",
+  "scope": "project",
+  "version": 1,
+  "activation_tasks": [
+    "content_optimize"
+  ],
+  "upgrade_add_identifiers": [
+    "sys.project.style_guide"
+  ],
+  "blocks": [
+    {
+      "identifier": "sys.content_optimize.role",
+      "name": "content_optimize system",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.content_optimize.role.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 10,
+      "triggers": [
+        "content_optimize"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "sys.project.style_guide",
+      "name": "project style_guide",
+      "role": "system",
+      "enabled": true,
+      "template_file": "templates/sys.project.style_guide.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 15,
+      "triggers": [
+        "content_optimize"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "medium"
+      },
+      "cache": null
+    },
+    {
+      "identifier": "user.content_optimize.input",
+      "name": "content_optimize user",
+      "role": "user",
+      "enabled": true,
+      "template_file": "templates/user.content_optimize.input.md",
+      "marker_key": null,
+      "injection_position": "relative",
+      "injection_depth": null,
+      "injection_order": 20,
+      "triggers": [
+        "content_optimize"
+      ],
+      "forbid_overrides": false,
+      "budget": {
+        "priority": "must"
+      },
+      "cache": null
+    }
+  ]
+}

@@ -51,6 +51,7 @@ class ChapterGenerateRequest(BaseModel):
     plan_first: bool = False
     post_edit: bool = False
     post_edit_sanitize: bool = False
+    content_optimize: bool = False
     macro_seed: str | None = Field(default=None, max_length=256)
     prompt_override: PromptOverride | None = None
     style_id: str | None = Field(default=None, max_length=36)

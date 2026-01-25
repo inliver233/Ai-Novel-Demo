@@ -26,7 +26,7 @@ from app.services.chapter_context_service import (
     load_previous_chapter_context,
 )
 from app.services.generation_service import PreparedLlmCall, prepare_llm_call, with_param_overrides
-from app.services.generation_pipeline import run_chapter_generate_llm_step, run_plan_llm_step, run_post_edit_step
+from app.services.generation_pipeline import run_chapter_generate_llm_step, run_content_optimize_step, run_plan_llm_step, run_post_edit_step
 from app.services.length_control import estimate_max_tokens
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.style_resolution_service import resolve_style_guide
@@ -43,6 +43,7 @@ class BatchGenerateParams:
     plan_first: bool
     post_edit: bool
     post_edit_sanitize: bool
+    content_optimize: bool
     style_id: str | None
     include_world_setting: bool
     include_style_guide: bool
@@ -77,6 +78,7 @@ def _parse_params(task: BatchGenerationTask) -> BatchGenerateParams:
         plan_first=bool(raw.get("plan_first")),
         post_edit=bool(raw.get("post_edit")),
         post_edit_sanitize=bool(raw.get("post_edit_sanitize")),
+        content_optimize=bool(raw.get("content_optimize")),
         style_id=(str(raw.get("style_id")) if raw.get("style_id") is not None else None),
         include_world_setting=bool(ctx_obj.get("include_world_setting", True)),
         include_style_guide=bool(ctx_obj.get("include_style_guide", True)),
@@ -428,6 +430,25 @@ def run_batch_generation_task(*, task_id: str) -> None:
                     )
                     if step.applied:
                         data["content_md"] = step.edited_content_md
+
+            if params.content_optimize:
+                raw_content = str(data.get("content_md") or "").strip()
+                if raw_content:
+                    step = run_content_optimize_step(
+                        logger=logger,
+                        request_id=f"{chapter_request_id}:content_optimize",
+                        actor_user_id=actor_user_id,
+                        project_id=task.project_id,
+                        chapter_id=chapter_id,
+                        api_key=str(resolved_api_key),
+                        llm_call=llm_call,
+                        render_values=render_values,
+                        raw_content=raw_content,
+                        macro_seed=f"{chapter_request_id}:content_optimize",
+                        run_params_extra_json={**run_params_extra_json, "content_optimize": True},
+                    )
+                    if step.applied:
+                        data["content_md"] = step.optimized_content_md
 
             final_content = str(data.get("content_md") or "").strip()
             final_summary = str(data.get("summary") or "").strip()
