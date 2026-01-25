@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import and_, func, literal, or_, select
 from sqlalchemy.orm import Session, load_only
 
+from app.core.config import settings
 from app.core.logging import exception_log_fields, log_event
 from app.models.structured_memory import MemoryEntity, MemoryEvidence, MemoryRelation
 
@@ -279,6 +280,19 @@ def query_graph_context(
 
     t0 = time.perf_counter()
     try:
+        effective_query_text = query_text
+        if bool(getattr(settings, "glossary_query_expand_enabled", False)):
+            try:
+                from app.services.glossary_service import expand_query_text_with_glossary
+
+                effective_query_text, _obs = expand_query_text_with_glossary(
+                    db=db,
+                    project_id=project_id,
+                    query_text=query_text,
+                )
+            except Exception:
+                effective_query_text = query_text
+
         hop = max(0, min(int(hop), 1))
         max_nodes = max(1, min(int(max_nodes), 200))
         max_edges = max(0, min(int(max_edges), 500))
@@ -286,11 +300,11 @@ def query_graph_context(
         candidates, match_meta = _load_match_candidates(
             db=db,
             project_id=project_id,
-            query_text=query_text,
+            query_text=effective_query_text,
             alias_candidates_limit=_MATCH_ENTITY_ALIAS_CANDIDATES_LIMIT,
         )
 
-        matched_pairs = _match_entities(entities=candidates, query_text=query_text, max_matches=min(12, max_nodes))
+        matched_pairs = _match_entities(entities=candidates, query_text=effective_query_text, max_matches=min(12, max_nodes))
         seed_ids = [eid for eid, _name in matched_pairs]
         seed_set = set(seed_ids)
         matched_names = [_name for _eid, _name in matched_pairs]

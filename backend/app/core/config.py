@@ -98,6 +98,8 @@ class Settings(BaseSettings):
     worldbook_match_regex_allowlist_json: str | None = None
     worldbook_match_max_triggered_entries: int = 40
 
+    glossary_query_expand_enabled: bool = False
+
     fractal_enabled: bool = True
     fractal_scene_window: int = 5
     fractal_arc_window: int = 5

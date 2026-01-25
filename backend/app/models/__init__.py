@@ -2,6 +2,7 @@ from app.models.batch_generation_task import BatchGenerationTask, BatchGeneratio
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.generation_run import GenerationRun
+from app.models.glossary_term import GlossaryTerm
 from app.models.fractal_memory import FractalMemory
 from app.models.knowledge_base import KnowledgeBase
 from app.models.llm_profile import LLMProfile
@@ -39,6 +40,7 @@ __all__ = [
     "Character",
     "FractalMemory",
     "GenerationRun",
+    "GlossaryTerm",
     "KnowledgeBase",
     "LLMProfile",
     "LLMPreset",
