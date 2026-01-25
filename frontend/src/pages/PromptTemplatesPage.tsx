@@ -412,9 +412,11 @@ export function PromptTemplatesPage() {
                         onClick={() => setSelectedKey(r.key)}
                         type="button"
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="truncate">{r.name}</div>
-                          <div className="text-[11px] text-subtext">{r.activation_tasks?.[0] ?? ""}</div>
+                        <div className="flex min-w-0 items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1 truncate">{r.name}</div>
+                          <div className="max-w-[120px] shrink-0 truncate text-[11px] text-subtext">
+                            {r.activation_tasks?.[0] ?? ""}
+                          </div>
                         </div>
                       </button>
                     );
