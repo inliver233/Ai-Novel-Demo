@@ -190,9 +190,10 @@ export function GlossaryPage() {
       if (!projectId) return;
       const ok = await confirm.confirm({
         title: "删除术语？",
-        message: `将删除“${row.term}”。该操作不可撤销。`,
+        description: `将删除“${row.term}”。该操作不可撤销。`,
         confirmText: "删除",
-        confirmClassName: "btn btn-danger",
+        cancelText: "取消",
+        danger: true,
       });
       if (!ok) return;
       setSavingId(row.id);
