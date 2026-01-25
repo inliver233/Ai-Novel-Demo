@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Header, Query, Request
 from pydantic import Field
@@ -11,7 +12,7 @@ from sqlalchemy import func, or_, select
 from app.api.deps import DbDep, UserIdDep, require_chapter_editor, require_project_editor, require_project_viewer
 from app.core.errors import AppError, ok_payload
 from app.db.session import SessionLocal
-from app.db.utils import new_id
+from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
 from app.models.generation_run import GenerationRun
 from app.models.llm_preset import LLMPreset
@@ -102,6 +103,79 @@ def preview_project_memory(
         budget_overrides=body.budget_overrides,
     )
     return ok_payload(request_id=request_id, data=pack.model_dump())
+
+
+StoryMemoryImportSchemaVersion = Literal["story_memory_import_v1"]
+
+
+class StoryMemoryImportV1Item(RequestModel):
+    memory_type: str = Field(min_length=1, max_length=64)
+    title: str | None = Field(default=None, max_length=255)
+    content: str = Field(min_length=1, max_length=8000)
+    importance_score: float = Field(default=0.0)
+    story_timeline: int = Field(default=0)
+    is_foreshadow: int = Field(default=0, ge=0, le=1)
+
+
+class StoryMemoryImportV1Request(RequestModel):
+    schema_version: StoryMemoryImportSchemaVersion = "story_memory_import_v1"
+    memories: list[StoryMemoryImportV1Item] = Field(default_factory=list, min_length=1, max_length=50)
+
+
+@router.post("/projects/{project_id}/story_memories/import_all")
+def import_all_story_memories(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    body: StoryMemoryImportV1Request,
+) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    if str(body.schema_version or "").strip() != "story_memory_import_v1":
+        raise AppError.validation(details={"reason": "unsupported_schema_version", "schema_version": body.schema_version})
+
+    created_ids: list[str] = []
+    now = utc_now()
+    for item in body.memories or []:
+        title = str(item.title or "").strip() or None
+        content = str(item.content or "").strip()
+        if not content:
+            continue
+        row = StoryMemory(
+            id=new_id(),
+            project_id=project_id,
+            chapter_id=None,
+            memory_type=str(item.memory_type or "").strip(),
+            title=title,
+            content=content,
+            full_context_md=None,
+            importance_score=float(item.importance_score or 0.0),
+            tags_json=None,
+            story_timeline=int(item.story_timeline or 0),
+            text_position=-1,
+            text_length=0,
+            is_foreshadow=int(item.is_foreshadow or 0),
+            foreshadow_resolved_at_chapter_id=None,
+            metadata_json=json.dumps({"source": "import_all"}, ensure_ascii=False),
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(row)
+        created_ids.append(str(row.id))
+
+    if not created_ids:
+        raise AppError.validation(message="未导入任何 story_memories", details={"reason": "empty"})
+
+    settings_row = db.get(ProjectSettings, project_id)
+    if settings_row is None:
+        settings_row = ProjectSettings(project_id=project_id)
+        db.add(settings_row)
+    settings_row.vector_index_dirty = True
+
+    db.commit()
+    return ok_payload(request_id=request_id, data={"created": len(created_ids), "ids": created_ids})
 
 
 class StoryMemoryForeshadowResolveRequest(RequestModel):

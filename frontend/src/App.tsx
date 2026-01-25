@@ -124,6 +124,11 @@ const RagPage = lazy(async () => {
   return { default: mod.RagPage };
 });
 
+const ImportPage = lazy(async () => {
+  const mod = await import("./pages/ImportPage");
+  return { default: mod.ImportPage };
+});
+
 const NotFoundPage = lazy(async () => {
   const mod = await import("./pages/NotFoundPage");
   return { default: mod.NotFoundPage };
@@ -237,6 +242,10 @@ const router = createBrowserRouter([
               {
                 path: "rag",
                 element: <RagPage />,
+              },
+              {
+                path: "import",
+                element: <ImportPage />,
               },
             ],
           },

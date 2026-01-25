@@ -493,9 +493,29 @@ export function RagPage() {
                 完成 Embedding/Rerank 配置后再重建索引。
               </div>
             ) : null}
+            {projectId ? (
+              <div>
+                导入小说/资料：到{" "}
+                <Link className="underline" to={`/projects/${projectId}/import`}>
+                  导入页
+                </Link>{" "}
+                上传 txt/md 并应用提案（WorldBook / story_memory）。
+              </div>
+            ) : null}
             <div className="text-amber-700 dark:text-amber-300">{UI_COPY.rag.riskHint}</div>
           </div>
         </DebugDetails>
+
+        {projectId ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-atelier border border-border bg-canvas p-3">
+            <div className="text-xs text-subtext">
+              小说/资料导入：上传 txt/md 并应用提案（WorldBook / story_memory）。
+            </div>
+            <Link className="btn btn-secondary" to={`/projects/${projectId}/import`}>
+              打开导入页
+            </Link>
+          </div>
+        ) : null}
 
         <RagHeaderPanel
           projectId={projectId}
