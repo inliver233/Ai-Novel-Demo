@@ -73,7 +73,9 @@ export function GlossaryPage() {
       const qs = new URLSearchParams();
       if (query.trim()) qs.set("q", query.trim());
       qs.set("include_disabled", "1");
-      const res = await apiJson<{ terms: GlossaryTerm[] }>(`/api/projects/${projectId}/glossary_terms?${qs.toString()}`);
+      const res = await apiJson<{ terms: GlossaryTerm[] }>(
+        `/api/projects/${projectId}/glossary_terms?${qs.toString()}`,
+      );
       setTerms(Array.isArray(res.data.terms) ? res.data.terms : []);
     } catch (e) {
       const err =
@@ -240,7 +242,9 @@ export function GlossaryPage() {
     setExporting(true);
     try {
       const res = await apiJson<{ export: unknown }>(`/api/projects/${projectId}/glossary_terms/export_all`);
-      const blob = new Blob([JSON.stringify(res.data.export ?? {}, null, 2)], { type: "application/json;charset=utf-8" });
+      const blob = new Blob([JSON.stringify(res.data.export ?? {}, null, 2)], {
+        type: "application/json;charset=utf-8",
+      });
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objectUrl;
@@ -267,9 +271,7 @@ export function GlossaryPage() {
       description={
         <div className="grid gap-1">
           <div>维护“术语 → 别名”映射，供 worldbook/graph/rag 进行可选增强（默认关闭）。</div>
-          <div className="text-amber-700 dark:text-amber-300">
-            风险：自动抽取可能产生误召回；建议先重建再人工筛选。
-          </div>
+          <div className="text-amber-700 dark:text-amber-300">风险：自动抽取可能产生误召回；建议先重建再人工筛选。</div>
         </div>
       }
       actions={
@@ -277,10 +279,22 @@ export function GlossaryPage() {
           <button className="btn btn-secondary" aria-label="glossary_refresh" onClick={() => void load()} type="button">
             刷新
           </button>
-          <button className="btn btn-secondary" aria-label="glossary_rebuild" disabled={rebuilding} onClick={() => void rebuild()} type="button">
+          <button
+            className="btn btn-secondary"
+            aria-label="glossary_rebuild"
+            disabled={rebuilding}
+            onClick={() => void rebuild()}
+            type="button"
+          >
             {rebuilding ? "重建中…" : "重建（抽取）"}
           </button>
-          <button className="btn btn-secondary" aria-label="glossary_export" disabled={exporting} onClick={() => void exportAll()} type="button">
+          <button
+            className="btn btn-secondary"
+            aria-label="glossary_export"
+            disabled={exporting}
+            onClick={() => void exportAll()}
+            type="button"
+          >
             {exporting ? "导出中…" : "导出 JSON"}
           </button>
           {projectId ? (
@@ -329,7 +343,12 @@ export function GlossaryPage() {
               onChange={(e) => setCreateAliases(e.target.value)}
             />
             <div className="flex items-center gap-2">
-              <button className="btn btn-primary" disabled={!createTerm.trim() || creating} onClick={() => void doCreate()} type="button">
+              <button
+                className="btn btn-primary"
+                disabled={!createTerm.trim() || creating}
+                onClick={() => void doCreate()}
+                type="button"
+              >
                 {creating ? "创建中…" : "创建"}
               </button>
             </div>
@@ -393,19 +412,39 @@ export function GlossaryPage() {
                     </label>
                     {isEditing ? (
                       <>
-                        <button className="btn btn-primary" disabled={savingId !== null} onClick={() => void saveEdit()} type="button">
+                        <button
+                          className="btn btn-primary"
+                          disabled={savingId !== null}
+                          onClick={() => void saveEdit()}
+                          type="button"
+                        >
                           保存
                         </button>
-                        <button className="btn btn-secondary" disabled={savingId !== null} onClick={cancelEdit} type="button">
+                        <button
+                          className="btn btn-secondary"
+                          disabled={savingId !== null}
+                          onClick={cancelEdit}
+                          type="button"
+                        >
                           取消
                         </button>
                       </>
                     ) : (
                       <>
-                        <button className="btn btn-secondary" disabled={savingId !== null} onClick={() => startEdit(t.id)} type="button">
+                        <button
+                          className="btn btn-secondary"
+                          disabled={savingId !== null}
+                          onClick={() => startEdit(t.id)}
+                          type="button"
+                        >
                           编辑
                         </button>
-                        <button className="btn btn-danger" disabled={savingId !== null} onClick={() => void deleteTerm(t)} type="button">
+                        <button
+                          className="btn btn-danger"
+                          disabled={savingId !== null}
+                          onClick={() => void deleteTerm(t)}
+                          type="button"
+                        >
                           删除
                         </button>
                       </>
@@ -475,4 +514,3 @@ export function GlossaryPage() {
     </DebugPageShell>
   );
 }
-
