@@ -14,6 +14,16 @@ def format_sse(data: dict[str, Any], event: str | None = None) -> str:
     return message
 
 
+def sse_start(
+    *,
+    message: str = "开始生成...",
+    progress: int = 0,
+    status: str = "processing",
+) -> str:
+    payload: dict[str, Any] = {"type": "start", "message": message, "progress": progress, "status": status}
+    return format_sse(payload, event="start")
+
+
 def sse_progress(
     *,
     message: str,
@@ -24,26 +34,26 @@ def sse_progress(
     payload: dict[str, Any] = {"type": "progress", "message": message, "progress": progress, "status": status}
     if char_count is not None:
         payload["char_count"] = char_count
-    return format_sse(payload)
+    return format_sse(payload, event="progress")
 
 
 def sse_chunk(content: str) -> str:
-    return format_sse({"type": "chunk", "content": content})
+    return format_sse({"type": "chunk", "content": content}, event="token")
 
 
 def sse_result(data: Any) -> str:
-    return format_sse({"type": "result", "data": data})
+    return format_sse({"type": "result", "data": data}, event="result")
 
 
 def sse_error(*, error: str, code: int | None = None) -> str:
     payload: dict[str, Any] = {"type": "error", "error": error}
     if code is not None:
         payload["code"] = code
-    return format_sse(payload)
+    return format_sse(payload, event="error")
 
 
 def sse_done() -> str:
-    return format_sse({"type": "done"})
+    return format_sse({"type": "done"}, event="done")
 
 
 def sse_heartbeat() -> str:

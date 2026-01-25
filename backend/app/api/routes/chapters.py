@@ -62,6 +62,7 @@ from app.utils.sse_response import (
     sse_heartbeat,
     sse_progress,
     sse_result,
+    sse_start,
 )
 
 router = APIRouter()
@@ -1198,6 +1199,7 @@ def generate_chapter_stream(
                 )
 
     def event_generator():
+        yield sse_start(message="开始生成...", progress=0)
         yield sse_progress(message="准备生成...", progress=0)
 
         prompt_system = ""

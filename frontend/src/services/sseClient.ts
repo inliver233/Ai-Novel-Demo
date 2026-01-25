@@ -2,6 +2,14 @@ import { ApiError, type ApiErrorPayload } from "./apiClient";
 
 export type SSEMessage =
   | {
+      type: "start";
+      message?: string;
+      progress?: number;
+      status?: "processing" | "success" | "error";
+      char_count?: number;
+      word_count?: number;
+    }
+  | {
       type: "progress";
       message: string;
       progress: number;
@@ -9,7 +17,7 @@ export type SSEMessage =
       char_count?: number;
       word_count?: number;
     }
-  | { type: "chunk"; content: string }
+  | { type: "chunk" | "token"; content: string }
   | { type: "result"; data: unknown }
   | { type: "error"; error: string; code?: number }
   | { type: "done" };
@@ -150,38 +158,65 @@ export class SSEPostClient {
           const trimmed = block.trim();
           if (!trimmed || trimmed.startsWith(":")) continue;
 
+          let eventName: string | null = null;
           const dataLines: string[] = [];
           for (const line of trimmed.split("\n")) {
-            if (line.startsWith("data:")) dataLines.push(line.slice("data:".length).trim());
+            if (line.startsWith("event:")) {
+              if (eventName === null) eventName = line.slice("event:".length).trim() || null;
+            } else if (line.startsWith("data:")) {
+              dataLines.push(line.slice("data:".length).trim());
+            }
           }
 
           if (dataLines.length === 0) continue;
           const dataStr = dataLines.join("\n");
 
-          let msg: SSEMessage;
+          let msg: unknown;
           try {
             msg = JSON.parse(dataStr) as SSEMessage;
           } catch {
             continue;
           }
 
-          if (msg.type === "progress") {
+          const obj = msg && typeof msg === "object" ? (msg as Record<string, unknown>) : null;
+          const typeFromPayload = typeof obj?.type === "string" ? obj.type : null;
+          const eventType = eventName || typeFromPayload;
+          if (!eventType) continue;
+
+          if (eventType === "start") {
+            const message = typeof obj?.message === "string" ? obj.message : "开始生成...";
+            const progress = typeof obj?.progress === "number" ? obj.progress : 0;
+            const status = typeof obj?.status === "string" ? obj.status : "processing";
             this.options.onProgress?.({
-              message: msg.message,
-              progress: msg.progress,
-              status: msg.status,
-              charCount: msg.char_count ?? msg.word_count,
+              message,
+              progress,
+              status,
+              charCount: (obj?.char_count as number | undefined) ?? (obj?.word_count as number | undefined),
             });
-          } else if (msg.type === "chunk") {
-            this.accumulatedContent += msg.content;
-            this.options.onChunk?.(msg.content);
-          } else if (msg.type === "result") {
-            this.resultData = msg.data;
-            this.options.onResult?.(msg.data);
-          } else if (msg.type === "error") {
-            this.options.onError?.(msg.error, msg.code);
-            throw new SSEError({ code: "SSE_SERVER_ERROR", message: msg.error, requestId: this.requestId });
-          } else if (msg.type === "done") {
+          } else if (eventType === "progress") {
+            if (typeof obj?.message !== "string") continue;
+            if (typeof obj?.progress !== "number") continue;
+            if (typeof obj?.status !== "string") continue;
+            this.options.onProgress?.({
+              message: obj.message,
+              progress: obj.progress,
+              status: obj.status,
+              charCount: (obj.char_count as number | undefined) ?? (obj.word_count as number | undefined),
+            });
+          } else if (eventType === "chunk" || eventType === "token") {
+            if (typeof obj?.content !== "string") continue;
+            this.accumulatedContent += obj.content;
+            this.options.onChunk?.(obj.content);
+          } else if (eventType === "result") {
+            const data = obj?.data;
+            this.resultData = data;
+            this.options.onResult?.(data);
+          } else if (eventType === "error") {
+            const error = typeof obj?.error === "string" ? obj.error : "SSE error";
+            const code = typeof obj?.code === "number" ? obj.code : undefined;
+            this.options.onError?.(error, code);
+            throw new SSEError({ code: "SSE_SERVER_ERROR", message: error, requestId: this.requestId });
+          } else if (eventType === "done") {
             doneReceived = true;
             this.options.onDone?.();
             return { requestId: this.requestId, result: this.resultData, accumulatedContent: this.accumulatedContent };

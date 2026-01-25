@@ -391,16 +391,16 @@ export function AiGenerateDrawer(props: Props) {
           </div>
         </div>
 
-        {props.genForm.stream && props.generating && props.streamProgress ? (
+        {props.genForm.stream && props.generating ? (
           <div className="panel p-3">
             <div className="flex items-center justify-between gap-2 text-xs text-subtext">
-              <span className="truncate">{props.streamProgress.message}</span>
-              <span className="shrink-0">{props.streamProgress.progress}%</span>
+              <span className="truncate">{props.streamProgress?.message ?? "连接中..."}</span>
+              <span className="shrink-0">{props.streamProgress?.progress ?? 0}%</span>
             </div>
             <div className="h-2 w-full rounded bg-border">
               <div
                 className="h-2 rounded bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
-                style={{ width: `${Math.max(0, Math.min(100, props.streamProgress.progress))}%` }}
+                style={{ width: `${Math.max(0, Math.min(100, props.streamProgress?.progress ?? 0))}%` }}
               />
             </div>
             {props.onCancelGenerate ? (
