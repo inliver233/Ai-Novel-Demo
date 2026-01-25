@@ -109,13 +109,14 @@ def _rerank_score(*, method: str, query_text: str, candidate_text: str) -> float
 
 
 def _rerank_candidates(
-    *, query_text: str, candidates: list[dict[str, Any]], method: str, top_k: int
+    *, query_text: str, candidates: list[dict[str, Any]], method: str, top_k: int, hybrid_alpha: float | None = None
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     return rerank_candidates_with_providers(
         query_text=query_text,
         candidates=candidates,
         method=method,
         top_k=top_k,
+        hybrid_alpha=hybrid_alpha,
         score_fn=_rerank_score,
     )
 
@@ -349,17 +350,66 @@ def _parse_vector_source_weights() -> dict[str, float] | None:
     return out or None
 
 
-def _super_sort_final_chunks(final_chunks: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def _super_sort_final_chunks(
+    final_chunks: list[dict[str, Any]], *, super_sort: dict[str, Any] | None = None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     before_ids = [str(c.get("id") or "") for c in final_chunks if isinstance(c, dict)]
 
-    order_cfg = _parse_vector_source_order()
-    weights_cfg = _parse_vector_source_weights()
+    requested = super_sort if isinstance(super_sort, dict) else None
+
+    override_enabled: bool | None = None
+    override_order: list[str] | None = None
+    override_weights: dict[str, float] | None = None
+
+    if requested is not None:
+        if "enabled" in requested:
+            override_enabled = bool(requested.get("enabled"))
+
+        raw_order = requested.get("source_order")
+        if isinstance(raw_order, str):
+            parts = [p.strip().lower() for p in re.split(r"[\\s,|;]+", raw_order) if p.strip()]
+        elif isinstance(raw_order, list):
+            parts = [str(p or "").strip().lower() for p in raw_order if str(p or "").strip()]
+        else:
+            parts = []
+        if parts:
+            order: list[str] = []
+            for p in parts:
+                if p not in _ALL_SOURCES:
+                    continue
+                if p in order:
+                    continue
+                order.append(p)
+            override_order = order or None
+
+        raw_weights = requested.get("source_weights")
+        if isinstance(raw_weights, dict):
+            out: dict[str, float] = {}
+            for k, v in raw_weights.items():
+                source = str(k or "").strip().lower()
+                if source not in _ALL_SOURCES:
+                    continue
+                try:
+                    weight = float(v)
+                except Exception:
+                    continue
+                if weight <= 0:
+                    continue
+                out[source] = weight
+            override_weights = out or None
+
+    order_cfg = override_order if override_order is not None else _parse_vector_source_order()
+    weights_cfg = override_weights if override_weights is not None else _parse_vector_source_weights()
     enabled = bool(order_cfg or weights_cfg)
+    if override_enabled is False:
+        enabled = False
 
     base_obs: dict[str, Any] = {
         "enabled": bool(enabled),
         "applied": False,
         "reason": "disabled" if not enabled else None,
+        "override_enabled": override_enabled,
+        "requested": requested,
         "source_order": order_cfg,
         "source_weights": weights_cfg,
         "before": before_ids,
@@ -490,12 +540,13 @@ def _vector_enabled_reason(*, embedding: dict[str, str | None] | None = None) ->
     return embedding_enabled_reason(config)
 
 
-def _resolve_rerank_config(rerank: dict[str, Any] | None) -> tuple[bool, str, int]:
+def _resolve_rerank_config(rerank: dict[str, Any] | None) -> tuple[bool, str, int, float]:
     enabled = bool(getattr(settings, "vector_rerank_enabled", False))
     method = "auto"
     top_k = int(getattr(settings, "vector_max_candidates", 20) or 20)
+    hybrid_alpha = 0.0
     if rerank is None:
-        return enabled, method, max(1, min(int(top_k), 1000))
+        return enabled, method, max(1, min(int(top_k), 1000)), float(hybrid_alpha)
 
     if "enabled" in rerank:
         enabled = bool(rerank.get("enabled"))
@@ -507,7 +558,13 @@ def _resolve_rerank_config(rerank: dict[str, Any] | None) -> tuple[bool, str, in
             top_k = int(rerank.get("top_k"))
         except Exception:
             pass
-    return enabled, method, max(1, min(int(top_k), 1000))
+    if "hybrid_alpha" in rerank and rerank.get("hybrid_alpha") is not None:
+        try:
+            hybrid_alpha = float(rerank.get("hybrid_alpha"))
+        except Exception:
+            hybrid_alpha = 0.0
+    hybrid_alpha = max(0.0, min(float(hybrid_alpha), 1.0))
+    return enabled, method, max(1, min(int(top_k), 1000)), float(hybrid_alpha)
 
 
 def vector_rag_status(
@@ -519,7 +576,7 @@ def vector_rag_status(
 ) -> dict[str, Any]:
     sources = sources or list(_ALL_SOURCES)
     enabled, disabled_reason = _vector_enabled_reason(embedding=embedding)
-    rerank_enabled, rerank_method, rerank_top_k = _resolve_rerank_config(rerank)
+    rerank_enabled, rerank_method, rerank_top_k, rerank_hybrid_alpha = _resolve_rerank_config(rerank)
     rerank_obs = {
         "enabled": bool(rerank_enabled),
         "applied": False,
@@ -528,6 +585,9 @@ def vector_rag_status(
         "provider": None,
         "model": None,
         "top_k": int(rerank_top_k),
+        "hybrid_alpha": float(rerank_hybrid_alpha),
+        "hybrid_applied": False,
+        "after_rerank": [],
         "reason": "disabled" if not rerank_enabled else "status_only",
         "error_type": None,
         "before": [],
@@ -1611,6 +1671,7 @@ def query_project(
     sources: list[VectorSource] | None = None,
     embedding: dict[str, str | None] | None = None,
     rerank: dict[str, Any] | None = None,
+    super_sort: dict[str, Any] | None = None,
     kb_weights: dict[str, float] | None = None,
     kb_orders: dict[str, int] | None = None,
     kb_priority_groups: dict[str, str] | None = None,
@@ -1649,7 +1710,7 @@ def query_project(
 
     sources = sources or list(_ALL_SOURCES)
     enabled, disabled_reason = _vector_enabled_reason(embedding=embedding)
-    rerank_enabled, rerank_method, rerank_top_k = _resolve_rerank_config(rerank)
+    rerank_enabled, rerank_method, rerank_top_k, rerank_hybrid_alpha = _resolve_rerank_config(rerank)
     if not enabled:
         rerank_obs = {
             "enabled": bool(rerank_enabled),
@@ -1659,6 +1720,9 @@ def query_project(
             "provider": None,
             "model": None,
             "top_k": int(rerank_top_k),
+            "hybrid_alpha": float(rerank_hybrid_alpha),
+            "hybrid_applied": False,
+            "after_rerank": [],
             "reason": "vector_disabled",
             "error_type": None,
             "before": [],
@@ -1702,6 +1766,9 @@ def query_project(
             "provider": None,
             "model": None,
             "top_k": int(rerank_top_k),
+            "hybrid_alpha": float(rerank_hybrid_alpha),
+            "hybrid_applied": False,
+            "after_rerank": [],
             "reason": "vector_error" if disabled == "error" else "vector_disabled",
             "error_type": "EmbeddingError" if error else None,
             "before": [],
@@ -1763,6 +1830,9 @@ def query_project(
                     "provider": None,
                     "model": None,
                     "top_k": int(rerank_top_k),
+                    "hybrid_alpha": float(rerank_hybrid_alpha),
+                    "hybrid_applied": False,
+                    "after_rerank": list(before_ids),
                     "reason": "disabled",
                     "error_type": None,
                     "before": before_ids,
@@ -1772,7 +1842,11 @@ def query_project(
                 }
             elif trimmed_candidates:
                 trimmed_candidates, rerank_obs = _rerank_candidates(
-                    query_text=query_text, candidates=trimmed_candidates, method=rerank_method, top_k=rerank_top_k
+                    query_text=query_text,
+                    candidates=trimmed_candidates,
+                    method=rerank_method,
+                    top_k=rerank_top_k,
+                    hybrid_alpha=rerank_hybrid_alpha,
                 )
             else:
                 rerank_obs = {
@@ -1783,6 +1857,9 @@ def query_project(
                     "provider": None,
                     "model": None,
                     "top_k": int(rerank_top_k),
+                    "hybrid_alpha": float(rerank_hybrid_alpha),
+                    "hybrid_applied": False,
+                    "after_rerank": [],
                     "reason": "empty_candidates",
                     "error_type": None,
                     "before": [],
@@ -1819,7 +1896,7 @@ def query_project(
                 for c in trimmed_candidates[processed:]:
                     dropped.append({"id": c.get("id"), "reason": "budget"})
 
-            final_chunks, super_sort_obs = _super_sort_final_chunks(final_chunks)
+            final_chunks, super_sort_obs = _super_sort_final_chunks(final_chunks, super_sort=super_sort)
 
             post_start = time.perf_counter()
             text_md, truncated = _format_final_text(final_chunks, char_limit=int(settings.vector_final_char_limit or 6000))
@@ -1960,6 +2037,9 @@ def query_project(
                 "provider": None,
                 "model": None,
                 "top_k": int(rerank_top_k),
+                "hybrid_alpha": float(rerank_hybrid_alpha),
+                "hybrid_applied": False,
+                "after_rerank": [],
                 "reason": "chroma_unavailable",
                 "error_type": None,
                 "before": [],
@@ -2004,6 +2084,9 @@ def query_project(
             "provider": None,
             "model": None,
             "top_k": int(rerank_top_k),
+            "hybrid_alpha": float(rerank_hybrid_alpha),
+            "hybrid_applied": False,
+            "after_rerank": list(before_ids),
             "reason": "disabled",
             "error_type": None,
             "before": before_ids,
@@ -2013,7 +2096,11 @@ def query_project(
         }
     elif trimmed_candidates:
         trimmed_candidates, rerank_obs = _rerank_candidates(
-            query_text=query_text, candidates=trimmed_candidates, method=rerank_method, top_k=rerank_top_k
+            query_text=query_text,
+            candidates=trimmed_candidates,
+            method=rerank_method,
+            top_k=rerank_top_k,
+            hybrid_alpha=rerank_hybrid_alpha,
         )
     else:
         rerank_obs = {
@@ -2024,6 +2111,9 @@ def query_project(
             "provider": None,
             "model": None,
             "top_k": int(rerank_top_k),
+            "hybrid_alpha": float(rerank_hybrid_alpha),
+            "hybrid_applied": False,
+            "after_rerank": [],
             "reason": "empty_candidates",
             "error_type": None,
             "before": [],
@@ -2061,7 +2151,7 @@ def query_project(
         for c in trimmed_candidates[processed:]:
             dropped.append({"id": c.get("id"), "reason": "budget"})
 
-    final_chunks, super_sort_obs = _super_sort_final_chunks(final_chunks)
+    final_chunks, super_sort_obs = _super_sort_final_chunks(final_chunks, super_sort=super_sort)
 
     post_start = time.perf_counter()
     text_md, truncated = _format_final_text(final_chunks, char_limit=int(settings.vector_final_char_limit or 6000))

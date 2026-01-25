@@ -4,7 +4,15 @@ import { useToast } from "../../components/ui/toast";
 import { UI_COPY } from "../../lib/uiCopy";
 import { EMPTY_CHUNKS } from "./types";
 import type { VectorRagResult, VectorSource } from "./types";
-import { formatHybridCounts, formatOverfilter, formatRerankSummary, normalizeRerankObs, safeJson } from "./utils";
+import {
+  formatHybridCounts,
+  formatOverfilter,
+  formatRerankSummary,
+  formatSuperSortSummary,
+  normalizeRerankObs,
+  normalizeSuperSortObs,
+  safeJson,
+} from "./utils";
 
 const SOURCE_LABEL: Record<VectorSource, string> = {
   worldbook: "世界书（worldbook）",
@@ -262,6 +270,11 @@ export function RagQueryPanel(props: {
             {normalizeRerankObs(queryResult.rerank) ? (
               <div className="mt-1">rerank: {formatRerankSummary(normalizeRerankObs(queryResult.rerank)!)}</div>
             ) : null}
+            {normalizeSuperSortObs(queryResult.super_sort) ? (
+              <div className="mt-1">
+                super_sort: {formatSuperSortSummary(normalizeSuperSortObs(queryResult.super_sort)!)}
+              </div>
+            ) : null}
             {queryRequestId ? (
               <div className="mt-1 flex items-center gap-2">
                 <span className="truncate">
@@ -299,6 +312,24 @@ export function RagQueryPanel(props: {
                 <summary className="cursor-pointer select-none text-xs">预处理信息（preprocess_obs）</summary>
                 <pre className="mt-2 max-h-64 overflow-auto text-[11px] leading-4 text-subtext">
                   {safeJson(queryPreprocessObs)}
+                </pre>
+              </details>
+            ) : null}
+
+            {queryResult.rerank ? (
+              <details className="mt-2 rounded-atelier border border-border bg-canvas p-3">
+                <summary className="cursor-pointer select-none text-xs">rerank_obs</summary>
+                <pre className="mt-2 max-h-64 overflow-auto text-[11px] leading-4 text-subtext">
+                  {safeJson(queryResult.rerank)}
+                </pre>
+              </details>
+            ) : null}
+
+            {queryResult.super_sort ? (
+              <details className="mt-2 rounded-atelier border border-border bg-canvas p-3">
+                <summary className="cursor-pointer select-none text-xs">super_sort_obs</summary>
+                <pre className="mt-2 max-h-64 overflow-auto text-[11px] leading-4 text-subtext">
+                  {safeJson(queryResult.super_sort)}
                 </pre>
               </details>
             ) : null}

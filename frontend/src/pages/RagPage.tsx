@@ -26,10 +26,15 @@ export function RagPage() {
   const [rerankEnabled, setRerankEnabled] = useState(false);
   const [rerankMethod, setRerankMethod] = useState("auto");
   const [rerankTopK, setRerankTopK] = useState(20);
+  const [rerankHybridAlpha, setRerankHybridAlpha] = useState(0);
   const [rerankSaving, setRerankSaving] = useState(false);
 
   const [sources, setSources] = useState<VectorSource[]>(["worldbook", "outline", "chapter"]);
   const [queryText, setQueryText] = useState("");
+
+  const [superSortMode, setSuperSortMode] = useState<"disabled" | "order" | "weights">("disabled");
+  const [superSortOrderText, setSuperSortOrderText] = useState("worldbook,outline,chapter");
+  const [superSortWeights, setSuperSortWeights] = useState({ worldbook: 1, outline: 1, chapter: 1 });
 
   const [kbLoading, setKbLoading] = useState(false);
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
@@ -412,6 +417,19 @@ export function RagPage() {
     }
     setQueryLoading(true);
     try {
+      const superSort =
+        superSortMode === "order"
+          ? {
+              enabled: true,
+              source_order: superSortOrderText
+                .split(/[\\s,|;]+/g)
+                .map((s) => s.trim())
+                .filter((s): s is VectorSource => s === "worldbook" || s === "outline" || s === "chapter"),
+            }
+          : superSortMode === "weights"
+            ? { enabled: true, source_weights: superSortWeights }
+            : null;
+
       const res = await apiJson<{
         result: VectorRagResult;
         raw_query_text?: unknown;
@@ -419,7 +437,13 @@ export function RagPage() {
         preprocess_obs?: unknown;
       }>(`/api/projects/${projectId}/vector/query`, {
         method: "POST",
-        body: JSON.stringify({ query_text: queryText, sources: sortedSources, kb_ids: selectedKbIds }),
+        body: JSON.stringify({
+          query_text: queryText,
+          sources: sortedSources,
+          kb_ids: selectedKbIds,
+          rerank_hybrid_alpha: rerankHybridAlpha,
+          ...(superSort ? { super_sort: superSort } : {}),
+        }),
       });
       setQueryResult(res.data?.result ?? null);
       setQueryRequestId(res.request_id ?? null);
@@ -437,7 +461,17 @@ export function RagPage() {
     } finally {
       setQueryLoading(false);
     }
-  }, [projectId, queryText, selectedKbIds, sortedSources, toast]);
+  }, [
+    projectId,
+    queryText,
+    selectedKbIds,
+    sortedSources,
+    rerankHybridAlpha,
+    superSortMode,
+    superSortOrderText,
+    superSortWeights,
+    toast,
+  ]);
 
   return (
     <div className="grid gap-4">
@@ -534,6 +568,14 @@ export function RagPage() {
           setRerankMethod={setRerankMethod}
           rerankTopK={rerankTopK}
           setRerankTopK={setRerankTopK}
+          rerankHybridAlpha={rerankHybridAlpha}
+          setRerankHybridAlpha={setRerankHybridAlpha}
+          superSortMode={superSortMode}
+          setSuperSortMode={setSuperSortMode}
+          superSortOrderText={superSortOrderText}
+          setSuperSortOrderText={setSuperSortOrderText}
+          superSortWeights={superSortWeights}
+          setSuperSortWeights={setSuperSortWeights}
           rerankSaving={rerankSaving}
           applyRerank={applyRerank}
           ingestResult={ingestResult}

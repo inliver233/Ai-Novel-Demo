@@ -99,12 +99,23 @@ def rerank_candidates(
     method: str,
     top_k: int,
     score_fn: Callable[..., float],
+    hybrid_alpha: float | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     before = [str(c.get("id") or "") for c in candidates if isinstance(c, dict)]
     start = time.perf_counter()
 
     qtext = (query_text or "").strip()
     requested_method = str(method or "").strip() or "auto"
+    alpha: float | None
+    if hybrid_alpha is None:
+        alpha = None
+    else:
+        try:
+            alpha = float(hybrid_alpha)
+        except Exception:
+            alpha = None
+    if alpha is not None:
+        alpha = max(0.0, min(float(alpha), 1.0))
     try:
         limit = int(top_k)
     except Exception:
@@ -121,6 +132,9 @@ def rerank_candidates(
         "provider": None,
         "model": None,
         "top_k": int(limit),
+        "hybrid_alpha": alpha,
+        "hybrid_applied": False,
+        "after_rerank": list(before),
         "reason": None,
         "error_type": None,
         "before": before,
@@ -158,21 +172,40 @@ def rerank_candidates(
             try:
                 reranked_head, ext = _external_rerank_candidates(query_text=qtext, candidates=head)
                 reranked = list(reranked_head) + list(tail)
-                after = [str(c.get("id") or "") for c in reranked if isinstance(c, dict)]
+                after_rerank = [str(c.get("id") or "") for c in reranked if isinstance(c, dict)]
+                final = list(reranked)
+                after = list(after_rerank)
+                hybrid_applied = False
+                if alpha is not None and alpha > 0.0:
+                    base_rank = {cid: idx for idx, cid in enumerate(before, start=1) if cid}
+                    rerank_rank = {cid: idx for idx, cid in enumerate(after_rerank, start=1) if cid}
+
+                    def _key(c: dict[str, Any]) -> tuple[float, int, int, str]:
+                        cid = str(c.get("id") or "")
+                        br = int(base_rank.get(cid, 10**9))
+                        rr = int(rerank_rank.get(cid, 10**9))
+                        score = float(alpha) * float(br) + (1.0 - float(alpha)) * float(rr)
+                        return (score, rr, br, cid)
+
+                    final = sorted(final, key=_key)
+                    after = [str(c.get("id") or "") for c in final if isinstance(c, dict)]
+                    hybrid_applied = after != after_rerank
                 obs = dict(base_obs)
                 obs.update(
                     {
-                        "applied": True,
+                        "applied": after != before,
                         "method": "external_rerank_api",
                         "provider": ext.get("provider"),
                         "model": ext.get("model"),
                         "reason": "ok",
                         "after": after,
+                        "after_rerank": after_rerank,
+                        "hybrid_applied": bool(hybrid_applied),
                         "timing_ms": int((time.perf_counter() - start) * 1000),
                         "errors": errors,
                     }
                 )
-                return reranked, obs
+                return final, obs
             except Exception as exc:
                 errors.append({"method": "external_rerank_api", "reason": "error", "error": type(exc).__name__})
                 continue
@@ -192,21 +225,40 @@ def rerank_candidates(
             scored.sort(key=lambda x: (-x[0], x[1]))
             reranked_head = [c for _score, _idx, c in scored]
             reranked = list(reranked_head) + list(tail)
-            after = [str(c.get("id") or "") for c in reranked if isinstance(c, dict)]
+            after_rerank = [str(c.get("id") or "") for c in reranked if isinstance(c, dict)]
+            final = list(reranked)
+            after = list(after_rerank)
+            hybrid_applied = False
+            if alpha is not None and alpha > 0.0:
+                base_rank = {cid: idx for idx, cid in enumerate(before, start=1) if cid}
+                rerank_rank = {cid: idx for idx, cid in enumerate(after_rerank, start=1) if cid}
+
+                def _key(c: dict[str, Any]) -> tuple[float, int, int, str]:
+                    cid = str(c.get("id") or "")
+                    br = int(base_rank.get(cid, 10**9))
+                    rr = int(rerank_rank.get(cid, 10**9))
+                    score = float(alpha) * float(br) + (1.0 - float(alpha)) * float(rr)
+                    return (score, rr, br, cid)
+
+                final = sorted(final, key=_key)
+                after = [str(c.get("id") or "") for c in final if isinstance(c, dict)]
+                hybrid_applied = after != after_rerank
             obs = dict(base_obs)
             obs.update(
                 {
-                    "applied": True,
+                    "applied": after != before,
                     "method": try_method,
                     "provider": "local",
                     "model": None,
                     "reason": "ok",
                     "after": after,
+                    "after_rerank": after_rerank,
+                    "hybrid_applied": bool(hybrid_applied),
                     "timing_ms": int((time.perf_counter() - start) * 1000),
                     "errors": errors,
                 }
             )
-            return reranked, obs
+            return final, obs
         except ImportError as exc:
             errors.append({"method": try_method, "reason": "dependency_missing", "error": type(exc).__name__})
         except Exception as exc:

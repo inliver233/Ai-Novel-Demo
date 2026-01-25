@@ -14,6 +14,14 @@ export function RagAdvancedDebugPanel(props: {
   setRerankMethod: (method: string) => void;
   rerankTopK: number;
   setRerankTopK: (topK: number) => void;
+  rerankHybridAlpha: number;
+  setRerankHybridAlpha: (alpha: number) => void;
+  superSortMode: "disabled" | "order" | "weights";
+  setSuperSortMode: (mode: "disabled" | "order" | "weights") => void;
+  superSortOrderText: string;
+  setSuperSortOrderText: (text: string) => void;
+  superSortWeights: { worldbook: number; outline: number; chapter: number };
+  setSuperSortWeights: (next: { worldbook: number; outline: number; chapter: number }) => void;
   rerankSaving: boolean;
   applyRerank: () => Promise<void>;
   ingestResult: unknown;
@@ -30,6 +38,14 @@ export function RagAdvancedDebugPanel(props: {
     rerankMethod,
     rerankSaving,
     rerankTopK,
+    rerankHybridAlpha,
+    setRerankHybridAlpha,
+    superSortMode,
+    setSuperSortMode,
+    superSortOrderText,
+    setSuperSortOrderText,
+    superSortWeights,
+    setSuperSortWeights,
     setDebugOpen,
     setRerankEnabled,
     setRerankMethod,
@@ -116,6 +132,25 @@ export function RagAdvancedDebugPanel(props: {
                 disabled={rerankSaving || settingsQuery.loading}
               />
             </label>
+            <label className="grid gap-1 sm:col-span-3">
+              <span className="text-xs text-subtext">
+                hybrid_alpha（0=完全使用 rerank；1=完全保持原始顺序；仅影响 Query 调试请求）
+              </span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={rerankHybridAlpha}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (!Number.isFinite(next)) return;
+                  setRerankHybridAlpha(Math.max(0, Math.min(1, next)));
+                }}
+                disabled={busy}
+              />
+            </label>
             <div className="sm:col-span-3">
               <button
                 className="btn btn-primary"
@@ -126,6 +161,91 @@ export function RagAdvancedDebugPanel(props: {
                 {rerankSaving ? "保存中…" : "应用重排配置"}
               </button>
             </div>
+          </div>
+        </div>
+
+        <div className="rounded-atelier border border-border bg-surface p-4">
+          <div className="text-sm font-medium text-ink">Super sort（仅影响 Query 调试请求）</div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <label className="grid gap-1 sm:col-span-3">
+              <span className="text-xs text-subtext">模式</span>
+              <select
+                className="select"
+                value={superSortMode}
+                onChange={(e) => setSuperSortMode(e.target.value as "disabled" | "order" | "weights")}
+                disabled={busy}
+              >
+                <option value="disabled">disabled</option>
+                <option value="order">source_order</option>
+                <option value="weights">source_weights</option>
+              </select>
+            </label>
+
+            {superSortMode === "order" ? (
+              <label className="grid gap-1 sm:col-span-3">
+                <span className="text-xs text-subtext">source_order（逗号分隔）</span>
+                <input
+                  className="input"
+                  value={superSortOrderText}
+                  onChange={(e) => setSuperSortOrderText(e.target.value)}
+                  placeholder="worldbook,outline,chapter"
+                  disabled={busy}
+                />
+              </label>
+            ) : null}
+
+            {superSortMode === "weights" ? (
+              <>
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">worldbook</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={superSortWeights.worldbook}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      if (!Number.isFinite(next)) return;
+                      setSuperSortWeights({ ...superSortWeights, worldbook: Math.max(0, next) });
+                    }}
+                    disabled={busy}
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">outline</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={superSortWeights.outline}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      if (!Number.isFinite(next)) return;
+                      setSuperSortWeights({ ...superSortWeights, outline: Math.max(0, next) });
+                    }}
+                    disabled={busy}
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">chapter</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={superSortWeights.chapter}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      if (!Number.isFinite(next)) return;
+                      setSuperSortWeights({ ...superSortWeights, chapter: Math.max(0, next) });
+                    }}
+                    disabled={busy}
+                  />
+                </label>
+              </>
+            ) : null}
           </div>
         </div>
 

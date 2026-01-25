@@ -53,3 +53,21 @@ class TestVectorRerank(unittest.TestCase):
             self.assertGreaterEqual(len(obs.get("errors") or []), 1)
         finally:
             vector_rag_service._rerank_score = orig  # type: ignore[assignment]
+
+    def test_rerank_hybrid_alpha_preserves_original_order(self) -> None:
+        candidates = [
+            {"id": "b", "text": "apple banana", "metadata": {}},
+            {"id": "a", "text": "dragon castle", "metadata": {}},
+        ]
+
+        reranked, obs = vector_rag_service._rerank_candidates(
+            query_text="dragon castle",
+            candidates=candidates,
+            method="auto",
+            top_k=20,
+            hybrid_alpha=1.0,
+        )
+        self.assertEqual([c.get("id") for c in reranked], ["b", "a"])
+        self.assertEqual(obs.get("after_rerank"), ["a", "b"])
+        self.assertTrue(bool(obs.get("hybrid_applied")))
+        self.assertFalse(bool(obs.get("applied")))

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
@@ -91,6 +93,8 @@ class VectorQueryRequest(BaseModel):
     kb_id: str | None = Field(default=None, max_length=64)
     kb_ids: list[str] = Field(default_factory=list, max_length=200)
     sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
+    rerank_hybrid_alpha: float | None = Field(default=None, ge=0.0, le=1.0)
+    super_sort: dict[str, Any] | None = Field(default=None)
 
 
 class VectorStatusRequest(BaseModel):
@@ -305,6 +309,9 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
     kb_priority_groups = {r.kb_id: str(getattr(r, "priority_group", "normal") or "normal") for r in selected_kbs}
 
     normalized, preprocess_obs = normalize_query_text(query_text=body.query_text, config=qp_cfg)
+    if body.rerank_hybrid_alpha is not None:
+        rerank = dict(rerank)
+        rerank["hybrid_alpha"] = float(body.rerank_hybrid_alpha)
     result = query_project(
         project_id=project_id,
         kb_ids=selected_kb_ids,
@@ -312,6 +319,7 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
         sources=body.sources,
         embedding=embedding,
         rerank=rerank,
+        super_sort=body.super_sort,
         kb_weights=kb_weights,
         kb_orders=kb_orders,
         kb_priority_groups=kb_priority_groups,
