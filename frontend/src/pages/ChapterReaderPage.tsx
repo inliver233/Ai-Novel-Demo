@@ -137,19 +137,18 @@ export function ChapterReaderPage() {
     return sortedChapters.filter((c) => c.status === "done");
   }, [onlyDone, sortedChapters]);
 
-  useEffect(() => {
-    if (requestedChapterId && visibleChapters.some((c) => c.id === requestedChapterId)) {
-      setActiveId(requestedChapterId);
-      return;
+  const resolvedActiveId = useMemo(() => {
+    if (activeId && visibleChapters.some((c) => c.id === activeId)) return activeId;
+    if (!activeId && requestedChapterId && visibleChapters.some((c) => c.id === requestedChapterId)) {
+      return requestedChapterId;
     }
-    if (activeId && visibleChapters.some((c) => c.id === activeId)) return;
-    setActiveId(visibleChapters[0]?.id ?? null);
+    return visibleChapters[0]?.id ?? null;
   }, [activeId, requestedChapterId, visibleChapters]);
 
   const activeIndex = useMemo(() => {
-    if (!activeId) return -1;
-    return visibleChapters.findIndex((c) => c.id === activeId);
-  }, [activeId, visibleChapters]);
+    if (!resolvedActiveId) return -1;
+    return visibleChapters.findIndex((c) => c.id === resolvedActiveId);
+  }, [resolvedActiveId, visibleChapters]);
 
   const activeChapter = useMemo(() => {
     if (activeIndex < 0) return null;
@@ -204,16 +203,14 @@ export function ChapterReaderPage() {
 
   useEffect(() => {
     if (!projectId) return;
-    if (!activeChapter) {
-      setMemoryPack(EMPTY_PACK);
-      setMemoryError(null);
-      setMemoryLoading(false);
-      return;
-    }
+    if (!activeChapter) return;
 
     let cancelled = false;
-    setMemoryLoading(true);
-    setMemoryError(null);
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      setMemoryLoading(true);
+      setMemoryError(null);
+    });
     const queryText = buildMemoryQueryText(activeChapter);
 
     apiJson<MemoryContextPack>(`/api/projects/${projectId}/memory/preview`, {
@@ -255,12 +252,16 @@ export function ChapterReaderPage() {
     };
   }, [activeChapter, projectId]);
 
-  const storySection = useMemo(() => asObject(memoryPack.story_memory), [memoryPack.story_memory]);
+  const effectiveMemoryPack = activeChapter ? memoryPack : EMPTY_PACK;
+  const effectiveMemoryLoading = activeChapter ? memoryLoading : false;
+  const effectiveMemoryError = activeChapter ? memoryError : null;
+
+  const storySection = useMemo(() => asObject(effectiveMemoryPack.story_memory), [effectiveMemoryPack.story_memory]);
   const foreshadowSection = useMemo(
-    () => asObject(memoryPack.foreshadow_open_loops),
-    [memoryPack.foreshadow_open_loops],
+    () => asObject(effectiveMemoryPack.foreshadow_open_loops),
+    [effectiveMemoryPack.foreshadow_open_loops],
   );
-  const structuredSection = useMemo(() => asObject(memoryPack.structured), [memoryPack.structured]);
+  const structuredSection = useMemo(() => asObject(effectiveMemoryPack.structured), [effectiveMemoryPack.structured]);
 
   const storyItems = useMemo(() => normalizeItems(storySection?.items), [storySection]);
   const foreshadowItems = useMemo(() => normalizeItems(foreshadowSection?.items), [foreshadowSection]);
@@ -296,7 +297,7 @@ export function ChapterReaderPage() {
         ) : null}
         <div className="grid gap-1">
           {visibleChapters.map((c) => {
-            const isActive = c.id === activeId;
+            const isActive = c.id === resolvedActiveId;
             return (
               <button
                 key={c.id}
@@ -340,13 +341,15 @@ export function ChapterReaderPage() {
 
       <div className="flex-1 overflow-auto p-3">
         {!activeChapter ? <div className="text-sm text-subtext">请选择章节以查看命中。</div> : null}
-        {memoryLoading ? <div className="text-sm text-subtext">加载中...</div> : null}
-        {memoryError ? (
+        {effectiveMemoryLoading ? <div className="text-sm text-subtext">加载中...</div> : null}
+        {effectiveMemoryError ? (
           <div className="rounded-atelier border border-border bg-surface p-3 text-sm text-subtext">
             <div className="text-ink">记忆标注加载失败</div>
             <div className="mt-1 text-xs text-subtext">
-              {memoryError.message} ({memoryError.code})
-              {memoryError.requestId ? <span className="ml-2">request_id: {memoryError.requestId}</span> : null}
+              {effectiveMemoryError.message} ({effectiveMemoryError.code})
+              {effectiveMemoryError.requestId ? (
+                <span className="ml-2">request_id: {effectiveMemoryError.requestId}</span>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -589,4 +592,3 @@ export function ChapterReaderPage() {
     </div>
   );
 }
-
