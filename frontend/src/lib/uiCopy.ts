@@ -25,6 +25,7 @@ export const UI_COPY = {
     structuredMemory: "结构化记忆",
     chapterAnalysis: "标注回溯",
     preview: "预览",
+    reader: "阅读",
     export: "导出",
 
     worldBook: "世界书",

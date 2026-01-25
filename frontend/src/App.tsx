@@ -74,6 +74,11 @@ const PreviewPage = lazy(async () => {
   return { default: mod.PreviewPage };
 });
 
+const ChapterReaderPage = lazy(async () => {
+  const mod = await import("./pages/ChapterReaderPage");
+  return { default: mod.ChapterReaderPage };
+});
+
 const PromptsPage = lazy(async () => {
   const mod = await import("./pages/PromptsPage");
   return { default: mod.PromptsPage };
@@ -192,6 +197,10 @@ const router = createBrowserRouter([
               {
                 path: "preview",
                 element: <PreviewPage />,
+              },
+              {
+                path: "reader",
+                element: <ChapterReaderPage />,
               },
               {
                 path: "prompts",

@@ -48,6 +48,7 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
   ["/structured-memory", UI_COPY.nav.structuredMemory],
   ["/chapter-analysis", UI_COPY.nav.chapterAnalysis],
   ["/preview", UI_COPY.nav.preview],
+  ["/reader", UI_COPY.nav.reader],
   ["/export", UI_COPY.nav.export],
 
   ["/worldbook", UI_COPY.nav.worldBook],
@@ -380,6 +381,14 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={false}
+                          icon={<BookOpenText size={18} />}
+                          label={UI_COPY.nav.reader}
+                          ariaLabel="阅读 (nav_reader)"
+                          to={`/projects/${projectId}/reader`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
                           icon={<FileDown size={18} />}
                           label={UI_COPY.nav.export}
                           ariaLabel="导出 (nav_export)"
@@ -602,6 +611,13 @@ export function AppShell() {
                     label={UI_COPY.nav.preview}
                     ariaLabel="预览 (nav_preview)"
                     to={`/projects/${projectId}/preview`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<BookOpenText size={18} />}
+                    label={UI_COPY.nav.reader}
+                    ariaLabel="阅读 (nav_reader)"
+                    to={`/projects/${projectId}/reader`}
                   />
                   <SidebarLink
                     collapsed={collapsed}
