@@ -260,7 +260,7 @@ export function PreviewPage() {
                     </div>
                   ) : null}
                 </div>
-                <div className="atelier-content max-w-none text-ink">
+                <div className="atelier-content mx-auto max-w-4xl text-ink">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{activeChapter.content_md || "_（空）_"}</ReactMarkdown>
                 </div>
               </>
