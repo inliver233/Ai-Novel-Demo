@@ -90,7 +90,7 @@ export function MemorySidebar(props: {
         </div>
       </div>
 
-      <div className="max-h-[calc(100vh-340px)] overflow-auto rounded-atelier border border-border bg-surface p-2">
+      <div className="rounded-atelier border border-border bg-surface p-2">
         {groups.length === 0 ? (
           <div className="p-3 text-sm text-subtext">暂无记忆。请先在写作页分析并“保存到记忆库”。</div>
         ) : (

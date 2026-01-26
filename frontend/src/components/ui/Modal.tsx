@@ -22,7 +22,7 @@ export function Modal(props: {
       className={clsx("flex items-center justify-center p-4", props.className)}
     >
       <motion.div
-        className={clsx("w-full max-h-[calc(100vh-2rem)] overflow-y-auto", props.panelClassName)}
+        className={clsx("w-full max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain", props.panelClassName)}
         role="dialog"
         aria-modal="true"
         aria-label={props.ariaLabelledBy ? undefined : props.ariaLabel}

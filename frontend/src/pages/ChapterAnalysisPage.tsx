@@ -187,7 +187,7 @@ export function ChapterAnalysisPage() {
           ) : !(chapter.content_md ?? "").trim() ? (
             <div className="p-3 text-sm text-subtext">章节正文为空。</div>
           ) : (
-            <div className="max-h-[calc(100vh-320px)] overflow-auto rounded-atelier border border-border bg-canvas p-4">
+            <div className="rounded-atelier border border-border bg-canvas p-4">
               <AnnotatedText
                 content={content}
                 annotations={validAnnotations}
