@@ -11,6 +11,7 @@ import { usePersistentOutletIsActive } from "../hooks/usePersistentOutlet";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
+import { copyText } from "../lib/copyText";
 import { createRequestSeqGuard } from "../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../services/apiClient";
 import { markWizardLlmTestOk } from "../services/wizard";
@@ -68,6 +69,7 @@ export function PromptsPage() {
   const bumpWizardLocal = wizard.bumpLocal;
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<null | { message: string; code: string; requestId?: string }>(null);
   const [savingPreset, setSavingPreset] = useState(false);
   const [testing, setTesting] = useState(false);
   const savingPresetRef = useRef(false);
@@ -138,9 +140,15 @@ export function PromptsPage() {
       });
 
       setApiKey("");
+      setLoadError(null);
     } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      if (e instanceof ApiError) {
+        setLoadError({ message: e.message, code: e.code, requestId: e.requestId });
+        toast.toastError(`${e.message} (${e.code})`, e.requestId);
+      } else {
+        setLoadError({ message: "请求失败", code: "UNKNOWN_ERROR" });
+        toast.toastError("请求失败 (UNKNOWN_ERROR)");
+      }
     } finally {
       setLoading(false);
     }
@@ -742,7 +750,61 @@ export function PromptsPage() {
     return true;
   }, [navigate, nextAfterLlm?.href, projectId, saveAll, testConnection]);
 
-  if (loading) return <div className="text-subtext">加载中...</div>;
+  if (loading) {
+    return (
+      <div className="grid gap-6 pb-24">
+        <div className="panel p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="grid gap-2">
+              <div className="skeleton h-6 w-44" />
+              <div className="skeleton h-4 w-72" />
+            </div>
+            <div className="skeleton h-9 w-40" />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="skeleton h-10 w-full" />
+            <div className="skeleton h-10 w-full" />
+            <div className="skeleton h-28 w-full sm:col-span-2" />
+          </div>
+        </div>
+        <div className="panel p-6">
+          <div className="skeleton h-5 w-40" />
+          <div className="mt-3 grid gap-2">
+            <div className="skeleton h-4 w-80" />
+            <div className="skeleton h-4 w-72" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError && !project && !baselinePreset) {
+    return (
+      <div className="grid gap-6 pb-24">
+        <div className="error-card">
+          <div className="state-title">加载失败</div>
+          <div className="state-desc">{`${loadError.message} (${loadError.code})`}</div>
+          {loadError.requestId ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-subtext">
+              <span>request_id: {loadError.requestId}</span>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => void copyText(loadError.requestId!, { title: "复制 request_id" })}
+                type="button"
+              >
+                复制 request_id
+              </button>
+            </div>
+          ) : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button className="btn btn-primary" onClick={() => void reloadAll()} type="button">
+              重试
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-6 pb-24">

@@ -229,6 +229,22 @@
   .skeleton {
     @apply animate-pulse rounded-atelier bg-border/60;
   }
+
+  .state-card {
+    @apply panel p-6;
+  }
+
+  .error-card {
+    @apply state-card border-danger/30 bg-danger/5;
+  }
+
+  .state-title {
+    @apply font-content text-xl text-ink;
+  }
+
+  .state-desc {
+    @apply mt-2 text-sm text-subtext;
+  }
 }
 
 .atelier-content {

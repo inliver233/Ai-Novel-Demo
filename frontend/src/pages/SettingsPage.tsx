@@ -11,6 +11,7 @@ import { useProjectData } from "../hooks/useProjectData";
 import { useSaveHotkey } from "../hooks/useSaveHotkey";
 import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
+import { copyText } from "../lib/copyText";
 import { humanizeMemberRole } from "../lib/humanize";
 import { ApiError, apiJson } from "../services/apiClient";
 import { markWizardProjectChanged } from "../services/wizard";
@@ -64,6 +65,7 @@ export function SettingsPage() {
   const projectsRefreshTimerRef = useRef<number | null>(null);
   const [baselineProject, setBaselineProject] = useState<Project | null>(null);
   const [baselineSettings, setBaselineSettings] = useState<ProjectSettings | null>(null);
+  const [loadError, setLoadError] = useState<null | { message: string; code: string; requestId?: string }>(null);
 
   const [projectForm, setProjectForm] = useState<ProjectForm>({ name: "", genre: "", logline: "" });
   const [settingsForm, setSettingsForm] = useState<SettingsForm>({
@@ -89,11 +91,21 @@ export function SettingsPage() {
   const [vectorApiKeyClearRequested, setVectorApiKeyClearRequested] = useState(false);
 
   const settingsQuery = useProjectData<SettingsLoaded>(projectId, async (id) => {
-    const [pRes, sRes] = await Promise.all([
-      apiJson<{ project: Project }>(`/api/projects/${id}`),
-      apiJson<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`),
-    ]);
-    return { project: pRes.data.project, settings: sRes.data.settings };
+    try {
+      const [pRes, sRes] = await Promise.all([
+        apiJson<{ project: Project }>(`/api/projects/${id}`),
+        apiJson<{ settings: ProjectSettings }>(`/api/projects/${id}/settings`),
+      ]);
+      setLoadError(null);
+      return { project: pRes.data.project, settings: sRes.data.settings };
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setLoadError({ message: e.message, code: e.code, requestId: e.requestId });
+      } else {
+        setLoadError({ message: "请求失败", code: "UNKNOWN_ERROR" });
+      }
+      throw e;
+    }
   });
 
   useEffect(() => {
@@ -599,8 +611,75 @@ export function SettingsPage() {
   }, [dirty, navigate, projectId, save, saving]);
 
   const loading = settingsQuery.loading;
-  if (loading) return <div className="text-subtext">加载中...</div>;
-  if (!baselineProject || !baselineSettings) return <div className="text-subtext">项目加载失败</div>;
+  if (loading) {
+    return (
+      <div className="grid gap-6 pb-24">
+        <section className="panel p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="grid gap-2">
+              <div className="skeleton h-6 w-32" />
+              <div className="skeleton h-4 w-56" />
+            </div>
+            <div className="skeleton h-9 w-40" />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-1 sm:col-span-1">
+              <div className="skeleton h-4 w-16" />
+              <div className="skeleton h-10 w-full" />
+            </div>
+            <div className="grid gap-1 sm:col-span-1">
+              <div className="skeleton h-4 w-16" />
+              <div className="skeleton h-10 w-full" />
+            </div>
+            <div className="grid gap-1 sm:col-span-3">
+              <div className="skeleton h-4 w-40" />
+              <div className="skeleton h-16 w-full" />
+            </div>
+          </div>
+        </section>
+
+        <section className="panel p-6">
+          <div className="grid gap-2">
+            <div className="skeleton h-6 w-44" />
+            <div className="skeleton h-4 w-72" />
+          </div>
+          <div className="mt-4 grid gap-4">
+            <div className="skeleton h-28 w-full" />
+            <div className="skeleton h-28 w-full" />
+            <div className="skeleton h-28 w-full" />
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (!baselineProject || !baselineSettings) {
+    return (
+      <div className="grid gap-6 pb-24">
+        <div className="error-card">
+          <div className="state-title">加载失败</div>
+          <div className="state-desc">{loadError ? `${loadError.message} (${loadError.code})` : "项目加载失败"}</div>
+          {loadError?.requestId ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-subtext">
+              <span>request_id: {loadError.requestId}</span>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => void copyText(loadError.requestId!, { title: "复制 request_id" })}
+                type="button"
+              >
+                复制 request_id
+              </button>
+            </div>
+          ) : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button className="btn btn-primary" onClick={() => void settingsQuery.refresh()} type="button">
+              重试
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const embeddingProviderPreview = (
     settingsForm.vector_embedding_provider.trim() ||

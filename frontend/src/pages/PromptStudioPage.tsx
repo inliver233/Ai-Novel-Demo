@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
+import { copyText } from "../lib/copyText";
 import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson, sanitizeFilename } from "../services/apiClient";
 import type { Character, Outline, Project, ProjectSettings, PromptBlock, PromptPreset, PromptPreview } from "../types";
@@ -22,6 +23,7 @@ export function PromptStudioPage() {
   const confirm = useConfirm();
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<null | { message: string; code: string; requestId?: string }>(null);
   const [busy, setBusy] = useState(false);
 
   const [project, setProject] = useState<Project | null>(null);
@@ -69,6 +71,7 @@ export function PromptStudioPage() {
       setOutline(oRes.data.outline);
       setCharacters(cRes.data.characters);
       setPresets(presetsRes.data.presets ?? []);
+      setLoadError(null);
 
       const nextPresetId =
         selectedPresetId && (presetsRes.data.presets ?? []).some((p) => p.id === selectedPresetId)
@@ -76,8 +79,13 @@ export function PromptStudioPage() {
           : (presetsRes.data.presets?.[0]?.id ?? null);
       setSelectedPresetId(nextPresetId);
     } catch (e) {
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      if (e instanceof ApiError) {
+        setLoadError({ message: e.message, code: e.code, requestId: e.requestId });
+        toast.toastError(`${e.message} (${e.code})`, e.requestId);
+      } else {
+        setLoadError({ message: "请求失败", code: "UNKNOWN_ERROR" });
+        toast.toastError("请求失败 (UNKNOWN_ERROR)");
+      }
     } finally {
       setLoading(false);
     }
@@ -584,7 +592,54 @@ export function PromptStudioPage() {
   );
 
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
-  if (loading) return <div className="text-subtext">加载中...</div>;
+  if (loading) {
+    return (
+      <div className="grid gap-6">
+        <div className="panel p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="grid gap-2">
+              <div className="skeleton h-6 w-56" />
+              <div className="skeleton h-4 w-96" />
+            </div>
+            <div className="skeleton h-4 w-24" />
+          </div>
+          <div className="mt-4 grid gap-3 lg:grid-cols-[320px_1fr_360px]">
+            <div className="skeleton h-96 w-full" />
+            <div className="skeleton h-96 w-full" />
+            <div className="skeleton h-96 w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError && !project && !settings && !outline) {
+    return (
+      <div className="grid gap-6">
+        <div className="error-card">
+          <div className="state-title">加载失败</div>
+          <div className="state-desc">{`${loadError.message} (${loadError.code})`}</div>
+          {loadError.requestId ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-subtext">
+              <span>request_id: {loadError.requestId}</span>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => void copyText(loadError.requestId!, { title: "复制 request_id" })}
+                type="button"
+              >
+                复制 request_id
+              </button>
+            </div>
+          ) : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button className="btn btn-primary" onClick={() => void reloadAll()} type="button">
+              重试
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-6">

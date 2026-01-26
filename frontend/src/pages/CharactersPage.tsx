@@ -9,6 +9,7 @@ import { useToast } from "../components/ui/toast";
 import { useAutoSave } from "../hooks/useAutoSave";
 import { useProjectData } from "../hooks/useProjectData";
 import { useWizardProgress } from "../hooks/useWizardProgress";
+import { copyText } from "../lib/copyText";
 import { duration, transition } from "../lib/motion";
 import { ApiError, apiJson } from "../services/apiClient";
 import { markWizardProjectChanged } from "../services/wizard";
@@ -30,9 +31,21 @@ export function CharactersPage() {
   const refreshWizard = wizard.refresh;
   const bumpWizardLocal = wizard.bumpLocal;
 
+  const [loadError, setLoadError] = useState<null | { message: string; code: string; requestId?: string }>(null);
+
   const charactersQuery = useProjectData<Character[]>(projectId, async (id) => {
-    const res = await apiJson<{ characters: Character[] }>(`/api/projects/${id}/characters`);
-    return res.data.characters;
+    try {
+      const res = await apiJson<{ characters: Character[] }>(`/api/projects/${id}/characters`);
+      setLoadError(null);
+      return res.data.characters;
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setLoadError({ message: e.message, code: e.code, requestId: e.requestId });
+      } else {
+        setLoadError({ message: "请求失败", code: "UNKNOWN_ERROR" });
+      }
+      throw e;
+    }
   });
   const characters = useMemo(() => charactersQuery.data ?? [], [charactersQuery.data]);
   const loading = charactersQuery.loading;
@@ -242,9 +255,46 @@ export function CharactersPage() {
         </button>
       </div>
 
-      {loading ? <div className="text-subtext">加载中...</div> : null}
+      {loading && charactersQuery.data === null ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={idx} className="panel p-6">
+              <div className="skeleton h-5 w-24" />
+              <div className="mt-3 grid gap-2">
+                <div className="skeleton h-4 w-full" />
+                <div className="skeleton h-4 w-5/6" />
+                <div className="skeleton h-4 w-2/3" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
-      {!loading && characters.length === 0 ? (
+      {!loading && charactersQuery.data === null && loadError ? (
+        <div className="error-card">
+          <div className="state-title">加载失败</div>
+          <div className="state-desc">{`${loadError.message} (${loadError.code})`}</div>
+          {loadError.requestId ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-subtext">
+              <span>request_id: {loadError.requestId}</span>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => void copyText(loadError.requestId!, { title: "复制 request_id" })}
+                type="button"
+              >
+                复制 request_id
+              </button>
+            </div>
+          ) : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button className="btn btn-primary" onClick={() => void load()} type="button">
+              重试
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {!loading && !loadError && characters.length === 0 ? (
         <div className="panel p-6">
           <div className="font-content text-xl text-ink">暂无角色</div>
           <div className="mt-2 text-sm text-subtext">
@@ -256,7 +306,7 @@ export function CharactersPage() {
         </div>
       ) : null}
 
-      {!loading && characters.length > 0 && filteredCharacters.length === 0 ? (
+      {!loading && !loadError && characters.length > 0 && filteredCharacters.length === 0 ? (
         <div className="panel p-6">
           <div className="font-content text-xl text-ink">没有匹配的角色</div>
           <div className="mt-2 text-sm text-subtext">尝试修改搜索关键词，或清空搜索后再查看全部角色。</div>
