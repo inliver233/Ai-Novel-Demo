@@ -182,12 +182,19 @@ export function ProjectWizardPage() {
         const err = e as ApiError;
         if (err.code === "CONFLICT" && err.status === 409) {
           const replaceOk = await confirm.confirm({
-            title: "检测到已有章节，是否覆盖？",
-            description: "覆盖创建将删除该大纲下所有章节（含正文/摘要），不可恢复。",
-            confirmText: "覆盖创建",
+            title: "检测到已有章节，是否继续覆盖？",
+            description: `覆盖创建将永久删除当前大纲下所有章节（含正文/摘要，约 ${chapters.length} 章），且无法撤销。`,
+            confirmText: "继续覆盖",
             danger: true,
           });
           if (!replaceOk) return;
+          const doubleCheckOk = await confirm.confirm({
+            title: "最后确认：覆盖章节并创建骨架？",
+            description: "此操作不可恢复。若你只是想保留已有章节，请点击取消返回。",
+            confirmText: "我已知晓，继续覆盖",
+            danger: true,
+          });
+          if (!doubleCheckOk) return;
           await apiJson<{ chapters: Chapter[] }>(`/api/projects/${projectId}/chapters/bulk_create?replace=true`, {
             method: "POST",
             body: JSON.stringify(payload),
@@ -205,7 +212,7 @@ export function ProjectWizardPage() {
     } finally {
       setAutoRunning(false);
     }
-  }, [confirm, llmPreset, navigate, projectId, toast]);
+  }, [chapters.length, confirm, llmPreset, navigate, projectId, toast]);
 
   if (!projectId) {
     return (
