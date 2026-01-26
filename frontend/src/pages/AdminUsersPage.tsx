@@ -32,7 +32,9 @@ export function AdminUsersPage() {
   const confirm = useConfirm();
 
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
+  type RowBusy = { resetPassword?: number; toggleDisabled?: number };
+  const [rowBusy, setRowBusy] = useState<Record<string, RowBusy>>({});
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [tempPasswords, setTempPasswords] = useState<Record<string, string>>({});
   const [form, setForm] = useState<CreateUserForm>({
@@ -44,6 +46,26 @@ export function AdminUsersPage() {
   });
 
   const canManage = auth.status === "authenticated" && Boolean(auth.user?.isAdmin);
+
+  const bumpRowBusy = useCallback((userId: string, action: keyof RowBusy, delta: number) => {
+    setRowBusy((prev) => {
+      const current = prev[userId] ?? {};
+      const nextCount = (current[action] ?? 0) + delta;
+      const nextUser: RowBusy = { ...current };
+      if (nextCount <= 0) {
+        delete nextUser[action];
+      } else {
+        nextUser[action] = nextCount;
+      }
+      const next = { ...prev };
+      if (Object.keys(nextUser).length === 0) {
+        delete next[userId];
+        return next;
+      }
+      next[userId] = nextUser;
+      return next;
+    });
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,7 +97,7 @@ export function AdminUsersPage() {
       toast.toastError("用户 ID 不能为空");
       return;
     }
-    setSaving(true);
+    setCreatingUser(true);
     try {
       const res = await apiJson<{ user: AdminUser; temp_password: string | null }>("/api/auth/admin/users", {
         method: "POST",
@@ -101,7 +123,7 @@ export function AdminUsersPage() {
           : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
-      setSaving(false);
+      setCreatingUser(false);
     }
   }, [canManage, form.display_name, form.email, form.is_admin, form.password, form.user_id, load, toast]);
 
@@ -116,7 +138,7 @@ export function AdminUsersPage() {
         danger: true,
       });
       if (!ok) return;
-      setSaving(true);
+      bumpRowBusy(targetUserId, "resetPassword", 1);
       try {
         const res = await apiJson<{ temp_password: string }>(`/api/auth/admin/users/${targetUserId}/password/reset`, {
           method: "POST",
@@ -131,10 +153,10 @@ export function AdminUsersPage() {
             : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       } finally {
-        setSaving(false);
+        bumpRowBusy(targetUserId, "resetPassword", -1);
       }
     },
-    [canManage, confirm, toast],
+    [bumpRowBusy, canManage, confirm, toast],
   );
 
   const setDisabled = useCallback(
@@ -148,7 +170,7 @@ export function AdminUsersPage() {
         danger: disabled,
       });
       if (!ok) return;
-      setSaving(true);
+      bumpRowBusy(targetUserId, "toggleDisabled", 1);
       try {
         await apiJson<Record<string, never>>(`/api/auth/admin/users/${targetUserId}/disable`, {
           method: "POST",
@@ -163,10 +185,10 @@ export function AdminUsersPage() {
             : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       } finally {
-        setSaving(false);
+        bumpRowBusy(targetUserId, "toggleDisabled", -1);
       }
     },
-    [canManage, confirm, load, toast],
+    [bumpRowBusy, canManage, confirm, load, toast],
   );
 
   const visibleUsers = useMemo(() => users, [users]);
@@ -212,7 +234,7 @@ export function AdminUsersPage() {
           <div className="mt-1 text-xs text-subtext">创建用户 / 重置密码 / 启用/禁用（管理员操作）</div>
         </div>
         <div className="flex gap-2">
-          <button className="btn btn-secondary" disabled={loading || saving} onClick={() => void load()} type="button">
+          <button className="btn btn-secondary" disabled={loading} onClick={() => void load()} type="button">
             {loading ? "加载中…" : "刷新列表"}
           </button>
         </div>
@@ -222,7 +244,7 @@ export function AdminUsersPage() {
         className="mt-6 rounded-atelier border border-border bg-surface p-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (saving) return;
+          if (creatingUser) return;
           void createUser();
         }}
       >
@@ -286,8 +308,8 @@ export function AdminUsersPage() {
             />
             <span>管理员（is_admin）</span>
           </label>
-          <button className="btn btn-primary" disabled={saving} type="submit">
-            {saving ? "提交中…" : "创建"}
+          <button className="btn btn-primary" disabled={creatingUser} type="submit">
+            {creatingUser ? "提交中…" : "创建"}
           </button>
         </div>
       </form>
@@ -313,7 +335,7 @@ export function AdminUsersPage() {
                 {tempPasswords[u.id] ? (
                   <button
                     className="btn btn-secondary btn-sm"
-                    disabled={saving}
+                    disabled={Boolean(rowBusy[u.id]?.resetPassword)}
                     onClick={() => void copyTempPassword(u.id)}
                     type="button"
                   >
@@ -322,7 +344,7 @@ export function AdminUsersPage() {
                 ) : null}
                 <button
                   className="btn btn-secondary btn-sm"
-                  disabled={saving}
+                  disabled={Boolean(rowBusy[u.id]?.resetPassword)}
                   onClick={() => void resetPassword(u.id)}
                   type="button"
                   title="将生成一次性密码（仅显示在本页，建议立即复制）。"
@@ -331,7 +353,7 @@ export function AdminUsersPage() {
                 </button>
                 <button
                   className="btn btn-secondary btn-sm"
-                  disabled={saving}
+                  disabled={Boolean(rowBusy[u.id]?.toggleDisabled)}
                   onClick={() => void setDisabled(u.id, !u.disabled)}
                   type="button"
                 >
@@ -378,7 +400,7 @@ export function AdminUsersPage() {
                     {tempPasswords[u.id] ? (
                       <button
                         className="btn btn-secondary btn-sm"
-                        disabled={saving}
+                        disabled={Boolean(rowBusy[u.id]?.resetPassword)}
                         onClick={() => void copyTempPassword(u.id)}
                         type="button"
                       >
@@ -392,7 +414,7 @@ export function AdminUsersPage() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         className="btn btn-secondary btn-sm"
-                        disabled={saving}
+                        disabled={Boolean(rowBusy[u.id]?.resetPassword)}
                         onClick={() => void resetPassword(u.id)}
                         type="button"
                         title="将生成一次性密码（仅显示在本页，建议立即复制）。"
@@ -401,7 +423,7 @@ export function AdminUsersPage() {
                       </button>
                       <button
                         className="btn btn-secondary btn-sm"
-                        disabled={saving}
+                        disabled={Boolean(rowBusy[u.id]?.toggleDisabled)}
                         onClick={() => void setDisabled(u.id, !u.disabled)}
                         type="button"
                       >
