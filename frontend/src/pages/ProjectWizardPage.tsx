@@ -109,6 +109,11 @@ export function ProjectWizardPage() {
     [projectId],
   );
 
+  const scrollToSteps = useCallback(() => {
+    const el = document.getElementById("wizard-steps");
+    el?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  }, [reduceMotion]);
+
   const autoOutlineAndChapters = useCallback(async () => {
     if (!projectId) return;
     if (!llmPreset) {
@@ -267,30 +272,68 @@ export function ProjectWizardPage() {
       </section>
 
       <section className="panel p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="grid gap-2">
-            <div className="font-content text-xl">自动模式（MVP）</div>
-            <div className="text-xs text-subtext">一键：生成大纲 → 保存 → 创建章节骨架 → 跳转写作页。</div>
-            <div className="text-xs text-subtext">
-              建议先完成「{UI_COPY.nav.projectSettings} / {UI_COPY.nav.prompts}」，以避免生成失败。
+        <div className="grid gap-1">
+          <div className="font-content text-xl">从这里开始</div>
+          <div className="text-xs text-subtext">请选择「按步骤（推荐）」或「快速开工（自动）」；两者都可随时切换。</div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="surface p-4">
+            <div className="grid gap-2">
+              <div className="flex items-center gap-2">
+                <div className="font-content text-base text-ink">按步骤（推荐）</div>
+                <div className="rounded-atelier bg-accent/15 px-2 py-0.5 text-[11px] text-accent">推荐</div>
+              </div>
+              <div className="text-xs text-subtext">
+                按顺序跑通闭环：{UI_COPY.nav.projectSettings} → {UI_COPY.nav.characters} → {UI_COPY.nav.prompts} →{" "}
+                {UI_COPY.nav.outline} → {UI_COPY.nav.writing} → {UI_COPY.nav.preview} → {UI_COPY.nav.export}
+              </div>
+              <div className="text-xs text-subtext">{nextStep ? `下一步：${nextStep.title}` : "已完成全部步骤"}</div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {nextStep ? (
+                <button className="btn btn-primary" onClick={() => goStep(nextStep)} type="button">
+                  开始下一步
+                </button>
+              ) : (
+                <button className="btn btn-primary" onClick={() => navigate("/")} type="button">
+                  回到项目概览
+                </button>
+              )}
+              <button className="btn btn-secondary" onClick={scrollToSteps} type="button">
+                查看步骤清单
+              </button>
             </div>
           </div>
-          <button
-            className="btn btn-primary"
-            disabled={autoRunning}
-            onClick={() => void autoOutlineAndChapters()}
-            type="button"
-          >
-            <span className="inline-flex items-center gap-2">
-              <Wand2 size={18} />
-              {autoRunning ? "运行中..." : "一键开工"}
-            </span>
-          </button>
+          <div className="surface p-4">
+            <div className="grid gap-2">
+              <div className="font-content text-base text-ink">快速开工（自动）</div>
+              <div className="text-xs text-subtext">一键：生成大纲 → 保存 → 创建章节骨架 → 跳转写作页。</div>
+              <div className="text-xs text-subtext">
+                建议先完成「{UI_COPY.nav.projectSettings} / {UI_COPY.nav.prompts}」，以避免生成失败。
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                className="btn btn-primary"
+                disabled={autoRunning}
+                onClick={() => void autoOutlineAndChapters()}
+                type="button"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Wand2 size={18} />
+                  {autoRunning ? "运行中..." : "一键开工"}
+                </span>
+              </button>
+              <button className="btn btn-secondary" onClick={scrollToSteps} type="button">
+                改用按步骤
+              </button>
+            </div>
+          </div>
         </div>
         {autoRunning ? <GhostwriterIndicator className="mt-4" label="正在调用模型生成大纲与章节结构…" /> : null}
       </section>
 
-      <section className="panel p-6">
+      <section className="panel p-6" id="wizard-steps">
         <div className="grid gap-1">
           <div className="font-content text-xl">步骤清单</div>
           <div className="text-xs text-subtext">从上到下完成；不适用的步骤可以先跳过，之后也可取消跳过。</div>
