@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
 import { MarkdownEditor } from "../components/atelier/MarkdownEditor";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
+import { PaperContent } from "../components/layout/AppShell";
 import { Drawer } from "../components/ui/Drawer";
 import { AiGenerateDrawer } from "../components/writing/AiGenerateDrawer";
 import { BatchGenerationModal } from "../components/writing/BatchGenerationModal";
@@ -281,10 +282,10 @@ export function WritingPage() {
     void generate(pending.mode);
   }, [activeChapter, form, generate, generating]);
 
-  if (loading) return <div className="text-subtext">加载中...</div>;
+  if (loading) return <PaperContent className="text-subtext">加载中...</PaperContent>;
 
   return (
-    <div className="grid gap-4 pb-24">
+    <PaperContent className="grid gap-4 pb-24">
       {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
       <WritingToolbar
         outlines={outlines}
@@ -725,6 +726,6 @@ export function WritingPage() {
         saving={loadingChapter || generating}
         onSave={saveChapter}
       />
-    </div>
+    </PaperContent>
   );
 }

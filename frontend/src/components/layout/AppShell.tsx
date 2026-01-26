@@ -19,7 +19,7 @@ import {
   Table2,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate, useOutlet, useParams } from "react-router-dom";
 
 import { ProjectSwitcher } from "../atelier/ProjectSwitcher";
@@ -28,7 +28,7 @@ import { Drawer } from "../ui/Drawer";
 import { useAuth } from "../../contexts/auth";
 import { PersistentOutletProvider } from "../../hooks/PersistentOutletProvider";
 import { UI_COPY } from "../../lib/uiCopy";
-import { transition } from "../../lib/motion";
+import { fadeUpVariants, transition } from "../../lib/motion";
 import { getCurrentUserId } from "../../services/currentUser";
 import {
   advancedDebugCollapsedStorageKey,
@@ -241,6 +241,43 @@ function PersistentOutlet(props: { activeKey: string }) {
         </div>
       ))}
     </>
+  );
+}
+
+type ContentContainerProps = {
+  children: ReactNode;
+  className?: string;
+};
+
+export function PaperContent(props: ContentContainerProps) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <motion.div
+      className={clsx("mx-auto w-full max-w-4xl", props.className)}
+      variants={fadeUpVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      transition={reduceMotion ? { duration: 0.01 } : transition.page}
+    >
+      {props.children}
+    </motion.div>
+  );
+}
+
+export function ToolContent(props: ContentContainerProps) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <motion.div
+      className={clsx("mx-auto w-full max-w-screen-xl", props.className)}
+      variants={fadeUpVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      transition={reduceMotion ? { duration: 0.01 } : transition.page}
+    >
+      {props.children}
+    </motion.div>
   );
 }
 

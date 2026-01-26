@@ -6,6 +6,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
+import { PaperContent } from "../components/layout/AppShell";
 import { Drawer } from "../components/ui/Drawer";
 import { useProjectData } from "../hooks/useProjectData";
 import { useWizardProgress } from "../hooks/useWizardProgress";
@@ -184,7 +185,7 @@ export function PreviewPage() {
   if (previewQuery.loading) return <div className="text-subtext">加载中...</div>;
 
   return (
-    <div className="grid gap-4 pb-24">
+    <PaperContent className="grid gap-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <button className="btn btn-secondary lg:hidden" onClick={() => setMobileListOpen(true)} type="button">
@@ -289,6 +290,6 @@ export function PreviewPage() {
       </Drawer>
 
       <WizardNextBar projectId={projectId} currentStep="preview" progress={wizardProgress} loading={wizardLoading} />
-    </div>
+    </PaperContent>
   );
 }
