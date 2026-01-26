@@ -294,6 +294,7 @@ export function AppShell() {
   const reduceMotion = useReducedMotion();
 
   const title = useMemo(() => resolveTitle(location.pathname), [location.pathname]);
+  const mainMaxWidth = location.pathname === "/" ? "max-w-5xl" : "max-w-screen-xl";
   const sessionExpireAtText = auth.session?.expireAt ? new Date(auth.session.expireAt * 1000).toLocaleString() : null;
   const mobileNavOpen = mobileNavOpenForPath === location.pathname;
 
@@ -856,7 +857,7 @@ export function AppShell() {
 
         <main className="flex-1">
           <header className="border-b border-border bg-canvas">
-            <div className="mx-auto max-w-screen-xl px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+            <div className={clsx("mx-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8", mainMaxWidth)}>
               <div className="flex items-center justify-between gap-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <button
@@ -909,7 +910,7 @@ export function AppShell() {
               </div>
             </div>
           </header>
-          <div className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+          <div className={clsx("mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8", mainMaxWidth)}>
             <PersistentOutlet activeKey={location.pathname} />
           </div>
         </main>
