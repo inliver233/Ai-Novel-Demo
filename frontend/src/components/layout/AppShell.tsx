@@ -434,7 +434,7 @@ export function AppShell() {
                         />
 
                         <label className="mt-2 flex items-center justify-between gap-2 rounded-atelier border border-border bg-canvas px-3 py-2 text-xs text-subtext">
-                          <span>{UI_COPY.nav.advancedDebugToggle}</span>
+                          <span>显示高级调试</span>
                           <input
                             className="checkbox"
                             checked={advancedDebugVisible}
@@ -672,7 +672,7 @@ export function AppShell() {
 
                   {collapsed ? null : (
                     <label className="mt-2 flex items-center justify-between gap-2 rounded-atelier border border-border bg-canvas px-3 py-2 text-xs text-subtext">
-                      <span>{UI_COPY.nav.advancedDebugToggle}</span>
+                      <span>显示高级调试</span>
                       <input
                         className="checkbox"
                         checked={advancedDebugVisible}
