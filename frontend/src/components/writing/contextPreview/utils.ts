@@ -1,19 +1,8 @@
-export async function writeClipboardText(text: string): Promise<void> {
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
+import { copyText } from "../../../lib/copyText";
 
-  const el = document.createElement("textarea");
-  el.value = text;
-  el.setAttribute("readonly", "true");
-  el.style.position = "fixed";
-  el.style.left = "-9999px";
-  el.style.top = "-9999px";
-  document.body.appendChild(el);
-  el.select();
-  document.execCommand("copy");
-  document.body.removeChild(el);
+export async function writeClipboardText(text: string): Promise<void> {
+  const ok = await copyText(text, { title: "复制失败：请手动复制" });
+  if (!ok) throw new Error("clipboard_unavailable");
 }
 
 export function downloadJson(filename: string, value: unknown): void {

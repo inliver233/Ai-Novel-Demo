@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../contexts/auth";
+import { copyText } from "../lib/copyText";
 import { humanizeYesNo } from "../lib/humanize";
 import { ApiError, apiJson } from "../services/apiClient";
 
@@ -24,31 +25,6 @@ type CreateUserForm = {
   is_admin: boolean;
   password: string;
 };
-
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    try {
-      const el = document.createElement("textarea");
-      el.value = text;
-      el.setAttribute("readonly", "true");
-      el.style.position = "fixed";
-      el.style.top = "0";
-      el.style.left = "0";
-      el.style.opacity = "0";
-      document.body.appendChild(el);
-      el.focus();
-      el.select();
-      const ok = document.execCommand("copy");
-      el.remove();
-      return ok;
-    } catch {
-      return false;
-    }
-  }
-}
 
 export function AdminUsersPage() {
   const auth = useAuth();
@@ -199,18 +175,15 @@ export function AdminUsersPage() {
     async (userId: string) => {
       const pwd = tempPasswords[userId];
       if (!pwd) return;
-      const ok = await copyToClipboard(pwd);
-      if (!ok) {
-        window.prompt("复制失败：请手动复制一次性密码（关闭后将从页面隐藏）", pwd);
-        toast.toastError("复制失败：已弹出一次性密码，请手动复制（已从页面隐藏）。");
-        setTempPasswords((prev) => {
-          const next = { ...prev };
-          delete next[userId];
-          return next;
-        });
-        return;
+      const ok = await copyText(pwd, {
+        title: "复制失败：请手动复制一次性密码",
+        description: "关闭后将从页面隐藏。",
+      });
+      if (ok) {
+        toast.toastSuccess("已复制一次性密码（已从页面隐藏）");
+      } else {
+        toast.toastWarning("自动复制失败：已打开手动复制弹窗（关闭后将从页面隐藏）。");
       }
-      toast.toastSuccess("已复制一次性密码（已从页面隐藏）");
       setTempPasswords((prev) => {
         const next = { ...prev };
         delete next[userId];

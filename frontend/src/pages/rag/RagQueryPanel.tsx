@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 
 import { useToast } from "../../components/ui/toast";
+import { copyText } from "../../lib/copyText";
 import { UI_COPY } from "../../lib/uiCopy";
 import { EMPTY_CHUNKS } from "./types";
 import type { VectorRagResult, VectorSource } from "./types";
@@ -141,12 +142,9 @@ export function RagQueryPanel(props: {
       toast.toastError("没有可复制的注入文本");
       return;
     }
-    try {
-      await navigator.clipboard.writeText(injectionText);
-      toast.toastSuccess("已复制注入文本");
-    } catch {
-      toast.toastError("复制失败（Clipboard API 不可用）");
-    }
+    const ok = await copyText(injectionText, { title: "复制失败：请手动复制注入文本" });
+    if (ok) toast.toastSuccess("已复制注入文本");
+    else toast.toastWarning("自动复制失败：已打开手动复制弹窗。");
   }, [injectionText, toast]);
 
   const copyQueryDebug = useCallback(async () => {
@@ -164,12 +162,9 @@ export function RagQueryPanel(props: {
       preprocess_obs: queryPreprocessObs,
       result: queryResult,
     };
-    try {
-      await navigator.clipboard.writeText(safeJson(payload));
-      toast.toastSuccess("已复制 debug 信息", queryRequestId ?? undefined);
-    } catch {
-      toast.toastError("复制失败（Clipboard API 不可用）");
-    }
+    const ok = await copyText(safeJson(payload), { title: "复制失败：请手动复制排障信息" });
+    if (ok) toast.toastSuccess("已复制 debug 信息", queryRequestId ?? undefined);
+    else toast.toastWarning("自动复制失败：已打开手动复制弹窗。");
   }, [
     normalizedQueryText,
     projectId,
@@ -283,7 +278,7 @@ export function RagQueryPanel(props: {
                 <button
                   className="btn btn-ghost px-2 py-1 text-xs"
                   onClick={async () => {
-                    await navigator.clipboard.writeText(queryRequestId ?? "");
+                    await copyText(queryRequestId ?? "", { title: "复制失败：请手动复制 request_id" });
                   }}
                   type="button"
                 >

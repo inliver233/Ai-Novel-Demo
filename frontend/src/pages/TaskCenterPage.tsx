@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { Drawer } from "../components/ui/Drawer";
 import { useProjectData } from "../hooks/useProjectData";
+import { copyText } from "../lib/copyText";
 import { humanizeChangeSetStatus, humanizeTaskStatus } from "../lib/humanize";
 import { apiJson } from "../services/apiClient";
 import { UI_COPY } from "../lib/uiCopy";
@@ -179,7 +180,7 @@ export function TaskCenterPage() {
         `created_at=${it.created_at || "-"}`,
         `updated_at=${it.updated_at || "-"}`,
       ];
-      await navigator.clipboard.writeText(lines.join("\n"));
+      await copyText(lines.join("\n"), { title: "复制失败：请手动复制排障信息" });
       return;
     }
 
@@ -194,7 +195,7 @@ export function TaskCenterPage() {
       `error_type=${t.error_type || "-"}`,
       `error_message=${t.error_message || "-"}`,
     ];
-    await navigator.clipboard.writeText(lines.join("\n"));
+    await copyText(lines.join("\n"), { title: "复制失败：请手动复制排障信息" });
   }, [selected]);
 
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
@@ -290,7 +291,7 @@ export function TaskCenterPage() {
                         <button
                           className="btn btn-ghost px-2 py-1 text-[11px]"
                           onClick={async () => {
-                            await navigator.clipboard.writeText(it.request_id ?? "");
+                            await copyText(it.request_id ?? "", { title: "复制失败：请手动复制 request_id" });
                           }}
                           type="button"
                         >
@@ -374,7 +375,7 @@ export function TaskCenterPage() {
                         <button
                           className="btn btn-ghost px-2 py-1 text-[11px]"
                           onClick={async () => {
-                            await navigator.clipboard.writeText(t.request_id ?? "");
+                            await copyText(t.request_id ?? "", { title: "复制失败：请手动复制 request_id" });
                           }}
                           type="button"
                         >
