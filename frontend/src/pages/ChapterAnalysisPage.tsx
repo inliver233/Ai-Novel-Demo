@@ -10,6 +10,7 @@ import type { ApiError } from "../services/apiClient";
 import { apiJson } from "../services/apiClient";
 import type { Chapter } from "../types";
 import { useToast } from "../components/ui/toast";
+import { RequestIdBadge } from "../components/ui/RequestIdBadge";
 
 export function ChapterAnalysisPage() {
   const { projectId } = useParams();
@@ -23,6 +24,7 @@ export function ChapterAnalysisPage() {
   const [annotations, setAnnotations] = useState<MemoryAnnotation[]>([]);
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
   const [scrollToAnnotationId, setScrollToAnnotationId] = useState<string | null>(null);
+  const [requestId, setRequestId] = useState<string | null>(null);
   const loadGuardRef = useRef(createRequestSeqGuard());
 
   useEffect(() => {
@@ -37,6 +39,7 @@ export function ChapterAnalysisPage() {
     setAnnotations([]);
     setActiveAnnotationId(null);
     setScrollToAnnotationId(null);
+    setRequestId(null);
   }, [chapterId]);
 
   const refresh = useCallback(async () => {
@@ -53,10 +56,12 @@ export function ChapterAnalysisPage() {
 
       setChapter(chapterRes.data.chapter);
       setAnnotations(annotationsRes.data.annotations ?? []);
+      setRequestId(annotationsRes.request_id ?? chapterRes.request_id ?? null);
     } catch (e) {
       if (!loadGuardRef.current.isLatest(seq)) return;
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      setRequestId(err.requestId || null);
       setChapter(null);
       setAnnotations([]);
     } finally {
@@ -120,6 +125,7 @@ export function ChapterAnalysisPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <RequestIdBadge requestId={requestId} />
           <button
             className="btn btn-secondary"
             type="button"

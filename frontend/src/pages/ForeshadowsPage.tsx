@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
+import { RequestIdBadge } from "../components/ui/RequestIdBadge";
 import { createRequestSeqGuard } from "../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../services/apiClient";
 import type { Chapter } from "../types";
@@ -70,6 +71,7 @@ export function ForeshadowsPage() {
         e instanceof ApiError
           ? e
           : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      setRequestId((prev) => prev ?? err.requestId ?? null);
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
       if (chaptersGuard.isLatest(seq)) {
@@ -188,11 +190,7 @@ export function ForeshadowsPage() {
       description={
         <>
           列出未回收伏笔（open loops），支持筛选/排序与标记回收（可选关联章节用于回溯）。{" "}
-          {requestId ? (
-            <span className="ml-2">
-              request_id: <span className="font-mono">{requestId}</span>
-            </span>
-          ) : null}
+          <RequestIdBadge requestId={requestId} className="ml-2" />
         </>
       }
       actions={

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
+import { RequestIdBadge } from "../components/ui/RequestIdBadge";
 import { ApiError, apiJson } from "../services/apiClient";
 import { useToast } from "../components/ui/toast";
 import { UI_COPY } from "../lib/uiCopy";
@@ -44,6 +45,7 @@ export function FractalPage() {
   const toast = useToast();
 
   const [loading, setLoading] = useState(false);
+  const [requestId, setRequestId] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [result, setResult] = useState<FractalContext | null>(null);
 
@@ -54,12 +56,14 @@ export function FractalPage() {
     try {
       const res = await apiJson<{ result: FractalContext }>(`/api/projects/${projectId}/fractal`);
       setResult(res.data?.result ?? null);
+      setRequestId(res.request_id ?? null);
     } catch (e) {
       const err =
         e instanceof ApiError
           ? e
           : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       setError(err);
+      setRequestId(err.requestId ?? null);
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
       setLoading(false);
@@ -78,12 +82,14 @@ export function FractalPage() {
           body: JSON.stringify({ reason, mode }),
         });
         setResult(res.data?.result ?? null);
+        setRequestId(res.request_id ?? null);
       } catch (e) {
         const err =
           e instanceof ApiError
             ? e
             : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
         setError(err);
+        setRequestId(err.requestId ?? null);
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       } finally {
         setLoading(false);
@@ -157,12 +163,20 @@ export function FractalPage() {
 
       {error ? (
         <div className="rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
-          {error.message} ({error.code}) {error.requestId ? `| request_id: ${error.requestId}` : ""}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              {error.message} ({error.code})
+            </div>
+            <RequestIdBadge requestId={error.requestId} />
+          </div>
         </div>
       ) : null}
 
       <div className="rounded-atelier border border-border bg-surface p-3">
-        <div className="text-sm text-ink">状态与结论</div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm text-ink">状态与结论</div>
+          <RequestIdBadge requestId={requestId} />
+        </div>
         <div className="mt-1 text-xs text-subtext">
           分形记忆：{fractalStatusText} | LLM 摘要：{v2StatusText}
           {result?.updated_at ? ` | 更新时间：${result.updated_at}` : ""}

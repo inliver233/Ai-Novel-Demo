@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
+import { RequestIdBadge } from "../components/ui/RequestIdBadge";
 import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
 import { useToast } from "../components/ui/toast";
@@ -60,6 +61,7 @@ export function GraphPage() {
   const [enabled, setEnabled] = useState(true);
   const [queryText, setQueryText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [requestId, setRequestId] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [result, setResult] = useState<GraphQueryResult | null>(null);
 
@@ -81,12 +83,14 @@ export function GraphPage() {
         }),
       });
       setResult(res.data?.result ?? null);
+      setRequestId(res.request_id ?? null);
     } catch (e) {
       const err =
         e instanceof ApiError
           ? e
           : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       setError(err);
+      setRequestId(err.requestId ?? null);
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
       setLoading(false);
@@ -156,12 +160,20 @@ export function GraphPage() {
 
       {error ? (
         <div className="rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
-          {error.message} ({error.code}) {error.requestId ? `| request_id: ${error.requestId}` : ""}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              {error.message} ({error.code})
+            </div>
+            <RequestIdBadge requestId={error.requestId} />
+          </div>
         </div>
       ) : null}
 
       <div className="rounded-atelier border border-border bg-surface p-3">
-        <div className="text-sm text-ink">{UI_COPY.graph.overviewTitle}</div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm text-ink">{UI_COPY.graph.overviewTitle}</div>
+          <RequestIdBadge requestId={requestId} />
+        </div>
         <div className="mt-1 text-xs text-subtext">
           状态：{statusText} | 节点：{result?.nodes?.length ?? 0} | 关系：{result?.edges?.length ?? 0} | 证据：
           {result?.evidence?.length ?? 0}

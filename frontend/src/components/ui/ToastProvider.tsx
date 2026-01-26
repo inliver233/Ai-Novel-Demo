@@ -5,6 +5,7 @@ import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-m
 
 import { ToastContext } from "./toast";
 import type { ToastApi } from "./toast";
+import { RequestIdBadge } from "./RequestIdBadge";
 import { transition } from "../../lib/motion";
 
 type ToastItem = {
@@ -117,20 +118,7 @@ export function ToastProvider(props: { children: React.ReactNode }) {
                         </button>
                       </div>
                     ) : null}
-                    {t.requestId ? (
-                      <div className="mt-1 flex items-center gap-2 text-xs text-subtext">
-                        <span className="truncate">request_id: {t.requestId}</span>
-                        <button
-                          className="btn btn-ghost px-2 py-1 text-xs"
-                          onClick={async () => {
-                            await navigator.clipboard.writeText(t.requestId ?? "");
-                          }}
-                          type="button"
-                        >
-                          复制
-                        </button>
-                      </div>
-                    ) : null}
+                    {t.requestId ? <RequestIdBadge requestId={t.requestId} className="mt-2" /> : null}
                   </div>
                   <button
                     className="btn btn-ghost btn-icon"
