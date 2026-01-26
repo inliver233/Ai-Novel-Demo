@@ -254,6 +254,7 @@ export function AdminUsersPage() {
           <label className="text-sm text-ink">
             <div className="text-xs text-subtext">用户 ID（user_id）</div>
             <input
+              id="admin_users_user_id"
               className="input mt-1"
               value={form.user_id}
               onChange={(e) => setForm((v) => ({ ...v, user_id: e.target.value }))}
@@ -263,6 +264,7 @@ export function AdminUsersPage() {
           <label className="text-sm text-ink">
             <div className="text-xs text-subtext">显示名（display_name）</div>
             <input
+              id="admin_users_display_name"
               className="input mt-1"
               value={form.display_name}
               onChange={(e) => setForm((v) => ({ ...v, display_name: e.target.value }))}
@@ -272,6 +274,7 @@ export function AdminUsersPage() {
           <label className="text-sm text-ink">
             <div className="text-xs text-subtext">邮箱（email，可选）</div>
             <input
+              id="admin_users_email"
               className="input mt-1"
               value={form.email}
               onChange={(e) => setForm((v) => ({ ...v, email: e.target.value }))}
@@ -281,6 +284,7 @@ export function AdminUsersPage() {
           <label className="text-sm text-ink">
             <div className="text-xs text-subtext">初始密码（password，可选）</div>
             <input
+              id="admin_users_password"
               className="input mt-1"
               type="password"
               autoComplete="new-password"
@@ -294,6 +298,7 @@ export function AdminUsersPage() {
         <div className="mt-3 flex items-center justify-between gap-3">
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
+              id="admin_users_is_admin"
               className="checkbox"
               type="checkbox"
               checked={form.is_admin}
@@ -316,12 +321,24 @@ export function AdminUsersPage() {
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="text-xs text-subtext">
               <tr>
-                <th className="py-2 pr-3">用户 ID</th>
-                <th className="py-2 pr-3">显示名</th>
-                <th className="py-2 pr-3">管理员</th>
-                <th className="py-2 pr-3">已禁用</th>
-                <th className="py-2 pr-3">一次性密码</th>
-                <th className="py-2 pr-3">操作</th>
+                <th className="py-2 pr-3" scope="col">
+                  用户 ID
+                </th>
+                <th className="py-2 pr-3" scope="col">
+                  显示名
+                </th>
+                <th className="py-2 pr-3" scope="col">
+                  管理员
+                </th>
+                <th className="py-2 pr-3" scope="col">
+                  已禁用
+                </th>
+                <th className="py-2 pr-3" scope="col">
+                  一次性密码
+                </th>
+                <th className="py-2 pr-3" scope="col">
+                  操作
+                </th>
               </tr>
             </thead>
             <tbody>

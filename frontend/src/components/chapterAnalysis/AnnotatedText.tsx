@@ -86,13 +86,20 @@ export function AnnotatedText(props: {
               }
             }}
             className={clsx(
-              "ui-transition-fast cursor-pointer rounded-sm border-b-2 px-0.5 py-0.5",
+              "ui-focus-ring ui-transition-fast cursor-pointer rounded-sm border-b-2 px-0.5 py-0.5",
               colors.border,
               colors.hoverBg,
               isActive ? colors.activeBg : "bg-transparent",
             )}
             title={title}
             onClick={() => props.onAnnotationClick?.(segment.primary)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              props.onAnnotationClick?.(segment.primary);
+            }}
+            role="button"
+            tabIndex={0}
             data-annotation-id={segment.primary.id}
           >
             {segment.text}

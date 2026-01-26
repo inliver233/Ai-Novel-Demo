@@ -732,6 +732,7 @@ export function WorldBookPage() {
             <label className="grid gap-1 sm:col-span-2">
               <span className="text-xs text-subtext">搜索（标题 / 关键词）</span>
               <input
+                id="worldbook_search"
                 className="input"
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
@@ -742,6 +743,7 @@ export function WorldBookPage() {
             <label className="grid gap-1">
               <span className="text-xs text-subtext">排序</span>
               <select
+                id="worldbook_sort"
                 className="select"
                 value={sortMode}
                 onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
@@ -758,6 +760,7 @@ export function WorldBookPage() {
             <label className="flex items-center justify-between gap-2 text-sm text-ink">
               <span>{UI_COPY.worldbook.bulkMode}</span>
               <input
+                id="worldbook_bulk_mode"
                 className="checkbox"
                 checked={bulkMode}
                 disabled={bulkLoading}
@@ -861,6 +864,7 @@ export function WorldBookPage() {
                   <label className="grid flex-1 gap-1">
                     <span className="text-xs text-subtext">{UI_COPY.worldbook.bulkPriority}</span>
                     <select
+                      id="worldbook_bulk_priority"
                       className="select"
                       value={bulkPriority}
                       onChange={(e) => setBulkPriority(e.target.value as WorldBookPriority)}
@@ -897,6 +901,7 @@ export function WorldBookPage() {
                   <label className="grid flex-1 gap-1">
                     <span className="text-xs text-subtext">{UI_COPY.worldbook.bulkCharLimit}</span>
                     <input
+                      id="worldbook_bulk_char_limit"
                       className="input"
                       min={0}
                       type="number"
@@ -1042,6 +1047,7 @@ export function WorldBookPage() {
             <label className="grid gap-1">
               <span className="text-xs text-subtext">{UI_COPY.worldbook.previewQueryLabel}</span>
               <textarea
+                id="worldbook_preview_query_text"
                 className="textarea atelier-content"
                 name="query_text"
                 rows={4}
@@ -1054,6 +1060,7 @@ export function WorldBookPage() {
               <label className="flex items-center justify-between gap-2 text-sm text-ink">
                 <span>{UI_COPY.worldbook.previewIncludeConstant}</span>
                 <input
+                  id="worldbook_preview_include_constant"
                   className="checkbox"
                   checked={previewIncludeConstant}
                   name="include_constant"
@@ -1064,6 +1071,7 @@ export function WorldBookPage() {
               <label className="flex items-center justify-between gap-2 text-sm text-ink">
                 <span>{UI_COPY.worldbook.previewEnableRecursion}</span>
                 <input
+                  id="worldbook_preview_enable_recursion"
                   className="checkbox"
                   checked={previewEnableRecursion}
                   name="enable_recursion"
@@ -1074,6 +1082,7 @@ export function WorldBookPage() {
               <label className="grid gap-1 sm:col-span-2">
                 <span className="text-xs text-subtext">{UI_COPY.worldbook.previewCharLimit}</span>
                 <input
+                  id="worldbook_preview_char_limit"
                   className="input"
                   min={0}
                   name="char_limit"
@@ -1169,6 +1178,7 @@ export function WorldBookPage() {
               <label className="grid gap-1">
                 <span className="text-xs text-subtext">导入 JSON 文件</span>
                 <input
+                  id="worldbook_import_file"
                   aria-label="导入 JSON 文件"
                   className="input"
                   accept="application/json,.json"
@@ -1180,6 +1190,7 @@ export function WorldBookPage() {
               <label className="grid gap-1">
                 <span className="text-xs text-subtext">导入模式</span>
                 <select
+                  id="worldbook_import_mode"
                   aria-label="导入模式"
                   className="select"
                   disabled={importLoading}
@@ -1340,6 +1351,7 @@ export function WorldBookPage() {
               <label className="grid gap-1">
                 <span className="text-xs text-subtext">{UI_COPY.worldbook.previewQueryLabel}</span>
                 <textarea
+                  id="worldbook_entry_preview_query_text"
                   className="textarea atelier-content"
                   name="query_text"
                   rows={3}
@@ -1352,6 +1364,7 @@ export function WorldBookPage() {
                 <label className="flex items-center justify-between gap-2 text-sm text-ink">
                   <span>{UI_COPY.worldbook.previewIncludeConstant}</span>
                   <input
+                    id="worldbook_entry_preview_include_constant"
                     className="checkbox"
                     checked={previewIncludeConstant}
                     name="include_constant"
@@ -1362,6 +1375,7 @@ export function WorldBookPage() {
                 <label className="flex items-center justify-between gap-2 text-sm text-ink">
                   <span>{UI_COPY.worldbook.previewEnableRecursion}</span>
                   <input
+                    id="worldbook_entry_preview_enable_recursion"
                     className="checkbox"
                     checked={previewEnableRecursion}
                     name="enable_recursion"
@@ -1372,6 +1386,7 @@ export function WorldBookPage() {
                 <label className="grid gap-1 sm:col-span-2">
                   <span className="text-xs text-subtext">{UI_COPY.worldbook.previewCharLimit}</span>
                   <input
+                    id="worldbook_entry_preview_char_limit"
                     className="input"
                     min={0}
                     name="char_limit"
@@ -1444,6 +1459,7 @@ export function WorldBookPage() {
           <label className="grid gap-1">
             <span className="text-xs text-subtext">{UI_COPY.worldbook.formTitle}</span>
             <input
+              id="worldbook_entry_title"
               className="input"
               disabled={saving}
               name="title"
@@ -1456,6 +1472,7 @@ export function WorldBookPage() {
             <label className="flex items-center justify-between gap-2 text-sm text-ink">
               <span>{UI_COPY.worldbook.formEnabled}</span>
               <input
+                id="worldbook_entry_enabled"
                 className="checkbox"
                 checked={form.enabled}
                 disabled={saving}
@@ -1467,6 +1484,7 @@ export function WorldBookPage() {
             <label className="flex items-center justify-between gap-2 text-sm text-ink">
               <span>{UI_COPY.worldbook.formConstant}</span>
               <input
+                id="worldbook_entry_constant"
                 className="checkbox"
                 checked={form.constant}
                 disabled={saving}
@@ -1478,6 +1496,7 @@ export function WorldBookPage() {
             <label className="flex items-center justify-between gap-2 text-sm text-ink">
               <span>{UI_COPY.worldbook.formExcludeRecursion}</span>
               <input
+                id="worldbook_entry_exclude_recursion"
                 className="checkbox"
                 checked={form.exclude_recursion}
                 disabled={saving}
@@ -1489,6 +1508,7 @@ export function WorldBookPage() {
             <label className="flex items-center justify-between gap-2 text-sm text-ink">
               <span>{UI_COPY.worldbook.formPreventRecursion}</span>
               <input
+                id="worldbook_entry_prevent_recursion"
                 className="checkbox"
                 checked={form.prevent_recursion}
                 disabled={saving}
@@ -1500,6 +1520,7 @@ export function WorldBookPage() {
             <label className="grid gap-1 sm:col-span-2">
               <span className="text-xs text-subtext">{UI_COPY.worldbook.formKeywords}</span>
               <textarea
+                id="worldbook_entry_keywords"
                 className="textarea atelier-content"
                 disabled={saving}
                 name="keywords"
@@ -1512,6 +1533,7 @@ export function WorldBookPage() {
             <label className="grid gap-1">
               <span className="text-xs text-subtext">{UI_COPY.worldbook.formCharLimit}</span>
               <input
+                id="worldbook_entry_char_limit"
                 className="input"
                 disabled={saving}
                 min={0}
@@ -1524,6 +1546,7 @@ export function WorldBookPage() {
             <label className="grid gap-1">
               <span className="text-xs text-subtext">{UI_COPY.worldbook.formPriority}</span>
               <select
+                id="worldbook_entry_priority"
                 className="select"
                 disabled={saving}
                 name="priority"
@@ -1541,6 +1564,7 @@ export function WorldBookPage() {
           <label className="grid gap-1">
             <span className="text-xs text-subtext">{UI_COPY.worldbook.formContent}</span>
             <textarea
+              id="worldbook_entry_content_md"
               className="textarea atelier-content"
               disabled={saving}
               name="content_md"
