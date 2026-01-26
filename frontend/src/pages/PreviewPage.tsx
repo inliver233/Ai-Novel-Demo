@@ -125,7 +125,7 @@ export function PreviewPage() {
   }, [nextChapter, openChapter, prevChapter]);
 
   const list = (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="inline-flex items-center gap-2 text-sm text-ink">
           <BookOpen size={16} />
@@ -145,7 +145,7 @@ export function PreviewPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-2 pb-24">
+      <div className="p-2 pb-24">
         {sortedChapters.length === 0 ? (
           <div className="p-3 text-sm text-subtext">暂无章节</div>
         ) : onlyDone && visibleChapters.length === 0 ? (
@@ -241,7 +241,7 @@ export function PreviewPage() {
       <div className="flex gap-4">
         {!collapsed ? (
           <aside className="hidden w-[280px] shrink-0 lg:block">
-            <div className="panel h-[calc(100vh-260px)] min-h-[520px] overflow-hidden">{list}</div>
+            <div className="panel">{list}</div>
           </aside>
         ) : null}
 
@@ -277,7 +277,7 @@ export function PreviewPage() {
         side="bottom"
         overlayClassName="lg:hidden"
         ariaLabel="章节列表"
-        panelClassName="h-[85vh] w-full overflow-hidden rounded-atelier border border-border bg-surface shadow-sm"
+        panelClassName="flex h-[85vh] w-full flex-col overflow-hidden rounded-atelier border border-border bg-surface shadow-sm"
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div className="text-sm text-ink">章节列表</div>
@@ -286,7 +286,7 @@ export function PreviewPage() {
             关闭
           </button>
         </div>
-        {list}
+        <div className="min-h-0 flex-1 overflow-y-auto">{list}</div>
       </Drawer>
 
       <WizardNextBar projectId={projectId} currentStep="preview" progress={wizardProgress} loading={wizardLoading} />
