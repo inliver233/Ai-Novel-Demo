@@ -339,9 +339,11 @@ export function WritingPage() {
 
         <section className="min-w-0 flex-1">
           {!activeChapter || !form ? (
-            <div className="panel mx-auto w-full max-w-4xl p-8 text-sm text-subtext">请选择或新建章节开始写作。</div>
+            <div className="mx-auto w-full max-w-4xl rounded-atelier border border-border bg-white p-8 text-sm text-subtext shadow-sm dark:bg-surface">
+              请选择或新建章节开始写作。
+            </div>
           ) : (
-            <div className="panel mx-auto w-full max-w-4xl p-5">
+            <div className="mx-auto w-full max-w-4xl rounded-atelier border border-border bg-white p-5 shadow-sm dark:bg-surface">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-content text-2xl text-ink">
