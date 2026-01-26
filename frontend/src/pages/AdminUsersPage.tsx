@@ -218,7 +218,14 @@ export function AdminUsersPage() {
         </div>
       </div>
 
-      <section className="mt-6 rounded-atelier border border-border bg-surface p-4">
+      <form
+        className="mt-6 rounded-atelier border border-border bg-surface p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (saving) return;
+          void createUser();
+        }}
+      >
         <div className="text-sm font-medium text-ink">创建用户</div>
         <div className="mt-1 text-xs text-subtext">
           提示：留空“初始密码”会由系统生成一次性密码。一次性密码不会持久化保存，刷新页面后无法找回；建议创建/重置后立即复制并通过安全渠道发送给用户。
@@ -279,11 +286,11 @@ export function AdminUsersPage() {
             />
             <span>管理员（is_admin）</span>
           </label>
-          <button className="btn btn-primary" disabled={saving} onClick={() => void createUser()} type="button">
+          <button className="btn btn-primary" disabled={saving} type="submit">
             {saving ? "提交中…" : "创建"}
           </button>
         </div>
-      </section>
+      </form>
 
       <section className="mt-6 rounded-atelier border border-border bg-surface p-4">
         <div className="text-sm font-medium text-ink">用户列表</div>
