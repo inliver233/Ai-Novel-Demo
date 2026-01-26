@@ -321,94 +321,104 @@ export function DashboardPage() {
           </div>
         ) : null}
 
-        {sorted.map((p) => (
-          <motion.div
-            key={p.id}
-            className="panel-interactive p-6 text-left"
-            initial="hidden"
-            animate="show"
-            variants={{
-              hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
-              show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
-            }}
-            transition={reduceMotion ? { duration: 0.01 } : transition.base}
-            whileHover={reduceMotion ? undefined : { y: -2, transition: transition.fast }}
-            whileTap={reduceMotion ? undefined : { y: 0, scale: 0.98, transition: transition.fast }}
-            onClick={() => enterProject(p)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                enterProject(p);
-              }
-            }}
-            role="button"
-            tabIndex={0}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate font-content text-xl text-ink">{p.name}</div>
-                <div className="mt-1 text-xs text-subtext">{p.genre ? `类型：${p.genre}` : "未填写类型"}</div>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <button
-                  className="btn btn-secondary px-3 py-2 text-xs"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/projects/${p.id}/wizard`);
-                  }}
-                  type="button"
-                >
-                  向导
-                </button>
-                <button
-                  className="btn btn-ghost px-3 py-2 text-xs text-accent hover:bg-accent/10"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    const ok = await confirm.confirm({
-                      title: "删除项目？",
-                      description: "该操作会删除项目及其设定/角色/章节/生成记录，且不可恢复。",
-                      confirmText: "删除",
-                      danger: true,
-                    });
-                    if (!ok) return;
-                    try {
-                      const res = await apiJson<Record<string, never>>(`/api/projects/${p.id}`, { method: "DELETE" });
-                      await refresh();
-                      toast.toastSuccess("已删除");
-                      return res;
-                    } catch (e) {
-                      const err = e as ApiError;
-                      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-                    }
-                  }}
-                  type="button"
-                >
-                  删除
-                </button>
-              </div>
-            </div>
-            {p.logline ? <div className="mt-3 line-clamp-3 text-sm text-subtext">{p.logline}</div> : null}
+        {sorted.map((p) => {
+          const wizard = wizardByProjectId[p.id];
+          const wizardLoading = wizardLoadingByProjectId[p.id];
+          return (
+            <motion.div
+              key={p.id}
+              className="panel-interactive group relative flex aspect-[3/4] flex-col overflow-hidden p-5 text-left"
+              initial="hidden"
+              animate="show"
+              variants={{
+                hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
+                show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
+              }}
+              transition={reduceMotion ? { duration: 0.01 } : transition.base}
+              whileHover={reduceMotion ? undefined : { y: -2, transition: transition.fast }}
+              whileTap={reduceMotion ? undefined : { y: 0, scale: 0.98, transition: transition.fast }}
+              onClick={() => enterProject(p)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  enterProject(p);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="pointer-events-none absolute inset-y-0 left-0 w-3 bg-border/55" />
+              <div className="pointer-events-none absolute inset-y-0 left-3 w-8 bg-gradient-to-r from-border/25 to-transparent" />
 
-            {wizardLoadingByProjectId[p.id] ? (
-              <div className="mt-4 text-xs text-subtext">计算完成度...</div>
-            ) : wizardByProjectId[p.id] ? (
-              <div className="mt-4">
-                <div className="flex items-center justify-between gap-3 text-xs text-subtext">
-                  <div>完成度：{wizardByProjectId[p.id].percent}%</div>
-                  <div className="truncate">
-                    {wizardByProjectId[p.id].nextTitle ? `下一步：${wizardByProjectId[p.id].nextTitle}` : "已完成"}
-                  </div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate font-content text-xl text-ink">{p.name}</div>
+                  <div className="mt-1 text-xs text-subtext">{p.genre ? `类型：${p.genre}` : "未填写类型"}</div>
                 </div>
-                <div className="mt-2 h-2 w-full rounded-full bg-border/60">
-                  <div
-                    className="h-2 rounded-full bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
-                    style={{ width: `${wizardByProjectId[p.id].percent}%` }}
-                  />
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    className="btn btn-secondary px-3 py-2 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/projects/${p.id}/wizard`);
+                    }}
+                    type="button"
+                  >
+                    向导
+                  </button>
+                  <button
+                    className="btn btn-ghost px-3 py-2 text-xs text-accent hover:bg-accent/10"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const ok = await confirm.confirm({
+                        title: "删除项目？",
+                        description: "该操作会删除项目及其设定/角色/章节/生成记录，且不可恢复。",
+                        confirmText: "删除",
+                        danger: true,
+                      });
+                      if (!ok) return;
+                      try {
+                        const res = await apiJson<Record<string, never>>(`/api/projects/${p.id}`, { method: "DELETE" });
+                        await refresh();
+                        toast.toastSuccess("已删除");
+                        return res;
+                      } catch (e) {
+                        const err = e as ApiError;
+                        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+                      }
+                    }}
+                    type="button"
+                  >
+                    删除
+                  </button>
                 </div>
               </div>
-            ) : null}
-          </motion.div>
-        ))}
+
+              <div className="mt-3 flex-1">
+                {p.logline ? <div className="line-clamp-5 text-sm text-subtext">{p.logline}</div> : null}
+              </div>
+
+              <div className="mt-4">
+                {wizardLoading ? (
+                  <div className="text-xs text-subtext">计算完成度...</div>
+                ) : wizard ? (
+                  <>
+                    <div className="flex items-center justify-between gap-3 text-xs text-subtext">
+                      <div>完成度：{wizard.percent}%</div>
+                      <div className="truncate">{wizard.nextTitle ? `下一步：${wizard.nextTitle}` : "已完成"}</div>
+                    </div>
+                    <div className="mt-2 h-2 w-full rounded-full bg-border/60">
+                      <div
+                        className="h-2 rounded-full bg-accent motion-safe:transition-[width] motion-safe:duration-atelier motion-safe:ease-atelier"
+                        style={{ width: `${wizard.percent}%` }}
+                      />
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </motion.div>
+          );
+        })}
       </motion.div>
 
       <Modal
