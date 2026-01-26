@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
 import { MarkdownEditor } from "../components/atelier/MarkdownEditor";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
-import { PaperContent } from "../components/layout/AppShell";
+import { ToolContent } from "../components/layout/AppShell";
 import { Drawer } from "../components/ui/Drawer";
 import { AiGenerateDrawer } from "../components/writing/AiGenerateDrawer";
 import { BatchGenerationModal } from "../components/writing/BatchGenerationModal";
@@ -282,10 +282,10 @@ export function WritingPage() {
     void generate(pending.mode);
   }, [activeChapter, form, generate, generating]);
 
-  if (loading) return <PaperContent className="text-subtext">加载中...</PaperContent>;
+  if (loading) return <ToolContent className="text-subtext">加载中...</ToolContent>;
 
   return (
-    <PaperContent className="grid gap-4 pb-24">
+    <ToolContent className="grid gap-4 pb-24">
       {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
       <WritingToolbar
         outlines={outlines}
@@ -339,9 +339,9 @@ export function WritingPage() {
 
         <section className="min-w-0 flex-1">
           {!activeChapter || !form ? (
-            <div className="panel p-8 text-sm text-subtext">请选择或新建章节开始写作。</div>
+            <div className="panel mx-auto w-full max-w-4xl p-8 text-sm text-subtext">请选择或新建章节开始写作。</div>
           ) : (
-            <div className="panel p-5">
+            <div className="panel mx-auto w-full max-w-4xl p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-content text-2xl text-ink">
@@ -726,6 +726,6 @@ export function WritingPage() {
         saving={loadingChapter || generating}
         onSave={saveChapter}
       />
-    </PaperContent>
+    </ToolContent>
   );
 }
