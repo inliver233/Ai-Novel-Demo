@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 
-import { PaperContent } from "../components/layout/AppShell";
+import { ToolContent } from "../components/layout/AppShell";
 import { Drawer } from "../components/ui/Drawer";
 import { useProjectData } from "../hooks/useProjectData";
 import { ApiError, apiJson } from "../services/apiClient";
@@ -475,7 +475,7 @@ export function ChapterReaderPage() {
   if (previewQuery.loading) return <div className="text-subtext">加载中...</div>;
 
   return (
-    <PaperContent className="grid gap-4">
+    <ToolContent className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <button className="btn btn-secondary lg:hidden" onClick={() => setMobileListOpen(true)} type="button">
@@ -547,7 +547,7 @@ export function ChapterReaderPage() {
                     </div>
                   ) : null}
                 </div>
-                <div className="atelier-content max-w-none text-ink">
+                <div className="atelier-content mx-auto max-w-4xl text-ink">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{activeChapter.content_md || "_（空）_"}</ReactMarkdown>
                 </div>
               </>
@@ -590,6 +590,6 @@ export function ChapterReaderPage() {
       >
         {memoryPanel}
       </Drawer>
-    </PaperContent>
+    </ToolContent>
   );
 }
