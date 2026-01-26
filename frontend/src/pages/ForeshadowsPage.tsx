@@ -26,6 +26,10 @@ type OpenLoopsResponse = { items: ForeshadowOpenLoop[]; has_more: boolean; retur
 
 type OrderKey = "timeline_desc" | "importance_desc" | "updated_desc";
 
+const OPEN_LOOPS_LIMIT_INITIAL = 80;
+const OPEN_LOOPS_LIMIT_STEP = 80;
+const OPEN_LOOPS_LIMIT_MAX = 200;
+
 function labelForChapter(chapter: Chapter): string {
   const title = String(chapter.title || "").trim();
   return title ? `第${chapter.number}章：${title}` : `第${chapter.number}章`;
@@ -45,6 +49,7 @@ export function ForeshadowsPage() {
   const [requestId, setRequestId] = useState<string | null>(null);
   const [items, setItems] = useState<ForeshadowOpenLoop[]>([]);
   const [hasMore, setHasMore] = useState(false);
+  const [limit, setLimit] = useState(OPEN_LOOPS_LIMIT_INITIAL);
 
   const [searchText, setSearchText] = useState("");
   const [queryText, setQueryText] = useState("");
@@ -86,7 +91,7 @@ export function ForeshadowsPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      params.set("limit", "80");
+      params.set("limit", String(limit));
       if (queryText.trim()) params.set("q", queryText.trim());
       params.set("order", order);
       const res = await apiJson<OpenLoopsResponse>(
@@ -109,7 +114,7 @@ export function ForeshadowsPage() {
         setLoading(false);
       }
     }
-  }, [listGuard, order, projectId, queryText, toast]);
+  }, [limit, listGuard, order, projectId, queryText, toast]);
 
   useEffect(() => {
     const guard1 = listGuard;
@@ -181,6 +186,7 @@ export function ForeshadowsPage() {
   );
 
   const submitQuery = useCallback(() => {
+    setLimit(OPEN_LOOPS_LIMIT_INITIAL);
     setQueryText(searchText.trim());
   }, [searchText]);
 
@@ -229,6 +235,7 @@ export function ForeshadowsPage() {
                 onClick={() => {
                   setSearchText("");
                   setQueryText("");
+                  setLimit(OPEN_LOOPS_LIMIT_INITIAL);
                 }}
                 disabled={loading}
                 type="button"
@@ -244,7 +251,10 @@ export function ForeshadowsPage() {
             <select
               className="select"
               value={order}
-              onChange={(e) => setOrder((e.target.value as OrderKey) || "timeline_desc")}
+              onChange={(e) => {
+                setLimit(OPEN_LOOPS_LIMIT_INITIAL);
+                setOrder((e.target.value as OrderKey) || "timeline_desc");
+              }}
               aria-label="foreshadows_order"
             >
               <option value="timeline_desc">按时间线（从新到旧）</option>
@@ -282,7 +292,24 @@ export function ForeshadowsPage() {
           未回收：{items.length}
           {hasMore ? "（已截断）" : ""}
         </div>
-        {loading ? <div>加载中...</div> : null}
+        <div className="flex items-center gap-2">
+          {hasMore ? (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setLimit((prev) =>
+                  prev >= OPEN_LOOPS_LIMIT_MAX ? prev : Math.min(OPEN_LOOPS_LIMIT_MAX, prev + OPEN_LOOPS_LIMIT_STEP),
+                );
+              }}
+              disabled={loading || limit >= OPEN_LOOPS_LIMIT_MAX}
+              type="button"
+              aria-label="foreshadows_load_more"
+            >
+              {limit >= OPEN_LOOPS_LIMIT_MAX ? "已达上限" : "加载更多"}
+            </button>
+          ) : null}
+          {loading ? <div>加载中...</div> : null}
+        </div>
       </div>
 
       {items.length === 0 ? (
