@@ -3,10 +3,11 @@ import { useEffect, useMemo, useRef } from "react";
 type AutoSaveOptions<T> = {
   enabled?: boolean;
   dirty: boolean;
+  saveOnIdle?: boolean;
   delayMs?: number;
   getSnapshot: () => T | null;
   onSave: (snapshot: T) => void | Promise<void>;
-  deps: unknown[];
+  deps?: unknown[];
   flushOnUnmount?: boolean;
 };
 
@@ -16,7 +17,16 @@ export type AutoSaveController = {
 };
 
 export function useAutoSave<T>(options: AutoSaveOptions<T>): AutoSaveController {
-  const { enabled = true, dirty, delayMs = 1000, getSnapshot, onSave, deps, flushOnUnmount = true } = options;
+  const {
+    enabled = true,
+    dirty,
+    saveOnIdle = false,
+    delayMs = 1000,
+    getSnapshot,
+    onSave,
+    deps = [],
+    flushOnUnmount = true,
+  } = options;
 
   const getSnapshotRef = useRef(getSnapshot);
   const onSaveRef = useRef(onSave);
@@ -36,13 +46,13 @@ export function useAutoSave<T>(options: AutoSaveOptions<T>): AutoSaveController 
   useEffect(() => {
     dirtyRef.current = dirty;
     enabledRef.current = enabled;
-    if (!enabled || !dirty) {
+    if (!enabled || !dirty || !saveOnIdle) {
       if (timerRef.current !== null) {
         window.clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     }
-  }, [dirty, enabled]);
+  }, [dirty, enabled, saveOnIdle]);
 
   const controller = useMemo<AutoSaveController>(() => {
     const cancel = () => {
@@ -62,6 +72,7 @@ export function useAutoSave<T>(options: AutoSaveOptions<T>): AutoSaveController 
   }, []);
 
   useEffect(() => {
+    if (!saveOnIdle) return;
     if (!enabled || !dirty) return;
     const snapshot = getSnapshotRef.current();
     if (snapshot == null) return;
@@ -77,7 +88,7 @@ export function useAutoSave<T>(options: AutoSaveOptions<T>): AutoSaveController 
       void onSaveRef.current(snap);
     }, delayMs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, dirty, delayMs, ...deps]);
+  }, [saveOnIdle, enabled, dirty, delayMs, ...deps]);
 
   useEffect(() => {
     return () => {

@@ -244,19 +244,11 @@ export function useChapterEditor(args: {
   useAutoSave({
     enabled: Boolean(projectId && activeChapter && form) && !loadingChapter,
     dirty,
-    delayMs: 900,
+    saveOnIdle: false,
     getSnapshot: () => (formRef.current ? { ...formRef.current } : null),
     onSave: async (snapshot) => {
       await saveChapter({ snapshot, silent: true });
     },
-    deps: [
-      activeChapter?.id ?? "",
-      form?.title ?? "",
-      form?.plan ?? "",
-      form?.content_md ?? "",
-      form?.summary ?? "",
-      form?.status ?? "",
-    ],
   });
 
   const requestSelectChapter = useCallback(
