@@ -76,12 +76,20 @@ export function ImportPage() {
   const [applyStoryMemoryLoading, setApplyStoryMemoryLoading] = useState(false);
 
   const autoOpenedDocIdRef = useRef<string | null>(null);
+  const lastPolledRef = useRef<{ id: string; status: string } | null>(null);
 
   const selectedDoc = useMemo(() => {
     if (!selectedId) return null;
     const d = documents.find((x) => x.id === selectedId) ?? null;
     return d;
   }, [documents, selectedId]);
+
+  const statusDoc = useMemo(() => selectedDoc ?? detail?.document ?? null, [detail?.document, selectedDoc]);
+
+  const pollStatus = String(selectedDoc?.status ?? detail?.document.status ?? "")
+    .trim()
+    .toLowerCase();
+  const shouldPoll = pollStatus === "queued" || pollStatus === "running";
 
   const loadList = useCallback(async () => {
     if (!projectId) return;
@@ -270,6 +278,28 @@ export function ImportPage() {
     });
   }, [loadList, projectId, searchParams, selectDocAndLoad]);
 
+  useEffect(() => {
+    if (!shouldPoll) return;
+    const intervalMs = 2000;
+    const timerId = window.setInterval(() => {
+      void loadList();
+    }, intervalMs);
+    return () => window.clearInterval(timerId);
+  }, [loadList, shouldPoll]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const prev = lastPolledRef.current;
+    lastPolledRef.current = { id: selectedId, status: pollStatus };
+    if (!prev || prev.id !== selectedId) return;
+
+    const prevRunning = prev.status === "queued" || prev.status === "running";
+    const nowDone = pollStatus === "done" || pollStatus === "failed";
+    if (!prevRunning || !nowDone) return;
+
+    void selectDocAndLoad(selectedId);
+  }, [pollStatus, selectedId, selectDocAndLoad]);
+
   return (
     <DebugPageShell
       title="导入小说/资料"
@@ -383,12 +413,12 @@ export function ImportPage() {
               <div className="grid gap-3 rounded-atelier border border-border bg-canvas p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-ink">
-                      {detail.document.filename || "import.txt"}
-                    </div>
+                    <div className="truncate text-sm font-semibold text-ink">{statusDoc?.filename || "import.txt"}</div>
                     <div className="mt-1 text-xs text-subtext">
-                      {humanizeStatus(detail.document.status)} · {detail.document.progress}% ·{" "}
-                      {detail.document.progress_message || ""}
+                      {humanizeStatus(statusDoc?.status ?? detail.document.status)} ·{" "}
+                      {Math.max(0, Math.min(100, Math.floor(statusDoc?.progress ?? 0)))}% ·{" "}
+                      {statusDoc?.progress_message || ""}
+                      {shouldPoll ? " · 自动刷新中…" : ""}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -416,7 +446,7 @@ export function ImportPage() {
 
                 <div className="grid gap-2">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs text-subtext">Chunks（{detail.document.chunk_count ?? 0}）</div>
+                    <div className="text-xs text-subtext">Chunks（{statusDoc?.chunk_count ?? 0}）</div>
                     <button
                       className="btn btn-secondary"
                       disabled={chunksLoading}
