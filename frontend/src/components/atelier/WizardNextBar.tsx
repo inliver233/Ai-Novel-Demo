@@ -158,6 +158,21 @@ export function WizardNextBar(props: {
               <ListChecks size={14} /> 向导 {progress.percent}% <CollapsedIcon size={14} />
             </button>
 
+            {collapsed ? (
+              <button
+                className="btn btn-primary h-9 ml-2"
+                disabled={Boolean(primary.disabled) || loading || busy}
+                onClick={() => void run(primary.onClick)}
+                type="button"
+                title={loading ? "加载中..." : primary.label}
+              >
+                <span className="inline-flex max-w-[240px] items-center gap-2 truncate">
+                  {loading ? "加载中..." : primary.label}
+                  <ArrowRight size={16} />
+                </span>
+              </button>
+            ) : null}
+
             <div className="mt-2 rounded-atelier border border-border bg-surface/90 p-4 shadow-sm backdrop-blur">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -183,16 +198,19 @@ export function WizardNextBar(props: {
                       const isCurrent = s.key === currentStep;
                       const isNext = progress.nextStep?.key === s.key;
                       return (
-                        <div
+                        <button
                           key={s.key}
                           className={clsx(
-                            "inline-flex items-center gap-1 rounded-atelier border px-2 py-1 text-[11px]",
+                            "ui-focus-ring ui-transition-fast inline-flex items-center gap-1 rounded-atelier border px-2 py-1 text-[11px]",
                             isCurrent
                               ? "border-accent/40 bg-accent/10 text-ink"
                               : "border-border bg-canvas text-subtext",
                             isNext ? "ring-1 ring-accent" : null,
                           )}
                           title={s.description}
+                          type="button"
+                          disabled={loading || busy}
+                          onClick={() => (isCurrent ? null : goto(s.href))}
                         >
                           <Icon
                             className={clsx(
@@ -207,7 +225,7 @@ export function WizardNextBar(props: {
                           <span className={clsx("max-w-[140px] truncate", isCurrent ? "text-ink" : "text-subtext")}>
                             {s.title}
                           </span>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>

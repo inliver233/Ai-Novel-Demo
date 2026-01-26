@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { useToast } from "../components/ui/toast";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
@@ -48,6 +48,7 @@ type ProjectMembershipItem = {
 
 export function SettingsPage() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const toast = useToast();
   const auth = useAuth();
   const { refresh } = useProjects();
@@ -587,6 +588,16 @@ export function SettingsPage() {
     ],
   });
 
+  const gotoCharacters = useCallback(async () => {
+    if (!projectId) return;
+    if (saving) return;
+    if (dirty) {
+      const ok = await save();
+      if (!ok) return;
+    }
+    navigate(`/projects/${projectId}/characters`);
+  }, [dirty, navigate, projectId, save, saving]);
+
   const loading = settingsQuery.loading;
   if (loading) return <div className="text-subtext">加载中...</div>;
   if (!baselineProject || !baselineSettings) return <div className="text-subtext">项目加载失败</div>;
@@ -606,9 +617,14 @@ export function SettingsPage() {
             <div className="font-content text-xl">项目信息</div>
             <div className="text-xs text-subtext">名称 / 题材 / 一句话梗概（logline）</div>
           </div>
-          <button className="btn btn-primary" disabled={!dirty} onClick={() => void save()} type="button">
-            保存
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button className="btn btn-secondary" disabled={saving} onClick={() => void gotoCharacters()} type="button">
+              {dirty ? "保存并下一步：角色卡" : "下一步：角色卡"}
+            </button>
+            <button className="btn btn-primary" disabled={!dirty || saving} onClick={() => void save()} type="button">
+              保存
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
