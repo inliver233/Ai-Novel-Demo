@@ -39,6 +39,30 @@ export type WizardComputeInput = {
   llmProfile: LLMProfile | null;
 };
 
+export const WIZARD_PROGRESS_INVALIDATED_EVENT = "ainovel:wizard:progress_invalidated";
+
+export type WizardProgressInvalidatedDetail = {
+  projectId: string;
+  refresh: boolean;
+  reason: "project_changed" | "skip_changed" | "llm_test_ok" | "preview_seen" | "exported";
+};
+
+function emitWizardProgressInvalidated(detail: WizardProgressInvalidatedDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent<WizardProgressInvalidatedDetail>(WIZARD_PROGRESS_INVALIDATED_EVENT, { detail }));
+}
+
+export function onWizardProgressInvalidated(handler: (detail: WizardProgressInvalidatedDetail) => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const listener = (event: Event) => {
+    const custom = event as CustomEvent<WizardProgressInvalidatedDetail>;
+    if (!custom.detail?.projectId) return;
+    handler(custom.detail);
+  };
+  window.addEventListener(WIZARD_PROGRESS_INVALIDATED_EVENT, listener);
+  return () => window.removeEventListener(WIZARD_PROGRESS_INVALIDATED_EVENT, listener);
+}
+
 function isNonEmpty(text?: string | null): boolean {
   return Boolean(text && text.trim().length > 0);
 }
@@ -71,6 +95,7 @@ export function setWizardStepSkipped(projectId: string, step: WizardStepKey, ski
   const key = skipKey(projectId, step);
   if (skipped) localStorage.setItem(key, "1");
   else localStorage.removeItem(key);
+  emitWizardProgressInvalidated({ projectId, refresh: false, reason: "skip_changed" });
 }
 
 type LlmTestOkPayload = { provider: string; model: string; at: string };
@@ -78,6 +103,7 @@ type LlmTestOkPayload = { provider: string; model: string; at: string };
 export function markWizardLlmTestOk(projectId: string, provider: string, model: string): void {
   const payload: LlmTestOkPayload = { provider, model, at: new Date().toISOString() };
   localStorage.setItem(llmTestOkKey(projectId), JSON.stringify(payload));
+  emitWizardProgressInvalidated({ projectId, refresh: false, reason: "llm_test_ok" });
 }
 
 export function hasWizardLlmTestOk(projectId: string, provider: string, model: string): boolean {
@@ -93,6 +119,7 @@ export function hasWizardLlmTestOk(projectId: string, provider: string, model: s
 
 export function markWizardExported(projectId: string): void {
   localStorage.setItem(exportedKey(projectId), new Date().toISOString());
+  emitWizardProgressInvalidated({ projectId, refresh: false, reason: "exported" });
 }
 
 export function hasWizardExported(projectId: string): boolean {
@@ -105,6 +132,7 @@ export function getWizardExportedAt(projectId: string): string | null {
 
 export function markWizardProjectChanged(projectId: string): void {
   localStorage.setItem(projectChangedAtKey(projectId), new Date().toISOString());
+  emitWizardProgressInvalidated({ projectId, refresh: true, reason: "project_changed" });
 }
 
 export function getWizardProjectChangedAt(projectId: string): string | null {
@@ -113,6 +141,7 @@ export function getWizardProjectChangedAt(projectId: string): string | null {
 
 export function markWizardPreviewSeen(projectId: string): void {
   localStorage.setItem(previewSeenKey(projectId), new Date().toISOString());
+  emitWizardProgressInvalidated({ projectId, refresh: false, reason: "preview_seen" });
 }
 
 export function hasWizardPreviewSeen(projectId: string): boolean {

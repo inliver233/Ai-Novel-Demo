@@ -1,8 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useProjectData } from "./useProjectData";
 import { apiJson } from "../services/apiClient";
-import { computeWizardProgress, type WizardProgress } from "../services/wizard";
+import { computeWizardProgress, onWizardProgressInvalidated, type WizardProgress } from "../services/wizard";
 import type { Chapter, Character, LLMPreset, LLMProfile, Outline, Project, ProjectSettings } from "../types";
 
 type WizardLoaded = {
@@ -46,29 +46,61 @@ export function useWizardProgress(projectId: string | undefined): {
       profiles: profilesRes.data.profiles,
     };
   });
+  const { data, loading, refresh } = wizardQuery;
+
+  const refreshDebounceRef = useRef<number | null>(null);
+  const loadingRef = useRef(false);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
 
   const bumpLocal = useCallback(() => {
     setVersion((v) => v + 1);
   }, []);
 
-  const project = wizardQuery.data?.project ?? null;
+  useEffect(() => {
+    if (!projectId) return;
+    const off = onWizardProgressInvalidated((detail) => {
+      if (detail.projectId !== projectId) return;
+      bumpLocal();
+      if (!detail.refresh) return;
+      if (refreshDebounceRef.current !== null) {
+        window.clearTimeout(refreshDebounceRef.current);
+      }
+      refreshDebounceRef.current = window.setTimeout(() => {
+        refreshDebounceRef.current = null;
+        if (loadingRef.current) return;
+        void refresh();
+      }, 80);
+    });
+    return () => {
+      off();
+      if (refreshDebounceRef.current !== null) {
+        window.clearTimeout(refreshDebounceRef.current);
+        refreshDebounceRef.current = null;
+      }
+    };
+  }, [bumpLocal, projectId, refresh]);
+
+  const project = data?.project ?? null;
   const selectedProfileId = project?.llm_profile_id ?? null;
-  const profiles = wizardQuery.data?.profiles ?? [];
+  const profiles = data?.profiles ?? [];
   const llmProfile = selectedProfileId ? (profiles.find((p) => p.id === selectedProfileId) ?? null) : null;
   const progress = computeWizardProgress({
     project,
-    settings: wizardQuery.data?.settings ?? null,
-    characters: wizardQuery.data?.characters ?? EMPTY_CHARACTERS,
-    outline: wizardQuery.data?.outline ?? null,
-    chapters: wizardQuery.data?.chapters ?? EMPTY_CHAPTERS,
-    llmPreset: wizardQuery.data?.llmPreset ?? null,
+    settings: data?.settings ?? null,
+    characters: data?.characters ?? EMPTY_CHARACTERS,
+    outline: data?.outline ?? null,
+    chapters: data?.chapters ?? EMPTY_CHAPTERS,
+    llmPreset: data?.llmPreset ?? null,
     llmProfile,
   });
 
   return {
-    loading: wizardQuery.loading,
+    loading,
     progress,
-    refresh: wizardQuery.refresh,
+    refresh,
     bumpLocal,
   };
 }
