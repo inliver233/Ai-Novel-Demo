@@ -1036,7 +1036,11 @@ export function WorldBookPage() {
               className="btn btn-secondary"
               disabled={previewLoading || drawerOpen}
               title={drawerOpen ? UI_COPY.worldbook.previewUseInDrawerHint : undefined}
-              onClick={() => void runPreview()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void runPreview();
+              }}
               type="button"
             >
               {UI_COPY.worldbook.previewRun}
@@ -1334,7 +1338,11 @@ export function WorldBookPage() {
                 className="btn btn-secondary"
                 disabled={previewLoading || dirty}
                 title={dirty ? UI_COPY.worldbook.previewRequiresSaveHint : undefined}
-                onClick={() => void runPreview()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void runPreview();
+                }}
                 type="button"
               >
                 {UI_COPY.worldbook.previewRun}

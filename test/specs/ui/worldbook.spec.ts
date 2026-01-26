@@ -89,9 +89,13 @@ test("ui: worldbook preview_trigger works in drawer mode", async ({ page, reques
   await expect(pagePreviewBtn).toBeVisible();
   await expect(pagePreviewBtn).toBeDisabled();
 
+  const preventRecursion = drawer.getByRole("checkbox", { name: "阻止递归", exact: true });
+  const preventRecursionInitial = await preventRecursion.isChecked();
+
   await drawer.getByLabel("query_text", { exact: true }).fill("dragon");
   await drawer.getByLabel("拼接字符上限", { exact: true }).fill("10");
   await drawer.getByRole("button", { name: "预览", exact: true }).click();
+  expect(await preventRecursion.isChecked()).toBe(preventRecursionInitial);
 
   await expect(drawer.getByText("触发 1 条")).toBeVisible();
   await expect(drawer.getByText("已截断（超出上限）")).toBeVisible();
