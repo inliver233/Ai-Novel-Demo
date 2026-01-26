@@ -42,7 +42,7 @@ export function AnnotatedText(props: {
   onAnnotationClick?: (annotation: MemoryAnnotation) => void;
   className?: string;
 }) {
-  const refsByIdRef = useRef<Map<string, { pos: number; el: HTMLSpanElement }>>(new Map());
+  const refsByIdRef = useRef<Map<string, { pos: number; el: HTMLButtonElement }>>(new Map());
   const segments = useMemo(
     () =>
       buildAnnotatedTextSegments({
@@ -74,7 +74,8 @@ export function AnnotatedText(props: {
         const title = buildTooltipText(segment.groupAnnotations);
 
         return (
-          <span
+          <button
+            type="button"
             key={`a-${idx}-${segment.primary.id}-${segment.start}`}
             ref={(el) => {
               if (!el) return;
@@ -93,17 +94,10 @@ export function AnnotatedText(props: {
             )}
             title={title}
             onClick={() => props.onAnnotationClick?.(segment.primary)}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter" && e.key !== " ") return;
-              e.preventDefault();
-              props.onAnnotationClick?.(segment.primary);
-            }}
-            role="button"
-            tabIndex={0}
             data-annotation-id={segment.primary.id}
           >
             {segment.text}
-          </span>
+          </button>
         );
       })}
     </div>
