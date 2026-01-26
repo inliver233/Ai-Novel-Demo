@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { DebugDetails } from "../components/atelier/DebugPageShell";
+import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { Drawer } from "../components/ui/Drawer";
 import { useProjectData } from "../hooks/useProjectData";
 import { humanizeChangeSetStatus, humanizeTaskStatus } from "../lib/humanize";
@@ -200,45 +200,34 @@ export function TaskCenterPage() {
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
 
   return (
-    <div className="grid gap-4">
-      <div className="panel p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="font-content text-xl text-ink">{UI_COPY.taskCenter.title}</div>
-            <div className="mt-1 text-xs text-subtext">{UI_COPY.taskCenter.subtitle}</div>
-          </div>
-          <button
-            className="btn btn-secondary"
-            onClick={refreshAll}
-            aria-label="刷新 (taskcenter_refresh)"
-            type="button"
-          >
-            刷新
-          </button>
-        </div>
-
-        <div className="mt-3">
-          <DebugDetails title={UI_COPY.help.title}>
-            <div className="grid gap-2 text-xs text-subtext">
-              <div>{UI_COPY.taskCenter.usageHint}</div>
-              {projectId ? (
-                <div>
-                  常用入口：{" "}
-                  <Link className="underline" to={`/projects/${projectId}/structured-memory`}>
-                    结构化记忆
-                  </Link>{" "}
-                  与{" "}
-                  <Link className="underline" to={`/projects/${projectId}/writing`}>
-                    写作页
-                  </Link>{" "}
-                  之间来回跳转，查看“提议→应用→回滚”的全链路。
-                </div>
-              ) : null}
-              <div className="text-amber-700 dark:text-amber-300">{UI_COPY.taskCenter.riskHint}</div>
+    <DebugPageShell
+      title={UI_COPY.taskCenter.title}
+      description={UI_COPY.taskCenter.subtitle}
+      actions={
+        <button className="btn btn-secondary" onClick={refreshAll} aria-label="刷新 (taskcenter_refresh)" type="button">
+          刷新
+        </button>
+      }
+    >
+      <DebugDetails title={UI_COPY.help.title}>
+        <div className="grid gap-2 text-xs text-subtext">
+          <div>{UI_COPY.taskCenter.usageHint}</div>
+          {projectId ? (
+            <div>
+              常用入口：{" "}
+              <Link className="underline" to={`/projects/${projectId}/structured-memory`}>
+                结构化记忆
+              </Link>{" "}
+              与{" "}
+              <Link className="underline" to={`/projects/${projectId}/writing`}>
+                写作页
+              </Link>{" "}
+              之间来回跳转，查看“提议→应用→回滚”的全链路。
             </div>
-          </DebugDetails>
+          ) : null}
+          <div className="text-amber-700 dark:text-amber-300">{UI_COPY.taskCenter.riskHint}</div>
         </div>
-      </div>
+      </DebugDetails>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="panel p-4" aria-label="变更集 (taskcenter_changesets_section)">
@@ -444,6 +433,6 @@ export function TaskCenterPage() {
           </details>
         ) : null}
       </Drawer>
-    </div>
+    </DebugPageShell>
   );
 }
