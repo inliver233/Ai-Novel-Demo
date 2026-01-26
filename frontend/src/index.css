@@ -146,7 +146,7 @@
   }
 
   .btn-danger {
-    @apply bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed;
+    @apply bg-danger text-white hover:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed;
   }
 
   .btn-icon {
@@ -244,6 +244,22 @@
 
   .state-desc {
     @apply mt-2 text-sm text-subtext;
+  }
+
+  .callout {
+    @apply rounded-atelier border px-3 py-2 text-xs;
+  }
+
+  .callout-warning {
+    @apply callout border-warning/30 bg-warning/10 text-warning;
+  }
+
+  .callout-danger {
+    @apply callout border-danger/30 bg-danger/10 text-danger;
+  }
+
+  .callout-info {
+    @apply callout border-info/30 bg-info/10 text-info;
   }
 }
 

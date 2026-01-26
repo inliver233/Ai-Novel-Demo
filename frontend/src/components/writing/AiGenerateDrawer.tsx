@@ -128,7 +128,7 @@ export function AiGenerateDrawer(props: Props) {
             {props.preset ? `${props.preset.provider} / ${props.preset.model}` : "未加载 LLM 配置"}
           </div>
           {hasPromptOverride ? (
-            <div className="mt-2 rounded-atelier border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <div className="mt-2 callout-warning">
               已启用 Prompt 覆盖：生成将使用覆盖文本（可在 Prompt Inspector 回退默认）。
             </div>
           ) : null}
@@ -579,9 +579,7 @@ export function AiGenerateDrawer(props: Props) {
           ) : null}
 
           {props.preset && props.genForm.stream && !streamProviderSupported ? (
-            <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-              不支持流式，生成时会自动回退非流式生成
-            </div>
+            <div className="mt-2 text-xs text-warning">不支持流式，生成时会自动回退非流式生成</div>
           ) : null}
 
           {advancedOpen ? (

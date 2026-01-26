@@ -75,10 +75,7 @@ function highlightText(text: string, tokens: string[]): ReactNode {
     if (bestIdx > cursor) out.push(raw.slice(cursor, bestIdx));
     const seg = raw.slice(bestIdx, bestIdx + bestToken.length);
     out.push(
-      <mark
-        key={`${bestIdx}:${bestToken}:${cursor}`}
-        className="rounded bg-amber-200/60 px-0.5 text-ink dark:bg-amber-300/20"
-      >
+      <mark key={`${bestIdx}:${bestToken}:${cursor}`} className="rounded bg-warning/20 px-0.5 text-ink">
         {seg}
       </mark>,
     );
@@ -1117,7 +1114,7 @@ export function WorldBookPage() {
                     {UI_COPY.worldbook.previewTriggeredSuffix}
                   </span>
                   {previewResult.truncated ? (
-                    <span className="text-amber-600 dark:text-amber-400">{UI_COPY.worldbook.previewTruncated}</span>
+                    <span className="text-warning">{UI_COPY.worldbook.previewTruncated}</span>
                   ) : null}
                 </div>
                 <details open>
@@ -1350,9 +1347,7 @@ export function WorldBookPage() {
             </div>
 
             {dirty ? (
-              <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                {UI_COPY.worldbook.previewRequiresSaveHint}
-              </div>
+              <div className="mt-2 text-xs text-warning">{UI_COPY.worldbook.previewRequiresSaveHint}</div>
             ) : null}
 
             <div className="mt-4 grid gap-3">
@@ -1425,7 +1420,7 @@ export function WorldBookPage() {
                       {UI_COPY.worldbook.previewTriggeredSuffix}
                     </span>
                     {previewResult.truncated ? (
-                      <span className="text-amber-600 dark:text-amber-400">{UI_COPY.worldbook.previewTruncated}</span>
+                      <span className="text-warning">{UI_COPY.worldbook.previewTruncated}</span>
                     ) : null}
                   </div>
                   <details>

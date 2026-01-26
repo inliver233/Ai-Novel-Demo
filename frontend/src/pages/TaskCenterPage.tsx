@@ -48,11 +48,11 @@ function StatusBadge(props: { status: string; kind: "change_set" | "task" }) {
   const tone = statusTone(props.status);
   const cls =
     tone === "bad"
-      ? "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300"
+      ? "bg-danger/10 text-danger"
       : tone === "warn"
-        ? "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
+        ? "bg-warning/10 text-warning"
         : tone === "info"
-          ? "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300"
+          ? "bg-info/10 text-info"
           : "bg-success/10 text-success";
   const label = props.kind === "change_set" ? humanizeChangeSetStatus(props.status) : humanizeTaskStatus(props.status);
   return <span className={`inline-flex rounded px-2 py-0.5 text-[11px] ${cls}`}>{label}</span>;
@@ -226,7 +226,7 @@ export function TaskCenterPage() {
               之间来回跳转，查看“提议→应用→回滚”的全链路。
             </div>
           ) : null}
-          <div className="text-amber-700 dark:text-amber-300">{UI_COPY.taskCenter.riskHint}</div>
+          <div className="text-warning">{UI_COPY.taskCenter.riskHint}</div>
         </div>
       </DebugDetails>
 
@@ -384,7 +384,7 @@ export function TaskCenterPage() {
                       </div>
                     ) : null}
                     {t.status === "failed" ? (
-                      <div className="mt-1 truncate text-xs text-red-700 dark:text-red-300">
+                      <div className="mt-1 truncate text-xs text-danger">
                         {t.error_type || "ERROR"}: {t.error_message || "未知错误"}
                       </div>
                     ) : null}
