@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
+import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjects } from "../contexts/projects";
@@ -220,8 +221,10 @@ export function ProjectWizardPage() {
     );
   }
 
+  const nextStep = progress.nextStep;
+
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-6 pb-[calc(6rem+env(safe-area-inset-bottom))]">
       <section className="panel p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="grid gap-2">
@@ -242,20 +245,13 @@ export function ProjectWizardPage() {
               )}
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button className="btn btn-secondary" onClick={() => void reload()} type="button">
               刷新进度
             </button>
-            <button
-              className="btn btn-primary"
-              disabled={!progress.nextStep}
-              onClick={() => {
-                if (progress.nextStep) goStep(progress.nextStep);
-              }}
-              type="button"
-            >
-              {progress.nextStep ? `下一步：${progress.nextStep.title}` : "已完成"}
-            </button>
+            <div className="rounded-atelier border border-border bg-canvas px-3 py-2 text-xs text-subtext">
+              {nextStep ? `下一步：${nextStep.title}` : "已完成"}
+            </div>
           </div>
         </div>
 
@@ -384,6 +380,23 @@ export function ProjectWizardPage() {
           })}
         </motion.div>
       </section>
+
+      <WizardNextBar
+        projectId={projectId}
+        currentStep={nextStep?.key ?? "export"}
+        progress={progress}
+        primaryAction={
+          nextStep
+            ? {
+                label: `下一步：${nextStep.title}`,
+                onClick: () => goStep(nextStep),
+              }
+            : {
+                label: "已完成：回到项目概览",
+                onClick: () => navigate("/"),
+              }
+        }
+      />
     </div>
   );
 }
