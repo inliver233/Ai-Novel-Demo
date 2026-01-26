@@ -246,7 +246,7 @@ export function PreviewPage() {
         ) : null}
 
         <section className="min-w-0 flex-1">
-          <div className="panel p-6">
+          <div className="panel p-8">
             {activeChapter ? (
               <>
                 <div className="mb-4">
