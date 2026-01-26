@@ -745,7 +745,7 @@ export function PromptsPage() {
   if (loading) return <div className="text-subtext">加载中...</div>;
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-6 pb-24">
       {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
       <LlmPresetPanel
         llmForm={llmForm}

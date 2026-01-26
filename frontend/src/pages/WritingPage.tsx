@@ -284,7 +284,7 @@ export function WritingPage() {
   if (loading) return <div className="text-subtext">加载中...</div>;
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4 pb-24">
       {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
       <WritingToolbar
         outlines={outlines}

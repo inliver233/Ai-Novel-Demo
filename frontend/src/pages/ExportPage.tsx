@@ -69,7 +69,7 @@ export function ExportPage() {
   }, [bumpWizardLocal, exporting, projectId, toast, url]);
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-6 pb-24">
       <section className="panel p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="grid gap-2">

@@ -598,7 +598,7 @@ export function SettingsPage() {
   ).trim();
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-6 pb-24">
       {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
       <section className="panel p-6">
         <div className="flex items-start justify-between gap-4">

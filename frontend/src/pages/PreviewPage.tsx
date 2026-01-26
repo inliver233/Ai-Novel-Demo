@@ -144,7 +144,7 @@ export function PreviewPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-2">
+      <div className="flex-1 overflow-auto p-2 pb-24">
         {sortedChapters.length === 0 ? (
           <div className="p-3 text-sm text-subtext">暂无章节</div>
         ) : onlyDone && visibleChapters.length === 0 ? (
@@ -184,7 +184,7 @@ export function PreviewPage() {
   if (previewQuery.loading) return <div className="text-subtext">加载中...</div>;
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <button className="btn btn-secondary lg:hidden" onClick={() => setMobileListOpen(true)} type="button">
