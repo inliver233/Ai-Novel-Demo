@@ -419,7 +419,7 @@ export function OutlinePage() {
   if (loading) return <div className="text-subtext">加载中...</div>;
 
   return (
-    <div className="grid gap-4 pb-24">
+    <div className="grid gap-4 pb-[calc(6rem+env(safe-area-inset-bottom))]">
       {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
       <div className="panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
