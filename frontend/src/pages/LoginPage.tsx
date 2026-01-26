@@ -3,6 +3,7 @@ import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../contexts/auth";
 import { UI_COPY } from "../lib/uiCopy";
+import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { ApiError } from "../services/apiClient";
 import { DEFAULT_USER_ID, getCurrentUserId } from "../services/currentUser";
 import { useToast } from "../components/ui/toast";
@@ -40,17 +41,33 @@ export function LoginPage() {
             <div className="mt-1 text-sm text-subtext">{UI_COPY.auth.loginSubtitle}</div>
 
             {auth.status === "dev_fallback" ? (
-              <div className="mt-4 rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
-                <div className="text-ink">{UI_COPY.auth.devFallbackHint}</div>
-                <div className="mt-1">{UI_COPY.auth.devFallbackRiskHint}</div>
-                <div className="mt-1">{UI_COPY.auth.devFallbackNextStepHint}</div>
-                <button
-                  className="ui-focus-ring mt-2 inline-flex underline underline-offset-2"
-                  onClick={() => navigate("/", { replace: true })}
-                  type="button"
-                >
-                  {UI_COPY.auth.continueInDevFallback}
-                </button>
+              <div className="mt-4 grid gap-3">
+                <div className="rounded-atelier border border-border bg-canvas p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="text-xs text-subtext">
+                      <div className="flex flex-wrap items-center gap-2 text-ink">
+                        <span>{UI_COPY.auth.devFallbackHint}</span>
+                        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-subtext">
+                          {UI_COPY.auth.devFallbackTag}
+                        </span>
+                      </div>
+                      <div className="mt-1">你可以先跳过登录直接进入体验；需要权限/协作/多用户时再回来登录即可。</div>
+                    </div>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => navigate("/", { replace: true })}
+                      type="button"
+                    >
+                      跳过登录，{UI_COPY.auth.continueInDevFallback}
+                    </button>
+                  </div>
+                </div>
+                <DebugDetails title="更多说明（可选）">
+                  <div className="grid gap-1 text-xs text-subtext">
+                    <div>{UI_COPY.auth.devFallbackRiskHint}</div>
+                    <div>{UI_COPY.auth.devFallbackNextStepHint}</div>
+                  </div>
+                </DebugDetails>
               </div>
             ) : null}
 
