@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
-import { DebugDetails } from "../components/atelier/DebugPageShell";
+import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
+import { Drawer } from "../components/ui/Drawer";
 import { useToast } from "../components/ui/toast";
 import { MemoryUpdateDrawer } from "../components/writing/MemoryUpdateDrawer";
 import { useProjectData } from "../hooks/useProjectData";
@@ -162,6 +163,7 @@ export function StructuredMemoryPage() {
   const [queryText, setQueryText] = useState("");
 
   const [memoryUpdateOpen, setMemoryUpdateOpen] = useState(false);
+  const [bulkOpsOpen, setBulkOpsOpen] = useState(false);
 
   const loader = useCallback(
     async (id: string): Promise<PageData> => {
@@ -272,7 +274,9 @@ export function StructuredMemoryPage() {
       const set = new Set(prev);
       if (checked) set.add(id);
       else set.delete(id);
-      return Array.from(set);
+      const next = Array.from(set);
+      if (next.length === 0) setBulkOpsOpen(false);
+      return next;
     });
   }, []);
 
@@ -281,9 +285,13 @@ export function StructuredMemoryPage() {
     setSelectedIds(ids);
   }, [items]);
 
-  const clearSelected = useCallback(() => setSelectedIds([]), []);
+  const clearSelected = useCallback(() => {
+    setBulkOpsOpen(false);
+    setSelectedIds([]);
+  }, []);
 
   const applySearch = useCallback(() => {
+    setBulkOpsOpen(false);
     setSelectedIds([]);
     setQueryText(searchText.trim());
   }, [searchText]);
@@ -291,48 +299,32 @@ export function StructuredMemoryPage() {
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
 
   return (
-    <div className="grid gap-4">
-      <div className="panel p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="font-content text-xl text-ink">{UI_COPY.structuredMemory.title}</div>
-            <div className="mt-1 text-xs text-subtext">{UI_COPY.structuredMemory.subtitle}</div>
-          </div>
+    <DebugPageShell
+      title={UI_COPY.structuredMemory.title}
+      description={UI_COPY.structuredMemory.subtitle}
+      actions={
+        <>
           <button className="btn btn-secondary" onClick={() => void pageQuery.refresh()} type="button">
             刷新
           </button>
-        </div>
-
-        <div className="mt-3">
-          <DebugDetails title={UI_COPY.help.title}>
-            <div className="grid gap-2 text-xs text-subtext">
-              <div>{UI_COPY.structuredMemory.usageHint}</div>
-              <div>{UI_COPY.structuredMemory.exampleHint}</div>
-              {projectId ? (
-                <div>
-                  常用入口：从{" "}
-                  <Link className="underline" to={`/projects/${projectId}/writing`}>
-                    写作页
-                  </Link>{" "}
-                  或{" "}
-                  <Link className="underline" to={`/projects/${projectId}/chapter-analysis`}>
-                    章节分析
-                  </Link>{" "}
-                  触发“Memory Update”，再在{" "}
-                  <Link className="underline" to={`/projects/${projectId}/tasks`}>
-                    任务中心
-                  </Link>{" "}
-                  追踪 ChangeSet/任务状态。
-                </div>
-              ) : null}
-              <div>{UI_COPY.structuredMemory.bulkOpsHint}</div>
-              <div className="text-amber-700 dark:text-amber-300">{UI_COPY.structuredMemory.bulkOpsRisk}</div>
-            </div>
-          </DebugDetails>
-        </div>
-      </div>
-
-      <div className="panel p-4">
+          {selectedIds.length > 0 ? (
+            <button className="btn btn-secondary" onClick={() => setBulkOpsOpen(true)} type="button">
+              批量操作 ({selectedIds.length})
+            </button>
+          ) : null}
+          <button
+            className="btn btn-secondary"
+            disabled={!chapterId}
+            title={chapterId ? undefined : "建议从写作页带上 ?chapterId=... 打开以便 Apply"}
+            onClick={() => setMemoryUpdateOpen(true)}
+            type="button"
+          >
+            Memory Update
+          </button>
+        </>
+      }
+    >
+      <div className="rounded-atelier border border-border bg-canvas p-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {(["entities", "relations", "events", "foreshadows", "evidence"] as const).map((t) => (
@@ -340,6 +332,7 @@ export function StructuredMemoryPage() {
                 key={t}
                 className={`btn ${activeTable === t ? "btn-primary" : "btn-secondary"}`}
                 onClick={() => {
+                  setBulkOpsOpen(false);
                   setSelectedIds([]);
                   setActiveTable(t);
                 }}
@@ -351,30 +344,20 @@ export function StructuredMemoryPage() {
             ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input
-                className="checkbox"
-                checked={includeDeleted}
-                onChange={(e) => {
-                  setSelectedIds([]);
-                  setIncludeDeleted(e.target.checked);
-                }}
-                aria-label="structured_include_deleted"
-                type="checkbox"
-              />
-              {UI_COPY.structuredMemory.includeDeleted}
-            </label>
-            <button
-              className="btn btn-secondary"
-              disabled={!chapterId}
-              title={chapterId ? undefined : "建议从写作页带上 ?chapterId=... 打开以便 Apply"}
-              onClick={() => setMemoryUpdateOpen(true)}
-              type="button"
-            >
-              Memory Update
-            </button>
-          </div>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={includeDeleted}
+              onChange={(e) => {
+                setBulkOpsOpen(false);
+                setSelectedIds([]);
+                setIncludeDeleted(e.target.checked);
+              }}
+              aria-label="structured_include_deleted"
+              type="checkbox"
+            />
+            {UI_COPY.structuredMemory.includeDeleted}
+          </label>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -396,191 +379,250 @@ export function StructuredMemoryPage() {
         </div>
 
         {selectedIds.length > 0 ? (
-          <div className="mt-4 surface p-3">
-            <div className="text-sm text-ink">批量操作（3 步）</div>
+          <div className="mt-4 text-xs text-subtext">
+            已选择 <span className="text-ink">{selectedIds.length}</span> 条（{tableLabel(activeTable)}
+            ）。可点击右上角“批量操作” 生成 JSON 并打开 Memory Update。
+          </div>
+        ) : null}
+      </div>
 
-            <div className="mt-3 grid gap-3">
-              <div className="rounded-atelier border border-border bg-surface p-3">
-                <div className="text-xs text-subtext">1）选择条目</div>
-                <div className="mt-1 text-sm text-ink">
-                  已选择 {selectedIds.length} 条（{tableLabel(activeTable)}）
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button className="btn btn-secondary" onClick={selectAll} type="button">
-                    全选当前页
-                  </button>
-                  <button className="btn btn-secondary" onClick={clearSelected} type="button">
-                    清空选择
-                  </button>
-                </div>
-              </div>
+      <div className="rounded-atelier border border-border bg-canvas p-3">
+        {pageQuery.loading ? <div className="text-sm text-subtext">加载中...</div> : null}
+        {!pageQuery.loading && items.length === 0 ? <div className="text-sm text-subtext">暂无数据</div> : null}
 
-              <div className="rounded-atelier border border-border bg-surface p-3">
-                <div className="text-xs text-subtext">2）生成操作</div>
-                <div className="mt-1 text-xs text-subtext">删除操作：{selectedIds.length} 条</div>
-                {activeTable === "foreshadows" ? (
-                  <div className="mt-1 text-xs text-subtext">标记已解决：{selectedIds.length} 条（可选）</div>
-                ) : null}
-              </div>
-
-              <div className="rounded-atelier border border-border bg-surface p-3">
-                <div className="text-xs text-subtext">3）复制并打开 Memory Update</div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => void copyText(generatedDeleteOpsJson, "删除操作 JSON")}
-                    type="button"
-                  >
-                    {UI_COPY.structuredMemory.copyDeleteOps}
-                  </button>
-                  {activeTable === "foreshadows" ? (
+        {items.length > 0 ? (
+          <div className="mt-2 overflow-auto rounded-atelier border border-border">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-surface text-xs text-subtext">
+                <tr>
+                  <th className="w-10 p-2">
                     <button
-                      className="btn btn-secondary"
-                      onClick={() => void copyText(generatedResolvedOpsJson, "标记已解决 JSON")}
+                      className="btn btn-secondary btn-icon"
+                      onClick={selectAll}
                       type="button"
+                      aria-label="structured_select_all"
                     >
-                      {UI_COPY.structuredMemory.copyResolvedOps}
+                      ✓
                     </button>
-                  ) : null}
-                  <button
-                    className="btn btn-secondary"
-                    disabled={!chapterId}
-                    title={chapterId ? undefined : "建议从写作页带上 ?chapterId=... 打开以便 Apply"}
-                    onClick={() => setMemoryUpdateOpen(true)}
-                    type="button"
-                  >
-                    打开 Memory Update
-                  </button>
-                </div>
+                  </th>
+                  <th className="p-2">主字段</th>
+                  <th className="p-2">摘要</th>
+                  <th className="p-2">状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((row) => {
+                  const id = readStringField(row, "id");
+                  const deletedAt = readStringField(row, "deleted_at");
+                  const checked = selectedSet.has(id);
 
-                <details className="mt-3 rounded-atelier border border-border bg-canvas p-3">
-                  <summary className="cursor-pointer select-none text-xs text-ink">查看 JSON（高级）</summary>
-                  <div className="mt-3 grid gap-2">
-                    <div className="text-xs text-subtext">{UI_COPY.structuredMemory.deleteOpsLabel}</div>
-                    <textarea
-                      className="textarea font-mono text-xs"
-                      readOnly
-                      rows={Math.min(10, Math.max(3, selectedIds.length + 1))}
-                      value={generatedDeleteOpsJson}
-                    />
-                    {activeTable === "foreshadows" ? (
-                      <>
-                        <div className="text-xs text-subtext">{UI_COPY.structuredMemory.resolvedOpsLabel}</div>
-                        <textarea
-                          className="textarea font-mono text-xs"
-                          readOnly
-                          rows={Math.min(10, Math.max(3, selectedIds.length + 1))}
-                          value={generatedResolvedOpsJson}
+                  let primary = id;
+                  let summary = "-";
+                  if (activeTable === "entities") {
+                    primary = `${readStringField(row, "entity_type")}:${readStringField(row, "name")}`;
+                    summary = safeSnippet(readTextField(row, "summary_md"));
+                  } else if (activeTable === "relations") {
+                    primary = `${readStringField(row, "relation_type")}:${readStringField(row, "from_entity_id")}→${readStringField(row, "to_entity_id")}`;
+                    summary = safeSnippet(readTextField(row, "description_md"));
+                  } else if (activeTable === "events") {
+                    primary = `${readStringField(row, "event_type")}:${readStringField(row, "title") || id}`;
+                    summary = safeSnippet(readTextField(row, "content_md"));
+                  } else if (activeTable === "foreshadows") {
+                    primary = `${readBoolField(row, "resolved") ? "已解决" : "未解决"}:${readStringField(row, "title") || id}`;
+                    summary = safeSnippet(readTextField(row, "content_md"));
+                  } else if (activeTable === "evidence") {
+                    primary = `${readStringField(row, "source_type")}:${readStringField(row, "source_id") || "-"}`;
+                    summary = safeSnippet(readTextField(row, "quote_md"));
+                  }
+
+                  return (
+                    <tr key={id} className="border-t border-border">
+                      <td className="p-2">
+                        <input
+                          className="checkbox"
+                          aria-label={`structured_select_${id}`}
+                          checked={checked}
+                          onChange={(e) => toggleSelected(id, e.target.checked)}
+                          type="checkbox"
                         />
-                      </>
-                    ) : null}
-                  </div>
-                </details>
-
-                <div className="mt-3 rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
-                  <div>{UI_COPY.structuredMemory.bulkOpsHint}</div>
-                  <div className="mt-1">{UI_COPY.structuredMemory.bulkOpsRisk}</div>
-                </div>
-              </div>
-            </div>
+                      </td>
+                      <td className="p-2">
+                        <div className="truncate text-ink">{primary}</div>
+                        <div className="mt-1 truncate text-[11px] text-subtext">{id}</div>
+                      </td>
+                      <td className="p-2">
+                        <div className="max-w-[520px] truncate text-subtext">{summary}</div>
+                      </td>
+                      <td className="p-2">
+                        {deletedAt ? (
+                          <span className="inline-flex rounded bg-red-50 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                            已删除
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded bg-success/10 px-2 py-0.5 text-[11px] text-success">
+                            正常
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : null}
 
-        <div className="mt-4">
-          {pageQuery.loading ? <div className="text-sm text-subtext">加载中...</div> : null}
-          {!pageQuery.loading && items.length === 0 ? <div className="text-sm text-subtext">暂无数据</div> : null}
-
-          {items.length > 0 ? (
-            <div className="mt-2 overflow-auto rounded-atelier border border-border">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-surface text-xs text-subtext">
-                  <tr>
-                    <th className="w-10 p-2">
-                      <button
-                        className="btn btn-secondary btn-icon"
-                        onClick={selectAll}
-                        type="button"
-                        aria-label="structured_select_all"
-                      >
-                        ✓
-                      </button>
-                    </th>
-                    <th className="p-2">主字段</th>
-                    <th className="p-2">摘要</th>
-                    <th className="p-2">状态</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((row) => {
-                    const id = readStringField(row, "id");
-                    const deletedAt = readStringField(row, "deleted_at");
-                    const checked = selectedSet.has(id);
-
-                    let primary = id;
-                    let summary = "-";
-                    if (activeTable === "entities") {
-                      primary = `${readStringField(row, "entity_type")}:${readStringField(row, "name")}`;
-                      summary = safeSnippet(readTextField(row, "summary_md"));
-                    } else if (activeTable === "relations") {
-                      primary = `${readStringField(row, "relation_type")}:${readStringField(row, "from_entity_id")}→${readStringField(row, "to_entity_id")}`;
-                      summary = safeSnippet(readTextField(row, "description_md"));
-                    } else if (activeTable === "events") {
-                      primary = `${readStringField(row, "event_type")}:${readStringField(row, "title") || id}`;
-                      summary = safeSnippet(readTextField(row, "content_md"));
-                    } else if (activeTable === "foreshadows") {
-                      primary = `${readBoolField(row, "resolved") ? "已解决" : "未解决"}:${readStringField(row, "title") || id}`;
-                      summary = safeSnippet(readTextField(row, "content_md"));
-                    } else if (activeTable === "evidence") {
-                      primary = `${readStringField(row, "source_type")}:${readStringField(row, "source_id") || "-"}`;
-                      summary = safeSnippet(readTextField(row, "quote_md"));
-                    }
-
-                    return (
-                      <tr key={id} className="border-t border-border">
-                        <td className="p-2">
-                          <input
-                            className="checkbox"
-                            aria-label={`structured_select_${id}`}
-                            checked={checked}
-                            onChange={(e) => toggleSelected(id, e.target.checked)}
-                            type="checkbox"
-                          />
-                        </td>
-                        <td className="p-2">
-                          <div className="truncate text-ink">{primary}</div>
-                          <div className="mt-1 truncate text-[11px] text-subtext">{id}</div>
-                        </td>
-                        <td className="p-2">
-                          <div className="max-w-[520px] truncate text-subtext">{summary}</div>
-                        </td>
-                        <td className="p-2">
-                          {deletedAt ? (
-                            <span className="inline-flex rounded bg-red-50 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-500/10 dark:text-red-300">
-                              已删除
-                            </span>
-                          ) : (
-                            <span className="inline-flex rounded bg-success/10 px-2 py-0.5 text-[11px] text-success">
-                              正常
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-
-          {cursor ? (
-            <div className="mt-3 flex justify-center">
-              <button className="btn btn-secondary" onClick={() => void loadMore()} type="button">
-                加载更多
-              </button>
-            </div>
-          ) : null}
-        </div>
+        {cursor ? (
+          <div className="mt-3 flex justify-center">
+            <button className="btn btn-secondary" onClick={() => void loadMore()} type="button">
+              加载更多
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      <DebugDetails title={UI_COPY.help.title}>
+        <div className="grid gap-2 text-xs text-subtext">
+          <div>{UI_COPY.structuredMemory.usageHint}</div>
+          <div>{UI_COPY.structuredMemory.exampleHint}</div>
+          {projectId ? (
+            <div>
+              常用入口：从{" "}
+              <Link className="underline" to={`/projects/${projectId}/writing`}>
+                写作页
+              </Link>{" "}
+              或{" "}
+              <Link className="underline" to={`/projects/${projectId}/chapter-analysis`}>
+                章节分析
+              </Link>{" "}
+              触发“Memory Update”，再在{" "}
+              <Link className="underline" to={`/projects/${projectId}/tasks`}>
+                任务中心
+              </Link>{" "}
+              追踪 ChangeSet/任务状态。
+            </div>
+          ) : null}
+          <div>{UI_COPY.structuredMemory.bulkOpsHint}</div>
+          <div className="text-amber-700 dark:text-amber-300">{UI_COPY.structuredMemory.bulkOpsRisk}</div>
+        </div>
+      </DebugDetails>
+
+      <Drawer
+        open={bulkOpsOpen}
+        onClose={() => setBulkOpsOpen(false)}
+        ariaLabelledBy="structured_bulk_ops_title"
+        panelClassName="h-full w-full max-w-[860px] overflow-hidden border-l border-border bg-surface shadow-sm"
+      >
+        <div className="flex h-full flex-col">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm text-ink" id="structured_bulk_ops_title">
+                批量操作
+              </div>
+              <div className="mt-0.5 truncate text-xs text-subtext">
+                已选择 {selectedIds.length} 条（{tableLabel(activeTable)}）
+              </div>
+            </div>
+            <button className="btn btn-secondary" aria-label="关闭" onClick={() => setBulkOpsOpen(false)} type="button">
+              关闭
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto p-4">
+            {selectedIds.length === 0 ? (
+              <div className="text-sm text-subtext">请先在表格中选择条目。</div>
+            ) : (
+              <div className="grid gap-3">
+                <div className="rounded-atelier border border-border bg-surface p-3">
+                  <div className="text-xs text-subtext">1）选择条目</div>
+                  <div className="mt-1 text-sm text-ink">
+                    已选择 {selectedIds.length} 条（{tableLabel(activeTable)}）
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button className="btn btn-secondary" onClick={selectAll} type="button">
+                      全选当前页
+                    </button>
+                    <button className="btn btn-secondary" onClick={clearSelected} type="button">
+                      清空选择
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-atelier border border-border bg-surface p-3">
+                  <div className="text-xs text-subtext">2）生成操作</div>
+                  <div className="mt-1 text-xs text-subtext">删除操作：{selectedIds.length} 条</div>
+                  {activeTable === "foreshadows" ? (
+                    <div className="mt-1 text-xs text-subtext">标记已解决：{selectedIds.length} 条（可选）</div>
+                  ) : null}
+                </div>
+
+                <div className="rounded-atelier border border-border bg-surface p-3">
+                  <div className="text-xs text-subtext">3）复制并打开 Memory Update</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => void copyText(generatedDeleteOpsJson, "删除操作 JSON")}
+                      type="button"
+                    >
+                      {UI_COPY.structuredMemory.copyDeleteOps}
+                    </button>
+                    {activeTable === "foreshadows" ? (
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => void copyText(generatedResolvedOpsJson, "标记已解决 JSON")}
+                        type="button"
+                      >
+                        {UI_COPY.structuredMemory.copyResolvedOps}
+                      </button>
+                    ) : null}
+                    <button
+                      className="btn btn-secondary"
+                      disabled={!chapterId}
+                      title={chapterId ? undefined : "建议从写作页带上 ?chapterId=... 打开以便 Apply"}
+                      onClick={() => {
+                        setBulkOpsOpen(false);
+                        setMemoryUpdateOpen(true);
+                      }}
+                      type="button"
+                    >
+                      打开 Memory Update
+                    </button>
+                  </div>
+
+                  <details className="mt-3 rounded-atelier border border-border bg-canvas p-3">
+                    <summary className="cursor-pointer select-none text-xs text-ink">查看 JSON（高级）</summary>
+                    <div className="mt-3 grid gap-2">
+                      <div className="text-xs text-subtext">{UI_COPY.structuredMemory.deleteOpsLabel}</div>
+                      <textarea
+                        className="textarea font-mono text-xs"
+                        readOnly
+                        rows={Math.min(10, Math.max(3, selectedIds.length + 1))}
+                        value={generatedDeleteOpsJson}
+                      />
+                      {activeTable === "foreshadows" ? (
+                        <>
+                          <div className="text-xs text-subtext">{UI_COPY.structuredMemory.resolvedOpsLabel}</div>
+                          <textarea
+                            className="textarea font-mono text-xs"
+                            readOnly
+                            rows={Math.min(10, Math.max(3, selectedIds.length + 1))}
+                            value={generatedResolvedOpsJson}
+                          />
+                        </>
+                      ) : null}
+                    </div>
+                  </details>
+
+                  <div className="mt-3 rounded-atelier border border-border bg-canvas p-3 text-xs text-subtext">
+                    <div>{UI_COPY.structuredMemory.bulkOpsHint}</div>
+                    <div className="mt-1">{UI_COPY.structuredMemory.bulkOpsRisk}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </Drawer>
 
       <MemoryUpdateDrawer
         open={memoryUpdateOpen}
@@ -588,6 +630,6 @@ export function StructuredMemoryPage() {
         projectId={projectId}
         chapterId={chapterId}
       />
-    </div>
+    </DebugPageShell>
   );
 }
