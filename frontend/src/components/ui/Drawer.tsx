@@ -53,7 +53,7 @@ export function Drawer(props: {
       )}
     >
       <motion.div
-        className={props.panelClassName}
+        className={clsx("overflow-y-auto", props.panelClassName)}
         role="dialog"
         aria-modal="true"
         aria-label={props.ariaLabelledBy ? undefined : props.ariaLabel}
