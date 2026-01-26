@@ -216,7 +216,7 @@ export function CharactersPage() {
   });
 
   return (
-    <div className="grid gap-4 pb-24">
+    <div className="grid gap-4 pb-[calc(6rem+env(safe-area-inset-bottom))]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-sm text-subtext">
