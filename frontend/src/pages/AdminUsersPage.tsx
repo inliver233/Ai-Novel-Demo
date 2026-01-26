@@ -290,7 +290,53 @@ export function AdminUsersPage() {
         <div className="mt-1 text-xs text-subtext">
           安全提示：一次性密码仅用于首次登录/找回；建议用户首次登录后尽快修改。为降低泄露风险，本页默认不显示明文，一键复制后会自动隐藏。
         </div>
-        <div className="mt-3 overflow-auto">
+        <div className="mt-3 grid gap-3 md:hidden">
+          {visibleUsers.map((u) => (
+            <div key={u.id} className="rounded-atelier border border-border bg-canvas p-3">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-ink">{u.display_name ?? "-"}</div>
+                <div className="mt-1 font-mono text-xs text-subtext">{u.id}</div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-subtext">
+                  <span>管理员：{humanizeYesNo(u.is_admin)}</span>
+                  <span>已禁用：{humanizeYesNo(u.disabled)}</span>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {tempPasswords[u.id] ? (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    disabled={saving}
+                    onClick={() => void copyTempPassword(u.id)}
+                    type="button"
+                  >
+                    复制并隐藏
+                  </button>
+                ) : null}
+                <button
+                  className="btn btn-secondary btn-sm"
+                  disabled={saving}
+                  onClick={() => void resetPassword(u.id)}
+                  type="button"
+                  title="将生成一次性密码（仅显示在本页，建议立即复制）。"
+                >
+                  重置密码
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  disabled={saving}
+                  onClick={() => void setDisabled(u.id, !u.disabled)}
+                  type="button"
+                >
+                  {u.disabled ? "启用" : "禁用"}
+                </button>
+              </div>
+            </div>
+          ))}
+          {visibleUsers.length === 0 ? <div className="p-2 text-xs text-subtext">暂无数据</div> : null}
+        </div>
+
+        <div className="mt-3 hidden overflow-auto md:block">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="text-xs text-subtext">
               <tr>
