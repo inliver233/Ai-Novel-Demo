@@ -26,6 +26,7 @@ import { useProjectData } from "../hooks/useProjectData";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { apiJson } from "../services/apiClient";
+import { getWizardProjectChangedAt } from "../services/wizard";
 import { useApplyGenerationRun } from "./writing/useApplyGenerationRun";
 import { useBatchGeneration } from "./writing/useBatchGeneration";
 import { useChapterAnalysis } from "./writing/useChapterAnalysis";
@@ -51,6 +52,7 @@ export function WritingPage() {
   const wizard = useWizardProgress(projectId);
   const refreshWizard = wizard.refresh;
   const bumpWizardLocal = wizard.bumpLocal;
+  const lastProjectChangedAtRef = useRef<string | null>(null);
 
   const [chapterListOpen, setChapterListOpen] = useState(false);
   const writingQuery = useProjectData<WritingLoaded>(projectId, async (id) => {
@@ -100,6 +102,28 @@ export function WritingPage() {
   } = chapterEditor;
   const contentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [contentEditorTab, setContentEditorTab] = useState<"edit" | "preview">("edit");
+
+  useEffect(() => {
+    if (!projectId) {
+      lastProjectChangedAtRef.current = null;
+      return;
+    }
+    lastProjectChangedAtRef.current = getWizardProjectChangedAt(projectId);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    if (!outletActive) return;
+    if (dirty) return;
+
+    const changedAt = getWizardProjectChangedAt(projectId);
+    if ((changedAt ?? null) === (lastProjectChangedAtRef.current ?? null)) return;
+    lastProjectChangedAtRef.current = changedAt;
+
+    void refreshWriting();
+    void refreshChapters();
+    void refreshWizard();
+  }, [dirty, outletActive, projectId, refreshChapters, refreshWriting, refreshWizard]);
 
   const [aiOpen, setAiOpen] = useState(false);
   const [promptInspectorOpen, setPromptInspectorOpen] = useState(false);
