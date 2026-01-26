@@ -32,6 +32,14 @@ export function DashboardPage() {
   const sorted = useMemo(() => [...projects].sort((a, b) => b.created_at.localeCompare(a.created_at)), [projects]);
   const recommendedProject = sorted[0] ?? null;
 
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 6) return "夜深了";
+    if (hour < 12) return "早上好";
+    if (hour < 18) return "下午好";
+    return "晚上好";
+  }, []);
+
   type WizardSummary = { percent: number; nextTitle: string | null; nextHref: string | null };
   const [wizardByProjectId, setWizardByProjectId] = useState<Record<string, WizardSummary>>({});
   const [wizardLoadingByProjectId, setWizardLoadingByProjectId] = useState<Record<string, boolean>>({});
@@ -101,8 +109,66 @@ export function DashboardPage() {
     [navigate, wizardByProjectId],
   );
 
+  type PrimaryCta = { label: string; onClick: () => void; disabled?: boolean; ariaLabel: string };
+  const primaryCta: PrimaryCta = useMemo(() => {
+    if (!recommendedProject) {
+      return {
+        label: "创建第一个项目",
+        onClick: () => setCreateOpen(true),
+        ariaLabel: "创建第一个项目 (dashboard_primary_create)",
+      };
+    }
+
+    if (recommendedWizardLoading) {
+      return { label: "读取中...", onClick: () => {}, disabled: true, ariaLabel: "读取中 (dashboard_primary_loading)" };
+    }
+
+    const wizard = recommendedWizard;
+    if (wizard && wizard.percent >= 100) {
+      return {
+        label: "继续写作",
+        onClick: () => navigate(`/projects/${recommendedProject.id}/writing`),
+        ariaLabel: "继续写作 (dashboard_primary_write)",
+      };
+    }
+
+    const nextHref = wizard?.nextHref;
+    if (wizard && nextHref) {
+      return {
+        label: wizard.nextTitle ? `继续：${wizard.nextTitle}` : "继续开工",
+        onClick: () => navigate(nextHref),
+        ariaLabel: "继续下一步 (dashboard_primary_next)",
+      };
+    }
+
+    return {
+      label: "打开最近项目",
+      onClick: () => enterProject(recommendedProject),
+      ariaLabel: "打开最近项目 (dashboard_primary_open_latest)",
+    };
+  }, [enterProject, navigate, recommendedProject, recommendedWizard, recommendedWizardLoading]);
+
   return (
-    <div>
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-content text-3xl text-ink">{greeting}，欢迎回来</div>
+          <div className="mt-1 text-sm text-subtext">
+            {recommendedProject
+              ? `继续「${recommendedProject.name}」的创作，或从下方选择其他项目。`
+              : "从创建第一个项目开始。"}
+          </div>
+        </div>
+        <button
+          className="btn btn-primary"
+          onClick={primaryCta.onClick}
+          disabled={primaryCta.disabled}
+          aria-label={primaryCta.ariaLabel}
+          type="button"
+        >
+          {primaryCta.label}
+        </button>
+      </div>
       <motion.div
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
         initial="hidden"
