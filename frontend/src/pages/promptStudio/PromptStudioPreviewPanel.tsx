@@ -1,5 +1,7 @@
 import type { ChangeEvent } from "react";
 
+import { RequestIdBadge } from "../../components/ui/RequestIdBadge";
+import { copyText } from "../../lib/copyText";
 import type { PromptPreview } from "../../types";
 import type { PromptStudioTask } from "./types";
 
@@ -11,6 +13,7 @@ export function PromptStudioPreviewPanel(props: {
   tasks: PromptStudioTask[];
   previewLoading: boolean;
   runPreview: () => Promise<void>;
+  requestId: string | null;
   preview: PromptPreview | null;
   templateErrors: Array<{ identifier: string; error: string }>;
   renderLog: unknown | null;
@@ -20,6 +23,7 @@ export function PromptStudioPreviewPanel(props: {
     preview,
     previewLoading,
     previewTask,
+    requestId,
     renderLog,
     runPreview,
     selectedPresetId,
@@ -31,7 +35,10 @@ export function PromptStudioPreviewPanel(props: {
   return (
     <div className="panel p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm font-semibold">预览（后端渲染）</div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">预览（后端渲染）</div>
+          {requestId ? <RequestIdBadge className="mt-2" requestId={requestId} /> : null}
+        </div>
         <div className="flex gap-2">
           <select
             className="select w-auto"
@@ -92,6 +99,17 @@ export function PromptStudioPreviewPanel(props: {
               <summary className="ui-transition-fast cursor-pointer text-sm hover:text-ink">
                 查看 render_log（裁剪/原因/错误）
               </summary>
+              <div className="mt-2 flex justify-end">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={async () => {
+                    await copyText(JSON.stringify(renderLog, null, 2), { title: "复制失败：请手动复制 render_log" });
+                  }}
+                  type="button"
+                >
+                  复制 render_log
+                </button>
+              </div>
               <pre className="mt-2 max-h-[260px] overflow-auto whitespace-pre-wrap break-words rounded-atelier border border-border bg-surface p-3 text-xs">
                 {JSON.stringify(renderLog, null, 2)}
               </pre>

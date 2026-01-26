@@ -44,6 +44,7 @@ export function PromptStudioPage() {
   const [previewTask, setPreviewTask] = useState<string>("chapter_generate");
   const [preview, setPreview] = useState<PromptPreview | null>(null);
   const [renderLog, setRenderLog] = useState<unknown | null>(null);
+  const [previewRequestId, setPreviewRequestId] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const previewValues = useMemo(
@@ -539,6 +540,7 @@ export function PromptStudioPage() {
   const runPreview = useCallback(async () => {
     if (!projectId || !selectedPresetId) return;
     setPreviewLoading(true);
+    setPreviewRequestId(null);
     try {
       const res = await apiJson<{ preview: PromptPreview; render_log?: unknown }>(
         `/api/projects/${projectId}/prompt_preview`,
@@ -549,9 +551,11 @@ export function PromptStudioPage() {
       );
       setPreview(res.data.preview);
       setRenderLog(res.data.render_log ?? null);
+      setPreviewRequestId(res.request_id ?? null);
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      setPreviewRequestId(err.requestId ?? null);
     } finally {
       setPreviewLoading(false);
     }
@@ -691,6 +695,7 @@ export function PromptStudioPage() {
             tasks={tasks}
             previewLoading={previewLoading}
             runPreview={runPreview}
+            requestId={previewRequestId}
             preview={preview}
             templateErrors={templateErrors}
             renderLog={renderLog}
