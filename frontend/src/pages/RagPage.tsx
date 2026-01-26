@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
+import { RequestIdBadge } from "../components/ui/RequestIdBadge";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
 import { UI_COPY } from "../lib/uiCopy";
@@ -65,6 +66,8 @@ export function RagPage() {
   const [queryPreprocessObs, setQueryPreprocessObs] = useState<unknown>(null);
 
   const [debugOpen, setDebugOpen] = useState(false);
+  const [lastOpRequestId, setLastOpRequestId] = useState<string | null>(null);
+  const [lastOp, setLastOp] = useState<"status" | "ingest" | "rebuild" | null>(null);
 
   const busy = statusLoading || ingestLoading || rebuildLoading || queryLoading || rerankSaving;
 
@@ -314,29 +317,36 @@ export function RagPage() {
     setKbOrderDirty(true);
   }, []);
 
-  const runStatus = useCallback(async () => {
-    if (!projectId) return;
-    if (sortedSources.length === 0) {
-      toast.toastError("至少选择一个 source");
-      return;
-    }
-    setStatusLoading(true);
-    try {
-      const res = await apiJson<{ result: VectorRagResult }>(`/api/projects/${projectId}/vector/status`, {
-        method: "POST",
-        body: JSON.stringify({ sources: sortedSources }),
-      });
-      setStatus(res.data?.result ?? null);
-    } catch (e) {
-      const err =
-        e instanceof ApiError
-          ? e
-          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    } finally {
-      setStatusLoading(false);
-    }
-  }, [projectId, sortedSources, toast]);
+  const runStatus = useCallback(
+    async (opts?: { updateRequestId?: boolean }) => {
+      if (!projectId) return;
+      if (sortedSources.length === 0) {
+        toast.toastError("至少选择一个 source");
+        return;
+      }
+      setStatusLoading(true);
+      try {
+        const res = await apiJson<{ result: VectorRagResult }>(`/api/projects/${projectId}/vector/status`, {
+          method: "POST",
+          body: JSON.stringify({ sources: sortedSources }),
+        });
+        setStatus(res.data?.result ?? null);
+        if (opts?.updateRequestId ?? true) {
+          setLastOpRequestId(res.request_id ?? null);
+          setLastOp("status");
+        }
+      } catch (e) {
+        const err =
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setStatusLoading(false);
+      }
+    },
+    [projectId, sortedSources, toast],
+  );
 
   useEffect(() => {
     if (!projectId) return;
@@ -357,6 +367,8 @@ export function RagPage() {
         body: JSON.stringify({ sources: sortedSources, kb_ids: selectedKbIds }),
       });
       setIngestResult(res.data?.result ?? null);
+      setLastOpRequestId(res.request_id ?? null);
+      setLastOp("ingest");
       toast.toastSuccess("ingest 已触发", res.request_id);
     } catch (e) {
       const err =
@@ -397,7 +409,9 @@ export function RagPage() {
       } else {
         toast.toastSuccess("rebuild 已触发", res.request_id);
       }
-      await runStatus();
+      setLastOpRequestId(res.request_id ?? null);
+      setLastOp("rebuild");
+      await runStatus({ updateRequestId: false });
     } catch (e) {
       const err =
         e instanceof ApiError
@@ -594,6 +608,12 @@ export function RagPage() {
             <div className="text-subtext">索引为 clean，无需重建。</div>
           )}
         </div>
+        {lastOpRequestId ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-subtext">last_op: {lastOp ?? "-"}</span>
+            <RequestIdBadge requestId={lastOpRequestId} />
+          </div>
+        ) : null}
       </div>
 
       <RagStatusPanel status={status} />
