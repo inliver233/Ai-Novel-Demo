@@ -107,6 +107,11 @@
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
   }
 
+  .ui-focus-input {
+    @apply focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0;
+    @apply focus:border-accent/40 focus:bg-surface/30;
+  }
+
   .ui-transition {
     @apply motion-safe:transition motion-safe:duration-atelier motion-safe:ease-atelier;
   }
@@ -150,15 +155,13 @@
 
   .input {
     @apply w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none;
-    @apply ui-focus-ring ui-transition-fast;
-    @apply focus:border-accent;
+    @apply ui-focus-input ui-transition-fast;
     @apply disabled:opacity-60 disabled:cursor-not-allowed;
   }
 
   .textarea {
     @apply w-full rounded-atelier border border-border bg-canvas px-3 py-3 text-sm text-ink outline-none;
-    @apply ui-focus-ring ui-transition-fast;
-    @apply focus:border-accent;
+    @apply ui-focus-input ui-transition-fast;
     @apply disabled:opacity-60 disabled:cursor-not-allowed;
   }
 
@@ -196,8 +199,7 @@
 
   .select {
     @apply w-full rounded-atelier border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none;
-    @apply ui-focus-ring ui-transition-fast;
-    @apply focus:border-accent;
+    @apply ui-focus-input ui-transition-fast;
     @apply disabled:opacity-60 disabled:cursor-not-allowed;
   }
 
