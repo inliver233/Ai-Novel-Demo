@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { DebugDetails } from "../components/atelier/DebugPageShell";
+import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
 import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
 import type { ProjectSettings } from "../types";
 import { RagAdvancedDebugPanel } from "./rag/RagAdvancedDebugPanel";
-import { RagHeaderPanel } from "./rag/RagHeaderPanel";
 import { RagKnowledgeBasePanel } from "./rag/RagKnowledgeBasePanel";
 import { RagQueryPanel } from "./rag/RagQueryPanel";
 import { RagStatusPanel } from "./rag/RagStatusPanel";
 import type { KnowledgeBase, VectorRagResult, VectorSource } from "./rag/types";
+import { formatIsoToLocal } from "./rag/utils";
 
 export function RagPage() {
   const { projectId } = useParams();
@@ -474,134 +474,198 @@ export function RagPage() {
   ]);
 
   return (
-    <div className="grid gap-4">
-      <div className="panel p-5">
-        <DebugDetails title={UI_COPY.help.title}>
-          <div className="grid gap-2 text-xs text-subtext">
-            <div>{UI_COPY.rag.usageHint}</div>
-            <div>{UI_COPY.rag.exampleHint}</div>
-            <div>
-              快速开始：创建/启用 KB → 点击“{UI_COPY.rag.ingest}”导入 → “{UI_COPY.rag.rebuild}”构建索引 → 在下方 Query
-              预览命中。
-            </div>
-            {projectId ? (
-              <div>
-                配置入口：到{" "}
-                <Link className="underline" to={`/projects/${projectId}/settings`}>
-                  项目设置
-                </Link>{" "}
-                完成 Embedding/Rerank 配置后再重建索引。
-              </div>
-            ) : null}
-            {projectId ? (
-              <div>
-                导入小说/资料：到{" "}
-                <Link className="underline" to={`/projects/${projectId}/import`}>
-                  导入页
-                </Link>{" "}
-                上传 txt/md 并应用提案（WorldBook / story_memory）。
-              </div>
-            ) : null}
-            <div className="text-amber-700 dark:text-amber-300">{UI_COPY.rag.riskHint}</div>
-          </div>
-        </DebugDetails>
-
-        {projectId ? (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-atelier border border-border bg-canvas p-3">
-            <div className="text-xs text-subtext">
-              小说/资料导入：上传 txt/md 并应用提案（WorldBook / story_memory）。
-            </div>
-            <Link className="btn btn-secondary" to={`/projects/${projectId}/import`}>
-              打开导入页
+    <DebugPageShell
+      title={UI_COPY.rag.title}
+      description={UI_COPY.rag.subtitle}
+      actions={
+        <>
+          <button
+            className="btn btn-secondary"
+            disabled={statusLoading}
+            onClick={() => void runStatus()}
+            aria-label="刷新状态 (rag_refresh_status)"
+            type="button"
+          >
+            {statusLoading ? "加载中…" : "刷新状态"}
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={ingestLoading}
+            onClick={() => void runIngest()}
+            aria-label={`${UI_COPY.rag.ingest} (rag_ingest)`}
+            type="button"
+          >
+            {ingestLoading ? "执行中…" : UI_COPY.rag.ingest}
+          </button>
+          <button
+            className={vectorIndexDirty ? "btn btn-primary" : "btn btn-secondary"}
+            disabled={rebuildLoading}
+            onClick={() => void runRebuild()}
+            aria-label={`${UI_COPY.rag.rebuild} (rag_rebuild)`}
+            type="button"
+          >
+            {rebuildLoading
+              ? "执行中…"
+              : vectorIndexDirty && vectorEnabled === false
+                ? UI_COPY.rag.rebuildNeedConfig
+                : vectorIndexDirty
+                  ? UI_COPY.rag.rebuildRecommended
+                  : UI_COPY.rag.rebuild}
+          </button>
+          {projectId ? (
+            <Link
+              className="btn btn-secondary"
+              to={`/projects/${projectId}/settings`}
+              aria-label={`${UI_COPY.rag.settings} (rag_settings)`}
+            >
+              {UI_COPY.rag.settings}
             </Link>
+          ) : null}
+        </>
+      }
+    >
+      <DebugDetails title={UI_COPY.help.title}>
+        <div className="grid gap-2 text-xs text-subtext">
+          <div>{UI_COPY.rag.usageHint}</div>
+          <div>{UI_COPY.rag.exampleHint}</div>
+          <div>
+            快速开始：创建/启用 KB → 点击“{UI_COPY.rag.ingest}”导入 → “{UI_COPY.rag.rebuild}”构建索引 → 在下方 Query
+            预览命中。
           </div>
-        ) : null}
+          {projectId ? (
+            <div>
+              配置入口：到{" "}
+              <Link className="underline" to={`/projects/${projectId}/settings`}>
+                项目设置
+              </Link>{" "}
+              完成 Embedding/Rerank 配置后再重建索引。
+            </div>
+          ) : null}
+          {projectId ? (
+            <div>
+              导入小说/资料：到{" "}
+              <Link className="underline" to={`/projects/${projectId}/import`}>
+                导入页
+              </Link>{" "}
+              上传 txt/md 并应用提案（WorldBook / story_memory）。
+            </div>
+          ) : null}
+          <div className="text-amber-700 dark:text-amber-300">{UI_COPY.rag.riskHint}</div>
+        </div>
+      </DebugDetails>
 
-        <RagHeaderPanel
-          projectId={projectId}
-          statusLoading={statusLoading}
-          ingestLoading={ingestLoading}
-          rebuildLoading={rebuildLoading}
-          vectorIndexDirty={vectorIndexDirty}
-          lastVectorBuildAt={lastVectorBuildAt}
-          vectorEnabled={vectorEnabled}
-          vectorDisabledReason={vectorDisabledReason}
-          runStatus={runStatus}
-          runIngest={runIngest}
-          runRebuild={runRebuild}
-        />
+      {projectId ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-atelier border border-border bg-canvas p-3">
+          <div className="text-xs text-subtext">
+            小说/资料导入：上传 txt/md 并应用提案（WorldBook / story_memory）。
+          </div>
+          <Link className="btn btn-secondary" to={`/projects/${projectId}/import`}>
+            打开导入页
+          </Link>
+        </div>
+      ) : null}
 
-        <RagStatusPanel status={status} />
-
-        <RagKnowledgeBasePanel
-          projectId={projectId}
-          kbLoading={kbLoading}
-          kbOrderDirty={kbOrderDirty}
-          loadKbs={loadKbs}
-          saveKbOrder={saveKbOrder}
-          selectedKbIds={selectedKbIds}
-          queryResult={queryResult}
-          kbs={kbs}
-          kbDraftById={kbDraftById}
-          kbDirtyById={kbDirtyById}
-          kbDragId={kbDragId}
-          setKbDragId={setKbDragId}
-          moveKb={moveKb}
-          toggleKbSelected={toggleKbSelected}
-          updateKbDraft={updateKbDraft}
-          kbSaveLoadingId={kbSaveLoadingId}
-          kbDeleteLoadingId={kbDeleteLoadingId}
-          saveKb={saveKb}
-          deleteKb={deleteKb}
-          kbCreateName={kbCreateName}
-          setKbCreateName={setKbCreateName}
-          kbCreateLoading={kbCreateLoading}
-          createKb={createKb}
-        />
-
-        <RagQueryPanel
-          busy={busy}
-          sources={sources}
-          toggleSource={toggleSource}
-          queryText={queryText}
-          setQueryText={setQueryText}
-          queryLoading={queryLoading}
-          runQuery={runQuery}
-          projectId={projectId}
-          sortedSources={sortedSources}
-          queryResult={queryResult}
-          queryRequestId={queryRequestId}
-          rawQueryText={rawQueryText}
-          normalizedQueryText={normalizedQueryText}
-          queryPreprocessObs={queryPreprocessObs}
-        />
-
-        <RagAdvancedDebugPanel
-          projectId={projectId}
-          debugOpen={debugOpen}
-          setDebugOpen={setDebugOpen}
-          settingsQuery={settingsQuery}
-          busy={busy}
-          rerankEnabled={rerankEnabled}
-          setRerankEnabled={setRerankEnabled}
-          rerankMethod={rerankMethod}
-          setRerankMethod={setRerankMethod}
-          rerankTopK={rerankTopK}
-          setRerankTopK={setRerankTopK}
-          rerankHybridAlpha={rerankHybridAlpha}
-          setRerankHybridAlpha={setRerankHybridAlpha}
-          superSortMode={superSortMode}
-          setSuperSortMode={setSuperSortMode}
-          superSortOrderText={superSortOrderText}
-          setSuperSortOrderText={setSuperSortOrderText}
-          superSortWeights={superSortWeights}
-          setSuperSortWeights={setSuperSortWeights}
-          rerankSaving={rerankSaving}
-          applyRerank={applyRerank}
-          ingestResult={ingestResult}
-          rebuildResult={rebuildResult}
-        />
+      <div className="rounded-atelier border border-border bg-canvas p-3 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-subtext">
+            索引过期（dirty）: {vectorIndexDirty === null ? "loading…" : String(vectorIndexDirty)} |
+            上次构建（last_build_at）: {lastVectorBuildAt ?? "-"}
+            {lastVectorBuildAt ? `（${formatIsoToLocal(lastVectorBuildAt)}）` : ""}
+          </div>
+          {vectorIndexDirty === null ? (
+            <div className="text-subtext">索引状态加载中…</div>
+          ) : vectorIndexDirty ? (
+            vectorEnabled === false ? (
+              <div className="text-ink">
+                索引已过期，但向量服务未启用（disabled_reason: {vectorDisabledReason ?? "-"}）。请先在{" "}
+                {projectId ? (
+                  <Link className="underline" to={`/projects/${projectId}/settings`}>
+                    {UI_COPY.rag.settings}
+                  </Link>
+                ) : (
+                  UI_COPY.rag.settings
+                )}{" "}
+                配置向量化（Embedding），再 {UI_COPY.rag.rebuild}。
+              </div>
+            ) : (
+              <div className="text-ink">索引已过期：建议点击右上角 “{UI_COPY.rag.rebuildRecommended}” 重新构建。</div>
+            )
+          ) : (
+            <div className="text-subtext">索引为 clean，无需重建。</div>
+          )}
+        </div>
       </div>
-    </div>
+
+      <RagStatusPanel status={status} />
+
+      <RagKnowledgeBasePanel
+        projectId={projectId}
+        kbLoading={kbLoading}
+        kbOrderDirty={kbOrderDirty}
+        loadKbs={loadKbs}
+        saveKbOrder={saveKbOrder}
+        selectedKbIds={selectedKbIds}
+        queryResult={queryResult}
+        kbs={kbs}
+        kbDraftById={kbDraftById}
+        kbDirtyById={kbDirtyById}
+        kbDragId={kbDragId}
+        setKbDragId={setKbDragId}
+        moveKb={moveKb}
+        toggleKbSelected={toggleKbSelected}
+        updateKbDraft={updateKbDraft}
+        kbSaveLoadingId={kbSaveLoadingId}
+        kbDeleteLoadingId={kbDeleteLoadingId}
+        saveKb={saveKb}
+        deleteKb={deleteKb}
+        kbCreateName={kbCreateName}
+        setKbCreateName={setKbCreateName}
+        kbCreateLoading={kbCreateLoading}
+        createKb={createKb}
+      />
+
+      <RagQueryPanel
+        busy={busy}
+        sources={sources}
+        toggleSource={toggleSource}
+        queryText={queryText}
+        setQueryText={setQueryText}
+        queryLoading={queryLoading}
+        runQuery={runQuery}
+        projectId={projectId}
+        sortedSources={sortedSources}
+        queryResult={queryResult}
+        queryRequestId={queryRequestId}
+        rawQueryText={rawQueryText}
+        normalizedQueryText={normalizedQueryText}
+        queryPreprocessObs={queryPreprocessObs}
+      />
+
+      <RagAdvancedDebugPanel
+        projectId={projectId}
+        debugOpen={debugOpen}
+        setDebugOpen={setDebugOpen}
+        settingsQuery={settingsQuery}
+        busy={busy}
+        rerankEnabled={rerankEnabled}
+        setRerankEnabled={setRerankEnabled}
+        rerankMethod={rerankMethod}
+        setRerankMethod={setRerankMethod}
+        rerankTopK={rerankTopK}
+        setRerankTopK={setRerankTopK}
+        rerankHybridAlpha={rerankHybridAlpha}
+        setRerankHybridAlpha={setRerankHybridAlpha}
+        superSortMode={superSortMode}
+        setSuperSortMode={setSuperSortMode}
+        superSortOrderText={superSortOrderText}
+        setSuperSortOrderText={setSuperSortOrderText}
+        superSortWeights={superSortWeights}
+        setSuperSortWeights={setSuperSortWeights}
+        rerankSaving={rerankSaving}
+        applyRerank={applyRerank}
+        ingestResult={ingestResult}
+        rebuildResult={rebuildResult}
+      />
+    </DebugPageShell>
   );
 }
