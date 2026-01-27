@@ -87,6 +87,7 @@ export function SettingsPage() {
     vector_embedding_azure_api_version: "",
     vector_embedding_sentence_transformers_model: "",
   });
+  const [vectorRerankTopKDraft, setVectorRerankTopKDraft] = useState("20");
   const [vectorApiKeyDraft, setVectorApiKeyDraft] = useState("");
   const [vectorApiKeyClearRequested, setVectorApiKeyClearRequested] = useState(false);
 
@@ -111,6 +112,7 @@ export function SettingsPage() {
   useEffect(() => {
     if (!settingsQuery.data) return;
     const { project, settings } = settingsQuery.data;
+    const rerankTopK = Number(settings.vector_rerank_effective_top_k ?? 20) || 20;
     setBaselineProject(project);
     setBaselineSettings(settings);
     setProjectForm({
@@ -133,7 +135,7 @@ export function SettingsPage() {
       query_preprocessing_index_ref_enhance: Boolean(settings.query_preprocessing_effective?.index_ref_enhance),
       vector_rerank_enabled: Boolean(settings.vector_rerank_effective_enabled),
       vector_rerank_method: String(settings.vector_rerank_effective_method ?? "auto") || "auto",
-      vector_rerank_top_k: Number(settings.vector_rerank_effective_top_k ?? 20) || 20,
+      vector_rerank_top_k: rerankTopK,
       vector_embedding_provider: settings.vector_embedding_provider ?? "",
       vector_embedding_base_url: settings.vector_embedding_base_url ?? "",
       vector_embedding_model: settings.vector_embedding_model ?? "",
@@ -141,6 +143,7 @@ export function SettingsPage() {
       vector_embedding_azure_api_version: settings.vector_embedding_azure_api_version ?? "",
       vector_embedding_sentence_transformers_model: settings.vector_embedding_sentence_transformers_model ?? "",
     });
+    setVectorRerankTopKDraft(String(rerankTopK));
     setVectorApiKeyDraft("");
     setVectorApiKeyClearRequested(false);
   }, [settingsQuery.data]);
@@ -431,7 +434,23 @@ export function SettingsPage() {
         queryPreprocessFromBaseline(baselineSettings),
       );
       const rerankMethod = nextSettingsForm.vector_rerank_method.trim() || "auto";
-      const rerankTopK = Math.max(1, Math.min(1000, Math.floor(nextSettingsForm.vector_rerank_top_k)));
+      const topKRaw = !snapshot ? vectorRerankTopKDraft.trim() : "";
+      const topKFromDraft = topKRaw ? Math.floor(Number(topKRaw)) : null;
+      if (topKFromDraft !== null && !Number.isFinite(topKFromDraft)) {
+        if (!silent) toast.toastError("rerank top_k 必须为 1-1000 的整数");
+        return false;
+      }
+      const rerankTopK = Math.max(
+        1,
+        Math.min(
+          1000,
+          Math.floor(Number(topKFromDraft !== null ? topKFromDraft : nextSettingsForm.vector_rerank_top_k)),
+        ),
+      );
+      if (!snapshot && topKFromDraft !== null) {
+        setSettingsForm((v) => ({ ...v, vector_rerank_top_k: rerankTopK }));
+        setVectorRerankTopKDraft(String(rerankTopK));
+      }
       const settingsDirty =
         nextSettingsForm.world_setting !== baselineSettings.world_setting ||
         nextSettingsForm.style_guide !== baselineSettings.style_guide ||
@@ -562,6 +581,7 @@ export function SettingsPage() {
       validateQueryPreprocess,
       vectorApiKeyClearRequested,
       vectorApiKeyDraft,
+      vectorRerankTopKDraft,
     ],
   );
 
@@ -869,16 +889,23 @@ export function SettingsPage() {
                     type="number"
                     min={1}
                     max={1000}
-                    value={settingsForm.vector_rerank_top_k}
-                    onChange={(e) => {
-                      const next = Math.floor(Number(e.target.value));
-                      setSettingsForm((v) => ({
-                        ...v,
-                        vector_rerank_top_k: Number.isFinite(next)
-                          ? Math.max(1, Math.min(1000, next))
-                          : v.vector_rerank_top_k,
-                      }));
+                    value={vectorRerankTopKDraft}
+                    onBlur={() => {
+                      const raw = vectorRerankTopKDraft.trim();
+                      if (!raw) {
+                        setVectorRerankTopKDraft(String(settingsForm.vector_rerank_top_k));
+                        return;
+                      }
+                      const next = Math.floor(Number(raw));
+                      if (!Number.isFinite(next)) {
+                        setVectorRerankTopKDraft(String(settingsForm.vector_rerank_top_k));
+                        return;
+                      }
+                      const clamped = Math.max(1, Math.min(1000, next));
+                      setSettingsForm((v) => ({ ...v, vector_rerank_top_k: clamped }));
+                      setVectorRerankTopKDraft(String(clamped));
                     }}
+                    onChange={(e) => setVectorRerankTopKDraft(e.target.value)}
                   />
                 </label>
               </div>
