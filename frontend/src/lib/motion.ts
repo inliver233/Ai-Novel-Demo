@@ -12,6 +12,7 @@ export const duration = {
 
 export const transition = {
   fast: { duration: duration.fast, ease: easeStandard } satisfies Transition,
+  reduced: { duration: 0.01 } satisfies Transition,
   base: { duration: duration.base, ease: easeStandard } satisfies Transition,
   slow: { duration: duration.slow, ease: easeStandard } satisfies Transition,
   page: { duration: duration.page, ease: easeStandard } satisfies Transition,

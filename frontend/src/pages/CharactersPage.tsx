@@ -335,7 +335,7 @@ export function CharactersPage() {
               hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
               show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
             }}
-            transition={reduceMotion ? { duration: 0.01 } : transition.base}
+            transition={reduceMotion ? transition.reduced : transition.slow}
             whileHover={reduceMotion ? undefined : { y: -2, transition: transition.fast }}
             whileTap={reduceMotion ? undefined : { y: 0, scale: 0.98, transition: transition.fast }}
             onClick={() => openEdit(c)}
