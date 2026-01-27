@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { RequestIdBadge } from "../components/ui/RequestIdBadge";
+import { copyText } from "../lib/copyText";
 import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
 import { useToast } from "../components/ui/toast";
@@ -64,6 +65,25 @@ export function GraphPage() {
   const [requestId, setRequestId] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [result, setResult] = useState<GraphQueryResult | null>(null);
+
+  const injectionPreviewText = useMemo(
+    () => (result?.prompt_block?.text_md ?? "").trim(),
+    [result?.prompt_block?.text_md],
+  );
+  const advancedDebugText = useMemo(() => safeJson(result), [result]);
+
+  const copyPreviewBlock = useCallback(
+    async (text: string, opts: { emptyMessage: string; successMessage: string; dialogTitle: string }) => {
+      if (!text.trim()) {
+        toast.toastError(opts.emptyMessage, requestId ?? undefined);
+        return;
+      }
+      const ok = await copyText(text, { title: opts.dialogTitle });
+      if (ok) toast.toastSuccess(opts.successMessage, requestId ?? undefined);
+      else toast.toastWarning("自动复制失败：已打开手动复制弹窗。", requestId ?? undefined);
+    },
+    [requestId, toast],
+  );
 
   const matchedIds = useMemo(() => new Set(result?.matched?.entity_ids ?? []), [result?.matched?.entity_ids]);
 
@@ -181,8 +201,24 @@ export function GraphPage() {
       </div>
 
       <DebugDetails title={UI_COPY.graph.injectionPreviewTitle} defaultOpen>
+        <div className="flex items-center justify-end">
+          <button
+            className="btn btn-secondary btn-sm"
+            disabled={!injectionPreviewText}
+            onClick={() =>
+              void copyPreviewBlock(injectionPreviewText, {
+                emptyMessage: "没有可复制的注入预览",
+                successMessage: "已复制注入预览",
+                dialogTitle: "复制失败：请手动复制注入预览",
+              })
+            }
+            type="button"
+          >
+            {UI_COPY.common.copy}
+          </button>
+        </div>
         <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-[11px] leading-4 text-subtext">
-          {result?.prompt_block?.text_md || "（空）"}
+          {injectionPreviewText || "（空）"}
         </pre>
       </DebugDetails>
 
@@ -249,8 +285,24 @@ export function GraphPage() {
       </div>
 
       <DebugDetails title={UI_COPY.graph.advancedDebugTitle}>
+        <div className="flex items-center justify-end">
+          <button
+            className="btn btn-secondary btn-sm"
+            disabled={!result}
+            onClick={() =>
+              void copyPreviewBlock(advancedDebugText, {
+                emptyMessage: "还没有可复制的 Debug JSON",
+                successMessage: "已复制 Debug JSON",
+                dialogTitle: "复制失败：请手动复制 Debug JSON",
+              })
+            }
+            type="button"
+          >
+            {UI_COPY.common.copy}
+          </button>
+        </div>
         <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-[11px] leading-4 text-subtext">
-          {safeJson(result)}
+          {advancedDebugText}
         </pre>
       </DebugDetails>
     </DebugPageShell>
