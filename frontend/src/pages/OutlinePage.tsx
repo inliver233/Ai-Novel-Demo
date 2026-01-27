@@ -440,7 +440,7 @@ export function OutlinePage() {
             </select>
 
             <button
-              className="btn btn-secondary"
+              className={outlines.length === 0 ? "btn btn-primary" : "btn btn-secondary"}
               onClick={() =>
                 setTitleModal({
                   open: true,
@@ -486,7 +486,7 @@ export function OutlinePage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button
-            className="btn btn-primary"
+            className={canCreateChapters ? "btn btn-primary" : "btn btn-secondary"}
             disabled={!canCreateChapters}
             onClick={() => void createChaptersFromOutline()}
             title={canCreateChapters ? undefined : "请先生成包含章节结构的大纲"}
@@ -498,7 +498,12 @@ export function OutlinePage() {
             AI 生成大纲
           </button>
         </div>
-        <button className="btn btn-primary" disabled={!dirty || saving} onClick={() => void save()} type="button">
+        <button
+          className={dirty ? "btn btn-primary" : "btn btn-secondary"}
+          disabled={!dirty || saving}
+          onClick={() => void save()}
+          type="button"
+        >
           保存大纲
         </button>
       </div>
