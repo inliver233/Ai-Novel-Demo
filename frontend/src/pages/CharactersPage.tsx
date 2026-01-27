@@ -328,7 +328,7 @@ export function CharactersPage() {
         {filteredCharacters.map((c) => (
           <motion.div
             key={c.id}
-            className="panel-interactive ui-focus-ring p-5 text-left"
+            className="panel-interactive ui-focus-ring p-6 text-left"
             initial="hidden"
             animate="show"
             variants={{
