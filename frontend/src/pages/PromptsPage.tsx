@@ -660,7 +660,10 @@ export function PromptsPage() {
         }),
       });
       const preview = (res.data.text ?? "").trim();
-      toast.toastSuccess(`连接成功（延迟 ${res.data.latency_ms}ms${preview ? `，输出：${preview}` : ""}）`);
+      toast.toastSuccess(
+        `连接成功（延迟 ${res.data.latency_ms}ms${preview ? `，输出：${preview}` : ""}）`,
+        res.request_id,
+      );
       if (projectId) {
         markWizardLlmTestOk(projectId, llmForm.provider, model);
         bumpWizardLocal();
