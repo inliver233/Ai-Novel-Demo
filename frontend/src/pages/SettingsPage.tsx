@@ -47,6 +47,10 @@ type ProjectMembershipItem = {
   updated_at?: string | null;
 };
 
+type QpPreviewState = { normalized: string; obs: unknown; requestId: string };
+const qpPreviewCache = new Map<string, QpPreviewState>();
+const qpPreviewQueryTextCache = new Map<string, string>();
+
 export function SettingsPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -60,6 +64,7 @@ export function SettingsPage() {
 
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const settingsSavePendingRef = useRef(false);
   const queuedSaveRef = useRef<null | { silent: boolean; snapshot?: SaveSnapshot }>(null);
   const wizardRefreshTimerRef = useRef<number | null>(null);
   const projectsRefreshTimerRef = useRef<number | null>(null);
@@ -154,10 +159,24 @@ export function SettingsPage() {
   const [inviteUserId, setInviteUserId] = useState("");
   const [inviteRole, setInviteRole] = useState<"viewer" | "editor">("viewer");
 
-  const [qpPreviewQueryText, setQpPreviewQueryText] = useState("");
+  const [qpPanelOpen, setQpPanelOpen] = useState(true);
+  const [qpPreviewQueryText, setQpPreviewQueryText] = useState(() => {
+    if (!projectId) return "";
+    return qpPreviewQueryTextCache.get(projectId) ?? "";
+  });
   const [qpPreviewLoading, setQpPreviewLoading] = useState(false);
-  const [qpPreview, setQpPreview] = useState<null | { normalized: string; obs: unknown; requestId: string }>(null);
+  const [qpPreview, setQpPreview] = useState<null | QpPreviewState>(() => {
+    if (!projectId) return null;
+    return qpPreviewCache.get(projectId) ?? null;
+  });
   const [qpPreviewError, setQpPreviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!projectId) return;
+    setQpPreview(qpPreviewCache.get(projectId) ?? null);
+    setQpPreviewQueryText(qpPreviewQueryTextCache.get(projectId) ?? "");
+    setQpPreviewError(null);
+  }, [projectId]);
 
   const canManageMemberships = useMemo(() => {
     if (!baselineProject) return false;
@@ -331,12 +350,26 @@ export function SettingsPage() {
     const queryText = qpPreviewQueryText.trim();
     if (!queryText) {
       setQpPreview(null);
+      qpPreviewCache.delete(projectId);
       setQpPreviewError("请输入示例 query_text");
       return;
     }
     setQpPreviewLoading(true);
     setQpPreviewError(null);
     try {
+      const deadlineMs = Date.now() + 10_000;
+      while (settingsSavePendingRef.current) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        if (Date.now() > deadlineMs) {
+          setQpPreview(null);
+          qpPreviewCache.delete(projectId);
+          setQpPreviewError("配置保存中，暂时无法预览（请稍后重试）");
+          return;
+        }
+      }
+
+      setQpPanelOpen(true);
+
       const res = await apiJson<{
         result: unknown;
         raw_query_text: string;
@@ -346,17 +379,20 @@ export function SettingsPage() {
         method: "POST",
         body: JSON.stringify({ query_text: queryText, enabled: false }),
       });
-      setQpPreview({
+      const next: QpPreviewState = {
         normalized: String(res.data.normalized_query_text ?? ""),
         obs: res.data.preprocess_obs ?? null,
         requestId: res.request_id ?? "unknown",
-      });
+      };
+      setQpPreview(next);
+      qpPreviewCache.set(projectId, next);
     } catch (e) {
       const err =
         e instanceof ApiError
           ? e
           : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       setQpPreview(null);
+      if (projectId) qpPreviewCache.delete(projectId);
       setQpPreviewError(`${err.message} (${err.code})`);
     } finally {
       setQpPreviewLoading(false);
@@ -493,6 +529,7 @@ export function SettingsPage() {
         projectsRefreshTimerRef.current = window.setTimeout(() => void refresh(), 1200);
       };
 
+      settingsSavePendingRef.current = settingsDirty;
       savingRef.current = true;
       setSaving(true);
       try {
@@ -540,6 +577,7 @@ export function SettingsPage() {
           setVectorApiKeyDraft("");
           setVectorApiKeyClearRequested(false);
         }
+        settingsSavePendingRef.current = false;
         markWizardProjectChanged(projectId);
         bumpWizardLocal();
         if (silent) {
@@ -554,10 +592,12 @@ export function SettingsPage() {
       } catch (e) {
         const err = e as ApiError;
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
+        settingsSavePendingRef.current = false;
         return false;
       } finally {
         setSaving(false);
         savingRef.current = false;
+        settingsSavePendingRef.current = false;
         if (queuedSaveRef.current) {
           const queued = queuedSaveRef.current;
           queuedSaveRef.current = null;
@@ -848,7 +888,9 @@ export function SettingsPage() {
             <div className="text-xs text-subtext">
               Embedding 用于把文本变成向量以便检索；Rerank 用于对候选结果二次排序提升命中（可能增加耗时/成本）。
             </div>
-            <div className="text-xs text-subtext">API Key 加密存储，仅回显 masked；留空可使用后端环境变量。</div>
+            <div className="text-xs text-subtext">
+              API Key（接口密钥）加密存储，仅回显 masked；留空可使用后端环境变量。
+            </div>
           </div>
         </summary>
 
@@ -856,7 +898,7 @@ export function SettingsPage() {
           <div className="mt-4 grid gap-4">
             <div className="rounded-atelier border border-border bg-canvas p-4 text-xs text-subtext">
               <div>
-                当前生效：Embedding provider=
+                当前生效：Embedding 提供方（provider）=
                 {baselineSettings.vector_embedding_effective_provider || "openai_compatible"}
                 （状态: {baselineSettings.vector_embedding_effective_disabled_reason ?? "enabled"}；来源:{" "}
                 {baselineSettings.vector_embedding_effective_source}）
@@ -933,7 +975,9 @@ export function SettingsPage() {
                 <div className="text-xs text-subtext">不确定怎么配时，可保持留空让后端从环境变量读取。</div>
 
                 <label className="grid gap-1">
-                  <span className="text-xs text-subtext">Embedding Provider（项目覆盖；留空=使用后端环境变量）</span>
+                  <span className="text-xs text-subtext">
+                    Embedding 提供方（provider；项目覆盖；留空=使用后端环境变量）
+                  </span>
                   <select
                     className="select"
                     value={settingsForm.vector_embedding_provider}
@@ -955,7 +999,9 @@ export function SettingsPage() {
                 {embeddingProviderPreview === "azure_openai" ? (
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="grid gap-1">
-                      <span className="text-xs text-subtext">Azure deployment（项目覆盖；留空=使用后端环境变量）</span>
+                      <span className="text-xs text-subtext">
+                        Azure 部署名（deployment；项目覆盖；留空=使用后端环境变量）
+                      </span>
                       <input
                         className="input"
                         value={settingsForm.vector_embedding_azure_deployment}
@@ -968,7 +1014,9 @@ export function SettingsPage() {
                       </div>
                     </label>
                     <label className="grid gap-1">
-                      <span className="text-xs text-subtext">Azure api_version（项目覆盖；留空=使用后端环境变量）</span>
+                      <span className="text-xs text-subtext">
+                        Azure API 版本（api_version；项目覆盖；留空=使用后端环境变量）
+                      </span>
                       <input
                         className="input"
                         value={settingsForm.vector_embedding_azure_api_version}
@@ -1002,7 +1050,9 @@ export function SettingsPage() {
                 ) : null}
 
                 <label className="grid gap-1">
-                  <span className="text-xs text-subtext">Embedding Base URL（项目覆盖；留空=使用后端环境变量）</span>
+                  <span className="text-xs text-subtext">
+                    Embedding 基础地址（base_url；项目覆盖；留空=使用后端环境变量）
+                  </span>
                   <input
                     className="input"
                     id="vector_embedding_base_url"
@@ -1016,7 +1066,7 @@ export function SettingsPage() {
                 </label>
 
                 <label className="grid gap-1">
-                  <span className="text-xs text-subtext">Embedding Model（项目覆盖；留空=使用后端环境变量）</span>
+                  <span className="text-xs text-subtext">Embedding 模型（model；项目覆盖；留空=使用后端环境变量）</span>
                   <input
                     className="input"
                     id="vector_embedding_model"
@@ -1030,7 +1080,7 @@ export function SettingsPage() {
                 </label>
 
                 <label className="grid gap-1">
-                  <span className="text-xs text-subtext">API Key（项目覆盖；留空不修改）</span>
+                  <span className="text-xs text-subtext">API Key（api_key；项目覆盖；留空不修改）</span>
                   <input
                     className="input"
                     id="vector_embedding_api_key"
@@ -1094,7 +1144,12 @@ export function SettingsPage() {
         </div>
       </details>
 
-      <details className="panel" aria-label="Query 预处理（Query Preprocessing）">
+      <details
+        className="panel"
+        aria-label="Query 预处理（Query Preprocessing）"
+        open={qpPanelOpen}
+        onToggle={(e) => setQpPanelOpen((e.currentTarget as HTMLDetailsElement).open)}
+      >
         <summary className="ui-focus-ring ui-transition-fast cursor-pointer select-none p-6">
           <div className="grid gap-1">
             <div className="font-content text-xl text-ink">Query 预处理（Query Preprocessing）</div>
@@ -1183,7 +1238,11 @@ export function SettingsPage() {
                     <textarea
                       className="textarea mt-1 min-h-20 w-full"
                       value={qpPreviewQueryText}
-                      onChange={(e) => setQpPreviewQueryText(e.target.value)}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setQpPreviewQueryText(next);
+                        if (projectId) qpPreviewQueryTextCache.set(projectId, next);
+                      }}
                       placeholder="例如：回顾第1章 #foo REMOVE"
                     />
                   </label>
@@ -1202,6 +1261,7 @@ export function SettingsPage() {
                       disabled={qpPreviewLoading}
                       onClick={() => {
                         setQpPreview(null);
+                        if (projectId) qpPreviewCache.delete(projectId);
                         setQpPreviewError(null);
                       }}
                       type="button"
