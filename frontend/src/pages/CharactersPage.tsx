@@ -238,7 +238,7 @@ export function CharactersPage() {
               : `共 ${characters.length} 位角色`}
           </div>
           <input
-            className="input w-full sm:w-64"
+            className="input-underline w-full sm:w-64"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             placeholder="搜索：姓名 / 定位"
