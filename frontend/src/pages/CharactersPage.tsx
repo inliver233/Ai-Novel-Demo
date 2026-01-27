@@ -354,7 +354,7 @@ export function CharactersPage() {
                 <div className="mt-1 text-xs text-subtext">{c.role ?? "未填写角色定位"}</div>
               </div>
               <button
-                className="btn btn-ghost px-3 py-2 text-xs text-accent hover:bg-accent/10"
+                className="btn btn-ghost px-3 py-2 text-xs text-danger hover:bg-danger/10"
                 onClick={async (e) => {
                   e.stopPropagation();
                   const ok = await confirm.confirm({
