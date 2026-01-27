@@ -2,6 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { Badge } from "../components/ui/Badge";
 import { Drawer } from "../components/ui/Drawer";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
@@ -256,10 +257,8 @@ export function StylesPage() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="text-sm text-ink">{s.name}</div>
-                          <span className="rounded-atelier bg-canvas px-2 py-0.5 text-[11px] text-subtext">预设</span>
-                          {defaultStyleId === s.id ? (
-                            <span className="rounded-atelier bg-accent/10 px-2 py-0.5 text-[11px] text-ink">默认</span>
-                          ) : null}
+                          <Badge tone="neutral">预设</Badge>
+                          {defaultStyleId === s.id ? <Badge tone="accent">默认</Badge> : null}
                         </div>
                         {s.description ? <div className="mt-1 text-xs text-subtext">{s.description}</div> : null}
                       </div>
@@ -296,10 +295,8 @@ export function StylesPage() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="text-sm text-ink">{s.name}</div>
-                          <span className="rounded-atelier bg-canvas px-2 py-0.5 text-[11px] text-subtext">我的</span>
-                          {defaultStyleId === s.id ? (
-                            <span className="rounded-atelier bg-accent/10 px-2 py-0.5 text-[11px] text-ink">默认</span>
-                          ) : null}
+                          <Badge tone="neutral">我的</Badge>
+                          {defaultStyleId === s.id ? <Badge tone="accent">默认</Badge> : null}
                         </div>
                         {s.description ? <div className="mt-1 text-xs text-subtext">{s.description}</div> : null}
                       </div>
