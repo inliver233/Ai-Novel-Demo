@@ -613,7 +613,8 @@ export function SettingsPage() {
   const loading = settingsQuery.loading;
   if (loading) {
     return (
-      <div className="grid gap-6 pb-24">
+      <div className="grid gap-6 pb-24" aria-busy="true" aria-live="polite">
+        <span className="sr-only">正在加载设置…</span>
         <section className="panel p-6">
           <div className="flex items-start justify-between gap-4">
             <div className="grid gap-2">
@@ -647,6 +648,38 @@ export function SettingsPage() {
             <div className="skeleton h-28 w-full" />
             <div className="skeleton h-28 w-full" />
             <div className="skeleton h-28 w-full" />
+          </div>
+        </section>
+
+        <section className="panel p-6">
+          <div className="grid gap-2">
+            <div className="skeleton h-6 w-48" />
+            <div className="skeleton h-4 w-full max-w-2xl" />
+            <div className="skeleton h-4 w-full max-w-xl" />
+          </div>
+        </section>
+
+        <section className="panel p-6">
+          <div className="grid gap-2">
+            <div className="skeleton h-6 w-56" />
+            <div className="skeleton h-4 w-full max-w-2xl" />
+            <div className="skeleton h-4 w-full max-w-xl" />
+          </div>
+        </section>
+
+        <section className="panel p-6">
+          <div className="grid gap-2">
+            <div className="skeleton h-6 w-56" />
+            <div className="skeleton h-4 w-full max-w-2xl" />
+            <div className="skeleton h-4 w-full max-w-xl" />
+          </div>
+        </section>
+
+        <section className="panel p-6">
+          <div className="grid gap-2">
+            <div className="skeleton h-6 w-60" />
+            <div className="skeleton h-4 w-full max-w-2xl" />
+            <div className="skeleton h-4 w-full max-w-xl" />
           </div>
         </section>
       </div>
