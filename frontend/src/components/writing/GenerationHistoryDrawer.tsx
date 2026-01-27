@@ -251,7 +251,7 @@ export function GenerationHistoryDrawer(props: Props) {
                   <div className="mt-2 grid gap-2">
                     {pipelineLoading ? <div className="text-xs text-subtext">加载中...</div> : null}
                     {pipelineError ? (
-                      <div className="text-xs text-rose-600 dark:text-rose-400">
+                      <div className="text-xs text-danger">
                         {pipelineError.code}: {pipelineError.message}
                         {pipelineError.requestId ? (
                           <span className="ml-2">request_id: {pipelineError.requestId}</span>
@@ -313,7 +313,7 @@ export function GenerationHistoryDrawer(props: Props) {
                       </div>
                       <div className="truncate">query_text: {String(memoryLog.query_text ?? "")}</div>
                       {Array.isArray(memoryLog.errors) && memoryLog.errors.length ? (
-                        <div className="text-amber-600 dark:text-amber-400">errors: {memoryLog.errors.join(", ")}</div>
+                        <div className="text-warning">errors: {memoryLog.errors.join(", ")}</div>
                       ) : null}
                     </div>
 
@@ -332,9 +332,7 @@ export function GenerationHistoryDrawer(props: Props) {
                                   {enabled ? (
                                     <span className="text-success">enabled</span>
                                   ) : (
-                                    <span className="text-amber-600 dark:text-amber-400">
-                                      disabled: {disabledReason ?? "unknown"}
-                                    </span>
+                                    <span className="text-warning">disabled: {disabledReason ?? "unknown"}</span>
                                   )}
                                 </div>
                               </div>

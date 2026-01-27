@@ -247,17 +247,15 @@ export function PromptInspectorDrawer(props: Props) {
       </div>
 
       {overrideEnabled ? (
-        <div className="mt-3 rounded-atelier border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          已启用覆盖提示词：生成将使用覆盖文本（可随时回退）。
-        </div>
+        <div className="mt-3 callout-warning">已启用覆盖提示词：生成将使用覆盖文本（可随时回退）。</div>
       ) : null}
 
       {error ? (
-        <div className="mt-3 rounded-atelier border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+        <div className="mt-3 callout-danger">
           <div className="font-medium">预检失败</div>
           <div className="mt-1">
             {error.code}: {error.message}
-            {error.requestId ? <span className="ml-2 text-xs">request_id: {error.requestId}</span> : null}
+            {error.requestId ? <span className="ml-2 text-[11px]">request_id: {error.requestId}</span> : null}
           </div>
         </div>
       ) : null}
