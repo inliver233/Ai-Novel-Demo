@@ -116,6 +116,7 @@ export function ChapterReaderPage() {
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const [mobileMemoryOpen, setMobileMemoryOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [memoryCollapsed, setMemoryCollapsed] = useState(false);
   const [onlyDone, setOnlyDone] = useState(false);
 
   const [memoryLoading, setMemoryLoading] = useState(false);
@@ -334,7 +335,11 @@ export function ChapterReaderPage() {
           <StickyNote size={16} />
           记忆标注
         </div>
-        <button className="btn btn-secondary xl:hidden" onClick={() => setMobileMemoryOpen(false)} type="button">
+        <button
+          className={clsx("btn btn-secondary", memoryCollapsed ? null : "xl:hidden")}
+          onClick={() => setMobileMemoryOpen(false)}
+          type="button"
+        >
           <ChevronLeft size={16} />
           关闭
         </button>
@@ -482,9 +487,21 @@ export function ChapterReaderPage() {
             <List size={16} />
             章节列表
           </button>
-          <button className="btn btn-secondary xl:hidden" onClick={() => setMobileMemoryOpen(true)} type="button">
+          <button
+            className={clsx("btn btn-secondary", memoryCollapsed ? null : "xl:hidden")}
+            onClick={() => setMobileMemoryOpen(true)}
+            type="button"
+          >
             <StickyNote size={16} />
             记忆标注
+          </button>
+          <button
+            className="btn btn-secondary hidden xl:inline-flex"
+            onClick={() => setMemoryCollapsed((v) => !v)}
+            type="button"
+          >
+            <StickyNote size={16} />
+            {memoryCollapsed ? "显示记忆栏" : "沉浸阅读"}
           </button>
           <button
             className="btn btn-secondary hidden lg:inline-flex"
@@ -557,9 +574,11 @@ export function ChapterReaderPage() {
           </div>
         </section>
 
-        <aside className="hidden w-[340px] shrink-0 xl:block">
-          <div className="panel h-[calc(100vh-260px)] min-h-[520px] overflow-hidden">{memoryPanel}</div>
-        </aside>
+        {!memoryCollapsed ? (
+          <aside className="hidden w-[340px] shrink-0 xl:block">
+            <div className="panel h-[calc(100vh-260px)] min-h-[520px] overflow-hidden">{memoryPanel}</div>
+          </aside>
+        ) : null}
       </div>
 
       <Drawer
@@ -584,7 +603,7 @@ export function ChapterReaderPage() {
         open={mobileMemoryOpen}
         onClose={() => setMobileMemoryOpen(false)}
         side="bottom"
-        overlayClassName="xl:hidden"
+        overlayClassName={memoryCollapsed ? undefined : "xl:hidden"}
         ariaLabel="记忆标注"
         panelClassName="h-[85vh] w-full overflow-hidden rounded-atelier border border-border bg-surface shadow-sm"
       >
