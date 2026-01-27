@@ -198,6 +198,11 @@ export function TaskCenterPage() {
     await copyText(lines.join("\n"), { title: "复制失败：请手动复制排障信息" });
   }, [selected]);
 
+  const copyRawJson = useCallback(async () => {
+    if (!selected) return;
+    await copyText(safeJsonStringify(selected.item), { title: "复制失败：请手动复制原始 JSON" });
+  }, [selected]);
+
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
 
   return (
@@ -428,7 +433,12 @@ export function TaskCenterPage() {
         {selected ? (
           <details className="mt-5 rounded-atelier border border-border bg-surface p-3">
             <summary className="cursor-pointer select-none text-sm text-ink">原始数据（JSON）</summary>
-            <pre className="mt-3 max-h-[70vh] overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
+            <div className="mt-3 flex items-center justify-end">
+              <button className="btn btn-secondary btn-sm" onClick={() => void copyRawJson()} type="button">
+                {UI_COPY.common.copy}
+              </button>
+            </div>
+            <pre className="mt-2 whitespace-pre-wrap break-words rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
               {safeJsonStringify(selected.item)}
             </pre>
           </details>
