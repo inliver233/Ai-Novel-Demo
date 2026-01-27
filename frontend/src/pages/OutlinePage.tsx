@@ -421,7 +421,7 @@ export function OutlinePage() {
   return (
     <div className="grid gap-4 pb-[calc(6rem+env(safe-area-inset-bottom))]">
       {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
-      <div className="panel p-4">
+      <div className="panel p-6 sm:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-subtext">当前大纲</span>
@@ -503,7 +503,7 @@ export function OutlinePage() {
         </button>
       </div>
 
-      <div className="panel p-4">
+      <div className="panel p-6 sm:p-8">
         <div className="text-sm text-ink">流程说明</div>
         <div className="mt-1 text-xs text-subtext">
           推荐流程：AI 生成大纲 → 预览并应用（覆盖/另存） → 编辑完善 → 从大纲创建章节骨架 → 进入写作。
