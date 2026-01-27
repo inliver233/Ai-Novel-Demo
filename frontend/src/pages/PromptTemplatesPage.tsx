@@ -4,8 +4,77 @@ import { Link, useParams } from "react-router-dom";
 
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
+import { copyText } from "../lib/copyText";
+import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson, sanitizeFilename } from "../services/apiClient";
-import type { PromptBlock, PromptPreset } from "../types";
+import type { Character, Outline, Project, ProjectSettings, PromptBlock, PromptPreset, PromptPreview } from "../types";
+import { PromptStudioPreviewPanel } from "./promptStudio/PromptStudioPreviewPanel";
+import type { PromptStudioTask } from "./promptStudio/types";
+import { guessPreviewValues } from "./promptStudio/utils";
+
+const PREVIEW_TASKS: PromptStudioTask[] = [
+  { key: "outline_generate", label: UI_COPY.promptStudio.tasks.outlineGenerate },
+  { key: "chapter_generate", label: UI_COPY.promptStudio.tasks.chapterGenerate },
+  { key: "plan_chapter", label: UI_COPY.promptStudio.tasks.planChapter },
+  { key: "post_edit", label: UI_COPY.promptStudio.tasks.postEdit },
+  { key: "chapter_analyze", label: UI_COPY.promptStudio.tasks.chapterAnalyze },
+  { key: "chapter_rewrite", label: UI_COPY.promptStudio.tasks.chapterRewrite },
+];
+
+const SUPPORTED_PREVIEW_TASK_KEYS = new Set(PREVIEW_TASKS.map((t) => t.key));
+const TEMPLATE_VAR_TOKEN_RE = /{{\s*([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)\s*}}/g;
+const TEMPLATE_MACRO_NAMES = new Set(["date", "time", "isodate"]);
+const SAFE_KEY_RE = /^[A-Za-z0-9_]+$/;
+
+function extractTemplateVars(template: string): string[] {
+  const out = new Set<string>();
+  for (const match of template.matchAll(TEMPLATE_VAR_TOKEN_RE)) {
+    const path = String(match[1] ?? "").trim();
+    if (!path || TEMPLATE_MACRO_NAMES.has(path)) continue;
+    out.add(path);
+  }
+  return [...out].sort((a, b) => a.localeCompare(b, "en"));
+}
+
+function collectPreviewValuePaths(values: Record<string, unknown>): string[] {
+  const out = new Set<string>();
+
+  const visit = (value: unknown, prefix: string, depth: number) => {
+    if (!prefix) return;
+    if (value === null || value === undefined) {
+      out.add(prefix);
+      return;
+    }
+    if (typeof value !== "object" || Array.isArray(value)) {
+      out.add(prefix);
+      return;
+    }
+
+    if (depth >= 3) {
+      out.add(prefix);
+      return;
+    }
+
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (!key || key.startsWith("_") || !SAFE_KEY_RE.test(key)) continue;
+      visit(child, `${prefix}.${key}`, depth + 1);
+    }
+  };
+
+  for (const [key, value] of Object.entries(values)) {
+    if (!key || key.startsWith("_") || !SAFE_KEY_RE.test(key)) continue;
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      for (const [childKey, child] of Object.entries(value as Record<string, unknown>)) {
+        if (!childKey || childKey.startsWith("_") || !SAFE_KEY_RE.test(childKey)) continue;
+        visit(child, `${key}.${childKey}`, 1);
+      }
+      continue;
+    }
+    visit(value, key, 0);
+  }
+
+  return [...out].sort((a, b) => a.localeCompare(b, "en"));
+}
 
 type PromptPresetResource = {
   key: string;
@@ -74,6 +143,11 @@ export function PromptTemplatesPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
+  const [project, setProject] = useState<Project | null>(null);
+  const [settings, setSettings] = useState<ProjectSettings | null>(null);
+  const [outline, setOutline] = useState<Outline | null>(null);
+  const [characters, setCharacters] = useState<Character[]>([]);
+
   const [resources, setResources] = useState<PromptPresetResource[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
@@ -84,6 +158,12 @@ export function PromptTemplatesPage() {
   const [baselineTemplates, setBaselineTemplates] = useState<Record<string, string>>({});
 
   const savingBlockIdRef = useRef<string | null>(null);
+
+  const [previewTask, setPreviewTask] = useState<string>("chapter_generate");
+  const [preview, setPreview] = useState<PromptPreview | null>(null);
+  const [renderLog, setRenderLog] = useState<unknown | null>(null);
+  const [previewRequestId, setPreviewRequestId] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const selectedResource = useMemo(
     () => resources.find((r) => r.key === selectedKey) ?? null,
@@ -132,6 +212,24 @@ export function PromptTemplatesPage() {
     }
   }, [projectId, toast]);
 
+  const loadPreviewContext = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const [pRes, sRes, oRes, cRes] = await Promise.all([
+        apiJson<{ project: Project }>(`/api/projects/${projectId}`),
+        apiJson<{ settings: ProjectSettings }>(`/api/projects/${projectId}/settings`),
+        apiJson<{ outline: Outline }>(`/api/projects/${projectId}/outline`),
+        apiJson<{ characters: Character[] }>(`/api/projects/${projectId}/characters`),
+      ]);
+      setProject(pRes.data.project);
+      setSettings(sRes.data.settings);
+      setOutline(oRes.data.outline);
+      setCharacters(cRes.data.characters ?? []);
+    } catch {
+      // optional: preview can still work with fallback values
+    }
+  }, [projectId]);
+
   const loadPreset = useCallback(
     async (presetId: string) => {
       setBusy(true);
@@ -164,6 +262,10 @@ export function PromptTemplatesPage() {
   }, [loadResources]);
 
   useEffect(() => {
+    void loadPreviewContext();
+  }, [loadPreviewContext]);
+
+  useEffect(() => {
     const presetId = selectedResource?.preset_id ?? null;
     if (!presetId) {
       setPreset(null);
@@ -174,6 +276,64 @@ export function PromptTemplatesPage() {
     }
     void loadPreset(presetId);
   }, [loadPreset, selectedResource?.preset_id]);
+
+  const previewValues = useMemo(
+    () => guessPreviewValues({ project, settings, outline, characters }),
+    [characters, outline, project, settings],
+  );
+
+  const availableValuePaths = useMemo(() => collectPreviewValuePaths(previewValues), [previewValues]);
+  const availableVariablesText = useMemo(
+    () => availableValuePaths.map((path) => `{{` + path + `}}`).join("\n"),
+    [availableValuePaths],
+  );
+
+  const previewTasks = useMemo(() => {
+    const activationTasks = selectedResource?.activation_tasks ?? [];
+    const allowed = new Set(activationTasks.filter((t) => SUPPORTED_PREVIEW_TASK_KEYS.has(t)));
+    if (allowed.size > 0) return PREVIEW_TASKS.filter((t) => allowed.has(t.key));
+    return PREVIEW_TASKS;
+  }, [selectedResource?.activation_tasks]);
+
+  useEffect(() => {
+    if (!previewTasks.length) return;
+    if (previewTasks.some((t) => t.key === previewTask)) return;
+    setPreviewTask(previewTasks[0].key);
+  }, [previewTask, previewTasks]);
+
+  const runPreview = useCallback(async () => {
+    if (!projectId || !preset) return;
+    setPreviewLoading(true);
+    setPreviewRequestId(null);
+    try {
+      const res = await apiJson<{ preview: PromptPreview; render_log?: unknown }>(
+        `/api/projects/${projectId}/prompt_preview`,
+        {
+          method: "POST",
+          body: JSON.stringify({ task: previewTask, preset_id: preset.id, values: previewValues }),
+        },
+      );
+      setPreview(res.data.preview);
+      setRenderLog(res.data.render_log ?? null);
+      setPreviewRequestId(res.request_id ?? null);
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      setPreviewRequestId(err.requestId ?? null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [preset, previewTask, previewValues, projectId, toast]);
+
+  const templateErrors = useMemo(() => {
+    const blocks = (renderLog as { blocks?: unknown } | null)?.blocks;
+    if (!Array.isArray(blocks)) return [];
+    return blocks
+      .map((b) => b as { identifier?: unknown; render_error?: unknown })
+      .filter((b) => typeof b.render_error === "string" && b.render_error.trim())
+      .map((b) => ({ identifier: String(b.identifier ?? ""), error: String(b.render_error ?? "") }))
+      .filter((b) => b.identifier && b.error);
+  }, [renderLog]);
 
   const exportAllPresets = useCallback(async () => {
     if (!projectId) return;
@@ -465,10 +625,47 @@ export function PromptTemplatesPage() {
 
             {preset ? (
               <div className="grid gap-3">
+                <details className="rounded-atelier border border-border bg-surface/50 p-3">
+                  <summary className="ui-transition-fast cursor-pointer text-sm hover:text-ink">
+                    模板语法与可用变量（点击复制）
+                  </summary>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-subtext">
+                    <div className="grid gap-1">
+                      <div>
+                        变量：<span className="atelier-mono text-ink">{"{{project_name}}"}</span>{" "}
+                        <span className="atelier-mono text-ink">{"{{story.outline}}"}</span>
+                      </div>
+                      <div>
+                        条件：<span className="atelier-mono text-ink">{"{% if chapter_number == '1' %}"}</span>...{" "}
+                        <span className="atelier-mono text-ink">{"{% endif %}"}</span>
+                      </div>
+                      <div>
+                        宏：<span className="atelier-mono text-ink">{"{{date}}"}</span>{" "}
+                        <span className="atelier-mono text-ink">{"{{time}}"}</span>{" "}
+                        <span className="atelier-mono text-ink">{"{{pick::A::B}}"}</span>
+                      </div>
+                      <div>预览渲染使用“已保存模板”；未保存改动请先点“保存”。</div>
+                    </div>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={async () => {
+                        await copyText(availableVariablesText, { title: "复制失败：请手动复制变量清单" });
+                      }}
+                      type="button"
+                    >
+                      复制变量清单
+                    </button>
+                  </div>
+                  <pre className="mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap break-words rounded-atelier border border-border bg-surface p-3 text-xs">
+                    {availableVariablesText || "（变量清单为空）"}
+                  </pre>
+                </details>
+
                 {blocks.map((b) => {
                   const draft = draftTemplates[b.id] ?? "";
                   const baseline = baselineTemplates[b.id] ?? "";
                   const dirty = draft !== baseline;
+                  const usedVars = extractTemplateVars(draft);
                   return (
                     <div key={b.id} className="rounded-atelier border border-border bg-canvas p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -499,6 +696,42 @@ export function PromptTemplatesPage() {
                         </div>
                       </div>
                       <div className="mt-2 grid gap-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-xs text-subtext">
+                            变量（本块）：{usedVars.length ? `${usedVars.length} 个（点击复制）` : "未检测到"}
+                          </div>
+                          {usedVars.length ? (
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={async () => {
+                                const text = usedVars.map((v) => `{{` + v + `}}`).join("\n");
+                                await copyText(text, {
+                                  title: "复制失败：请手动复制变量清单",
+                                });
+                              }}
+                              type="button"
+                            >
+                              复制本块变量
+                            </button>
+                          ) : null}
+                        </div>
+                        {usedVars.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {usedVars.map((v) => (
+                              <button
+                                key={v}
+                                className="btn btn-ghost btn-sm atelier-mono"
+                                onClick={async () => {
+                                  const text = `{{` + v + `}}`;
+                                  await copyText(text, { title: "复制失败：请手动复制变量" });
+                                }}
+                                type="button"
+                              >
+                                {`{{` + v + `}}`}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
                         <textarea
                           className="textarea atelier-mono min-h-[160px] resize-y py-2 text-xs"
                           value={draft}
@@ -512,6 +745,20 @@ export function PromptTemplatesPage() {
               </div>
             ) : null}
           </div>
+
+          <PromptStudioPreviewPanel
+            busy={busy}
+            selectedPresetId={preset?.id ?? null}
+            previewTask={previewTask}
+            setPreviewTask={setPreviewTask}
+            tasks={previewTasks}
+            previewLoading={previewLoading}
+            runPreview={runPreview}
+            requestId={previewRequestId}
+            preview={preview}
+            templateErrors={templateErrors}
+            renderLog={renderLog}
+          />
         </div>
       </div>
     </div>
