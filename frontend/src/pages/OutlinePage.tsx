@@ -469,7 +469,7 @@ export function OutlinePage() {
             </button>
 
             <button
-              className="btn btn-ghost text-accent hover:bg-accent/10"
+              className="btn btn-ghost text-danger hover:bg-danger/10"
               disabled={!activeOutlineId}
               onClick={() => void deleteOutline()}
               type="button"
