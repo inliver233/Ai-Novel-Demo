@@ -40,6 +40,8 @@ import type { ChapterStatus, Character, LLMPreset, Outline, OutlineListItem } fr
 
 type WritingLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LLMPreset; characters: Character[] };
 
+const CHAPTER_LIST_SIDEBAR_WIDTH_CLASS = "w-[260px]" as const;
+
 export function WritingPage() {
   const { projectId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -353,7 +355,7 @@ export function WritingPage() {
       />
 
       <div className="flex gap-4">
-        <aside className="hidden w-[240px] shrink-0 lg:block">
+        <aside className={`hidden ${CHAPTER_LIST_SIDEBAR_WIDTH_CLASS} shrink-0 lg:block`}>
           <ChapterListPanel
             chapters={chapters}
             activeId={activeId}
@@ -601,7 +603,7 @@ export function WritingPage() {
         side="left"
         overlayClassName="lg:hidden"
         ariaLabel="章节列表"
-        panelClassName="h-full w-[280px] overflow-hidden border-r border-border bg-surface shadow-sm"
+        panelClassName={`h-full ${CHAPTER_LIST_SIDEBAR_WIDTH_CLASS} overflow-hidden border-r border-border bg-surface shadow-sm`}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div className="text-sm text-ink">章节列表</div>
