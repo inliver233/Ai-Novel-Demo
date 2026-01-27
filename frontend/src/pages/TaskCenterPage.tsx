@@ -180,7 +180,7 @@ export function TaskCenterPage() {
         `created_at=${it.created_at || "-"}`,
         `updated_at=${it.updated_at || "-"}`,
       ];
-      await copyText(lines.join("\n"), { title: "复制失败：请手动复制排障信息" });
+      await copyText(lines.join("\n"), { title: "复制失败：请手动复制 Debug 信息" });
       return;
     }
 
@@ -195,12 +195,12 @@ export function TaskCenterPage() {
       `error_type=${t.error_type || "-"}`,
       `error_message=${t.error_message || "-"}`,
     ];
-    await copyText(lines.join("\n"), { title: "复制失败：请手动复制排障信息" });
+    await copyText(lines.join("\n"), { title: "复制失败：请手动复制 Debug 信息" });
   }, [selected]);
 
   const copyRawJson = useCallback(async () => {
     if (!selected) return;
-    await copyText(safeJsonStringify(selected.item), { title: "复制失败：请手动复制原始 JSON" });
+    await copyText(safeJsonStringify(selected.item), { title: "复制失败：请手动复制 Debug 信息" });
   }, [selected]);
 
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
@@ -296,11 +296,13 @@ export function TaskCenterPage() {
                         <button
                           className="btn btn-ghost px-2 py-1 text-[11px]"
                           onClick={async () => {
-                            await copyText(it.request_id ?? "", { title: "复制失败：请手动复制 request_id" });
+                            await copyText(it.request_id ?? "", {
+                              title: "复制失败：请手动复制请求 ID（request_id）",
+                            });
                           }}
                           type="button"
                         >
-                          {UI_COPY.common.copy}
+                          复制请求 ID（request_id）
                         </button>
                       </div>
                     ) : null}
@@ -380,11 +382,13 @@ export function TaskCenterPage() {
                         <button
                           className="btn btn-ghost px-2 py-1 text-[11px]"
                           onClick={async () => {
-                            await copyText(t.request_id ?? "", { title: "复制失败：请手动复制 request_id" });
+                            await copyText(t.request_id ?? "", {
+                              title: "复制失败：请手动复制请求 ID（request_id）",
+                            });
                           }}
                           type="button"
                         >
-                          {UI_COPY.common.copy}
+                          复制请求 ID（request_id）
                         </button>
                       </div>
                     ) : null}
@@ -421,8 +425,13 @@ export function TaskCenterPage() {
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button className="btn btn-secondary" onClick={() => void copyDebugInfo()} type="button">
-              复制排障信息
+            <button
+              className="btn btn-secondary"
+              onClick={() => void copyDebugInfo()}
+              aria-label="复制排障信息"
+              type="button"
+            >
+              复制 Debug 信息
             </button>
             <button className="btn btn-secondary" onClick={() => setSelected(null)} type="button">
               关闭
@@ -435,7 +444,7 @@ export function TaskCenterPage() {
             <summary className="cursor-pointer select-none text-sm text-ink">原始数据（JSON）</summary>
             <div className="mt-3 flex items-center justify-end">
               <button className="btn btn-secondary btn-sm" onClick={() => void copyRawJson()} type="button">
-                {UI_COPY.common.copy}
+                复制 Debug 信息
               </button>
             </div>
             <pre className="mt-2 whitespace-pre-wrap break-words rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
