@@ -36,7 +36,10 @@ test("ui: settings context_optimizer_enabled toggles and ContextPreviewDrawer sh
 
   await getToggle().check();
   await expect(save).toBeEnabled();
-  await save.click();
+  const enableRes = page.waitForResponse(
+    (resp) => resp.request().method() === "PUT" && resp.url().includes(`/api/projects/${projectId}/settings`) && resp.ok(),
+  );
+  await Promise.all([enableRes, save.click()]);
   await expect(save).toBeDisabled();
 
   const enabledDialog = await openContextPreview();
@@ -47,7 +50,10 @@ test("ui: settings context_optimizer_enabled toggles and ContextPreviewDrawer sh
   await expandSettingsSection("上下文优化（Context Optimizer）");
   await getToggle().uncheck();
   await expect(save).toBeEnabled();
-  await save.click();
+  const disableRes = page.waitForResponse(
+    (resp) => resp.request().method() === "PUT" && resp.url().includes(`/api/projects/${projectId}/settings`) && resp.ok(),
+  );
+  await Promise.all([disableRes, save.click()]);
   await expect(save).toBeDisabled();
 
   const disabledDialog = await openContextPreview();
