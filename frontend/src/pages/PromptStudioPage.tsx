@@ -695,22 +695,19 @@ export function PromptStudioPage() {
               <div className="text-amber-700 dark:text-amber-300">{UI_COPY.promptStudio.advancedHint}</div>
             </div>
           </DebugDetails>
-          <details className="rounded-atelier border border-border bg-surface/50 p-3">
-            <summary className="ui-transition-fast cursor-pointer text-sm hover:text-ink">
-              {UI_COPY.promptStudio.conceptTitle}
-            </summary>
-            <div className="mt-2 grid gap-1 text-sm text-subtext">
+          <DebugDetails title={UI_COPY.promptStudio.conceptTitle}>
+            <div className="grid gap-1 text-sm text-subtext">
               <div>
                 <span className="font-medium text-ink">预设（Preset）</span>：一套“提示蓝图”，通过{" "}
                 <span className="font-medium text-ink">active_for</span> 决定哪些任务使用它（大纲/章节/规划/润色）。
               </div>
               <div>
                 <span className="font-medium text-ink">提示块（Block）</span>：可排序/启停，支持
-                role、triggers（按任务触发）、token 预算与后端统一渲染。
+                role、triggers（按任务触发） 、token 预算与后端统一渲染。
               </div>
               <div>若同一任务被多个预设勾选，系统会优先使用“最近更新”的预设（历史导入的预设通常作为兜底）。</div>
             </div>
-          </details>
+          </DebugDetails>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
