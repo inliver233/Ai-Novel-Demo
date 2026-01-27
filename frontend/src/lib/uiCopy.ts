@@ -335,6 +335,49 @@ export const UI_COPY = {
     evidenceTitle: "证据（source_id 命中节点/边）",
     advancedDebugTitle: "高级调试（raw graph query result）",
   },
+  promptStudio: {
+    titleBeta: "提示词工作室（beta）",
+    loadingA11y: "正在加载提示词工作室…",
+    missingProjectId: "缺少 projectId",
+    processing: "处理中…",
+
+    previewNote: "预览通过后端渲染接口生成。",
+    backToPrompts: "返回模型配置",
+    newbiePromptTemplates: "新手：Prompt 模板",
+    goWriting: "去写作",
+
+    intro: "在这里管理预设与提示块，并生成后端渲染预览。",
+    recommendedFlow: "推荐流程：模型配置 →（新手模板/工作室）→ 大纲生成 → 章节生成 → 记忆更新。",
+    quickStart: "快速开始：选中预设 → 编辑模板片段 → 右侧预览 → 回到写作页点击“AI 生成”。",
+    advancedHint: "提示：这里是高级模式；若你只想改“关键提示词”，建议从“新手：Prompt 模板”开始。",
+
+    conceptTitle: "概念说明（预设/提示块/优先级）",
+
+    enableRecommendedPresets: "一键启用推荐预设（大纲/章节）",
+
+    toastRecommendedNotFound: "未找到推荐预设，请刷新后重试",
+    toastRecommendedEnabled: "已启用推荐预设：大纲/章节",
+    toastPresetSaved: "已保存预设",
+    toastPresetDeleted: "已删除预设",
+    toastBlockSaved: "已保存块",
+    toastBlockDeleted: "已删除块",
+    toastReordered: "已更新排序",
+
+    confirmDeletePresetTitle: "删除预设？",
+    confirmDeletePresetConfirm: "删除",
+    confirmDeleteBlockTitle: "删除块？",
+    confirmDeleteBlockConfirm: "删除",
+    confirmDeleteBlockDescFallback: "将删除该提示块。",
+
+    tasks: {
+      outlineGenerate: "大纲（outline_generate）",
+      chapterGenerate: "章节（chapter_generate）",
+      planChapter: "规划（plan_chapter，M3）",
+      postEdit: "润色（post_edit，M3）",
+      chapterAnalyze: "章节分析（chapter_analyze，P2）",
+      chapterRewrite: "章节重写（chapter_rewrite，P2）",
+    },
+  },
   fractal: {
     title: "分形记忆（Fractal）",
     tag: "Fractal",

@@ -164,9 +164,9 @@ export function PromptStudioPage() {
   const deletePreset = useCallback(async () => {
     if (!selectedPresetId || !selectedPreset) return;
     const ok = await confirm.confirm({
-      title: "删除预设？",
+      title: UI_COPY.promptStudio.confirmDeletePresetTitle,
       description: `将删除预设“${selectedPreset.name}”及其所有块。该操作不可撤销。`,
-      confirmText: "删除",
+      confirmText: UI_COPY.promptStudio.confirmDeletePresetConfirm,
       danger: true,
     });
     if (!ok) return;
@@ -174,7 +174,7 @@ export function PromptStudioPage() {
     setBusy(true);
     try {
       await apiJson<Record<string, never>>(`/api/prompt_presets/${selectedPresetId}`, { method: "DELETE" });
-      toast.toastSuccess("已删除预设");
+      toast.toastSuccess(UI_COPY.promptStudio.toastPresetDeleted);
       setSelectedPreset(null);
       setBlocks([]);
       setDrafts({});
@@ -193,7 +193,7 @@ export function PromptStudioPage() {
     const outline = presets.find((p) => p.name === RECOMMENDED_OUTLINE_PRESET_NAME);
     const chapter = presets.find((p) => p.name === RECOMMENDED_CHAPTER_PRESET_NAME);
     if (!outline || !chapter) {
-      toast.toastError("未找到推荐预设，请刷新后重试");
+      toast.toastError(UI_COPY.promptStudio.toastRecommendedNotFound);
       return;
     }
 
@@ -213,7 +213,7 @@ export function PromptStudioPage() {
         body: JSON.stringify({ name: null, active_for: [...chapterActive] }),
       });
 
-      toast.toastSuccess("已启用推荐预设：大纲/章节");
+      toast.toastSuccess(UI_COPY.promptStudio.toastRecommendedEnabled);
       await reloadAll();
       setSelectedPresetId(chapter.id);
     } catch (e) {
@@ -237,7 +237,7 @@ export function PromptStudioPage() {
       });
       setSelectedPreset(res.data.preset);
       await reloadAll();
-      toast.toastSuccess("已保存预设");
+      toast.toastSuccess(UI_COPY.promptStudio.toastPresetSaved);
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -331,7 +331,7 @@ export function PromptStudioPage() {
             triggers: formatTriggers(res.data.block.triggers ?? []),
           },
         }));
-        toast.toastSuccess("已保存块");
+        toast.toastSuccess(UI_COPY.promptStudio.toastBlockSaved);
       } catch (e) {
         const err = e as ApiError;
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -346,9 +346,11 @@ export function PromptStudioPage() {
     async (blockId: string) => {
       const b = blocks.find((x) => x.id === blockId);
       const ok = await confirm.confirm({
-        title: "删除块？",
-        description: b ? `将删除提示块“${b.name}”。该操作不可撤销。` : "将删除该提示块。",
-        confirmText: "删除",
+        title: UI_COPY.promptStudio.confirmDeleteBlockTitle,
+        description: b
+          ? `将删除提示块“${b.name}”。该操作不可撤销。`
+          : UI_COPY.promptStudio.confirmDeleteBlockDescFallback,
+        confirmText: UI_COPY.promptStudio.confirmDeleteBlockConfirm,
         danger: true,
       });
       if (!ok) return;
@@ -362,7 +364,7 @@ export function PromptStudioPage() {
           delete next[blockId];
           return next;
         });
-        toast.toastSuccess("已删除块");
+        toast.toastSuccess(UI_COPY.promptStudio.toastBlockDeleted);
       } catch (e) {
         const err = e as ApiError;
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -383,7 +385,7 @@ export function PromptStudioPage() {
           body: JSON.stringify({ ordered_block_ids: orderedIds }),
         });
         setBlocks(res.data.blocks ?? []);
-        toast.toastSuccess("已更新排序");
+        toast.toastSuccess(UI_COPY.promptStudio.toastReordered);
       } catch (e) {
         const err = e as ApiError;
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -581,21 +583,21 @@ export function PromptStudioPage() {
 
   const tasks = useMemo<PromptStudioTask[]>(
     () => [
-      { key: "outline_generate", label: "outline_generate（大纲）" },
-      { key: "chapter_generate", label: "chapter_generate（章节）" },
-      { key: "plan_chapter", label: "plan_chapter（规划，M3）" },
-      { key: "post_edit", label: "post_edit（润色，M3）" },
-      { key: "chapter_analyze", label: "chapter_analyze（章节分析，P2）" },
-      { key: "chapter_rewrite", label: "chapter_rewrite（章节重写，P2）" },
+      { key: "outline_generate", label: UI_COPY.promptStudio.tasks.outlineGenerate },
+      { key: "chapter_generate", label: UI_COPY.promptStudio.tasks.chapterGenerate },
+      { key: "plan_chapter", label: UI_COPY.promptStudio.tasks.planChapter },
+      { key: "post_edit", label: UI_COPY.promptStudio.tasks.postEdit },
+      { key: "chapter_analyze", label: UI_COPY.promptStudio.tasks.chapterAnalyze },
+      { key: "chapter_rewrite", label: UI_COPY.promptStudio.tasks.chapterRewrite },
     ],
     [],
   );
 
-  if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
+  if (!projectId) return <div className="text-subtext">{UI_COPY.promptStudio.missingProjectId}</div>;
   if (loading) {
     return (
       <div className="grid gap-6" aria-busy="true" aria-live="polite">
-        <span className="sr-only">正在加载提示词工作室…</span>
+        <span className="sr-only">{UI_COPY.promptStudio.loadingA11y}</span>
         <div className="panel p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="grid gap-2">
@@ -663,39 +665,39 @@ export function PromptStudioPage() {
       <div className="panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-lg font-semibold">提示词工作室（beta）</div>
+            <div className="text-lg font-semibold">{UI_COPY.promptStudio.titleBeta}</div>
             <div className="text-xs text-subtext">
-              预览通过后端渲染接口生成。{" "}
+              {UI_COPY.promptStudio.previewNote}{" "}
               <Link className="underline" to={`/projects/${projectId}/prompts`}>
-                返回模型配置
+                {UI_COPY.promptStudio.backToPrompts}
               </Link>
               {" · "}
               <Link className="underline" to={`/projects/${projectId}/prompt-templates`}>
-                新手：Prompt 模板
+                {UI_COPY.promptStudio.newbiePromptTemplates}
               </Link>
               {" · "}
               <Link className="underline" to={`/projects/${projectId}/writing`}>
-                去写作
+                {UI_COPY.promptStudio.goWriting}
               </Link>
             </div>
           </div>
-          <div className="text-xs text-subtext">{busy || importBusy || bulkBusy ? "处理中…" : ""}</div>
+          <div className="text-xs text-subtext">
+            {busy || importBusy || bulkBusy ? UI_COPY.promptStudio.processing : ""}
+          </div>
         </div>
 
         <div className="mt-3 grid gap-3">
-          <div className="text-sm text-subtext">在这里管理预设与提示块，并生成后端渲染预览。</div>
+          <div className="text-sm text-subtext">{UI_COPY.promptStudio.intro}</div>
           <DebugDetails title={UI_COPY.help.title}>
             <div className="grid gap-2 text-xs text-subtext">
-              <div>推荐流程：模型配置 →（新手模板/工作室）→ 大纲生成 → 章节生成 → 记忆更新。</div>
-              <div>快速开始：选中预设 → 编辑模板片段 → 右侧预览 → 回到写作页点击“AI 生成”。</div>
-              <div className="text-amber-700 dark:text-amber-300">
-                提示：这里是高级模式；若你只想改“关键提示词”，建议从“新手：Prompt 模板”开始。
-              </div>
+              <div>{UI_COPY.promptStudio.recommendedFlow}</div>
+              <div>{UI_COPY.promptStudio.quickStart}</div>
+              <div className="text-amber-700 dark:text-amber-300">{UI_COPY.promptStudio.advancedHint}</div>
             </div>
           </DebugDetails>
           <details className="rounded-atelier border border-border bg-surface/50 p-3">
             <summary className="ui-transition-fast cursor-pointer text-sm hover:text-ink">
-              概念说明（预设/提示块/优先级）
+              {UI_COPY.promptStudio.conceptTitle}
             </summary>
             <div className="mt-2 grid gap-1 text-sm text-subtext">
               <div>
@@ -718,7 +720,7 @@ export function PromptStudioPage() {
             disabled={busy || importBusy}
             type="button"
           >
-            一键启用推荐预设（大纲/章节）
+            {UI_COPY.promptStudio.enableRecommendedPresets}
           </button>
         </div>
       </div>
