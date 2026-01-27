@@ -222,7 +222,7 @@ export function FractalPage() {
                 </button>
               </div>
             </div>
-            <pre className="mt-2 max-h-96 overflow-auto text-xs text-ink">
+            <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-ink">
               {result?.prompt_block?.text_md || "（空）"}
             </pre>
           </div>
@@ -255,7 +255,7 @@ export function FractalPage() {
                 {v2?.error_type ? ` | error_type=${v2.error_type}` : ""}
               </div>
             ) : null}
-            <pre className="mt-2 max-h-96 overflow-auto text-xs text-ink">
+            <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-ink">
               {result?.prompt_block_v2?.text_md || "（空）"}
             </pre>
           </div>
@@ -288,7 +288,7 @@ export function FractalPage() {
                   {UI_COPY.common.copy}
                 </button>
               </div>
-              <pre className="mt-2 max-h-64 overflow-auto text-xs text-ink">
+              <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-ink">
                 {JSON.stringify(v2.parse_error, null, 2)}
               </pre>
             </div>
@@ -310,7 +310,7 @@ export function FractalPage() {
                 {UI_COPY.common.copy}
               </button>
             </div>
-            <pre className="mt-2 max-h-64 overflow-auto text-xs text-ink">
+            <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-ink">
               {JSON.stringify(result?.config ?? {}, null, 2)}
             </pre>
           </div>
