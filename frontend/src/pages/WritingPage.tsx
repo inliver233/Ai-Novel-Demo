@@ -431,7 +431,7 @@ export function WritingPage() {
                 <label className="grid gap-1 sm:col-span-2">
                   <span className="text-xs text-subtext">标题</span>
                   <input
-                    className="input"
+                    className="input-underline font-content text-xl"
                     name="title"
                     value={form.title}
                     onChange={(e) => {
