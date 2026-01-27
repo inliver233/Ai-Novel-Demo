@@ -752,7 +752,8 @@ export function PromptsPage() {
 
   if (loading) {
     return (
-      <div className="grid gap-6 pb-24">
+      <div className="grid gap-6 pb-24" aria-busy="true" aria-live="polite">
+        <span className="sr-only">正在加载模型配置…</span>
         <div className="panel p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="grid gap-2">
