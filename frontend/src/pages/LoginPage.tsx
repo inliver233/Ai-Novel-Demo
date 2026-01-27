@@ -38,7 +38,17 @@ export function LoginPage() {
         <div className="w-full">
           <div className="surface p-6 sm:p-8">
             <div className="font-content text-2xl text-ink">{UI_COPY.auth.loginTitle}</div>
-            <div className="mt-1 text-sm text-subtext">{UI_COPY.auth.loginSubtitle}</div>
+            <div className="mt-1 grid gap-1 text-sm text-subtext">
+              <div>{UI_COPY.auth.loginSubtitle}</div>
+              {nextPath !== "/" ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span>登录后将返回：</span>
+                  <span className="max-w-full truncate rounded border border-border bg-surface px-2 py-0.5 font-mono text-[11px] text-ink">
+                    {nextPath}
+                  </span>
+                </div>
+              ) : null}
+            </div>
 
             {auth.status === "dev_fallback" ? (
               <div className="mt-4 grid gap-3">
