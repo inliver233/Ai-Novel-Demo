@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
 import type { LLMProfile, LLMProvider } from "../../types";
@@ -34,11 +35,64 @@ type Props = {
   onClearApiKey: () => void;
 };
 
+function getJsonParseErrorPosition(message: string): number | null {
+  const m = message.match(/\bposition\s+(\d+)\b/i);
+  if (!m) return null;
+  const pos = Number(m[1]);
+  return Number.isFinite(pos) ? pos : null;
+}
+
+function getLineAndColumnFromPosition(text: string, position: number): { line: number; column: number } | null {
+  if (!Number.isFinite(position) || position < 0 || position > text.length) return null;
+  const before = text.slice(0, position);
+  const parts = before.split(/\r?\n/);
+  const line = parts.length;
+  const column = parts[parts.length - 1].length + 1;
+  return { line, column };
+}
+
+function validateExtraJson(
+  raw: string,
+): { ok: true; value: unknown } | { ok: false; message: string; position?: number; line?: number; column?: number } {
+  const trimmed = (raw ?? "").trim();
+  const effective = trimmed ? raw : "{}";
+  try {
+    return { ok: true, value: JSON.parse(effective) };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    const position = getJsonParseErrorPosition(message);
+    const lc = position !== null ? getLineAndColumnFromPosition(effective, position) : null;
+    return {
+      ok: false,
+      message,
+      ...(position !== null ? { position } : {}),
+      ...(lc ? lc : {}),
+    };
+  }
+}
+
 export function LlmPresetPanel(props: Props) {
+  const extraRaw = props.llmForm.extra;
+  const setLlmForm = props.setLlmForm;
+
   const selectedProfile = props.selectedProfileId
     ? (props.profiles.find((p) => p.id === props.selectedProfileId) ?? null)
     : null;
   const testDisabledReason = (props.testConnectionDisabledReason ?? "").trim();
+
+  const extraValidation = useMemo(() => validateExtraJson(extraRaw), [extraRaw]);
+  const extraErrorText = extraValidation.ok
+    ? ""
+    : `extra JSON 无效${extraValidation.line ? `（第 ${extraValidation.line} 行，第 ${extraValidation.column ?? 1} 列）` : ""}：${extraValidation.message}`;
+
+  const onFormatExtra = useCallback(() => {
+    const parsed = validateExtraJson(extraRaw);
+    if (!parsed.ok) return;
+    setLlmForm((v) => ({
+      ...v,
+      extra: JSON.stringify(parsed.value, null, 2),
+    }));
+  }, [extraRaw, setLlmForm]);
 
   const maxTokensHint = (() => {
     if (!props.capabilities) return "";
@@ -62,7 +116,7 @@ export function LlmPresetPanel(props: Props) {
           <div className="flex gap-2">
             <button
               className="btn btn-secondary"
-              disabled={props.testing || props.profileBusy || Boolean(testDisabledReason)}
+              disabled={props.testing || props.profileBusy || Boolean(testDisabledReason) || !extraValidation.ok}
               onClick={props.onTestConnection}
               type="button"
             >
@@ -70,7 +124,7 @@ export function LlmPresetPanel(props: Props) {
             </button>
             <button
               className="btn btn-primary"
-              disabled={!props.presetDirty || props.saving}
+              disabled={!props.presetDirty || props.saving || !extraValidation.ok}
               onClick={props.onSave}
               type="button"
             >
@@ -78,6 +132,9 @@ export function LlmPresetPanel(props: Props) {
             </button>
           </div>
           {testDisabledReason ? <div className="text-[11px] text-subtext">{testDisabledReason}</div> : null}
+          {extraErrorText ? (
+            <div className="text-[11px] text-amber-600 dark:text-amber-400">{extraErrorText}</div>
+          ) : null}
         </div>
       </div>
 
@@ -227,7 +284,17 @@ export function LlmPresetPanel(props: Props) {
             />
           </label>
           <label className="grid gap-1 sm:col-span-3">
-            <span className="text-xs text-subtext">额外参数（extra，JSON）</span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-subtext">额外参数（extra，JSON）</span>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={props.profileBusy || !extraValidation.ok}
+                onClick={onFormatExtra}
+                type="button"
+              >
+                一键格式化
+              </button>
+            </div>
             <textarea
               className="textarea atelier-mono"
               name="extra"
@@ -239,6 +306,7 @@ export function LlmPresetPanel(props: Props) {
               必须是合法 JSON。示例：<span className="font-mono">{'{"response_format":{"type":"json_object"}}'}</span>
               。不要在 extra 里填写 API Key。
             </div>
+            {extraErrorText ? <div className="text-xs text-amber-600 dark:text-amber-400">{extraErrorText}</div> : null}
           </label>
         </div>
       </details>
