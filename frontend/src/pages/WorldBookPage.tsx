@@ -1217,7 +1217,9 @@ export function WorldBookPage() {
                     {UI_COPY.worldbook.previewTriggeredSuffix}
                   </span>
                   {previewResult.truncated ? (
-                    <span className="text-warning">{UI_COPY.worldbook.previewTruncated}</span>
+                    <Badge className="shrink-0" tone="warning">
+                      {UI_COPY.worldbook.previewTruncated}
+                    </Badge>
                   ) : null}
                 </div>
                 <details open>
@@ -1526,7 +1528,9 @@ export function WorldBookPage() {
                       {UI_COPY.worldbook.previewTriggeredSuffix}
                     </span>
                     {previewResult.truncated ? (
-                      <span className="text-warning">{UI_COPY.worldbook.previewTruncated}</span>
+                      <Badge className="shrink-0" tone="warning">
+                        {UI_COPY.worldbook.previewTruncated}
+                      </Badge>
                     ) : null}
                   </div>
                   <details>
