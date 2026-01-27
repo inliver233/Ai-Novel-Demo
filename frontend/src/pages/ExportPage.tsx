@@ -70,7 +70,7 @@ export function ExportPage() {
 
   return (
     <div className="grid gap-6 pb-24">
-      <section className="panel p-6">
+      <section className="panel p-8">
         <div className="flex items-start justify-between gap-4">
           <div className="grid gap-2">
             <div className="font-content text-xl">导出 Markdown</div>
