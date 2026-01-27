@@ -129,7 +129,10 @@ export function LoginPage() {
               </button>
             </div>
           </div>
-          <div className="mt-4 text-center text-xs text-subtext">{UI_COPY.auth.loginFooterHint}</div>
+          <div className="mt-4 text-center text-xs text-subtext">
+            <div>{UI_COPY.auth.loginFooterHint}</div>
+            <div className="mt-1">忘记密码？当前版本请联系管理员重置（MVP 暂不支持自助找回）。</div>
+          </div>
         </div>
       </div>
     </div>
