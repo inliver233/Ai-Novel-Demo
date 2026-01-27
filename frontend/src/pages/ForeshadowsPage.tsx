@@ -193,16 +193,14 @@ export function ForeshadowsPage() {
   return (
     <DebugPageShell
       title="伏笔时间线"
-      description={
-        <>
-          列出未回收伏笔（open loops），支持筛选/排序与标记回收（可选关联章节用于回溯）。{" "}
-          <RequestIdBadge requestId={requestId} className="ml-2" />
-        </>
-      }
+      description={<>列出未回收伏笔（open loops），支持筛选/排序与标记回收（可选关联章节用于回溯）。</>}
       actions={
-        <button className="btn btn-secondary" onClick={() => void fetchOpenLoops()} disabled={loading} type="button">
-          {loading ? "刷新中..." : "刷新"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <RequestIdBadge requestId={requestId} />
+          <button className="btn btn-secondary" onClick={() => void fetchOpenLoops()} disabled={loading} type="button">
+            {loading ? "刷新中..." : "刷新"}
+          </button>
+        </div>
       }
     >
       <DebugDetails title="帮助">
