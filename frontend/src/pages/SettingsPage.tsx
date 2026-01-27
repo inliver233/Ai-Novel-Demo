@@ -739,6 +739,17 @@ export function SettingsPage() {
     baselineSettings.vector_embedding_effective_provider ||
     "openai_compatible"
   ).trim();
+  const queryPreprocessCfg = queryPreprocessFromForm(settingsForm);
+  const queryPreprocessErr = settingsForm.query_preprocessing_enabled
+    ? validateQueryPreprocess(queryPreprocessCfg)
+    : null;
+  const queryPreprocessErrField = queryPreprocessErr
+    ? queryPreprocessErr.startsWith("tags") || queryPreprocessErr.startsWith("tag")
+      ? "tags"
+      : queryPreprocessErr.startsWith("exclusion_rule") || queryPreprocessErr.startsWith("exclusion_rules")
+        ? "exclusion_rules"
+        : null
+    : null;
 
   return (
     <div className="grid gap-6 pb-24">
@@ -1127,6 +1138,9 @@ export function SettingsPage() {
                       placeholder={"例如：\nfoo\nbar"}
                     />
                     <div className="text-[11px] text-subtext">最大 50 条；每条最多 64 字符。</div>
+                    {queryPreprocessErr && queryPreprocessErrField === "tags" ? (
+                      <div className="text-xs text-amber-600 dark:text-amber-400">{queryPreprocessErr}</div>
+                    ) : null}
                   </label>
 
                   <label className="grid gap-1">
@@ -1142,6 +1156,9 @@ export function SettingsPage() {
                       placeholder={"例如：\n忽略这段\nREMOVE"}
                     />
                     <div className="text-[11px] text-subtext">最大 50 条；每条最多 256 字符。</div>
+                    {queryPreprocessErr && queryPreprocessErrField === "exclusion_rules" ? (
+                      <div className="text-xs text-amber-600 dark:text-amber-400">{queryPreprocessErr}</div>
+                    ) : null}
                   </label>
                 </div>
 
