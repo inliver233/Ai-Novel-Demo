@@ -181,12 +181,12 @@ export function DashboardPage() {
         }}
       >
         <button
-          className="ui-focus-ring ui-transition-fast group rounded-atelier border border-border border-dashed bg-surface p-6 text-left hover:bg-surface-hover hover:border-accent/35 motion-safe:will-change-transform motion-safe:hover:-translate-y-[2px] motion-safe:hover:shadow-[var(--shadow-panel-hover)] motion-safe:active:translate-y-0 motion-safe:active:scale-[var(--motion-scale-press)]"
+          className="panel-interactive ui-focus-ring group relative flex aspect-[3/4] flex-col items-center justify-center gap-2 border-dashed p-5 text-center"
           onClick={() => setCreateOpen(true)}
           type="button"
         >
           <div className="font-content text-2xl text-ink">+</div>
-          <div className="mt-2 text-sm text-subtext">新建项目</div>
+          <div className="text-sm text-subtext">新建项目</div>
         </button>
 
         <div className="panel p-6">
