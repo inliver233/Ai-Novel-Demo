@@ -354,10 +354,19 @@ export function ImportPage() {
     <DebugPageShell
       title="导入小说/资料"
       description={
-        <div className="grid gap-1">
-          <div>上传 txt/md → 后端切分 chunk → 写入向量 KB（默认禁用）并生成提案。</div>
+        <div className="grid gap-2">
+          <div>流程：上传 txt/md → 后端切分 chunk →（可选）写入向量 KB → 生成提案（proposal）。</div>
+          <ul className="grid list-disc gap-1 pl-5 text-xs text-subtext">
+            <li>
+              世界书（worldbook）：会生成 WorldBookEntry
+              的候选条目；应用后可在「世界书」页查看，也可在写作时用于上下文注入。
+            </li>
+            <li>故事记忆（story_memory）：会生成 StoryMemory 的候选条目；应用后可在记忆预览/检索中命中。</li>
+            <li>向量 KB（vector_kb / kb）：用于 RAG 语义检索（可在「RAG」页管理）。</li>
+            <li>Chunk（chunk）：系统切分后的文本片段（用于检索与溯源）。</li>
+          </ul>
           <div className="text-amber-700 dark:text-amber-300">
-            提示：导入后请先预览，再选择性应用到 WorldBook / story_memory（默认不会自动污染长期记忆）。
+            提示：导入后请先预览，再选择性应用（默认不会自动写入长期记忆）。
           </div>
         </div>
       }
@@ -539,8 +548,8 @@ export function ImportPage() {
                     </button>
                   </div>
                   <div className="text-xs text-subtext">
-                    WorldBook：将导入摘要写入 WorldBookEntry。story_memory：将导入摘要写入 StoryMemory（可用于 memory
-                    preview / 检索）。
+                    世界书（worldbook）：写入 WorldBookEntry（应用后在「世界书」页可见）。故事记忆（story_memory）：写入
+                    StoryMemory （应用后在记忆预览/检索中可命中）。
                   </div>
                 </div>
 
