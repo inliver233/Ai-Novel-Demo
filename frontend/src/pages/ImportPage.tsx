@@ -37,6 +37,12 @@ type ImportChunk = {
   vector_chunk_id: string | null;
 };
 
+type ProposalPreview = {
+  summary: string;
+  sampleTitles: string[];
+  keys: string[];
+};
+
 function humanizeStatus(status: string): string {
   const s = (status || "").trim().toLowerCase();
   if (s === "queued") return "排队中";
@@ -85,6 +91,50 @@ export function ImportPage() {
   }, [documents, selectedId]);
 
   const statusDoc = useMemo(() => selectedDoc ?? detail?.document ?? null, [detail?.document, selectedDoc]);
+  const proposalPreview = useMemo(() => {
+    const summarize = (value: unknown, arrayKeys: string[]): ProposalPreview => {
+      if (value == null) return { summary: "（空）", sampleTitles: [], keys: [] };
+      if (Array.isArray(value)) {
+        const sampleTitles = value
+          .map((it) => {
+            if (!it || typeof it !== "object") return "";
+            const o = it as Record<string, unknown>;
+            const title = typeof o.title === "string" ? o.title : typeof o.name === "string" ? o.name : "";
+            return title.trim();
+          })
+          .filter(Boolean)
+          .slice(0, 8);
+        return { summary: `array(${value.length})`, sampleTitles, keys: [] };
+      }
+      if (typeof value !== "object") return { summary: String(value), sampleTitles: [], keys: [] };
+      const obj = value as Record<string, unknown>;
+      const keys = Object.keys(obj);
+      for (const key of arrayKeys) {
+        const arr = obj[key];
+        if (!Array.isArray(arr)) continue;
+        const sampleTitles = arr
+          .map((it) => {
+            if (!it || typeof it !== "object") return "";
+            const o = it as Record<string, unknown>;
+            const title = typeof o.title === "string" ? o.title : typeof o.name === "string" ? o.name : "";
+            return title.trim();
+          })
+          .filter(Boolean)
+          .slice(0, 8);
+        return { summary: `${key}: ${arr.length}`, sampleTitles, keys };
+      }
+      return {
+        summary: keys.length ? `keys: ${keys.slice(0, 8).join(", ")}${keys.length > 8 ? "…" : ""}` : "(empty)",
+        sampleTitles: [],
+        keys,
+      };
+    };
+
+    return {
+      worldbook: summarize(detail?.worldbook_proposal, ["entries", "worldbook_entries", "items"]),
+      storyMemory: summarize(detail?.story_memory_proposal, ["memories", "items", "records"]),
+    };
+  }, [detail?.story_memory_proposal, detail?.worldbook_proposal]);
 
   const pollStatus = String(selectedDoc?.status ?? detail?.document.status ?? "")
     .trim()
@@ -491,6 +541,28 @@ export function ImportPage() {
                   <div className="text-xs text-subtext">
                     WorldBook：将导入摘要写入 WorldBookEntry。story_memory：将导入摘要写入 StoryMemory（可用于 memory
                     preview / 检索）。
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <div className="text-xs text-subtext">WorldBook 提案预览</div>
+                  <div className="rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                    <div>{proposalPreview.worldbook.summary}</div>
+                    {proposalPreview.worldbook.sampleTitles.length ? (
+                      <div className="mt-1 text-subtext">示例：{proposalPreview.worldbook.sampleTitles.join("、")}</div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <div className="text-xs text-subtext">story_memory 提案预览</div>
+                  <div className="rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                    <div>{proposalPreview.storyMemory.summary}</div>
+                    {proposalPreview.storyMemory.sampleTitles.length ? (
+                      <div className="mt-1 text-subtext">
+                        示例：{proposalPreview.storyMemory.sampleTitles.join("、")}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
