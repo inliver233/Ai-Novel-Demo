@@ -2,7 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import { Modal } from "../components/ui/Modal";
+import { Drawer } from "../components/ui/Drawer";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { ApiError, apiJson } from "../services/apiClient";
@@ -339,12 +339,13 @@ export function StylesPage() {
         </div>
       </div>
 
-      <Modal
+      <Drawer
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         ariaLabel={modalMode === "create" ? "新建风格" : "编辑风格"}
+        panelClassName="h-[92vh] w-full overflow-y-auto border-l border-border bg-canvas p-6 shadow-sm sm:h-full sm:max-w-3xl sm:p-8"
       >
-        <div className="panel w-full max-w-2xl p-5">
+        <div className="panel w-full p-5">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="font-content text-xl text-ink">{modalMode === "create" ? "新建风格" : "编辑风格"}</div>
@@ -379,7 +380,7 @@ export function StylesPage() {
             <label className="block">
               <div className="text-xs text-subtext">风格提示词（prompt_content）</div>
               <textarea
-                className="textarea mt-1 min-h-[180px] font-mono text-xs"
+                className="textarea mt-1 min-h-[320px] font-mono text-xs sm:min-h-[520px]"
                 value={draftPromptContent}
                 onChange={(e) => setDraftPromptContent(e.target.value)}
                 placeholder="写作要求：..."
@@ -406,7 +407,7 @@ export function StylesPage() {
             </div>
           </div>
         </div>
-      </Modal>
+      </Drawer>
     </div>
   );
 }
