@@ -638,7 +638,7 @@ export function TablesPanel(props: { open: boolean; onClose: () => void; project
                                 return (
                                   <td key={c.key} className="border-b border-border px-2 py-2 align-top">
                                     <textarea
-                                      className="textarea min-h-10 w-64 text-sm"
+                                      className="textarea-underline min-h-10 w-64 border-transparent py-1 text-sm hover:border-border hover:bg-surface/50 focus:bg-surface/50"
                                       aria-label={`cell_${r.id}_${c.key}`}
                                       value={toInputString(value)}
                                       onChange={(e) =>
@@ -654,7 +654,7 @@ export function TablesPanel(props: { open: boolean; onClose: () => void; project
                               return (
                                 <td key={c.key} className="border-b border-border px-2 py-2 align-top">
                                   <input
-                                    className="input w-56 text-sm"
+                                    className="input-underline w-56 border-transparent py-1 text-sm hover:border-border hover:bg-surface/50 focus:bg-surface/50"
                                     aria-label={`cell_${r.id}_${c.key}`}
                                     inputMode={type === "number" ? "numeric" : undefined}
                                     value={toInputString(value)}
