@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { RequestIdBadge } from "../components/ui/RequestIdBadge";
 import { useToast } from "../components/ui/toast";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { useAuth } from "../contexts/auth";
@@ -1276,7 +1277,7 @@ export function SettingsPage() {
 
                   {qpPreview ? (
                     <div className="mt-3 grid gap-3">
-                      <div className="text-xs text-subtext">request_id: {qpPreview.requestId}</div>
+                      <RequestIdBadge requestId={qpPreview.requestId} />
                       <div>
                         <div className="text-xs text-subtext">normalized_query_text</div>
                         <pre className="mt-1 max-h-40 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
