@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { Drawer } from "../components/ui/Drawer";
+import { RequestIdBadge } from "../components/ui/RequestIdBadge";
 import { useToast } from "../components/ui/toast";
 import { MemoryUpdateDrawer } from "../components/writing/MemoryUpdateDrawer";
 import { useProjectData } from "../hooks/useProjectData";
@@ -161,6 +162,7 @@ export function StructuredMemoryPage() {
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [queryText, setQueryText] = useState("");
+  const [requestId, setRequestId] = useState<string | null>(null);
 
   const [memoryUpdateOpen, setMemoryUpdateOpen] = useState(false);
   const [bulkOpsOpen, setBulkOpsOpen] = useState(false);
@@ -173,13 +175,21 @@ export function StructuredMemoryPage() {
       if (queryText.trim()) params.set("q", queryText.trim());
       params.set("limit", "50");
 
-      const res = await apiJson<StructuredMemoryResponse>(`/api/projects/${id}/memory/structured?${params.toString()}`);
-      const data = res.data as unknown as StructuredMemoryResponse;
-      const counts = toCountMap(data.counts);
-      const cursor = (data.cursor?.[activeTable] ?? null) as string | null;
-      const items = toRowItems(data[activeTable]);
+      try {
+        const res = await apiJson<StructuredMemoryResponse>(
+          `/api/projects/${id}/memory/structured?${params.toString()}`,
+        );
+        setRequestId(res.request_id ?? null);
+        const data = res.data as unknown as StructuredMemoryResponse;
+        const counts = toCountMap(data.counts);
+        const cursor = (data.cursor?.[activeTable] ?? null) as string | null;
+        const items = toRowItems(data[activeTable]);
 
-      return { table: activeTable, q: queryText.trim(), include_deleted: includeDeleted, counts, cursor, items };
+        return { table: activeTable, q: queryText.trim(), include_deleted: includeDeleted, counts, cursor, items };
+      } catch (e) {
+        if (e instanceof ApiError) setRequestId(e.requestId ?? null);
+        throw e;
+      }
     },
     [activeTable, includeDeleted, queryText],
   );
@@ -216,6 +226,7 @@ export function StructuredMemoryPage() {
       const res = await apiJson<StructuredMemoryResponse>(
         `/api/projects/${projectId}/memory/structured?${params.toString()}`,
       );
+      setRequestId(res.request_id ?? null);
       const data = res.data as unknown as StructuredMemoryResponse;
       const nextItems = toRowItems(data[activeTable]);
       const nextCursor = (data.cursor?.[activeTable] ?? null) as string | null;
@@ -235,6 +246,7 @@ export function StructuredMemoryPage() {
         e instanceof ApiError
           ? e
           : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      setRequestId(err.requestId ?? null);
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     }
   }, [activeTable, counts, cursor, includeDeleted, pageQuery, projectId, queryText, toast]);
@@ -344,20 +356,23 @@ export function StructuredMemoryPage() {
             ))}
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              className="checkbox"
-              checked={includeDeleted}
-              onChange={(e) => {
-                setBulkOpsOpen(false);
-                setSelectedIds([]);
-                setIncludeDeleted(e.target.checked);
-              }}
-              aria-label="structured_include_deleted"
-              type="checkbox"
-            />
-            {UI_COPY.structuredMemory.includeDeleted}
-          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <RequestIdBadge requestId={requestId} />
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input
+                className="checkbox"
+                checked={includeDeleted}
+                onChange={(e) => {
+                  setBulkOpsOpen(false);
+                  setSelectedIds([]);
+                  setIncludeDeleted(e.target.checked);
+                }}
+                aria-label="structured_include_deleted"
+                type="checkbox"
+              />
+              {UI_COPY.structuredMemory.includeDeleted}
+            </label>
+          </div>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
