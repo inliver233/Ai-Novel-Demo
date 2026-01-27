@@ -389,18 +389,32 @@ export function WorldBookPage() {
     setBulkExcludedIds([]);
   }, [bulkMode, bulkExcludedIds.length, bulkSelectAllActive, searchText, sortMode]);
 
-  const [visibleEntryCount, setVisibleEntryCount] = useState(WORLD_BOOK_ENTRY_PAGE_SIZE);
+  const [entryPageIndex, setEntryPageIndex] = useState(0);
 
   const paginateEntries = filteredEntries.length > WORLD_BOOK_ENTRY_RENDER_THRESHOLD;
+  const totalEntryPages = paginateEntries ? Math.ceil(filteredEntries.length / WORLD_BOOK_ENTRY_PAGE_SIZE) : 1;
+  const maxEntryPageIndex = Math.max(0, totalEntryPages - 1);
+  const entryPageIndexClamped = Math.min(entryPageIndex, maxEntryPageIndex);
+  const entryPageStart = paginateEntries ? entryPageIndexClamped * WORLD_BOOK_ENTRY_PAGE_SIZE : 0;
+  const entryPageEnd = paginateEntries
+    ? Math.min(entryPageStart + WORLD_BOOK_ENTRY_PAGE_SIZE, filteredEntries.length)
+    : filteredEntries.length;
 
   useEffect(() => {
-    if (!paginateEntries) return;
-    setVisibleEntryCount(WORLD_BOOK_ENTRY_PAGE_SIZE);
-  }, [paginateEntries, searchText, sortMode]);
+    setEntryPageIndex(0);
+  }, [searchText, sortMode]);
+
+  useEffect(() => {
+    if (!paginateEntries) {
+      if (entryPageIndex !== 0) setEntryPageIndex(0);
+      return;
+    }
+    if (entryPageIndexClamped !== entryPageIndex) setEntryPageIndex(entryPageIndexClamped);
+  }, [entryPageIndex, entryPageIndexClamped, paginateEntries]);
 
   const visibleEntries = useMemo(
-    () => (paginateEntries ? filteredEntries.slice(0, visibleEntryCount) : filteredEntries),
-    [filteredEntries, paginateEntries, visibleEntryCount],
+    () => (paginateEntries ? filteredEntries.slice(entryPageStart, entryPageEnd) : filteredEntries),
+    [entryPageEnd, entryPageStart, filteredEntries, paginateEntries],
   );
 
   const dirty = useMemo(() => {
@@ -1067,19 +1081,32 @@ export function WorldBookPage() {
           {paginateEntries ? (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-subtext">
               <div>
-                已显示 {visibleEntries.length}/{filteredEntries.length} 条（超过 {WORLD_BOOK_ENTRY_RENDER_THRESHOLD}{" "}
-                条时分页渲染）
+                已显示 {entryPageStart + 1}-{entryPageEnd}/{filteredEntries.length} 条（超过{" "}
+                {WORLD_BOOK_ENTRY_RENDER_THRESHOLD} 条时分页渲染）
+                <span className="ml-2">
+                  第 {entryPageIndexClamped + 1}/{totalEntryPages} 页
+                </span>
               </div>
-              {visibleEntries.length < filteredEntries.length ? (
+              <div className="flex flex-wrap gap-2">
                 <button
                   className="btn btn-secondary"
-                  onClick={() => setVisibleEntryCount((prev) => prev + WORLD_BOOK_ENTRY_PAGE_SIZE)}
+                  disabled={entryPageIndexClamped === 0}
+                  onClick={() => setEntryPageIndex((prev) => Math.max(0, prev - 1))}
+                  aria-label="worldbook_page_prev"
+                  type="button"
+                >
+                  上一页
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  disabled={entryPageIndexClamped >= totalEntryPages - 1}
+                  onClick={() => setEntryPageIndex((prev) => Math.min(totalEntryPages - 1, prev + 1))}
                   aria-label="worldbook_load_more"
                   type="button"
                 >
-                  显示更多
+                  下一页
                 </button>
-              ) : null}
+              </div>
             </div>
           ) : null}
         </div>
