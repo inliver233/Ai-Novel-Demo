@@ -358,7 +358,7 @@ export function RagQueryPanel(props: {
 
             <details className="mt-3 rounded-atelier border border-border bg-canvas p-3">
               <summary className="cursor-pointer select-none text-xs">final.chunks（按 source/chapter 分组）</summary>
-              <div className="mt-2 grid gap-2">
+              <div className="mt-2 grid max-h-96 gap-2 overflow-auto overscroll-contain pr-1">
                 {finalChunks.length === 0 ? (
                   <div className="text-[11px] text-subtext">（空）</div>
                 ) : (
@@ -383,14 +383,14 @@ export function RagQueryPanel(props: {
                                     {c.distance != null ? ` | distance:${c.distance.toFixed(4)}` : ""}
                                     {c.title ? ` | ${c.title}` : ""}
                                   </summary>
-                                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-atelier border border-border bg-canvas p-2 text-[11px] leading-4 text-subtext">
+                                  <pre className="mt-2 whitespace-pre-wrap rounded-atelier border border-border bg-canvas p-2 text-[11px] leading-4 text-subtext">
                                     {(c.text || "").trim() || "（空）"}
                                   </pre>
                                   <details className="mt-2">
                                     <summary className="cursor-pointer select-none text-[11px] text-subtext hover:text-ink">
                                       metadata
                                     </summary>
-                                    <pre className="mt-2 max-h-48 overflow-auto rounded-atelier border border-border bg-canvas p-2 text-[11px] leading-4 text-subtext">
+                                    <pre className="mt-2 whitespace-pre-wrap rounded-atelier border border-border bg-canvas p-2 text-[11px] leading-4 text-subtext">
                                       {safeJson(c.metadata)}
                                     </pre>
                                   </details>
