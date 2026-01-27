@@ -417,6 +417,14 @@ export function WorldBookPage() {
     [entryPageEnd, entryPageStart, filteredEntries, paginateEntries],
   );
 
+  const bulkVisibleSelectedCount = useMemo(() => {
+    if (!bulkMode) return 0;
+    if (bulkSelectAllActive) return visibleEntries.filter((e) => !bulkExcludedSet.has(e.id)).length;
+    return visibleEntries.filter((e) => bulkSelectedExplicitSet.has(e.id)).length;
+  }, [bulkExcludedSet, bulkMode, bulkSelectAllActive, bulkSelectedExplicitSet, visibleEntries]);
+
+  const bulkHiddenSelectedCount = Math.max(0, bulkSelectedCount - bulkVisibleSelectedCount);
+
   const dirty = useMemo(() => {
     if (!baseline) return false;
     return (
@@ -853,6 +861,9 @@ export function WorldBookPage() {
                   {UI_COPY.worldbook.bulkSelectedPrefix}
                   {bulkSelectedCount}
                   {UI_COPY.worldbook.bulkSelectedSuffix}
+                  {bulkHiddenSelectedCount > 0 ? (
+                    <span className="ml-2">（含 {bulkHiddenSelectedCount} 个未显示）</span>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
