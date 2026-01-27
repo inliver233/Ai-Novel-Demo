@@ -61,6 +61,8 @@ const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
   ["/prompt-studio", UI_COPY.nav.promptStudio],
 ];
 
+const PAPER_ROUTE_SUFFIXES = ["/settings", "/characters", "/outline", "/preview", "/reader", "/export"];
+
 function resolveTitle(pathname: string): string {
   if (pathname === "/") return UI_COPY.nav.home;
   const match = ROUTE_TITLES.find(([suffix]) => pathname.endsWith(suffix));
@@ -293,15 +295,21 @@ export function AppShell() {
   const location = useLocation();
   const reduceMotion = useReducedMotion();
 
-  const title = useMemo(() => resolveTitle(location.pathname), [location.pathname]);
-  const mainMaxWidth = location.pathname === "/" ? "max-w-5xl" : "max-w-screen-xl";
+  const pathname = location.pathname;
+  const title = useMemo(() => resolveTitle(pathname), [pathname]);
+  const mainMaxWidth =
+    pathname === "/"
+      ? "max-w-5xl"
+      : PAPER_ROUTE_SUFFIXES.some((suffix) => pathname.endsWith(suffix))
+        ? "max-w-4xl"
+        : "max-w-screen-xl";
   const sessionExpireAtText = auth.session?.expireAt ? new Date(auth.session.expireAt * 1000).toLocaleString() : null;
-  const mobileNavOpen = mobileNavOpenForPath === location.pathname;
+  const mobileNavOpen = mobileNavOpenForPath === pathname;
 
   const CollapseIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
   const collapseLabel = collapsed ? "展开侧边栏" : "收起侧边栏";
 
-  const openMobileNav = () => setMobileNavOpenForPath(location.pathname);
+  const openMobileNav = () => setMobileNavOpenForPath(pathname);
   const closeMobileNav = () => setMobileNavOpenForPath(null);
   const openHelp = () => setHelpOpen(true);
   const closeHelp = () => setHelpOpen(false);
@@ -911,7 +919,7 @@ export function AppShell() {
             </div>
           </header>
           <div className={clsx("mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8", mainMaxWidth)}>
-            <PersistentOutlet activeKey={location.pathname} />
+            <PersistentOutlet activeKey={pathname} />
           </div>
         </main>
       </div>
