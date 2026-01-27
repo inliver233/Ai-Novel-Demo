@@ -5,6 +5,7 @@ import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShe
 import { RequestIdBadge } from "../components/ui/RequestIdBadge";
 import { ApiError, apiJson } from "../services/apiClient";
 import { useToast } from "../components/ui/toast";
+import { copyText } from "../lib/copyText";
 import { UI_COPY } from "../lib/uiCopy";
 
 type PromptBlock = {
@@ -48,6 +49,19 @@ export function FractalPage() {
   const [requestId, setRequestId] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [result, setResult] = useState<FractalContext | null>(null);
+
+  const copyPreviewBlock = useCallback(
+    async (text: string, opts: { emptyMessage: string; successMessage: string; dialogTitle: string }) => {
+      if (!text.trim()) {
+        toast.toastError(opts.emptyMessage, requestId ?? undefined);
+        return;
+      }
+      const ok = await copyText(text, { title: opts.dialogTitle });
+      if (ok) toast.toastSuccess(opts.successMessage, requestId ?? undefined);
+      else toast.toastWarning("自动复制失败：已打开手动复制弹窗。", requestId ?? undefined);
+    },
+    [requestId, toast],
+  );
 
   const loadFractal = useCallback(async () => {
     if (!projectId) return;
@@ -190,7 +204,23 @@ export function FractalPage() {
           <div className="rounded-atelier border border-border bg-canvas p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm text-ink">确定性（deterministic）</div>
-              <div className="text-xs text-subtext">{result?.prompt_block?.identifier ?? "-"}</div>
+              <div className="flex items-center gap-2 text-xs text-subtext">
+                <span className="truncate">{result?.prompt_block?.identifier ?? "-"}</span>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={!result?.prompt_block?.text_md}
+                  onClick={() =>
+                    void copyPreviewBlock(result?.prompt_block?.text_md ?? "", {
+                      emptyMessage: "没有可复制的确定性预览",
+                      successMessage: "已复制确定性预览",
+                      dialogTitle: "复制失败：请手动复制确定性预览",
+                    })
+                  }
+                  type="button"
+                >
+                  {UI_COPY.common.copy}
+                </button>
+              </div>
             </div>
             <pre className="mt-2 max-h-96 overflow-auto text-xs text-ink">
               {result?.prompt_block?.text_md || "（空）"}
@@ -200,7 +230,23 @@ export function FractalPage() {
           <div className="rounded-atelier border border-border bg-canvas p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm text-ink">LLM 摘要（v2）</div>
-              <div className="text-xs text-subtext">{result?.prompt_block_v2?.identifier ?? "-"}</div>
+              <div className="flex items-center gap-2 text-xs text-subtext">
+                <span className="truncate">{result?.prompt_block_v2?.identifier ?? "-"}</span>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={!result?.prompt_block_v2?.text_md}
+                  onClick={() =>
+                    void copyPreviewBlock(result?.prompt_block_v2?.text_md ?? "", {
+                      emptyMessage: "没有可复制的 v2 预览",
+                      successMessage: "已复制 v2 预览",
+                      dialogTitle: "复制失败：请手动复制 v2 预览",
+                    })
+                  }
+                  type="button"
+                >
+                  {UI_COPY.common.copy}
+                </button>
+              </div>
             </div>
             {!v2Enabled ? (
               <div className="mt-2 rounded-atelier border border-border bg-surface p-3 text-xs text-subtext">
@@ -226,13 +272,48 @@ export function FractalPage() {
           {v2?.warnings?.length ? <div>v2_warnings: {v2.warnings.join(" | ")}</div> : null}
           {v2?.dropped_params?.length ? <div>v2_dropped_params: {v2.dropped_params.join(" | ")}</div> : null}
           {v2?.parse_error ? (
-            <pre className="max-h-64 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
-              {JSON.stringify(v2.parse_error, null, 2)}
-            </pre>
+            <div className="rounded-atelier border border-border bg-canvas p-3">
+              <div className="flex items-center justify-end">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() =>
+                    void copyPreviewBlock(JSON.stringify(v2.parse_error, null, 2), {
+                      emptyMessage: "还没有可复制的 parse_error",
+                      successMessage: "已复制 parse_error",
+                      dialogTitle: "复制失败：请手动复制 parse_error",
+                    })
+                  }
+                  type="button"
+                >
+                  {UI_COPY.common.copy}
+                </button>
+              </div>
+              <pre className="mt-2 max-h-64 overflow-auto text-xs text-ink">
+                {JSON.stringify(v2.parse_error, null, 2)}
+              </pre>
+            </div>
           ) : null}
-          <pre className="max-h-64 overflow-auto rounded-atelier border border-border bg-canvas p-3 text-xs text-ink">
-            {JSON.stringify(result?.config ?? {}, null, 2)}
-          </pre>
+          <div className="rounded-atelier border border-border bg-canvas p-3">
+            <div className="flex items-center justify-end">
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={!result?.config}
+                onClick={() =>
+                  void copyPreviewBlock(JSON.stringify(result?.config ?? {}, null, 2), {
+                    emptyMessage: "还没有可复制的 config JSON",
+                    successMessage: "已复制 config JSON",
+                    dialogTitle: "复制失败：请手动复制 config JSON",
+                  })
+                }
+                type="button"
+              >
+                {UI_COPY.common.copy}
+              </button>
+            </div>
+            <pre className="mt-2 max-h-64 overflow-auto text-xs text-ink">
+              {JSON.stringify(result?.config ?? {}, null, 2)}
+            </pre>
+          </div>
         </div>
       </DebugDetails>
     </DebugPageShell>
