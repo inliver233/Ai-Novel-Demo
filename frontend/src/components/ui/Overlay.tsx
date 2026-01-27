@@ -37,7 +37,6 @@ export function Overlay(props: {
   onBackdropClick?: () => void;
 }) {
   const reduceMotion = useReducedMotion();
-  const backdropCloseEnabled = Boolean(props.onBackdropClick);
   const closeRef = useRef(props.onBackdropClick);
 
   useEffect(() => {
@@ -50,7 +49,6 @@ export function Overlay(props: {
 
   useEffect(() => {
     if (!props.open) return;
-    if (!backdropCloseEnabled) return;
     const handler = () => closeRef.current?.();
     const stack = _escStack();
     stack.push(handler);
@@ -59,7 +57,7 @@ export function Overlay(props: {
       const idx = nextStack.lastIndexOf(handler);
       if (idx >= 0) nextStack.splice(idx, 1);
     };
-  }, [backdropCloseEnabled, props.open]);
+  }, [props.open]);
 
   return (
     <AnimatePresence>
