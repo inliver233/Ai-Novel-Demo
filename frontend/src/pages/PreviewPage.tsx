@@ -188,6 +188,19 @@ export function PreviewPage() {
     <PaperContent className="grid gap-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
+          <button className="btn btn-ghost px-2 py-1 text-xs" onClick={() => navigate("/")} type="button">
+            <ChevronLeft size={16} />
+            返回首页
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={!projectId}
+            onClick={() => (projectId ? navigate(`/projects/${projectId}/writing`) : undefined)}
+            type="button"
+          >
+            <ChevronLeft size={16} />
+            返回写作
+          </button>
           <button className="btn btn-secondary lg:hidden" onClick={() => setMobileListOpen(true)} type="button">
             <List size={16} />
             章节列表
