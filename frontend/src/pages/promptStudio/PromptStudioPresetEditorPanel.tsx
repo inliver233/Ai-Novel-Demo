@@ -1,10 +1,78 @@
 import clsx from "clsx";
-import type { Dispatch, SetStateAction } from "react";
-import { useMemo, useRef } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type { PromptBlock } from "../../types";
 import type { BlockDraft, PromptStudioTask } from "./types";
 import { formatTriggers, parseTriggersWithValidation } from "./utils";
+
+function highlightTemplateVariables(template: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  const re = /{{[\s\S]*?}}/g;
+  let last = 0;
+  let idx = 0;
+  for (const m of template.matchAll(re)) {
+    const start = m.index ?? 0;
+    if (start > last) out.push(template.slice(last, start));
+    const token = m[0] ?? "";
+    out.push(
+      <span key={`${start}-${idx}`} className="rounded bg-accent/15 px-0.5 text-accent">
+        {token}
+      </span>,
+    );
+    last = start + token.length;
+    idx += 1;
+  }
+  if (last < template.length) out.push(template.slice(last));
+  if (template.endsWith("\n")) out.push("\n");
+  if (out.length === 0) out.push("");
+  return out;
+}
+
+function HighlightedTemplateTextarea(props: { value: string; disabled: boolean; onChange: (next: string) => void }) {
+  const { value, disabled, onChange } = props;
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const overlayContentRef = useRef<HTMLDivElement | null>(null);
+
+  const highlighted = useMemo(() => highlightTemplateVariables(value), [value]);
+
+  const syncOverlayScroll = useCallback(() => {
+    const ta = textareaRef.current;
+    const overlayContent = overlayContentRef.current;
+    if (!ta || !overlayContent) return;
+    overlayContent.style.transform = `translate(${-ta.scrollLeft}px, ${-ta.scrollTop}px)`;
+  }, []);
+
+  useEffect(() => {
+    syncOverlayScroll();
+  }, [syncOverlayScroll, value]);
+
+  return (
+    <div className="relative rounded-atelier bg-canvas">
+      <div
+        aria-hidden="true"
+        className={clsx(
+          "pointer-events-none absolute inset-0 overflow-hidden px-3 py-2 text-xs",
+          disabled ? "opacity-60" : null,
+        )}
+      >
+        <div ref={overlayContentRef} className="whitespace-pre-wrap break-words font-mono text-ink">
+          {highlighted}
+        </div>
+      </div>
+
+      <textarea
+        ref={textareaRef}
+        className="textarea atelier-mono min-h-[140px] resize-y bg-transparent py-2 text-xs text-transparent"
+        style={{ caretColor: "rgb(var(--color-ink))" }}
+        value={value}
+        disabled={disabled}
+        onScroll={syncOverlayScroll}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
 
 export function PromptStudioPresetEditorPanel(props: {
   busy: boolean;
@@ -404,11 +472,10 @@ export function PromptStudioPresetEditorPanel(props: {
 
                   <div className="grid gap-1">
                     <div className="text-xs text-subtext">template</div>
-                    <textarea
-                      className="textarea atelier-mono min-h-[140px] resize-y py-2 text-xs"
+                    <HighlightedTemplateTextarea
                       value={template}
                       disabled={busy}
-                      onChange={(e) =>
+                      onChange={(next) =>
                         setDrafts((prev) => ({
                           ...prev,
                           [b.id]: {
@@ -416,7 +483,7 @@ export function PromptStudioPresetEditorPanel(props: {
                             name,
                             role,
                             enabled,
-                            template: e.target.value,
+                            template: next,
                             marker_key: markerKey,
                             triggers,
                           },
