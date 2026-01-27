@@ -47,6 +47,10 @@ export const UI_COPY = {
     currentProject: "当前项目",
     backToHome: "返回首页",
   },
+  notFound: {
+    title: "页面不存在",
+    description: "我们找不到你要访问的地址。你可以尝试以下入口：",
+  },
   help: {
     title: "术语/帮助",
     subtitle: "常用术语速查 + 页面说明模板（何时用 / 风险 / 示例）。",

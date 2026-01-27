@@ -15,8 +15,8 @@ export function NotFoundPage() {
 
   return (
     <div className="panel p-6">
-      <div className="font-content text-2xl">页面不存在</div>
-      <div className="mt-2 text-sm text-subtext">我们找不到你要访问的地址。你可以尝试以下入口：</div>
+      <div className="font-content text-2xl">{UI_COPY.notFound.title}</div>
+      <div className="mt-2 text-sm text-subtext">{UI_COPY.notFound.description}</div>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button
