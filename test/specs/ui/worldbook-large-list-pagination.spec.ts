@@ -38,6 +38,12 @@ test("ui: worldbook paginates large entry lists (perf guard)", async ({ page, re
   expect(initialCount).toBeGreaterThan(0);
   expect(initialCount).toBeLessThan(entryCount);
 
-  await page.getByLabel("worldbook_load_more", { exact: true }).click();
-  await expect.poll(async () => await cards.count()).toBeGreaterThan(initialCount);
+  await expect(page.getByText(/^第 1\/\d+ 页$/)).toBeVisible();
+
+  const nextPage = page.getByLabel("worldbook_load_more", { exact: true });
+  await expect(nextPage).toBeEnabled();
+  await nextPage.click();
+
+  await expect(page.getByText(/^第 2\/\d+ 页$/)).toBeVisible();
+  await expect(page.getByLabel("worldbook_page_prev", { exact: true })).toBeEnabled();
 });
