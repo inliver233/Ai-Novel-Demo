@@ -72,7 +72,7 @@ export function MarkdownEditor({
   const isReadOnly = Boolean(readOnly);
 
   return (
-    <div className="surface ui-transition-fast focus-within:border-accent/40 focus-within:ring-1 focus-within:ring-accent focus-within:ring-offset-2 focus-within:ring-offset-canvas">
+    <div className="surface ui-transition-fast focus-within:border-accent/40">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <LayoutGroup id={`atelier-markdown-editor-tabs-${motionGroupId}`}>
           <div className="flex gap-1 rounded-atelier bg-surface p-1 text-xs">
