@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 
+import { Badge } from "../components/ui/Badge";
 import { Drawer } from "../components/ui/Drawer";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
@@ -1433,24 +1434,27 @@ export function WorldBookPage() {
                   {previewRequestId ? <span className="ml-2">request_id: {previewRequestId}</span> : null}
                 </div>
               </div>
-              <button
-                className="btn btn-secondary"
-                disabled={previewLoading || dirty}
-                title={dirty ? UI_COPY.worldbook.previewRequiresSaveHint : undefined}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  void runPreview();
-                }}
-                type="button"
-              >
-                {UI_COPY.worldbook.previewRun}
-              </button>
+              <div className="grid justify-items-end gap-1">
+                <button
+                  className="btn btn-secondary"
+                  disabled={previewLoading || dirty}
+                  title={dirty ? UI_COPY.worldbook.previewRequiresSaveHint : undefined}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void runPreview();
+                  }}
+                  type="button"
+                >
+                  {UI_COPY.worldbook.previewRun}
+                </button>
+                {dirty ? (
+                  <Badge className="max-w-[320px] whitespace-normal" tone="warning">
+                    {UI_COPY.worldbook.previewRequiresSaveHint}
+                  </Badge>
+                ) : null}
+              </div>
             </div>
-
-            {dirty ? (
-              <div className="mt-2 text-xs text-warning">{UI_COPY.worldbook.previewRequiresSaveHint}</div>
-            ) : null}
 
             <div className="mt-4 grid gap-3">
               <label className="grid gap-1">
