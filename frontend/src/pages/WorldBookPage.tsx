@@ -155,7 +155,9 @@ export function WorldBookPage() {
   >("updated_desc");
 
   const [bulkMode, setBulkMode] = useState(false);
+  const [bulkSelectAllActive, setBulkSelectAllActive] = useState(false);
   const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
+  const [bulkExcludedIds, setBulkExcludedIds] = useState<string[]>([]);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkPriority, setBulkPriority] = useState<WorldBookPriority>("important");
   const [bulkCharLimit, setBulkCharLimit] = useState(12000);
@@ -168,7 +170,8 @@ export function WorldBookPage() {
   const [importReport, setImportReport] = useState<WorldBookImportAllReport | null>(null);
   const [importLoading, setImportLoading] = useState(false);
 
-  const bulkSelectedSet = useMemo(() => new Set(bulkSelectedIds), [bulkSelectedIds]);
+  const bulkSelectedExplicitSet = useMemo(() => new Set(bulkSelectedIds), [bulkSelectedIds]);
+  const bulkExcludedSet = useMemo(() => new Set(bulkExcludedIds), [bulkExcludedIds]);
 
   const openImportDrawer = useCallback(() => {
     setImportOpen(true);
@@ -274,10 +277,12 @@ export function WorldBookPage() {
   );
 
   useEffect(() => {
-    if (!bulkMode || bulkSelectedIds.length === 0) return;
+    if (!bulkMode) return;
+    if (!bulkSelectAllActive && bulkSelectedIds.length === 0 && bulkExcludedIds.length === 0) return;
     const idSet = new Set(entries.map((e) => e.id));
     setBulkSelectedIds((prev) => prev.filter((id) => idSet.has(id)));
-  }, [bulkMode, bulkSelectedIds.length, entries]);
+    setBulkExcludedIds((prev) => prev.filter((id) => idSet.has(id)));
+  }, [bulkExcludedIds.length, bulkMode, bulkSelectAllActive, bulkSelectedIds.length, entries]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -372,6 +377,17 @@ export function WorldBookPage() {
   }, [entries, searchText, sortMode]);
 
   const filteredEntries = filterState.entries;
+
+  const bulkSelectedCount = bulkSelectAllActive
+    ? Math.max(0, filteredEntries.length - bulkExcludedIds.length)
+    : bulkSelectedIds.length;
+
+  useEffect(() => {
+    if (!bulkMode) return;
+    if (!bulkSelectAllActive) return;
+    if (bulkExcludedIds.length === 0) return;
+    setBulkExcludedIds([]);
+  }, [bulkMode, bulkExcludedIds.length, bulkSelectAllActive, searchText, sortMode]);
 
   const [visibleEntryCount, setVisibleEntryCount] = useState(WORLD_BOOK_ENTRY_PAGE_SIZE);
 
@@ -554,21 +570,40 @@ export function WorldBookPage() {
 
   const setBulkModeSafe = useCallback((next: boolean) => {
     setBulkMode(next);
+    setBulkSelectAllActive(false);
     setBulkSelectedIds([]);
+    setBulkExcludedIds([]);
   }, []);
 
-  const toggleBulkSelected = useCallback((entryId: string) => {
-    setBulkSelectedIds((prev) => {
-      if (prev.includes(entryId)) return prev.filter((id) => id !== entryId);
-      return [...prev, entryId];
-    });
-  }, []);
+  const toggleBulkSelected = useCallback(
+    (entryId: string) => {
+      if (bulkSelectAllActive) {
+        setBulkExcludedIds((prev) => {
+          if (prev.includes(entryId)) return prev.filter((id) => id !== entryId);
+          return [...prev, entryId];
+        });
+        return;
+      }
+
+      setBulkSelectedIds((prev) => {
+        if (prev.includes(entryId)) return prev.filter((id) => id !== entryId);
+        return [...prev, entryId];
+      });
+    },
+    [bulkSelectAllActive],
+  );
 
   const bulkSelectAll = useCallback(() => {
-    setBulkSelectedIds(filteredEntries.map((e) => e.id));
-  }, [filteredEntries]);
+    setBulkSelectAllActive(true);
+    setBulkSelectedIds([]);
+    setBulkExcludedIds([]);
+  }, []);
 
-  const bulkClearSelection = useCallback(() => setBulkSelectedIds([]), []);
+  const bulkClearSelection = useCallback(() => {
+    setBulkSelectAllActive(false);
+    setBulkSelectedIds([]);
+    setBulkExcludedIds([]);
+  }, []);
 
   const bulkUpdate = useCallback(
     async (opts: {
@@ -577,7 +612,11 @@ export function WorldBookPage() {
       patch: { enabled?: boolean; priority?: WorldBookPriority; char_limit?: number };
     }) => {
       if (!projectId) return;
-      if (bulkSelectedIds.length === 0) {
+      const excludedSet = new Set(bulkExcludedIds);
+      const selectedIds = bulkSelectAllActive
+        ? filteredEntries.filter((e) => !excludedSet.has(e.id)).map((e) => e.id)
+        : bulkSelectedIds;
+      if (selectedIds.length === 0) {
         toast.toastError(UI_COPY.worldbook.bulkNoSelection);
         return;
       }
@@ -592,7 +631,7 @@ export function WorldBookPage() {
 
       setBulkLoading(true);
       try {
-        const updated = await bulkUpdateWorldBookEntries(projectId, { entry_ids: bulkSelectedIds, ...opts.patch });
+        const updated = await bulkUpdateWorldBookEntries(projectId, { entry_ids: selectedIds, ...opts.patch });
         setEntries((prev) => {
           const list = prev ?? [];
           const byId = new Map(updated.map((e) => [e.id, e]));
@@ -601,25 +640,28 @@ export function WorldBookPage() {
         toast.toastSuccess("已批量更新");
       } catch (e) {
         const err = e as ApiError;
-        toast.toastError(`批量更新失败（${bulkSelectedIds.length}条）：${err.message} (${err.code})`, err.requestId);
+        toast.toastError(`批量更新失败（${selectedIds.length}条）：${err.message} (${err.code})`, err.requestId);
       } finally {
         setBulkLoading(false);
       }
     },
-    [bulkSelectedIds, confirm, projectId, setEntries, toast],
+    [bulkExcludedIds, bulkSelectAllActive, bulkSelectedIds, confirm, filteredEntries, projectId, setEntries, toast],
   );
 
   const bulkDelete = useCallback(async () => {
     if (!projectId) return;
-    if (bulkSelectedIds.length === 0) {
+    const excludedSet = new Set(bulkExcludedIds);
+    const selectedIds = bulkSelectAllActive
+      ? filteredEntries.filter((e) => !excludedSet.has(e.id)).map((e) => e.id)
+      : bulkSelectedIds;
+    if (selectedIds.length === 0) {
       toast.toastError(UI_COPY.worldbook.bulkNoSelection);
       return;
     }
 
     const ok = await confirm.confirm({
       title: UI_COPY.worldbook.bulkDeleteTitle,
-      description:
-        UI_COPY.worldbook.bulkDeleteDescPrefix + bulkSelectedIds.length + UI_COPY.worldbook.bulkDeleteDescSuffix,
+      description: UI_COPY.worldbook.bulkDeleteDescPrefix + selectedIds.length + UI_COPY.worldbook.bulkDeleteDescSuffix,
       confirmText: UI_COPY.worldbook.deleteConfirm,
       cancelText: UI_COPY.worldbook.deleteCancel,
       danger: true,
@@ -628,18 +670,20 @@ export function WorldBookPage() {
 
     setBulkLoading(true);
     try {
-      const deletedIds = await bulkDeleteWorldBookEntries(projectId, bulkSelectedIds);
+      const deletedIds = await bulkDeleteWorldBookEntries(projectId, selectedIds);
       const deletedSet = new Set(deletedIds);
       setEntries((prev) => (prev ?? []).filter((e) => !deletedSet.has(e.id)));
       toast.toastSuccess("已批量删除");
+      setBulkSelectAllActive(false);
       setBulkSelectedIds([]);
+      setBulkExcludedIds([]);
     } catch (e) {
       const err = e as ApiError;
-      toast.toastError(`批量删除失败（${bulkSelectedIds.length}条）：${err.message} (${err.code})`, err.requestId);
+      toast.toastError(`批量删除失败（${selectedIds.length}条）：${err.message} (${err.code})`, err.requestId);
     } finally {
       setBulkLoading(false);
     }
-  }, [bulkSelectedIds, confirm, projectId, setEntries, toast]);
+  }, [bulkExcludedIds, bulkSelectAllActive, bulkSelectedIds, confirm, filteredEntries, projectId, setEntries, toast]);
 
   const duplicateAndEdit = useCallback(
     async (entryId: string) => {
@@ -667,7 +711,9 @@ export function WorldBookPage() {
           return [...created, ...rest];
         });
         setBulkMode(false);
+        setBulkSelectAllActive(false);
         setBulkSelectedIds([]);
+        setBulkExcludedIds([]);
         openEdit(created[0]);
         toast.toastSuccess("已复制并进入编辑");
       } catch (e) {
@@ -681,12 +727,30 @@ export function WorldBookPage() {
   );
 
   const bulkDuplicateEdit = useCallback(async () => {
-    if (bulkSelectedIds.length !== 1) {
+    if (!bulkSelectAllActive) {
+      if (bulkSelectedIds.length !== 1) {
+        toast.toastError("复制并编辑需要选择 1 条条目");
+        return;
+      }
+      await duplicateAndEdit(bulkSelectedIds[0]);
+      return;
+    }
+
+    const excludedSet = new Set(bulkExcludedIds);
+    let selectedId: string | null = null;
+    let count = 0;
+    for (const e of filteredEntries) {
+      if (excludedSet.has(e.id)) continue;
+      count += 1;
+      selectedId = e.id;
+      if (count > 1) break;
+    }
+    if (count !== 1 || !selectedId) {
       toast.toastError("复制并编辑需要选择 1 条条目");
       return;
     }
-    await duplicateAndEdit(bulkSelectedIds[0]);
-  }, [bulkSelectedIds, duplicateAndEdit, toast]);
+    await duplicateAndEdit(selectedId);
+  }, [bulkExcludedIds, bulkSelectAllActive, bulkSelectedIds, duplicateAndEdit, filteredEntries, toast]);
 
   return (
     <div className="grid gap-4">
@@ -773,7 +837,7 @@ export function WorldBookPage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-xs text-subtext">
                   {UI_COPY.worldbook.bulkSelectedPrefix}
-                  {bulkSelectedIds.length}
+                  {bulkSelectedCount}
                   {UI_COPY.worldbook.bulkSelectedSuffix}
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -808,7 +872,7 @@ export function WorldBookPage() {
                       title: UI_COPY.worldbook.bulkEnableTitle,
                       description:
                         UI_COPY.worldbook.bulkEnableDescPrefix +
-                        bulkSelectedIds.length +
+                        bulkSelectedCount +
                         UI_COPY.worldbook.bulkEnableDescSuffix,
                       patch: { enabled: true },
                     })
@@ -826,7 +890,7 @@ export function WorldBookPage() {
                       title: UI_COPY.worldbook.bulkDisableTitle,
                       description:
                         UI_COPY.worldbook.bulkDisableDescPrefix +
-                        bulkSelectedIds.length +
+                        bulkSelectedCount +
                         UI_COPY.worldbook.bulkDisableDescSuffix,
                       patch: { enabled: false },
                     })
@@ -838,7 +902,7 @@ export function WorldBookPage() {
                 </button>
                 <button
                   className="btn btn-secondary"
-                  disabled={bulkLoading || loading || drawerOpen || bulkSelectedIds.length !== 1}
+                  disabled={bulkLoading || loading || drawerOpen || bulkSelectedCount !== 1}
                   onClick={() => void bulkDuplicateEdit()}
                   aria-label="worldbook_bulk_duplicate_edit"
                   type="button"
@@ -882,7 +946,7 @@ export function WorldBookPage() {
                         title: UI_COPY.worldbook.bulkUpdateTitle,
                         description:
                           UI_COPY.worldbook.bulkUpdateDescPrefix +
-                          bulkSelectedIds.length +
+                          bulkSelectedCount +
                           UI_COPY.worldbook.bulkUpdateDescSuffix,
                         patch: { priority: bulkPriority },
                       })
@@ -919,7 +983,7 @@ export function WorldBookPage() {
                         title: UI_COPY.worldbook.bulkUpdateTitle,
                         description:
                           UI_COPY.worldbook.bulkUpdateDescPrefix +
-                          bulkSelectedIds.length +
+                          bulkSelectedCount +
                           UI_COPY.worldbook.bulkUpdateDescSuffix,
                         patch: { char_limit: safeCharLimit },
                       });
@@ -939,7 +1003,7 @@ export function WorldBookPage() {
               <div className="text-sm text-subtext">{UI_COPY.worldbook.empty}</div>
             ) : (
               visibleEntries.map((e) => {
-                const selected = bulkSelectedSet.has(e.id);
+                const selected = bulkSelectAllActive ? !bulkExcludedSet.has(e.id) : bulkSelectedExplicitSet.has(e.id);
                 const meta = filterState.metaById.get(e.id) ?? { pinyinHit: false };
                 const keywordSnippet = (e.keywords ?? []).slice(0, 6).join("、") || UI_COPY.worldbook.keywordsNone;
                 return (
