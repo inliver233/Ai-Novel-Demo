@@ -594,7 +594,8 @@ export function PromptStudioPage() {
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
   if (loading) {
     return (
-      <div className="grid gap-6">
+      <div className="grid gap-6" aria-busy="true" aria-live="polite">
+        <span className="sr-only">正在加载提示词工作室…</span>
         <div className="panel p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="grid gap-2">
@@ -604,9 +605,25 @@ export function PromptStudioPage() {
             <div className="skeleton h-4 w-24" />
           </div>
           <div className="mt-4 grid gap-3 lg:grid-cols-[320px_1fr_360px]">
-            <div className="skeleton h-96 w-full" />
-            <div className="skeleton h-96 w-full" />
-            <div className="skeleton h-96 w-full" />
+            <div className="grid gap-3">
+              <div className="skeleton h-10 w-full" />
+              <div className="grid gap-2">
+                <div className="skeleton h-4 w-2/3" />
+                <div className="skeleton h-4 w-4/5" />
+                <div className="skeleton h-4 w-3/5" />
+                <div className="skeleton h-4 w-5/6" />
+                <div className="skeleton h-4 w-2/3" />
+                <div className="skeleton h-4 w-4/5" />
+              </div>
+            </div>
+            <div className="grid gap-3">
+              <div className="skeleton h-10 w-48" />
+              <div className="skeleton h-96 w-full" />
+            </div>
+            <div className="grid gap-3">
+              <div className="skeleton h-10 w-44" />
+              <div className="skeleton h-96 w-full" />
+            </div>
           </div>
         </div>
       </div>
