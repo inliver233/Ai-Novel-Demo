@@ -55,7 +55,7 @@ test("ui: writing ContextPreviewDrawer syncs preview params from AI generate dra
   await page.locator('input[name="number"]').fill("1");
   await page.locator('input[name="title"]').fill("E2E 第一章");
   await page.locator('textarea[name="plan"]').fill("dragon");
-  await page.getByRole("button", { name: "创建" }).click();
+  await page.getByRole("button", { name: "创建", exact: true }).click();
   await expect(page.getByRole("button", { name: "AI 生成" })).toBeVisible();
 
   await page.getByRole("button", { name: "AI 生成", exact: true }).click();

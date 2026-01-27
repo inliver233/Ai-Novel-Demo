@@ -14,7 +14,7 @@ test("ui: chapter stream generation updates editor", async ({ page, request }) =
   await page.locator('input[name="number"]').fill("1");
   await page.locator('input[name="title"]').fill("E2E 第一章");
   await page.locator('textarea[name="plan"]').fill("要点 A；要点 B");
-  await page.getByRole("button", { name: "创建" }).click();
+  await page.getByRole("button", { name: "创建", exact: true }).click();
 
   await expect(page.getByRole("button", { name: "AI 生成" })).toBeVisible();
   await page.getByRole("button", { name: "AI 生成" }).click();
