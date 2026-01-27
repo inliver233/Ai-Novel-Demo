@@ -27,6 +27,7 @@ import { ThemeToggle } from "../atelier/ThemeToggle";
 import { Drawer } from "../ui/Drawer";
 import { useAuth } from "../../contexts/auth";
 import { PersistentOutletProvider } from "../../hooks/PersistentOutletProvider";
+import { resolveRouteMeta } from "../../lib/routes";
 import { UI_COPY } from "../../lib/uiCopy";
 import { fadeUpVariants, transition } from "../../lib/motion";
 import { getCurrentUserId } from "../../services/currentUser";
@@ -35,39 +36,6 @@ import {
   advancedDebugVisibleStorageKey,
   sidebarCollapsedStorageKey,
 } from "../../services/uiState";
-
-const ROUTE_TITLES: Array<[suffix: string, title: string]> = [
-  ["/admin/users", UI_COPY.nav.adminUsers],
-
-  ["/settings", UI_COPY.nav.projectSettings],
-  ["/characters", UI_COPY.nav.characters],
-  ["/outline", UI_COPY.nav.outline],
-  ["/wizard", UI_COPY.nav.wizard],
-  ["/writing", UI_COPY.nav.writing],
-  ["/tasks", UI_COPY.nav.tasks],
-  ["/structured-memory", UI_COPY.nav.structuredMemory],
-  ["/chapter-analysis", UI_COPY.nav.chapterAnalysis],
-  ["/preview", UI_COPY.nav.preview],
-  ["/reader", UI_COPY.nav.reader],
-  ["/export", UI_COPY.nav.export],
-
-  ["/worldbook", UI_COPY.nav.worldBook],
-  ["/rag", UI_COPY.nav.rag],
-  ["/glossary", UI_COPY.nav.glossary],
-  ["/graph", UI_COPY.nav.graph],
-  ["/fractal", UI_COPY.nav.fractal],
-  ["/styles", UI_COPY.nav.styles],
-  ["/prompts", UI_COPY.nav.prompts],
-  ["/prompt-studio", UI_COPY.nav.promptStudio],
-];
-
-const PAPER_ROUTE_SUFFIXES = ["/settings", "/characters", "/outline", "/preview", "/reader", "/export"];
-
-function resolveTitle(pathname: string): string {
-  if (pathname === "/") return UI_COPY.nav.home;
-  const match = ROUTE_TITLES.find(([suffix]) => pathname.endsWith(suffix));
-  return match?.[1] ?? UI_COPY.brand.appName;
-}
 
 function useSidebarCollapsed(): [boolean, (v: boolean) => void] {
   const storageKey = sidebarCollapsedStorageKey(getCurrentUserId());
@@ -296,13 +264,10 @@ export function AppShell() {
   const reduceMotion = useReducedMotion();
 
   const pathname = location.pathname;
-  const title = useMemo(() => resolveTitle(pathname), [pathname]);
+  const routeMeta = useMemo(() => resolveRouteMeta(pathname), [pathname]);
+  const title = routeMeta.title;
   const mainMaxWidth =
-    pathname === "/"
-      ? "max-w-5xl"
-      : PAPER_ROUTE_SUFFIXES.some((suffix) => pathname.endsWith(suffix))
-        ? "max-w-4xl"
-        : "max-w-screen-xl";
+    routeMeta.layout === "home" ? "max-w-5xl" : routeMeta.layout === "paper" ? "max-w-4xl" : "max-w-screen-xl";
   const sessionExpireAtText = auth.session?.expireAt ? new Date(auth.session.expireAt * 1000).toLocaleString() : null;
   const mobileNavOpen = mobileNavOpenForPath === pathname;
 
