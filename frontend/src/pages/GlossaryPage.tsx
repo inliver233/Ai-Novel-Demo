@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { DebugPageShell } from "../components/atelier/DebugPageShell";
+import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
+import { copyText } from "../lib/copyText";
 import { ApiError, apiJson } from "../services/apiClient";
 
 type GlossarySource = {
@@ -64,6 +65,23 @@ export function GlossaryPage() {
     for (const t of terms) map[t.id] = t;
     return map;
   }, [terms]);
+
+  const rawJson = useMemo(() => JSON.stringify({ terms }, null, 2), [terms]);
+
+  const copyRawJson = useCallback(async () => {
+    const ok = await copyText(rawJson, { title: "复制失败：请手动复制 glossary JSON" });
+    if (ok) toast.toastSuccess("已复制 glossary JSON");
+    else toast.toastWarning("自动复制失败：已打开手动复制弹窗。");
+  }, [rawJson, toast]);
+
+  const copyTermId = useCallback(
+    async (id: string) => {
+      const ok = await copyText(id, { title: "复制失败：请手动复制术语 ID" });
+      if (ok) toast.toastSuccess("已复制术语 ID");
+      else toast.toastWarning("自动复制失败：已打开手动复制弹窗。");
+    },
+    [toast],
+  );
 
   const load = useCallback(async () => {
     if (!projectId) return;
@@ -411,6 +429,9 @@ export function GlossaryPage() {
                       />
                       启用
                     </label>
+                    <button className="btn btn-secondary" onClick={() => void copyTermId(t.id)} type="button">
+                      复制 ID
+                    </button>
                     {isEditing ? (
                       <>
                         <button
@@ -512,6 +533,18 @@ export function GlossaryPage() {
           })}
         </div>
       </section>
+
+      <DebugDetails title="Debug（raw JSON）">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <button className="btn btn-secondary" onClick={() => void copyRawJson()} type="button">
+            复制 JSON
+          </button>
+          <div className="text-xs text-subtext">terms: {terms.length}</div>
+        </div>
+        <pre className="mt-2 max-h-[28rem] overflow-auto rounded-atelier border border-border bg-surface p-3 text-[11px] text-subtext">
+          {rawJson}
+        </pre>
+      </DebugDetails>
     </DebugPageShell>
   );
 }
