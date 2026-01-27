@@ -6,6 +6,8 @@ import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { copyText } from "../lib/copyText";
 import { UI_COPY } from "../lib/uiCopy";
+import { usePersistentOutletIsActive } from "../hooks/usePersistentOutlet";
+import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { ApiError, apiJson, sanitizeFilename } from "../services/apiClient";
 import type { Character, Outline, Project, ProjectSettings, PromptBlock, PromptPreset, PromptPreview } from "../types";
 import { PromptStudioPreviewPanel } from "./promptStudio/PromptStudioPreviewPanel";
@@ -157,6 +159,13 @@ export function PromptTemplatesPage() {
   const [draftTemplates, setDraftTemplates] = useState<Record<string, string>>({});
   const [baselineTemplates, setBaselineTemplates] = useState<Record<string, string>>({});
 
+  const outletActive = usePersistentOutletIsActive();
+
+  const pageDirty = useMemo(
+    () => blocks.some((b) => (draftTemplates[b.id] ?? "") !== (baselineTemplates[b.id] ?? "")),
+    [baselineTemplates, blocks, draftTemplates],
+  );
+
   const savingBlockIdRef = useRef<string | null>(null);
 
   const [previewTask, setPreviewTask] = useState<string>("chapter_generate");
@@ -211,6 +220,27 @@ export function PromptTemplatesPage() {
       setLoading(false);
     }
   }, [projectId, toast]);
+
+  const selectKeyWithGuard = useCallback(
+    async (nextKey: string) => {
+      if (nextKey === selectedKey) return;
+      if (!pageDirty) {
+        setSelectedKey(nextKey);
+        return;
+      }
+
+      const ok = await confirm.confirm({
+        title: "有未保存修改，确定切换模板？",
+        description: "切换后未保存内容会丢失。",
+        confirmText: "切换",
+        cancelText: "取消",
+        danger: true,
+      });
+      if (!ok) return;
+      setSelectedKey(nextKey);
+    },
+    [confirm, pageDirty, selectedKey],
+  );
 
   const loadPreviewContext = useCallback(async () => {
     if (!projectId) return;
@@ -513,10 +543,18 @@ export function PromptTemplatesPage() {
 
   return (
     <div className="grid gap-6">
+      {pageDirty && outletActive ? <UnsavedChangesGuard when={pageDirty} /> : null}
       <div className="panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-lg font-semibold">Prompt 模板（新手）</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-lg font-semibold">Prompt 模板（新手）</div>
+              {pageDirty ? (
+                <span className="rounded-atelier border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs text-accent">
+                  未保存
+                </span>
+              ) : null}
+            </div>
             <div className="text-xs text-subtext">
               按任务提供系统默认模板；编辑会直接影响真实渲染。{" "}
               <Link className="underline" to={`/projects/${projectId}/prompt-studio`}>
@@ -569,7 +607,7 @@ export function PromptTemplatesPage() {
                             ? "border-accent/40 bg-accent/10 text-ink"
                             : "border-border bg-canvas text-subtext hover:bg-surface hover:text-ink",
                         )}
-                        onClick={() => setSelectedKey(r.key)}
+                        onClick={() => void selectKeyWithGuard(r.key)}
                         type="button"
                       >
                         <div className="flex min-w-0 items-center justify-between gap-2">
