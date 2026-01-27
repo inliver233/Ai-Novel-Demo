@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Check } from "lucide-react";
 
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
@@ -14,6 +15,48 @@ type ExportForm = {
   include_outline: boolean;
   chapters: "all" | "done";
 };
+
+type AtelierOptionControlProps = {
+  type: "checkbox" | "radio";
+  checked: boolean;
+  disabled?: boolean;
+  name?: string;
+  onCheckedChange: (next: boolean) => void;
+  children: ReactNode;
+};
+
+function AtelierOptionControl({ type, checked, disabled, name, onCheckedChange, children }: AtelierOptionControlProps) {
+  const isRadio = type === "radio";
+  return (
+    <label className="group flex items-center gap-2 text-sm text-ink">
+      <input
+        className="peer sr-only"
+        checked={checked}
+        disabled={disabled}
+        name={name}
+        onChange={(e) => onCheckedChange(e.target.checked)}
+        type={type}
+      />
+      <span
+        className={[
+          "inline-flex h-4 w-4 items-center justify-center border border-border bg-canvas ui-transition-fast",
+          isRadio ? "rounded-full" : "rounded",
+          "group-hover:border-accent/35",
+          "peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-canvas",
+          "peer-checked:border-accent/50 peer-checked:bg-accent/10",
+          "peer-disabled:opacity-60 peer-disabled:cursor-not-allowed",
+        ].join(" ")}
+      >
+        {isRadio ? (
+          <span className="h-2 w-2 rounded-full bg-accent opacity-0 peer-checked:opacity-100" aria-hidden="true" />
+        ) : (
+          <Check className="h-3 w-3 text-accent opacity-0 peer-checked:opacity-100" aria-hidden="true" />
+        )}
+      </span>
+      <span className="select-none">{children}</span>
+    </label>
+  );
+}
 
 export function ExportPage() {
   const { projectId } = useParams();
@@ -93,65 +136,61 @@ export function ExportPage() {
         <div className="mt-5 grid gap-4">
           <div className="grid gap-2">
             <div className="text-xs text-subtext">包含内容</div>
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input
-                className="checkbox"
-                checked={form.include_settings}
-                disabled={exporting}
-                name="include_settings"
-                onChange={(e) => setForm((v) => ({ ...v, include_settings: e.target.checked }))}
-                type="checkbox"
-              />
+            <AtelierOptionControl
+              checked={form.include_settings}
+              disabled={exporting}
+              name="include_settings"
+              onCheckedChange={(next) => setForm((v) => ({ ...v, include_settings: next }))}
+              type="checkbox"
+            >
               设定
-            </label>
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input
-                className="checkbox"
-                checked={form.include_characters}
-                disabled={exporting}
-                name="include_characters"
-                onChange={(e) => setForm((v) => ({ ...v, include_characters: e.target.checked }))}
-                type="checkbox"
-              />
+            </AtelierOptionControl>
+            <AtelierOptionControl
+              checked={form.include_characters}
+              disabled={exporting}
+              name="include_characters"
+              onCheckedChange={(next) => setForm((v) => ({ ...v, include_characters: next }))}
+              type="checkbox"
+            >
               角色卡
-            </label>
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input
-                className="checkbox"
-                checked={form.include_outline}
-                disabled={exporting}
-                name="include_outline"
-                onChange={(e) => setForm((v) => ({ ...v, include_outline: e.target.checked }))}
-                type="checkbox"
-              />
+            </AtelierOptionControl>
+            <AtelierOptionControl
+              checked={form.include_outline}
+              disabled={exporting}
+              name="include_outline"
+              onCheckedChange={(next) => setForm((v) => ({ ...v, include_outline: next }))}
+              type="checkbox"
+            >
               大纲
-            </label>
+            </AtelierOptionControl>
           </div>
 
           <div className="grid gap-2">
             <div className="text-xs text-subtext">章节范围</div>
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input
-                className="checkbox"
-                checked={form.chapters === "all"}
-                disabled={exporting}
-                name="chapters"
-                onChange={() => setForm((v) => ({ ...v, chapters: "all" }))}
-                type="radio"
-              />
+            <AtelierOptionControl
+              checked={form.chapters === "all"}
+              disabled={exporting}
+              name="chapters"
+              onCheckedChange={(next) => {
+                if (!next) return;
+                setForm((v) => ({ ...v, chapters: "all" }));
+              }}
+              type="radio"
+            >
               全部章节
-            </label>
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input
-                className="checkbox"
-                checked={form.chapters === "done"}
-                disabled={exporting}
-                name="chapters"
-                onChange={() => setForm((v) => ({ ...v, chapters: "done" }))}
-                type="radio"
-              />
+            </AtelierOptionControl>
+            <AtelierOptionControl
+              checked={form.chapters === "done"}
+              disabled={exporting}
+              name="chapters"
+              onCheckedChange={(next) => {
+                if (!next) return;
+                setForm((v) => ({ ...v, chapters: "done" }));
+              }}
+              type="radio"
+            >
               仅定稿章节
-            </label>
+            </AtelierOptionControl>
             <div className="text-[11px] text-subtext">定稿章节：章节状态为“定稿（done）”。</div>
           </div>
 
