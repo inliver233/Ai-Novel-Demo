@@ -15,9 +15,11 @@ export function useChapterAnalysis(args: {
   genForm: GenerateForm;
   form: ChapterForm | null;
   setForm: React.Dispatch<React.SetStateAction<ChapterForm | null>>;
+  dirty?: boolean;
+  saveChapter?: (opts?: { silent?: boolean }) => Promise<boolean>;
   toast: ToastApi;
 }) {
-  const { activeChapter, preset, genForm, form, setForm, toast } = args;
+  const { activeChapter, preset, genForm, form, setForm, dirty = false, saveChapter, toast } = args;
 
   const [open, setOpen] = useState(false);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -29,7 +31,12 @@ export function useChapterAnalysis(args: {
   const analyzeGuardRef = useRef(createRequestSeqGuard());
   const rewriteGuardRef = useRef(createRequestSeqGuard());
   const applyGuardRef = useRef(createRequestSeqGuard());
+  const dirtyRef = useRef(dirty);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
 
   useEffect(() => {
     const analyzeGuard = analyzeGuardRef.current;
@@ -210,7 +217,18 @@ export function useChapterAnalysis(args: {
       toast.toastSuccess(`已生成 ${count} 条记忆（标注可用）`, res.request_id, {
         label: "打开标注页",
         onClick: () => {
-          navigate(`/projects/${activeChapter.project_id}/chapter-analysis?chapterId=${activeChapter.id}`);
+          void (async () => {
+            if (dirtyRef.current && saveChapter) {
+              void saveChapter({ silent: true });
+              const startedAt = window.performance.now();
+              while (dirtyRef.current && window.performance.now() - startedAt < 10_000) {
+                await new Promise((resolve) => window.setTimeout(resolve, 100));
+              }
+            }
+            window.requestAnimationFrame(() => {
+              navigate(`/projects/${activeChapter.project_id}/chapter-analysis?chapterId=${activeChapter.id}`);
+            });
+          })();
         },
       });
     } catch (e) {
@@ -222,7 +240,7 @@ export function useChapterAnalysis(args: {
         setApplyLoading(false);
       }
     }
-  }, [activeChapter, analysisResult?.analysis, form, navigate, toast]);
+  }, [activeChapter, analysisResult?.analysis, form, navigate, saveChapter, toast]);
 
   return {
     open,

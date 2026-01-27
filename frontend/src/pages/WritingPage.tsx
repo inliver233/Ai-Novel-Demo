@@ -217,7 +217,7 @@ export function WritingPage() {
     toast,
   });
 
-  const analysis = useChapterAnalysis({ activeChapter, preset, genForm, form, setForm, toast });
+  const analysis = useChapterAnalysis({ activeChapter, preset, genForm, form, setForm, dirty, saveChapter, toast });
   const history = useGenerationHistory({ projectId, toast });
 
   const activeOutlineId = outline?.id ?? "";

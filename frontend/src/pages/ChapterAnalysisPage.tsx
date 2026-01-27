@@ -179,7 +179,18 @@ export function ChapterAnalysisPage() {
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <section className="min-h-0 rounded-atelier border border-border bg-surface p-3">
           {loading ? (
-            <div className="p-3 text-sm text-subtext">{UI_COPY.common.loading}</div>
+            <div className="rounded-atelier border border-border bg-canvas p-4" aria-busy="true" aria-live="polite">
+              <span className="sr-only">{UI_COPY.common.loading}</span>
+              <div className="grid gap-2">
+                <div className="skeleton h-4 w-28" />
+                <div className="skeleton h-4 w-full" />
+                <div className="skeleton h-4 w-5/6" />
+                <div className="skeleton h-4 w-full" />
+                <div className="skeleton h-4 w-2/3" />
+                <div className="skeleton h-4 w-11/12" />
+                <div className="skeleton h-4 w-3/4" />
+              </div>
+            </div>
           ) : !chapterId ? (
             <div className="p-3 text-sm text-subtext">请从写作页进入：需要在 URL 上带 `?chapterId=...`。</div>
           ) : !chapter ? (
@@ -199,12 +210,34 @@ export function ChapterAnalysisPage() {
           )}
         </section>
 
-        <MemorySidebar
-          annotations={annotations}
-          validIds={validIds}
-          activeAnnotationId={activeAnnotationId}
-          onSelect={(a) => selectAnnotation(a, { scroll: true })}
-        />
+        {loading ? (
+          <aside className="grid gap-3" aria-busy="true" aria-live="polite">
+            <span className="sr-only">{UI_COPY.common.loading}</span>
+            <div className="rounded-atelier border border-border bg-surface p-3">
+              <div className="skeleton h-4 w-24" />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <div className="skeleton h-7 w-20" />
+                <div className="skeleton h-7 w-24" />
+                <div className="skeleton h-7 w-16" />
+              </div>
+            </div>
+            <div className="rounded-atelier border border-border bg-surface p-2">
+              <div className="grid gap-2 p-3">
+                <div className="skeleton h-4 w-32" />
+                <div className="skeleton h-12 w-full" />
+                <div className="skeleton h-12 w-full" />
+                <div className="skeleton h-12 w-full" />
+              </div>
+            </div>
+          </aside>
+        ) : (
+          <MemorySidebar
+            annotations={annotations}
+            validIds={validIds}
+            activeAnnotationId={activeAnnotationId}
+            onSelect={(a) => selectAnnotation(a, { scroll: true })}
+          />
+        )}
       </div>
     </div>
   );
