@@ -81,6 +81,8 @@ export function ImportPage() {
   const [applyWorldbookLoading, setApplyWorldbookLoading] = useState(false);
   const [applyStoryMemoryLoading, setApplyStoryMemoryLoading] = useState(false);
 
+  const [pollPaused, setPollPaused] = useState(false);
+
   const autoOpenedDocIdRef = useRef<string | null>(null);
   const lastPolledRef = useRef<{ id: string; status: string } | null>(null);
 
@@ -139,7 +141,21 @@ export function ImportPage() {
   const pollStatus = String(selectedDoc?.status ?? detail?.document.status ?? "")
     .trim()
     .toLowerCase();
-  const shouldPoll = pollStatus === "queued" || pollStatus === "running";
+  const shouldPoll = !pollPaused && (pollStatus === "queued" || pollStatus === "running");
+  const lastUpdateMs = useMemo(() => {
+    const raw = statusDoc?.updated_at || statusDoc?.created_at || "";
+    const ms = Date.parse(raw);
+    return Number.isFinite(ms) ? ms : null;
+  }, [statusDoc?.created_at, statusDoc?.updated_at]);
+  const lastUpdateAgoMs = useMemo(() => {
+    if (!lastUpdateMs) return null;
+    return Date.now() - lastUpdateMs;
+  }, [lastUpdateMs]);
+  const isPollingStalled = useMemo(() => {
+    if (pollStatus !== "queued" && pollStatus !== "running") return false;
+    if (lastUpdateAgoMs == null) return false;
+    return lastUpdateAgoMs >= 5 * 60_000;
+  }, [lastUpdateAgoMs, pollStatus]);
 
   const loadList = useCallback(async () => {
     if (!projectId) return;
@@ -164,6 +180,7 @@ export function ImportPage() {
       if (!projectId) return;
       const id = String(docId || "").trim();
       if (!id) return;
+      setPollPaused(false);
       setSelectedId(id);
       setChunks([]);
       setDetail(null);
@@ -479,9 +496,24 @@ export function ImportPage() {
                       {statusDoc?.progress_message || ""}
                       {shouldPoll ? " · 自动刷新中…" : ""}
                     </div>
+                    {isPollingStalled ? (
+                      <div className="mt-2 rounded-atelier border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+                        该导入已超过 5
+                        分钟未更新进度，可能卡住。建议：先取消自动刷新，再尝试重试或稍后回到此页查看结果。
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {selectedDoc?.status === "failed" ? (
+                    {pollPaused && (pollStatus === "queued" || pollStatus === "running") ? (
+                      <button className="btn btn-secondary" onClick={() => setPollPaused(false)} type="button">
+                        恢复自动刷新
+                      </button>
+                    ) : shouldPoll ? (
+                      <button className="btn btn-secondary" onClick={() => setPollPaused(true)} type="button">
+                        取消自动刷新
+                      </button>
+                    ) : null}
+                    {selectedDoc?.status === "failed" || isPollingStalled ? (
                       <button className="btn btn-secondary" onClick={() => void retryImport(selectedId)} type="button">
                         重试
                       </button>
