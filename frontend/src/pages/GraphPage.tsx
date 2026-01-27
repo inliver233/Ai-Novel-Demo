@@ -246,7 +246,20 @@ export function GraphPage() {
                 <div className="mt-0.5 text-[11px] text-subtext">{n.id}</div>
               </div>
             ))}
-            {(result?.nodes ?? []).length === 0 ? <div className="text-xs text-subtext">暂无节点</div> : null}
+            {(result?.nodes ?? []).length === 0 ? (
+              <div className="grid gap-2 text-xs text-subtext">
+                <div>暂无节点</div>
+                <button
+                  className="btn btn-secondary btn-sm w-fit"
+                  aria-label="graph_empty_state_run"
+                  onClick={() => void runQuery()}
+                  disabled={loading}
+                  type="button"
+                >
+                  {loading ? "查询..." : UI_COPY.graph.queryRun}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
 
