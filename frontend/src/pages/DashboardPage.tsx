@@ -181,7 +181,7 @@ export function DashboardPage() {
         }}
       >
         <button
-          className="panel-interactive ui-focus-ring group relative flex aspect-[3/4] flex-col items-center justify-center gap-2 border-dashed p-5 text-center"
+          className="panel-interactive ui-focus-ring group relative flex min-h-[180px] flex-col items-center justify-center gap-2 border-dashed p-5 text-center"
           onClick={() => setCreateOpen(true)}
           type="button"
         >
@@ -327,7 +327,7 @@ export function DashboardPage() {
           return (
             <motion.div
               key={p.id}
-              className="panel-interactive group relative flex aspect-[3/4] flex-col overflow-hidden p-5 text-left"
+              className="panel-interactive group relative flex min-h-[180px] flex-col overflow-hidden p-5 text-left"
               initial="hidden"
               animate="show"
               variants={{
