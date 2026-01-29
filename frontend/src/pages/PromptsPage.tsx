@@ -13,9 +13,10 @@ import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { copyText } from "../lib/copyText";
 import { createRequestSeqGuard } from "../lib/requestSeqGuard";
+import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
 import { markWizardLlmTestOk } from "../services/wizard";
-import type { LLMPreset, LLMProfile, Project } from "../types";
+import type { LLMPreset, LLMProfile, Project, ProjectSettings } from "../types";
 
 type LlmCapabilities = {
   provider: string;
@@ -23,6 +24,30 @@ type LlmCapabilities = {
   max_tokens_limit: number | null;
   max_tokens_recommended: number | null;
   context_window_limit: number | null;
+};
+
+type VectorRagForm = {
+  vector_rerank_enabled: boolean;
+  vector_rerank_method: string;
+  vector_rerank_top_k: number;
+  vector_embedding_provider: string;
+  vector_embedding_base_url: string;
+  vector_embedding_model: string;
+  vector_embedding_azure_deployment: string;
+  vector_embedding_azure_api_version: string;
+  vector_embedding_sentence_transformers_model: string;
+};
+
+const DEFAULT_VECTOR_RAG_FORM: VectorRagForm = {
+  vector_rerank_enabled: false,
+  vector_rerank_method: "auto",
+  vector_rerank_top_k: 20,
+  vector_embedding_provider: "",
+  vector_embedding_base_url: "",
+  vector_embedding_model: "",
+  vector_embedding_azure_deployment: "",
+  vector_embedding_azure_api_version: "",
+  vector_embedding_sentence_transformers_model: "",
 };
 
 function parseNumber(value: string): number | null {
@@ -86,6 +111,13 @@ export function PromptsPage() {
   const capsGuardRef = useRef(createRequestSeqGuard());
 
   const [apiKey, setApiKey] = useState("");
+  const [baselineSettings, setBaselineSettings] = useState<ProjectSettings | null>(null);
+  const [vectorForm, setVectorForm] = useState<VectorRagForm>(DEFAULT_VECTOR_RAG_FORM);
+  const [vectorRerankTopKDraft, setVectorRerankTopKDraft] = useState(String(DEFAULT_VECTOR_RAG_FORM.vector_rerank_top_k));
+  const [vectorApiKeyDraft, setVectorApiKeyDraft] = useState("");
+  const [vectorApiKeyClearRequested, setVectorApiKeyClearRequested] = useState(false);
+  const [savingVector, setSavingVector] = useState(false);
+  const savingVectorRef = useRef(false);
 
   const [llmForm, setLlmForm] = useState<LlmForm>({
     provider: "openai",
@@ -106,10 +138,11 @@ export function PromptsPage() {
     if (!projectId) return;
     setLoading(true);
     try {
-      const [presetRes, pRes, profilesRes] = await Promise.all([
+      const [presetRes, pRes, profilesRes, settingsRes] = await Promise.all([
         apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${projectId}/llm_preset`),
         apiJson<{ project: Project }>(`/api/projects/${projectId}`),
         apiJson<{ profiles: LLMProfile[] }>(`/api/llm_profiles`),
+        apiJson<{ settings: ProjectSettings }>(`/api/projects/${projectId}/settings`),
       ]);
 
       setProject(pRes.data.project);
@@ -138,6 +171,24 @@ export function PromptsPage() {
         timeout_seconds: presetRes.data.llm_preset.timeout_seconds?.toString() ?? "",
         extra: JSON.stringify(presetRes.data.llm_preset.extra ?? {}, null, 2),
       });
+
+      const settings = settingsRes.data.settings;
+      const rerankTopK = Number(settings.vector_rerank_effective_top_k ?? 20) || 20;
+      setBaselineSettings(settings);
+      setVectorForm({
+        vector_rerank_enabled: Boolean(settings.vector_rerank_effective_enabled),
+        vector_rerank_method: String(settings.vector_rerank_effective_method ?? "auto") || "auto",
+        vector_rerank_top_k: rerankTopK,
+        vector_embedding_provider: settings.vector_embedding_provider ?? "",
+        vector_embedding_base_url: settings.vector_embedding_base_url ?? "",
+        vector_embedding_model: settings.vector_embedding_model ?? "",
+        vector_embedding_azure_deployment: settings.vector_embedding_azure_deployment ?? "",
+        vector_embedding_azure_api_version: settings.vector_embedding_azure_api_version ?? "",
+        vector_embedding_sentence_transformers_model: settings.vector_embedding_sentence_transformers_model ?? "",
+      });
+      setVectorRerankTopKDraft(String(rerankTopK));
+      setVectorApiKeyDraft("");
+      setVectorApiKeyClearRequested(false);
 
       setApiKey("");
       setLoadError(null);
@@ -383,6 +434,97 @@ export function PromptsPage() {
       projectId ?? "",
     ],
   });
+
+  const vectorApiKeyDirty = vectorApiKeyClearRequested || vectorApiKeyDraft.trim().length > 0;
+  const vectorRagDirty = useMemo(() => {
+    if (!baselineSettings) return false;
+    return (
+      vectorForm.vector_rerank_enabled !== baselineSettings.vector_rerank_effective_enabled ||
+      vectorForm.vector_rerank_method.trim() !== baselineSettings.vector_rerank_effective_method ||
+      Math.max(1, Math.min(1000, Math.floor(vectorForm.vector_rerank_top_k))) !== baselineSettings.vector_rerank_effective_top_k ||
+      vectorForm.vector_embedding_provider !== baselineSettings.vector_embedding_provider ||
+      vectorForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
+      vectorForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
+      vectorForm.vector_embedding_azure_deployment !== baselineSettings.vector_embedding_azure_deployment ||
+      vectorForm.vector_embedding_azure_api_version !== baselineSettings.vector_embedding_azure_api_version ||
+      vectorForm.vector_embedding_sentence_transformers_model !== baselineSettings.vector_embedding_sentence_transformers_model
+    );
+  }, [baselineSettings, vectorForm]);
+
+  const saveVectorRagConfig = useCallback(async (): Promise<boolean> => {
+    if (!projectId) return false;
+    if (!baselineSettings) return false;
+    if (!vectorRagDirty && !vectorApiKeyDirty) return true;
+    if (savingVectorRef.current) return false;
+
+    const rerankMethod = vectorForm.vector_rerank_method.trim() || "auto";
+    const rawTopK = vectorRerankTopKDraft.trim();
+    const parsedTopK = Math.floor(Number(rawTopK || String(vectorForm.vector_rerank_top_k)));
+    if (!Number.isFinite(parsedTopK) || parsedTopK < 1 || parsedTopK > 1000) {
+      toast.toastError("rerank top_k 必须为 1-1000 的整数");
+      return false;
+    }
+
+    savingVectorRef.current = true;
+    setSavingVector(true);
+    try {
+      const res = await apiJson<{ settings: ProjectSettings }>(`/api/projects/${projectId}/settings`, {
+        method: "PUT",
+        body: JSON.stringify({
+          vector_rerank_enabled: Boolean(vectorForm.vector_rerank_enabled),
+          vector_rerank_method: rerankMethod,
+          vector_rerank_top_k: parsedTopK,
+          vector_embedding_provider: vectorForm.vector_embedding_provider,
+          vector_embedding_base_url: vectorForm.vector_embedding_base_url,
+          vector_embedding_model: vectorForm.vector_embedding_model,
+          vector_embedding_azure_deployment: vectorForm.vector_embedding_azure_deployment,
+          vector_embedding_azure_api_version: vectorForm.vector_embedding_azure_api_version,
+          vector_embedding_sentence_transformers_model: vectorForm.vector_embedding_sentence_transformers_model,
+          ...(vectorApiKeyDirty
+            ? { vector_embedding_api_key: vectorApiKeyClearRequested ? "" : vectorApiKeyDraft }
+            : {}),
+        }),
+      });
+
+      const settings = res.data.settings;
+      const nextTopK = Number(settings.vector_rerank_effective_top_k ?? 20) || 20;
+      setBaselineSettings(settings);
+      setVectorForm({
+        vector_rerank_enabled: Boolean(settings.vector_rerank_effective_enabled),
+        vector_rerank_method: String(settings.vector_rerank_effective_method ?? "auto") || "auto",
+        vector_rerank_top_k: nextTopK,
+        vector_embedding_provider: settings.vector_embedding_provider ?? "",
+        vector_embedding_base_url: settings.vector_embedding_base_url ?? "",
+        vector_embedding_model: settings.vector_embedding_model ?? "",
+        vector_embedding_azure_deployment: settings.vector_embedding_azure_deployment ?? "",
+        vector_embedding_azure_api_version: settings.vector_embedding_azure_api_version ?? "",
+        vector_embedding_sentence_transformers_model: settings.vector_embedding_sentence_transformers_model ?? "",
+      });
+      setVectorRerankTopKDraft(String(nextTopK));
+      setVectorApiKeyDraft("");
+      setVectorApiKeyClearRequested(false);
+
+      toast.toastSuccess("已保存");
+      return true;
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      return false;
+    } finally {
+      setSavingVector(false);
+      savingVectorRef.current = false;
+    }
+  }, [
+    baselineSettings,
+    projectId,
+    toast,
+    vectorApiKeyClearRequested,
+    vectorApiKeyDirty,
+    vectorApiKeyDraft,
+    vectorForm,
+    vectorRagDirty,
+    vectorRerankTopKDraft,
+  ]);
 
   const selectProfile = useCallback(
     async (profileId: string | null) => {
@@ -810,6 +952,12 @@ export function PromptsPage() {
     );
   }
 
+  const embeddingProviderPreview = (
+    vectorForm.vector_embedding_provider.trim() ||
+    baselineSettings?.vector_embedding_effective_provider ||
+    "openai_compatible"
+  ).trim();
+
   return (
     <div className="grid gap-6 pb-24">
       {dirty && outletActive ? <UnsavedChangesGuard when={dirty} /> : null}
@@ -838,6 +986,285 @@ export function PromptsPage() {
         onClearApiKey={() => void clearApiKeyInProfile()}
       />
 
+      <section className="panel p-6" id="rag-config" aria-label={UI_COPY.vectorRag.title} role="region">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="grid gap-1">
+            <div className="font-content text-xl text-ink">{UI_COPY.vectorRag.title}</div>
+            <div className="text-xs text-subtext">{UI_COPY.vectorRag.subtitle}</div>
+            <div className="text-xs text-subtext">{UI_COPY.vectorRag.apiKeyHint}</div>
+          </div>
+          <button
+            className="btn btn-primary"
+            disabled={savingVector || (!vectorRagDirty && !vectorApiKeyDirty)}
+            onClick={() => void saveVectorRagConfig()}
+            type="button"
+          >
+            {UI_COPY.vectorRag.save}
+          </button>
+        </div>
+
+        {baselineSettings ? (
+          <div className="mt-4 grid gap-4">
+            <div className="rounded-atelier border border-border bg-canvas p-4 text-xs text-subtext">
+              <div>
+                当前生效：Embedding 提供方（provider）=
+                {baselineSettings.vector_embedding_effective_provider || "openai_compatible"}
+                （状态: {baselineSettings.vector_embedding_effective_disabled_reason ?? "enabled"}；来源:{" "}
+                {baselineSettings.vector_embedding_effective_source}）
+              </div>
+              <div className="mt-1">
+                Rerank：{baselineSettings.vector_rerank_effective_enabled ? "enabled" : "disabled"}（method:{" "}
+                {baselineSettings.vector_rerank_effective_method}；top_k:{" "}
+                {baselineSettings.vector_rerank_effective_top_k}
+                ；来源: {baselineSettings.vector_rerank_effective_source}）
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <div className="text-sm text-ink">{UI_COPY.vectorRag.rerankTitle}</div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
+                  <input
+                    className="checkbox"
+                    checked={vectorForm.vector_rerank_enabled}
+                    onChange={(e) => setVectorForm((v) => ({ ...v, vector_rerank_enabled: e.target.checked }))}
+                    type="checkbox"
+                    name="vector_rerank_enabled"
+                  />
+                  启用 rerank（对候选片段做相关性重排）
+                </label>
+                <label className="grid gap-1 sm:col-span-2">
+                  <span className="text-xs text-subtext">重排算法（rerank method）</span>
+                  <select
+                    className="select"
+                    value={vectorForm.vector_rerank_method}
+                    onChange={(e) => setVectorForm((v) => ({ ...v, vector_rerank_method: e.target.value }))}
+                    name="vector_rerank_method"
+                  >
+                    <option value="auto">auto</option>
+                    <option value="rapidfuzz_token_set_ratio">rapidfuzz_token_set_ratio</option>
+                    <option value="token_overlap">token_overlap</option>
+                  </select>
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">候选数量（top_k）</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={vectorRerankTopKDraft}
+                    onBlur={() => {
+                      const raw = vectorRerankTopKDraft.trim();
+                      if (!raw) {
+                        setVectorRerankTopKDraft(String(vectorForm.vector_rerank_top_k));
+                        return;
+                      }
+                      const next = Math.floor(Number(raw));
+                      if (!Number.isFinite(next)) {
+                        setVectorRerankTopKDraft(String(vectorForm.vector_rerank_top_k));
+                        return;
+                      }
+                      const clamped = Math.max(1, Math.min(1000, next));
+                      setVectorForm((v) => ({ ...v, vector_rerank_top_k: clamped }));
+                      setVectorRerankTopKDraft(String(clamped));
+                    }}
+                    onChange={(e) => setVectorRerankTopKDraft(e.target.value)}
+                    name="vector_rerank_top_k"
+                  />
+                </label>
+              </div>
+              <div className="text-[11px] text-subtext">
+                提示：启用后会对候选结果做二次排序，通常命中更好，但可能增加耗时/成本。
+              </div>
+            </div>
+
+            <details className="rounded-atelier border border-border bg-canvas p-4">
+              <summary className="ui-transition-fast cursor-pointer select-none text-sm text-ink hover:text-ink">
+                {UI_COPY.vectorRag.embeddingTitle}
+              </summary>
+              <div className="mt-4 grid gap-4">
+                <div className="text-xs text-subtext">不确定怎么配时，可保持留空让后端从环境变量读取。</div>
+
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">
+                    Embedding 提供方（provider；项目覆盖；留空=使用后端环境变量）
+                  </span>
+                  <select
+                    className="select"
+                    value={vectorForm.vector_embedding_provider}
+                    onChange={(e) => setVectorForm((v) => ({ ...v, vector_embedding_provider: e.target.value }))}
+                    name="vector_embedding_provider"
+                  >
+                    <option value="">（使用后端环境变量）</option>
+                    <option value="openai_compatible">openai_compatible</option>
+                    <option value="azure_openai">azure_openai</option>
+                    <option value="google">google</option>
+                    <option value="custom">custom</option>
+                    <option value="local_proxy">local_proxy</option>
+                    <option value="sentence_transformers">sentence_transformers</option>
+                  </select>
+                  <div className="text-[11px] text-subtext">
+                    当前有效：{baselineSettings.vector_embedding_effective_provider || "openai_compatible"}
+                  </div>
+                </label>
+
+                {embeddingProviderPreview === "azure_openai" ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="grid gap-1">
+                      <span className="text-xs text-subtext">
+                        Azure 部署名（deployment；项目覆盖；留空=使用后端环境变量）
+                      </span>
+                      <input
+                        className="input"
+                        value={vectorForm.vector_embedding_azure_deployment}
+                        onChange={(e) =>
+                          setVectorForm((v) => ({ ...v, vector_embedding_azure_deployment: e.target.value }))
+                        }
+                        name="vector_embedding_azure_deployment"
+                      />
+                      <div className="text-[11px] text-subtext">
+                        当前有效：{baselineSettings.vector_embedding_effective_azure_deployment || "（空）"}
+                      </div>
+                    </label>
+                    <label className="grid gap-1">
+                      <span className="text-xs text-subtext">
+                        Azure API 版本（api_version；项目覆盖；留空=使用后端环境变量）
+                      </span>
+                      <input
+                        className="input"
+                        value={vectorForm.vector_embedding_azure_api_version}
+                        onChange={(e) =>
+                          setVectorForm((v) => ({ ...v, vector_embedding_azure_api_version: e.target.value }))
+                        }
+                        name="vector_embedding_azure_api_version"
+                      />
+                      <div className="text-[11px] text-subtext">
+                        当前有效：{baselineSettings.vector_embedding_effective_azure_api_version || "（空）"}
+                      </div>
+                    </label>
+                  </div>
+                ) : null}
+
+                {embeddingProviderPreview === "sentence_transformers" ? (
+                  <label className="grid gap-1">
+                    <span className="text-xs text-subtext">
+                      SentenceTransformers 模型（项目覆盖；留空=使用后端环境变量）
+                    </span>
+                    <input
+                      className="input"
+                      value={vectorForm.vector_embedding_sentence_transformers_model}
+                      onChange={(e) =>
+                        setVectorForm((v) => ({
+                          ...v,
+                          vector_embedding_sentence_transformers_model: e.target.value,
+                        }))
+                      }
+                      name="vector_embedding_sentence_transformers_model"
+                    />
+                    <div className="text-[11px] text-subtext">
+                      当前有效：{baselineSettings.vector_embedding_effective_sentence_transformers_model || "（空）"}
+                    </div>
+                  </label>
+                ) : null}
+
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">
+                    Embedding 基础地址（base_url；项目覆盖；留空=使用后端环境变量）
+                  </span>
+                  <input
+                    className="input"
+                    id="vector_embedding_base_url"
+                    name="vector_embedding_base_url"
+                    value={vectorForm.vector_embedding_base_url}
+                    onChange={(e) => setVectorForm((v) => ({ ...v, vector_embedding_base_url: e.target.value }))}
+                  />
+                  <div className="text-[11px] text-subtext">
+                    当前有效：{baselineSettings.vector_embedding_effective_base_url || "（空）"}
+                  </div>
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">Embedding 模型（model；项目覆盖；留空=使用后端环境变量）</span>
+                  <input
+                    className="input"
+                    id="vector_embedding_model"
+                    name="vector_embedding_model"
+                    value={vectorForm.vector_embedding_model}
+                    onChange={(e) => setVectorForm((v) => ({ ...v, vector_embedding_model: e.target.value }))}
+                  />
+                  <div className="text-[11px] text-subtext">
+                    当前有效：{baselineSettings.vector_embedding_effective_model || "（空）"}
+                  </div>
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-xs text-subtext">API Key（api_key；项目覆盖；留空不修改）</span>
+                  <input
+                    className="input"
+                    id="vector_embedding_api_key"
+                    name="vector_embedding_api_key"
+                    type="password"
+                    autoComplete="off"
+                    value={vectorApiKeyDraft}
+                    onChange={(e) => {
+                      setVectorApiKeyDraft(e.target.value);
+                      setVectorApiKeyClearRequested(false);
+                    }}
+                  />
+                  <div className="text-[11px] text-subtext">
+                    已保存（项目覆盖）：
+                    {baselineSettings.vector_embedding_has_api_key
+                      ? baselineSettings.vector_embedding_masked_api_key
+                      : "（无）"}
+                    {baselineSettings.vector_embedding_effective_has_api_key
+                      ? ` | 当前有效：${baselineSettings.vector_embedding_effective_masked_api_key}`
+                      : " | 当前有效：（无）"}
+                    {vectorApiKeyClearRequested ? " | 将在保存时清除" : ""}
+                  </div>
+                </label>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={savingVector || !baselineSettings.vector_embedding_has_api_key}
+                    onClick={() => {
+                      setVectorApiKeyDraft("");
+                      setVectorApiKeyClearRequested(true);
+                    }}
+                    type="button"
+                  >
+                    清除项目级 API Key
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={savingVector}
+                    onClick={() => {
+                      setVectorForm((v) => ({
+                        ...v,
+                        vector_embedding_provider: "",
+                        vector_embedding_base_url: "",
+                        vector_embedding_model: "",
+                        vector_embedding_azure_deployment: "",
+                        vector_embedding_azure_api_version: "",
+                        vector_embedding_sentence_transformers_model: "",
+                      }));
+                      setVectorApiKeyDraft("");
+                      setVectorApiKeyClearRequested(true);
+                    }}
+                    type="button"
+                  >
+                    恢复使用后端环境变量（清除项目覆盖）
+                  </button>
+                </div>
+              </div>
+            </details>
+          </div>
+        ) : (
+          <div className="mt-4 text-xs text-subtext">正在加载向量检索配置…</div>
+        )}
+      </section>
+
       <div className="surface p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -854,7 +1281,7 @@ export function PromptsPage() {
         </div>
       </div>
 
-      <div className="text-xs text-subtext">快捷键：Ctrl/Cmd + S 保存（仅保存模型配置）</div>
+      <div className="text-xs text-subtext">快捷键：Ctrl/Cmd + S 保存（仅保存 LLM 配置）</div>
 
       <WizardNextBar
         projectId={projectId}
