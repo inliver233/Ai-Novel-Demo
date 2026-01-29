@@ -529,7 +529,7 @@ export function RagPage() {
           {projectId ? (
             <Link
               className="btn btn-secondary"
-              to={`/projects/${projectId}/settings`}
+              to={`/projects/${projectId}/prompts#rag-config`}
               aria-label={`${UI_COPY.rag.settings} (rag_settings)`}
             >
               {UI_COPY.rag.settings}
@@ -549,8 +549,8 @@ export function RagPage() {
           {projectId ? (
             <div>
               配置入口：到{" "}
-              <Link className="underline" to={`/projects/${projectId}/settings`}>
-                项目设置
+              <Link className="underline" to={`/projects/${projectId}/prompts#rag-config`}>
+                {UI_COPY.rag.settings}
               </Link>{" "}
               完成 Embedding/Rerank 配置后再重建索引。
             </div>
@@ -593,7 +593,7 @@ export function RagPage() {
               <div className="text-ink">
                 索引已过期，但向量服务未启用（disabled_reason: {vectorDisabledReason ?? "-"}）。请先在{" "}
                 {projectId ? (
-                  <Link className="underline" to={`/projects/${projectId}/settings`}>
+                  <Link className="underline" to={`/projects/${projectId}/prompts#rag-config`}>
                     {UI_COPY.rag.settings}
                   </Link>
                 ) : (

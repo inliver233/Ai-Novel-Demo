@@ -71,15 +71,15 @@ export function RagHeaderPanel(props: {
                   ? UI_COPY.rag.rebuildRecommended
                   : UI_COPY.rag.rebuild}
           </button>
-          {projectId ? (
-            <Link
-              className="btn btn-secondary"
-              to={`/projects/${projectId}/settings`}
-              aria-label={`${UI_COPY.rag.settings} (rag_settings)`}
-            >
-              {UI_COPY.rag.settings}
-            </Link>
-          ) : null}
+           {projectId ? (
+             <Link
+               className="btn btn-secondary"
+               to={`/projects/${projectId}/prompts#rag-config`}
+               aria-label={`${UI_COPY.rag.settings} (rag_settings)`}
+             >
+               {UI_COPY.rag.settings}
+             </Link>
+           ) : null}
         </div>
       </div>
 

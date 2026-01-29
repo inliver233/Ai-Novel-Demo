@@ -304,7 +304,7 @@ export const UI_COPY = {
     exampleHint: "示例：输入章节片段或关键词（如“dragon”）点击“查询”，检查命中来源与注入结果。",
     riskHint: "风险：入库/重建可能耗时；若配置为在线模型，可能产生费用。",
 
-    settings: "项目设置（Settings）",
+    settings: "模型配置（Vector RAG）",
     ingest: "触发入库（Ingest）",
     rebuild: "重建索引（Rebuild）",
     rebuildNeedConfig: "重建索引（Rebuild，需配置）",
