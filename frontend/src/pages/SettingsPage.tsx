@@ -900,7 +900,8 @@ export function SettingsPage() {
             {projectId ? (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-atelier border border-border bg-canvas p-4 text-xs text-subtext">
                 <div className="min-w-0">
-                  配置入口已迁移到「模型配置」页（向量检索）。建议在那边完成 Embedding/Rerank 配置后再回到这里查看生效状态。
+                  配置入口已迁移到「模型配置」页（向量检索）。建议在那边完成 Embedding/Rerank
+                  配置后再回到这里查看生效状态。
                 </div>
                 <button
                   className="btn btn-secondary"

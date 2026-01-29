@@ -113,7 +113,9 @@ export function PromptsPage() {
   const [apiKey, setApiKey] = useState("");
   const [baselineSettings, setBaselineSettings] = useState<ProjectSettings | null>(null);
   const [vectorForm, setVectorForm] = useState<VectorRagForm>(DEFAULT_VECTOR_RAG_FORM);
-  const [vectorRerankTopKDraft, setVectorRerankTopKDraft] = useState(String(DEFAULT_VECTOR_RAG_FORM.vector_rerank_top_k));
+  const [vectorRerankTopKDraft, setVectorRerankTopKDraft] = useState(
+    String(DEFAULT_VECTOR_RAG_FORM.vector_rerank_top_k),
+  );
   const [vectorApiKeyDraft, setVectorApiKeyDraft] = useState("");
   const [vectorApiKeyClearRequested, setVectorApiKeyClearRequested] = useState(false);
   const [savingVector, setSavingVector] = useState(false);
@@ -441,13 +443,15 @@ export function PromptsPage() {
     return (
       vectorForm.vector_rerank_enabled !== baselineSettings.vector_rerank_effective_enabled ||
       vectorForm.vector_rerank_method.trim() !== baselineSettings.vector_rerank_effective_method ||
-      Math.max(1, Math.min(1000, Math.floor(vectorForm.vector_rerank_top_k))) !== baselineSettings.vector_rerank_effective_top_k ||
+      Math.max(1, Math.min(1000, Math.floor(vectorForm.vector_rerank_top_k))) !==
+        baselineSettings.vector_rerank_effective_top_k ||
       vectorForm.vector_embedding_provider !== baselineSettings.vector_embedding_provider ||
       vectorForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
       vectorForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
       vectorForm.vector_embedding_azure_deployment !== baselineSettings.vector_embedding_azure_deployment ||
       vectorForm.vector_embedding_azure_api_version !== baselineSettings.vector_embedding_azure_api_version ||
-      vectorForm.vector_embedding_sentence_transformers_model !== baselineSettings.vector_embedding_sentence_transformers_model
+      vectorForm.vector_embedding_sentence_transformers_model !==
+        baselineSettings.vector_embedding_sentence_transformers_model
     );
   }, [baselineSettings, vectorForm]);
 
