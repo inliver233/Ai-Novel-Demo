@@ -2,10 +2,13 @@ import clsx from "clsx";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import {
   Bot,
-  Book,
   BookOpen,
   BookOpenText,
+  BookText,
+  CircleHelp,
+  Database,
   FileDown,
+  Globe,
   LayoutDashboard,
   ListTodo,
   Palette,
@@ -16,7 +19,9 @@ import {
   Settings,
   Snowflake,
   Sparkles,
+  TableOfContents,
   Table2,
+  UserCog,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -333,7 +338,7 @@ export function AppShell() {
                     />
                     <SidebarButton
                       collapsed={false}
-                      icon={<BookOpenText size={18} />}
+                      icon={<CircleHelp size={18} />}
                       label={UI_COPY.nav.help}
                       ariaLabel="术语/帮助 (nav_help)"
                       onClick={() => {
@@ -357,7 +362,7 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={false}
-                          icon={<BookOpenText size={18} />}
+                          icon={<TableOfContents size={18} />}
                           label={UI_COPY.nav.outline}
                           ariaLabel="大纲 (nav_outline)"
                           to={`/projects/${projectId}/outline`}
@@ -373,7 +378,7 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={false}
-                          icon={<Book size={18} />}
+                          icon={<Globe size={18} />}
                           label={UI_COPY.nav.worldBook}
                           ariaLabel="世界书 (nav_worldbook)"
                           to={`/projects/${projectId}/worldbook`}
@@ -473,7 +478,7 @@ export function AppShell() {
                             <div className="flex flex-col gap-1 px-1 pb-2">
                               <SidebarLink
                                 collapsed={false}
-                                icon={<BookOpenText size={18} />}
+                                icon={<Database size={18} />}
                                 label={UI_COPY.nav.rag}
                                 ariaLabel="知识库（RAG） (nav_rag)"
                                 to={`/projects/${projectId}/rag`}
@@ -481,7 +486,7 @@ export function AppShell() {
                               />
                               <SidebarLink
                                 collapsed={false}
-                                icon={<Book size={18} />}
+                                icon={<BookText size={18} />}
                                 label={UI_COPY.nav.glossary}
                                 ariaLabel="术语表 (nav_glossary)"
                                 to={`/projects/${projectId}/glossary`}
@@ -532,7 +537,7 @@ export function AppShell() {
                     <div className="px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupAdmin}</div>
                     <SidebarLink
                       collapsed={false}
-                      icon={<Users size={18} />}
+                      icon={<UserCog size={18} />}
                       label={UI_COPY.nav.adminUsers}
                       ariaLabel="用户管理 (nav_admin_users)"
                       to="/admin/users"
@@ -582,7 +587,7 @@ export function AppShell() {
               />
               <SidebarButton
                 collapsed={collapsed}
-                icon={<BookOpenText size={18} />}
+                icon={<CircleHelp size={18} />}
                 label={UI_COPY.nav.help}
                 ariaLabel="术语/帮助 (nav_help)"
                 onClick={openHelp}
@@ -602,7 +607,7 @@ export function AppShell() {
                   />
                   <SidebarLink
                     collapsed={collapsed}
-                    icon={<BookOpenText size={18} />}
+                    icon={<TableOfContents size={18} />}
                     label={UI_COPY.nav.outline}
                     ariaLabel="大纲 (nav_outline)"
                     to={`/projects/${projectId}/outline`}
@@ -616,7 +621,7 @@ export function AppShell() {
                   />
                   <SidebarLink
                     collapsed={collapsed}
-                    icon={<Book size={18} />}
+                    icon={<Globe size={18} />}
                     label={UI_COPY.nav.worldBook}
                     ariaLabel="世界书 (nav_worldbook)"
                     to={`/projects/${projectId}/worldbook`}
@@ -703,14 +708,14 @@ export function AppShell() {
                       <>
                         <SidebarLink
                           collapsed={collapsed}
-                          icon={<BookOpenText size={18} />}
+                          icon={<Database size={18} />}
                           label={UI_COPY.nav.rag}
                           ariaLabel="知识库（RAG） (nav_rag)"
                           to={`/projects/${projectId}/rag`}
                         />
                         <SidebarLink
                           collapsed={collapsed}
-                          icon={<Book size={18} />}
+                          icon={<BookText size={18} />}
                           label={UI_COPY.nav.glossary}
                           ariaLabel="术语表 (nav_glossary)"
                           to={`/projects/${projectId}/glossary`}
@@ -758,14 +763,14 @@ export function AppShell() {
                         <div className="flex flex-col gap-1 px-1 pb-2">
                           <SidebarLink
                             collapsed={collapsed}
-                            icon={<BookOpenText size={18} />}
+                            icon={<Database size={18} />}
                             label={UI_COPY.nav.rag}
                             ariaLabel="知识库（RAG） (nav_rag)"
                             to={`/projects/${projectId}/rag`}
                           />
                           <SidebarLink
                             collapsed={collapsed}
-                            icon={<Book size={18} />}
+                            icon={<BookText size={18} />}
                             label={UI_COPY.nav.glossary}
                             ariaLabel="术语表 (nav_glossary)"
                             to={`/projects/${projectId}/glossary`}
@@ -819,7 +824,7 @@ export function AppShell() {
               )}
               <SidebarLink
                 collapsed={collapsed}
-                icon={<Users size={18} />}
+                icon={<UserCog size={18} />}
                 label={UI_COPY.nav.adminUsers}
                 ariaLabel="用户管理 (nav_admin_users)"
                 to="/admin/users"
