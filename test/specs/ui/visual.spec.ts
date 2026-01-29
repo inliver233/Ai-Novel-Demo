@@ -84,4 +84,25 @@ test("ui: visual smoke (update with --update-snapshots)", async ({ page, request
   await stabilizeUi(page);
   await expect(page.getByText("项目信息", { exact: true })).toBeVisible();
   await expect(page).toHaveScreenshot("settings.png");
+
+  // Capture sidebar advanced-debug section to cover nav icon changes (RAG / Glossary / etc).
+  const expandSidebar = page.getByRole("button", { name: "展开侧边栏", exact: true });
+  if (await expandSidebar.isVisible()) await expandSidebar.click();
+
+  const advancedToggle = page.getByLabel("显示高级调试 (toggle_advanced_debug)", { exact: true });
+  await expect(advancedToggle).toBeVisible();
+  await advancedToggle.check();
+
+  const sidebar = page.locator("aside").first();
+  const navRag = sidebar.getByLabel("知识库（RAG） (nav_rag)", { exact: true });
+  if (!(await navRag.isVisible())) {
+    const summary = sidebar.locator("summary", { hasText: "高级调试" }).first();
+    await expect(summary).toBeVisible();
+    await summary.scrollIntoViewIfNeeded();
+    await summary.click();
+    await expect(navRag).toBeVisible();
+  }
+
+  const advancedDebugDetails = sidebar.locator("details").filter({ hasText: "高级调试" }).first();
+  await expect(advancedDebugDetails).toHaveScreenshot("sidebar-advanced-debug.png");
 });
