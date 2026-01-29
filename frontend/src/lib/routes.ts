@@ -19,7 +19,7 @@ const ROUTE_META: RouteMeta[] = [
   { suffix: "/structured-memory", title: UI_COPY.nav.structuredMemory, layout: "tool" },
   { suffix: "/chapter-analysis", title: UI_COPY.nav.chapterAnalysis, layout: "tool" },
   { suffix: "/preview", title: UI_COPY.nav.preview, layout: "paper" },
-  { suffix: "/reader", title: UI_COPY.nav.reader, layout: "paper" },
+  { suffix: "/reader", title: UI_COPY.nav.reader, layout: "tool" },
   { suffix: "/export", title: UI_COPY.nav.export, layout: "paper" },
   { suffix: "/worldbook", title: UI_COPY.nav.worldBook, layout: "tool" },
   { suffix: "/rag", title: UI_COPY.nav.rag, layout: "tool" },
