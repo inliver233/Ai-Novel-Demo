@@ -9,7 +9,7 @@ export function RequestIdBadge(props: { requestId?: string | null; className?: s
   return (
     <div
       className={clsx(
-        "inline-flex min-w-0 items-center gap-2 rounded-atelier border border-border bg-surface px-2 py-1 text-xs",
+        "inline-flex max-w-full min-w-0 items-center gap-2 rounded-atelier border border-border bg-surface px-2 py-1 text-xs",
         props.className,
       )}
     >
@@ -18,7 +18,7 @@ export function RequestIdBadge(props: { requestId?: string | null; className?: s
         {requestId}
       </span>
       <button
-        className="btn btn-ghost btn-sm"
+        className="btn btn-ghost btn-sm shrink-0"
         type="button"
         aria-label="copy_request_id"
         onClick={async () => {

@@ -72,7 +72,11 @@ export function ToastProvider(props: { children: React.ReactNode }) {
     <ToastContext.Provider value={api}>
       {props.children}
       <LayoutGroup id={`atelier-toast-stack-${motionGroupId}`}>
-        <div className="fixed bottom-4 right-4 z-50 flex w-[360px] flex-col gap-2" aria-live="polite" role="status">
+        <div
+          className="fixed bottom-4 right-4 z-50 flex w-[360px] max-w-[calc(100vw-2rem)] flex-col gap-2"
+          aria-live="polite"
+          role="status"
+        >
           <AnimatePresence initial={false}>
             {items.map((t) => (
               <motion.div
@@ -100,7 +104,7 @@ export function ToastProvider(props: { children: React.ReactNode }) {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm text-ink">{t.message}</div>
+                    <div className="text-sm whitespace-pre-wrap break-words text-ink">{t.message}</div>
                     {t.action ? (
                       <div className="mt-2">
                         <button
