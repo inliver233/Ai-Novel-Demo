@@ -108,8 +108,15 @@ function parseJsonMaybe(value: unknown): { ok: true; value: unknown } | { ok: fa
   }
 }
 
-export function TablesPanel(props: { open: boolean; onClose: () => void; projectId?: string }) {
-  const titleId = useId();
+type TablesPanelContentProps = {
+  enabled: boolean;
+  titleId: string;
+  projectId?: string;
+  onClose?: () => void;
+  showClose?: boolean;
+};
+
+function TablesPanelContent(props: TablesPanelContentProps) {
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -199,14 +206,14 @@ export function TablesPanel(props: { open: boolean; onClose: () => void; project
   }, [props.projectId, selectedTableId]);
 
   useEffect(() => {
-    if (!props.open) return;
+    if (!props.enabled) return;
     void loadTables();
-  }, [loadTables, props.open]);
+  }, [loadTables, props.enabled]);
 
   useEffect(() => {
-    if (!props.open) return;
+    if (!props.enabled) return;
     void loadRows();
-  }, [loadRows, props.open, selectedTableId]);
+  }, [loadRows, props.enabled, selectedTableId]);
 
   useEffect(() => {
     setRenameValue(selectedTable?.name ?? "");
@@ -425,15 +432,10 @@ export function TablesPanel(props: { open: boolean; onClose: () => void; project
   }, [keyValueMode, loadRows, loadTables, props.projectId, rows.length, selectedColumns, selectedTable?.id, toast]);
 
   return (
-    <Drawer
-      open={props.open}
-      onClose={props.onClose}
-      ariaLabelledBy={titleId}
-      panelClassName="h-full w-full max-w-3xl overflow-y-auto border-l border-border bg-canvas p-6 shadow-sm"
-    >
+    <>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-content text-2xl text-ink" id={titleId}>
+          <div className="font-content text-2xl text-ink" id={props.titleId}>
             表格面板（Tables）
           </div>
           <div className="mt-1 text-xs text-subtext">用于维护写作过程中的结构化状态（project_tables）。</div>
@@ -447,9 +449,11 @@ export function TablesPanel(props: { open: boolean; onClose: () => void; project
           >
             刷新
           </button>
-          <button className="btn btn-secondary" aria-label="关闭" onClick={props.onClose} type="button">
-            关闭
-          </button>
+          {props.showClose ? (
+            <button className="btn btn-secondary" aria-label="关闭" onClick={props.onClose} type="button">
+              关闭
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -708,6 +712,31 @@ export function TablesPanel(props: { open: boolean; onClose: () => void; project
           ) : null}
         </div>
       )}
+    </>
+  );
+}
+
+export function TablesPanel(props: { open: boolean; onClose: () => void; projectId?: string }) {
+  const titleId = useId();
+  return (
+    <Drawer
+      open={props.open}
+      onClose={props.onClose}
+      ariaLabelledBy={titleId}
+      panelClassName="h-full w-full max-w-3xl overflow-y-auto border-l border-border bg-canvas p-6 shadow-sm"
+    >
+      <TablesPanelContent
+        enabled={props.open}
+        titleId={titleId}
+        projectId={props.projectId}
+        onClose={props.onClose}
+        showClose
+      />
     </Drawer>
   );
+}
+
+export function TablesPanelInline(props: { projectId?: string }) {
+  const titleId = useId();
+  return <TablesPanelContent enabled titleId={titleId} projectId={props.projectId} />;
 }
