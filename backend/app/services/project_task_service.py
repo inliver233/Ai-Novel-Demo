@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -8,9 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.logging import exception_log_fields, log_event
 from app.core.secrets import redact_api_keys
+from app.db.session import SessionLocal
 from app.models.project_task import ProjectTask
 from app.db.utils import utc_now
+
+logger = logging.getLogger("ainovel")
 
 
 _ALLOWED_TASK_STATUSES_QUERY = {"queued", "running", "failed", "done", "succeeded"}
@@ -170,3 +175,67 @@ def retry_project_task(*, db: Session, task: ProjectTask) -> ProjectTask:
     db.commit()
     return task
 
+
+def run_project_task(*, task_id: str) -> str:
+    """
+    RQ worker entrypoint. Consumes ProjectTask and records result to DB.
+    """
+
+    db = SessionLocal()
+    try:
+        task = db.get(ProjectTask, task_id)
+        if task is None:
+            log_event(logger, "warning", event="PROJECT_TASK_MISSING", task_id=task_id)
+            return task_id
+
+        if str(task.status) in {"succeeded", "failed", "running"}:
+            return task_id
+
+        task.status = "running"
+        task.started_at = utc_now()
+        db.commit()
+
+        kind = str(task.kind)
+
+        result: dict[str, Any]
+        if kind == "noop":
+            result = {"skipped": True, "note": "noop"}
+        else:
+            raise ValueError(f"Unsupported ProjectTask.kind: {kind!r}")
+
+        task.status = "succeeded"
+        task.result_json = _compact_json_dumps(result)
+        task.finished_at = utc_now()
+        db.commit()
+
+        log_event(
+            logger,
+            "info",
+            event="PROJECT_TASK_SUCCEEDED",
+            task_id=task_id,
+            project_id=str(task.project_id),
+            kind=kind,
+        )
+        return task_id
+    except Exception as exc:
+        try:
+            task2 = db.get(ProjectTask, task_id)
+            if task2 is not None:
+                task2.status = "failed"
+                task2.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": str(exc)[:400]})
+                task2.finished_at = utc_now()
+                db.commit()
+        except Exception:
+            db.rollback()
+
+        log_event(
+            logger,
+            "error",
+            event="PROJECT_TASK_FAILED",
+            task_id=task_id,
+            error_type=type(exc).__name__,
+            **exception_log_fields(exc),
+        )
+        return task_id
+    finally:
+        db.close()

@@ -8,6 +8,9 @@ from rq import Queue, Worker
 from app.core.config import settings
 from app.core.logging import configure_logging
 
+# Ensure RQ can import worker entrypoints for all supported kinds.
+import app.services.project_task_service  # noqa: F401,E402
+
 
 def main() -> None:
     configure_logging()

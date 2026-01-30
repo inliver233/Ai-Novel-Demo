@@ -8,7 +8,7 @@ from app.core.errors import AppError
 
 
 TaskQueueBackend = Literal["rq", "inline"]
-TaskKind = Literal["batch_generation", "memory_task", "import_task"]
+TaskKind = Literal["batch_generation", "memory_task", "import_task", "project_task"]
 
 
 class TaskQueue(Protocol):
@@ -35,6 +35,11 @@ class InlineTaskQueue:
         if kind == "memory_task":
             # NOTE: memory_tasks are intentionally NOT executed inline to keep request latency stable.
             # Use TASK_QUEUE_BACKEND=rq + worker for async execution.
+            return task_id
+        if kind == "project_task":
+            from app.services.project_task_service import run_project_task
+
+            run_project_task(task_id=task_id)
             return task_id
         raise ValueError(f"Unsupported task kind: {kind!r}")
 
@@ -72,6 +77,10 @@ class RqTaskQueue:
                 from app.services.memory_update_service import run_memory_task
 
                 fn = run_memory_task
+            elif kind == "project_task":
+                from app.services.project_task_service import run_project_task
+
+                fn = run_project_task
             else:
                 raise ValueError(f"Unsupported task kind: {kind!r}")
 
