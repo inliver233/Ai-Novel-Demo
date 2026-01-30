@@ -518,6 +518,14 @@ export function AppShell() {
                               />
                               <SidebarLink
                                 collapsed={false}
+                                icon={<Table2 size={18} />}
+                                label={UI_COPY.nav.numericTables}
+                                ariaLabel="数值表格 (nav_numeric_tables)"
+                                to={`/projects/${projectId}/numeric-tables`}
+                                onClick={closeMobileNav}
+                              />
+                              <SidebarLink
+                                collapsed={false}
                                 icon={<ListTodo size={18} />}
                                 label={UI_COPY.nav.tasks}
                                 ariaLabel="任务中心 (nav_tasks)"
@@ -743,6 +751,13 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={collapsed}
+                          icon={<Table2 size={18} />}
+                          label={UI_COPY.nav.numericTables}
+                          ariaLabel="数值表格 (nav_numeric_tables)"
+                          to={`/projects/${projectId}/numeric-tables`}
+                        />
+                        <SidebarLink
+                          collapsed={collapsed}
                           icon={<ListTodo size={18} />}
                           label={UI_COPY.nav.tasks}
                           ariaLabel="任务中心 (nav_tasks)"
@@ -795,6 +810,13 @@ export function AppShell() {
                             label={UI_COPY.nav.structuredMemory}
                             ariaLabel="结构化记忆 (nav_structured_memory)"
                             to={`/projects/${projectId}/structured-memory`}
+                          />
+                          <SidebarLink
+                            collapsed={collapsed}
+                            icon={<Table2 size={18} />}
+                            label={UI_COPY.nav.numericTables}
+                            ariaLabel="数值表格 (nav_numeric_tables)"
+                            to={`/projects/${projectId}/numeric-tables`}
                           />
                           <SidebarLink
                             collapsed={collapsed}
