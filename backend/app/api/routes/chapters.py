@@ -61,6 +61,7 @@ from app.services.memory_query_service import normalize_query_text, parse_query_
 from app.services.memory_retrieval_service import build_memory_retrieval_log_json, retrieve_memory_context_pack
 from app.services.prompt_presets import ensure_default_plan_preset, ensure_default_post_edit_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
+from app.services.project_task_service import schedule_worldbook_auto_update_task
 from app.services.run_store import write_generation_run
 from app.services.search_index_service import schedule_search_rebuild_task
 from app.services.vector_rag_service import schedule_vector_rebuild_task
@@ -497,6 +498,30 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
 
     next_status = str(row.status or "")
     if prev_status != "done" and next_status == "done":
+        try:
+            token = None
+            updated_at = getattr(row, "updated_at", None)
+            if updated_at is not None:
+                token = updated_at.isoformat().replace("+00:00", "Z")
+            schedule_worldbook_auto_update_task(
+                db=db,
+                project_id=str(row.project_id),
+                actor_user_id=user_id,
+                request_id=request_id,
+                chapter_id=str(row.id),
+                chapter_token=token,
+                reason="chapter_done",
+            )
+        except Exception as exc:
+            log_event(
+                logger,
+                "warning",
+                event="WORLDBOOK_AUTO_UPDATE_TASK",
+                action="trigger_failed",
+                project_id=str(row.project_id),
+                chapter_id=str(row.id),
+                **exception_log_fields(exc),
+            )
         try:
             rebuild_fractal_memory(db=db, project_id=str(row.project_id), reason="chapter_done")
         except Exception as exc:

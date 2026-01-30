@@ -6,14 +6,15 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.core.logging import exception_log_fields, log_event
 from app.core.secrets import redact_api_keys
 from app.db.session import SessionLocal
+from app.db.utils import new_id, utc_now
 from app.models.project_task import ProjectTask
-from app.db.utils import utc_now
 
 logger = logging.getLogger("ainovel")
 
@@ -146,6 +147,119 @@ def list_project_tasks(
     return {"items": items, "next_before": next_before}
 
 
+def schedule_worldbook_auto_update_task(
+    *,
+    db: Session | None = None,
+    project_id: str,
+    actor_user_id: str | None,
+    request_id: str | None,
+    chapter_id: str | None,
+    chapter_token: str | None,
+    reason: str,
+) -> str | None:
+    """
+    Fail-soft scheduler: ensure/enqueue a ProjectTask(kind=worldbook_auto_update).
+
+    Idempotency key is chapter-scoped when chapter_id is provided, so a chapter can be marked done and re-triggered
+    later (with a new token) without creating duplicate tasks for the same chapter version.
+    """
+
+    pid = str(project_id or "").strip()
+    if not pid:
+        return None
+
+    cid = str(chapter_id or "").strip() or None
+    token_norm = str(chapter_token or "").strip() or utc_now().isoformat().replace("+00:00", "Z")
+    reason_norm = str(reason or "").strip() or "dirty"
+
+    if cid:
+        idempotency_key = f"worldbook:chapter:{cid}:since:{token_norm}:v1"
+    else:
+        idempotency_key = f"worldbook:project:since:{token_norm}:v1"
+
+    owns_session = db is None
+    if db is None:
+        db = SessionLocal()
+    try:
+        task = (
+            db.execute(
+                select(ProjectTask).where(
+                    ProjectTask.project_id == pid,
+                    ProjectTask.idempotency_key == idempotency_key,
+                )
+            )
+            .scalars()
+            .first()
+        )
+
+        if task is None:
+            task = ProjectTask(
+                id=new_id(),
+                project_id=pid,
+                actor_user_id=actor_user_id,
+                kind="worldbook_auto_update",
+                status="queued",
+                idempotency_key=idempotency_key,
+                params_json=_compact_json_dumps(
+                    {
+                        "reason": reason_norm,
+                        "request_id": (str(request_id or "").strip() or None),
+                        "chapter_id": cid,
+                        "chapter_token": token_norm,
+                        "triggered_at": utc_now().isoformat().replace("+00:00", "Z"),
+                    }
+                ),
+                result_json=None,
+                error_json=None,
+            )
+            db.add(task)
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                task = (
+                    db.execute(
+                        select(ProjectTask).where(
+                            ProjectTask.project_id == pid,
+                            ProjectTask.idempotency_key == idempotency_key,
+                        )
+                    )
+                    .scalars()
+                    .first()
+                )
+
+        if task is None:
+            return None
+
+        from app.services.task_queue import get_task_queue
+
+        queue = get_task_queue()
+        try:
+            queue.enqueue(kind="project_task", task_id=str(task.id))
+        except Exception as exc:
+            fields = exception_log_fields(exc)
+            msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:200]
+            task.status = "failed"
+            task.finished_at = utc_now()
+            task.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": msg})
+            db.commit()
+            log_event(
+                logger,
+                "warning",
+                event="PROJECT_TASK_ENQUEUE_ERROR",
+                task_id=str(task.id),
+                project_id=str(task.project_id),
+                kind=str(task.kind),
+                error_type=type(exc).__name__,
+                **fields,
+            )
+
+        return str(task.id)
+    finally:
+        if owns_session:
+            db.close()
+
+
 def retry_project_task(*, db: Session, task: ProjectTask) -> ProjectTask:
     """
     Idempotent retry for failed ProjectTask.
@@ -228,6 +342,29 @@ def run_project_task(*, task_id: str) -> str:
             from app.services.search_index_service import rebuild_project_search_index_async
 
             result = rebuild_project_search_index_async(project_id=project_id)
+        elif kind == "worldbook_auto_update":
+            params = _compact_json_loads(task.params_json) if task.params_json else None
+            params_dict = params if isinstance(params, dict) else {}
+            chapter_id = str(params_dict.get("chapter_id") or "").strip() or None
+            request_id2 = str(params_dict.get("request_id") or "").strip() or None
+            actor_user_id = str(getattr(task, "actor_user_id", "") or "").strip()
+            if not actor_user_id:
+                raise ValueError("Missing ProjectTask.actor_user_id for worldbook_auto_update")
+
+            from app.services.worldbook_auto_update_service import worldbook_auto_update_v1
+
+            res = worldbook_auto_update_v1(
+                project_id=project_id,
+                actor_user_id=actor_user_id,
+                request_id=request_id2 or f"project_task:{task_id}",
+                chapter_id=chapter_id,
+            )
+            if not bool(res.get("ok")):
+                reason = str(res.get("reason") or "unknown").strip() or "unknown"
+                run_id = str(res.get("run_id") or "").strip()
+                suffix = f" run_id={run_id}" if run_id else ""
+                raise RuntimeError(f"worldbook_auto_update failed: {reason}{suffix}")
+            result = res
         elif kind == "vector_rebuild":
             from app.models.project_settings import ProjectSettings
             from app.services.vector_embedding_overrides import vector_embedding_overrides
