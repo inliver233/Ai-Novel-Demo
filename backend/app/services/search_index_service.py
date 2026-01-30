@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.logging import exception_log_fields, log_event
 from app.db.session import SessionLocal
+from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
 from app.models.character import Character
+from app.models.project_task import ProjectTask
 from app.models.outline import Outline
 from app.models.search_index import SearchDocument
 from app.models.story_memory import StoryMemory
@@ -506,3 +510,150 @@ def query_project_search(
     ]
     next_offset2 = (offset + limit) if len(items2) >= limit else None
     return {"items": items2, "next_offset": next_offset2, "mode": "like", "fts_enabled": False}
+
+
+def schedule_search_rebuild_task(
+    *,
+    db: Session | None = None,
+    project_id: str,
+    actor_user_id: str | None,
+    request_id: str | None,
+    reason: str,
+) -> str | None:
+    """
+    Fail-soft scheduler: ensure/enqueue a ProjectTask(kind=search_rebuild) for the project.
+
+    Idempotency key is derived from the latest succeeded search_rebuild task, so a new task can be created after each
+    successful rebuild while still deduping bursts of changes.
+    """
+
+    pid = str(project_id or "").strip()
+    if not pid:
+        return None
+
+    reason_norm = str(reason or "").strip() or "dirty"
+    owns_session = db is None
+    if db is None:
+        db = SessionLocal()
+    try:
+        last = (
+            db.execute(
+                select(ProjectTask)
+                .where(
+                    ProjectTask.project_id == pid,
+                    ProjectTask.kind == "search_rebuild",
+                    ProjectTask.status.in_(["succeeded", "done"]),
+                )
+                .order_by(ProjectTask.finished_at.desc(), ProjectTask.created_at.desc(), ProjectTask.id.desc())
+                .limit(1)
+            )
+            .scalars()
+            .first()
+        )
+
+        token = "none"
+        last_finished_at = getattr(last, "finished_at", None) if last is not None else None
+        if last_finished_at is not None:
+            token = last_finished_at.isoformat().replace("+00:00", "Z")
+
+        idempotency_key = f"search:project:since:{token}:v1"
+        task = (
+            db.execute(
+                select(ProjectTask).where(
+                    ProjectTask.project_id == pid,
+                    ProjectTask.idempotency_key == idempotency_key,
+                )
+            )
+            .scalars()
+            .first()
+        )
+
+        if task is None:
+            task = ProjectTask(
+                id=new_id(),
+                project_id=pid,
+                actor_user_id=actor_user_id,
+                kind="search_rebuild",
+                status="queued",
+                idempotency_key=idempotency_key,
+                params_json=json.dumps(
+                    {"reason": reason_norm, "request_id": request_id, "triggered_at": utc_now().isoformat().replace("+00:00", "Z")},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                result_json=None,
+                error_json=None,
+            )
+            db.add(task)
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                task = (
+                    db.execute(
+                        select(ProjectTask).where(
+                            ProjectTask.project_id == pid,
+                            ProjectTask.idempotency_key == idempotency_key,
+                        )
+                    )
+                    .scalars()
+                    .first()
+                )
+                if task is None:
+                    return None
+        else:
+            status_norm = str(getattr(task, "status", "") or "").strip().lower()
+            if status_norm not in {"queued", "running"}:
+                task.status = "queued"
+                task.started_at = None
+                task.finished_at = None
+                task.result_json = None
+                task.error_json = None
+                db.commit()
+
+        from app.services.task_queue import get_task_queue
+
+        queue = get_task_queue()
+        try:
+            queue.enqueue(kind="project_task", task_id=str(task.id))
+        except Exception as exc:
+            fields = exception_log_fields(exc)
+            msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:200]
+            task.status = "failed"
+            task.finished_at = utc_now()
+            task.error_json = json.dumps(
+                {"error_type": type(exc).__name__, "message": msg},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            db.commit()
+            log_event(
+                logger,
+                "warning",
+                event="PROJECT_TASK_ENQUEUE_ERROR",
+                task_id=str(task.id),
+                project_id=pid,
+                kind="search_rebuild",
+                error_type=type(exc).__name__,
+                request_id=request_id,
+                **fields,
+            )
+        return str(task.id)
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        log_event(
+            logger,
+            "warning",
+            event="SEARCH_REBUILD_SCHEDULE_ERROR",
+            project_id=pid,
+            error_type=type(exc).__name__,
+            request_id=request_id,
+            **exception_log_fields(exc),
+        )
+        return None
+    finally:
+        if owns_session:
+            db.close()

@@ -224,6 +224,10 @@ def run_project_task(*, task_id: str) -> str:
         result: dict[str, Any]
         if kind == "noop":
             result = {"skipped": True, "note": "noop"}
+        elif kind == "search_rebuild":
+            from app.services.search_index_service import rebuild_project_search_index_async
+
+            result = rebuild_project_search_index_async(project_id=project_id)
         elif kind == "vector_rebuild":
             from app.models.project_settings import ProjectSettings
             from app.services.vector_embedding_overrides import vector_embedding_overrides

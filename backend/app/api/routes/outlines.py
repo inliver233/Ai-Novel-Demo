@@ -19,6 +19,7 @@ from app.models.chapter import Chapter
 from app.models.outline import Outline
 from app.models.project_settings import ProjectSettings
 from app.schemas.outline import OutlineCreate, OutlineListItem, OutlineOut, OutlineUpdate
+from app.services.search_index_service import schedule_search_rebuild_task
 from app.services.vector_rag_service import schedule_vector_rebuild_task
 
 router = APIRouter()
@@ -100,6 +101,7 @@ def create_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
     db.commit()
     db.refresh(row)
     schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="outline_create")
+    schedule_search_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="outline_create")
     return ok_payload(request_id=request_id, data={"outline": _outline_out(row)})
 
 
@@ -137,6 +139,7 @@ def update_outline_item(
     db.commit()
     db.refresh(row)
     schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="outline_update")
+    schedule_search_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="outline_update")
     return ok_payload(request_id=request_id, data={"outline": _outline_out(row)})
 
 
@@ -167,4 +170,5 @@ def delete_outline_item(request: Request, db: DbDep, user_id: UserIdDep, project
     _mark_vector_index_dirty(db, project_id=project_id)
     db.commit()
     schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="outline_delete")
+    schedule_search_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="outline_delete")
     return ok_payload(request_id=request_id, data={})

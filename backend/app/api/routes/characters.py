@@ -8,6 +8,7 @@ from app.core.errors import ok_payload
 from app.db.utils import new_id
 from app.models.character import Character
 from app.schemas.characters import CharacterCreate, CharacterOut, CharacterUpdate
+from app.services.search_index_service import schedule_search_rebuild_task
 
 router = APIRouter()
 
@@ -39,6 +40,7 @@ def create_character(request: Request, db: DbDep, user_id: UserIdDep, project_id
     db.add(row)
     db.commit()
     db.refresh(row)
+    schedule_search_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="character_create")
     return ok_payload(request_id=request_id, data={"character": CharacterOut.model_validate(row).model_dump()})
 
 
@@ -58,6 +60,9 @@ def update_character(request: Request, db: DbDep, user_id: UserIdDep, character_
 
     db.commit()
     db.refresh(row)
+    schedule_search_rebuild_task(
+        db=db, project_id=str(row.project_id), actor_user_id=user_id, request_id=request_id, reason="character_update"
+    )
     return ok_payload(request_id=request_id, data={"character": CharacterOut.model_validate(row).model_dump()})
 
 
@@ -67,4 +72,7 @@ def delete_character(request: Request, db: DbDep, user_id: UserIdDep, character_
     row = require_character_editor(db, character_id=character_id, user_id=user_id)
     db.delete(row)
     db.commit()
+    schedule_search_rebuild_task(
+        db=db, project_id=str(row.project_id), actor_user_id=user_id, request_id=request_id, reason="character_delete"
+    )
     return ok_payload(request_id=request_id, data={})

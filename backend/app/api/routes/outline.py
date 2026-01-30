@@ -23,6 +23,7 @@ from app.services.output_contracts import build_repair_prompt_for_task, contract
 from app.services.prompt_presets import render_preset_for_task
 from app.services.prompt_store import format_characters
 from app.services.run_store import write_generation_run
+from app.services.search_index_service import schedule_search_rebuild_task
 from app.services.style_resolution_service import resolve_style_guide
 from app.services.vector_rag_service import schedule_vector_rebuild_task
 from app.utils.sse_response import (
@@ -98,6 +99,7 @@ def put_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str
     db.commit()
     db.refresh(row)
     schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="outline_update")
+    schedule_search_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="outline_update")
     structure = None
     if row.structure_json:
         try:
