@@ -32,6 +32,9 @@
 - 内置（P0）：`related_to`（兜底）、`family`、`romance`、`friend`、`ally`、`enemy`、`mentor`、`student`、`leader_of`、`member_of`、`owes`、`betrayed`、`protects`
 - 扩展：允许用户/AI 使用自定义类型（仍受长度限制与 UI 展示约束），但 UI 在筛选/分组上把内置类型优先展示。
 
+落地到代码（不做强制校验，仅做规范收口）：  
+- `backend/app/models/structured_memory.py`：`RECOMMENDED_RELATION_TYPES`
+
 方向性：
 - 默认按 `from_entity_id -> to_entity_id` 作为“叙事方向/主动方”；对称关系（如 `friend`）可通过 `attributes_json.is_symmetric=true` 或由 UI 以“无向展示”处理（存储仍可只存一条，减少重复）。
 
@@ -45,9 +48,13 @@
 - `tags`：字符串数组（用户自定义标签）
 - `confidence`：AI 抽取置信度（用于 UI 提示与排序）
 - `last_seen_at_chapter_id`：最后一次被证据支持的章节（用于自动软清理）
+- `is_symmetric`：是否应以无向方式展示（用于 UI 体验）
 
 解释文本：
 - `relations.description_md` 用于“人类可读的一句话解释”（可由 AI 生成，也可人工修改）。
+
+落地到代码（不做强制校验，仅做规范收口）：  
+- `backend/app/models/structured_memory.py`：`RELATION_ATTRIBUTES_SCHEMA_V1`
 
 UI 参考（关系管理与可读性编辑）：
 - Kanka Relationship 文档（关系作为可编辑对象，支持方向与描述）  
@@ -131,4 +138,3 @@ UI 参考（关系管理与可读性编辑）：
 - **变更集**：`memory_change_sets` / `memory_change_set_items`（承载 AI/人工变更的提议/应用/回滚/失败）
 
 > 后续实现（LMEM-670~673）将基于此映射补齐：人物关系类型规范、抽取任务、UI 编辑与证据回放。
-

@@ -9,6 +9,45 @@ from app.db.base import Base
 from app.db.utils import utc_now
 
 
+# NOTE: The graph subsystem uses a flexible schema:
+# - relation_type is a short string (NOT enforced by DB beyond length).
+# - attributes_json stores optional structured attributes.
+#
+# We provide a small, stable recommended set for UX/prompting while keeping extensibility.
+RECOMMENDED_RELATION_TYPES: tuple[str, ...] = (
+    # Generic fallback
+    "related_to",
+    # People
+    "family",
+    "romance",
+    "friend",
+    "ally",
+    "enemy",
+    "mentor",
+    "student",
+    # Social/organization
+    "leader_of",
+    "member_of",
+    # Plot/interaction
+    "owes",
+    "betrayed",
+    "protects",
+)
+
+# Suggested schema keys for relations.attributes_json (NOT enforced).
+# Keep keys stable; add new keys by versioning in docs when needed.
+RELATION_ATTRIBUTES_SCHEMA_V1: dict[str, dict[str, object]] = {
+    "strength": {"type": "number", "description": "0~1 或 0~100（亲密度/敌对度/强度）"},
+    "status": {"type": "string", "enum": ["active", "past", "unknown"], "description": "关系当前是否有效"},
+    "since_chapter_id": {"type": "string", "description": "关系起始章节（可用于回放/时间线）"},
+    "until_chapter_id": {"type": "string", "description": "关系结束章节（若已结束）"},
+    "last_seen_at_chapter_id": {"type": "string", "description": "最后一次被证据支持的章节"},
+    "tags": {"type": "array[string]", "description": "自定义标签"},
+    "confidence": {"type": "number", "description": "AI 抽取置信度（用于 UI 提示/排序）"},
+    "is_symmetric": {"type": "boolean", "description": "是否应在 UI 以无向方式展示"},
+}
+
+
 class MemoryEntity(Base):
     __tablename__ = "entities"
 
