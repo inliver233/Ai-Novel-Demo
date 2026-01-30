@@ -27,6 +27,7 @@ from app.api.routes import (
     prompts,
     search,
     settings,
+    story_memory,
     tasks,
     tables,
     vector,
@@ -64,4 +65,5 @@ api_router.include_router(export.router, tags=["export"])
 api_router.include_router(import_export.router, tags=["import_export"])
 api_router.include_router(generation_runs.router, tags=["generation_runs"])
 api_router.include_router(worldbook.router, tags=["worldbook"])
+api_router.include_router(story_memory.router, tags=["story_memory"])
 api_router.include_router(writing_styles.router, tags=["writing_styles"])
