@@ -99,6 +99,48 @@ def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> 
     else:
         rerank_effective_source = "default"
 
+    rerank_override_provider = (getattr(row, "vector_rerank_provider", None) or "").strip() if row is not None else ""
+    rerank_override_base_url = (getattr(row, "vector_rerank_base_url", None) or "").strip() if row is not None else ""
+    rerank_override_model = (getattr(row, "vector_rerank_model", None) or "").strip() if row is not None else ""
+    rerank_override_timeout_seconds = getattr(row, "vector_rerank_timeout_seconds", None) if row is not None else None
+    rerank_override_hybrid_alpha = getattr(row, "vector_rerank_hybrid_alpha", None) if row is not None else None
+    rerank_override_ciphertext = getattr(row, "vector_rerank_api_key_ciphertext", None) if row is not None else None
+    rerank_override_masked = (getattr(row, "vector_rerank_api_key_masked", None) or "").strip() if row is not None else ""
+    rerank_override_has_api_key = bool(str(rerank_override_ciphertext or "").strip())
+
+    env_rerank_provider = "external_rerank_api"
+    env_rerank_base_url = str(getattr(settings, "vector_rerank_external_base_url", "") or "").strip()
+    env_rerank_model = str(getattr(settings, "vector_rerank_external_model", "") or "").strip()
+    env_rerank_api_key = str(getattr(settings, "vector_rerank_external_api_key", "") or "").strip()
+    env_rerank_timeout_seconds_raw = float(getattr(settings, "vector_rerank_external_timeout_seconds", 15.0) or 15.0)
+    env_rerank_timeout_seconds = int(max(1.0, min(env_rerank_timeout_seconds_raw, 120.0)))
+    env_rerank_has_api_key = bool(env_rerank_api_key)
+    env_rerank_masked_api_key = mask_api_key(env_rerank_api_key) if env_rerank_api_key else ""
+
+    rerank_effective_provider = rerank_override_provider or (env_rerank_provider if env_rerank_base_url else "")
+    rerank_effective_base_url = rerank_override_base_url or env_rerank_base_url
+    rerank_effective_model = rerank_override_model or env_rerank_model
+    rerank_effective_timeout_seconds = int(rerank_override_timeout_seconds) if rerank_override_timeout_seconds is not None else env_rerank_timeout_seconds
+    rerank_effective_hybrid_alpha = float(rerank_override_hybrid_alpha) if rerank_override_hybrid_alpha is not None else 0.0
+    rerank_effective_has_api_key = rerank_override_has_api_key or env_rerank_has_api_key
+    rerank_effective_masked_api_key = rerank_override_masked if rerank_override_has_api_key else env_rerank_masked_api_key
+
+    rerank_config_project_fields = {
+        "provider": bool(rerank_override_provider),
+        "base_url": bool(rerank_override_base_url),
+        "model": bool(rerank_override_model),
+        "timeout_seconds": rerank_override_timeout_seconds is not None,
+        "hybrid_alpha": rerank_override_hybrid_alpha is not None,
+        "api_key": rerank_override_has_api_key,
+    }
+    rerank_config_default_fields = {k: not v for k, v in rerank_config_project_fields.items()}
+    if any(rerank_config_project_fields.values()) and any(rerank_config_default_fields.values()):
+        rerank_effective_config_source = "mixed"
+    elif any(rerank_config_project_fields.values()):
+        rerank_effective_config_source = "project"
+    else:
+        rerank_effective_config_source = "default"
+
     override_provider = (row.vector_embedding_provider or "").strip() if row is not None else ""
     override_base_url = (row.vector_embedding_base_url or "").strip() if row is not None else ""
     override_model = (row.vector_embedding_model or "").strip() if row is not None else ""
@@ -191,10 +233,25 @@ def _build_settings_payload(*, project_id: str, row: ProjectSettings | None) -> 
         vector_rerank_enabled=rerank_override_enabled,
         vector_rerank_method=rerank_override_method,
         vector_rerank_top_k=rerank_override_top_k,
+        vector_rerank_provider=rerank_override_provider,
+        vector_rerank_base_url=rerank_override_base_url,
+        vector_rerank_model=rerank_override_model,
+        vector_rerank_timeout_seconds=rerank_override_timeout_seconds,
+        vector_rerank_hybrid_alpha=rerank_override_hybrid_alpha,
+        vector_rerank_has_api_key=rerank_override_has_api_key,
+        vector_rerank_masked_api_key=rerank_override_masked,
         vector_rerank_effective_enabled=rerank_effective_enabled,
         vector_rerank_effective_method=rerank_effective_method,
         vector_rerank_effective_top_k=rerank_effective_top_k,
         vector_rerank_effective_source=rerank_effective_source,
+        vector_rerank_effective_provider=rerank_effective_provider,
+        vector_rerank_effective_base_url=rerank_effective_base_url,
+        vector_rerank_effective_model=rerank_effective_model,
+        vector_rerank_effective_timeout_seconds=rerank_effective_timeout_seconds,
+        vector_rerank_effective_hybrid_alpha=rerank_effective_hybrid_alpha,
+        vector_rerank_effective_has_api_key=rerank_effective_has_api_key,
+        vector_rerank_effective_masked_api_key=rerank_effective_masked_api_key,
+        vector_rerank_effective_config_source=rerank_effective_config_source,
         vector_embedding_provider=override_provider,
         vector_embedding_base_url=override_base_url,
         vector_embedding_model=override_model,
@@ -266,6 +323,45 @@ def put_settings(request: Request, db: DbDep, user_id: UserIdDep, project_id: st
 
     if "vector_rerank_top_k" in body.model_fields_set:
         row.vector_rerank_top_k = int(body.vector_rerank_top_k) if body.vector_rerank_top_k is not None else None
+
+    if "vector_rerank_provider" in body.model_fields_set:
+        if body.vector_rerank_provider is None:
+            row.vector_rerank_provider = None
+        else:
+            row.vector_rerank_provider = body.vector_rerank_provider.strip() or None
+
+    if "vector_rerank_base_url" in body.model_fields_set:
+        if body.vector_rerank_base_url is None:
+            row.vector_rerank_base_url = None
+        else:
+            row.vector_rerank_base_url = body.vector_rerank_base_url.strip() or None
+
+    if "vector_rerank_model" in body.model_fields_set:
+        if body.vector_rerank_model is None:
+            row.vector_rerank_model = None
+        else:
+            row.vector_rerank_model = body.vector_rerank_model.strip() or None
+
+    if "vector_rerank_timeout_seconds" in body.model_fields_set:
+        row.vector_rerank_timeout_seconds = int(body.vector_rerank_timeout_seconds) if body.vector_rerank_timeout_seconds is not None else None
+
+    if "vector_rerank_hybrid_alpha" in body.model_fields_set:
+        row.vector_rerank_hybrid_alpha = float(body.vector_rerank_hybrid_alpha) if body.vector_rerank_hybrid_alpha is not None else None
+
+    if body.vector_rerank_api_key is not None:
+        raw = body.vector_rerank_api_key.strip()
+        if not raw:
+            row.vector_rerank_api_key_ciphertext = None
+            row.vector_rerank_api_key_masked = None
+        else:
+            try:
+                row.vector_rerank_api_key_ciphertext = encrypt_secret(raw)
+                row.vector_rerank_api_key_masked = mask_api_key(raw)
+            except SecretCryptoError as exc:
+                raise AppError.validation(
+                    message=str(exc),
+                    details={"field": "vector_rerank_api_key"},
+                ) from exc
 
     if body.vector_embedding_provider is not None:
         row.vector_embedding_provider = body.vector_embedding_provider.strip() or None

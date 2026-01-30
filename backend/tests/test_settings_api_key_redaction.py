@@ -106,6 +106,12 @@ class TestSettingsApiKeyRedaction(unittest.TestCase):
                 "vector_embedding_base_url": "http://127.0.0.1:4010/v1",
                 "vector_embedding_model": "text-embedding-mock",
                 "vector_embedding_api_key": api_key,
+                "vector_rerank_provider": "external_rerank_api",
+                "vector_rerank_base_url": "http://127.0.0.1:4011",
+                "vector_rerank_model": "rerank-mock",
+                "vector_rerank_timeout_seconds": 15,
+                "vector_rerank_hybrid_alpha": 0.25,
+                "vector_rerank_api_key": api_key,
             },
         )
         self.assertEqual(put.status_code, 200)
@@ -117,6 +123,9 @@ class TestSettingsApiKeyRedaction(unittest.TestCase):
         self.assertEqual(settings_out["vector_embedding_masked_api_key"], "sk-****1234")
         self.assertNotIn("vector_embedding_api_key", settings_out)
         self.assertNotIn(api_key, str(settings_out.get("vector_embedding_effective_masked_api_key", "")))
+        self.assertTrue(settings_out["vector_rerank_has_api_key"])
+        self.assertEqual(settings_out["vector_rerank_masked_api_key"], "sk-****1234")
+        self.assertNotIn("vector_rerank_api_key", settings_out)
 
         got = client.get("/api/projects/p1/settings", headers={"X-Test-User": "u_editor"})
         self.assertEqual(got.status_code, 200)
@@ -126,4 +135,3 @@ class TestSettingsApiKeyRedaction(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

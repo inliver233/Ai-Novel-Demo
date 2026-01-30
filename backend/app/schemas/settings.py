@@ -57,10 +57,25 @@ class ProjectSettingsOut(BaseModel):
     vector_rerank_enabled: bool | None
     vector_rerank_method: str | None
     vector_rerank_top_k: int | None
+    vector_rerank_provider: str
+    vector_rerank_base_url: str
+    vector_rerank_model: str
+    vector_rerank_timeout_seconds: int | None
+    vector_rerank_hybrid_alpha: float | None
+    vector_rerank_has_api_key: bool
+    vector_rerank_masked_api_key: str
     vector_rerank_effective_enabled: bool
     vector_rerank_effective_method: str
     vector_rerank_effective_top_k: int
     vector_rerank_effective_source: str
+    vector_rerank_effective_provider: str
+    vector_rerank_effective_base_url: str
+    vector_rerank_effective_model: str
+    vector_rerank_effective_timeout_seconds: int
+    vector_rerank_effective_hybrid_alpha: float
+    vector_rerank_effective_has_api_key: bool
+    vector_rerank_effective_masked_api_key: str
+    vector_rerank_effective_config_source: str
 
     vector_embedding_provider: str
     vector_embedding_base_url: str
@@ -93,6 +108,12 @@ class ProjectSettingsUpdate(BaseModel):
     vector_rerank_enabled: bool | None = None
     vector_rerank_method: str | None = Field(default=None, max_length=64)
     vector_rerank_top_k: int | None = Field(default=None, ge=1, le=1000)
+    vector_rerank_provider: str | None = Field(default=None, max_length=64)
+    vector_rerank_base_url: str | None = Field(default=None, max_length=2048)
+    vector_rerank_model: str | None = Field(default=None, max_length=255)
+    vector_rerank_timeout_seconds: int | None = Field(default=None, ge=1, le=120)
+    vector_rerank_hybrid_alpha: float | None = Field(default=None, ge=0.0, le=1.0)
+    vector_rerank_api_key: str | None = Field(default=None, max_length=2048)
 
     vector_embedding_provider: str | None = Field(default=None, max_length=64)
     vector_embedding_base_url: str | None = Field(default=None, max_length=2048)
