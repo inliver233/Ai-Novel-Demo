@@ -2,6 +2,23 @@ import { apiJson } from "./apiClient";
 
 export type WorldBookPriority = "drop_first" | "optional" | "important" | "must";
 
+export type ProjectTask = {
+  id: string;
+  project_id: string;
+  actor_user_id?: string | null;
+  kind: string;
+  status: string;
+  idempotency_key?: string | null;
+  error_type?: string | null;
+  error_message?: string | null;
+  timings?: Record<string, unknown>;
+  params?: unknown;
+  result?: unknown;
+  error?: unknown;
+};
+
+type PagedResult<T> = { items: T[]; next_before?: string | null };
+
 export type WorldBookEntry = {
   id: string;
   project_id: string;
@@ -181,5 +198,37 @@ export async function importAllWorldBookEntries(
     method: "POST",
     body: JSON.stringify(body),
   });
+  return res.data;
+}
+
+export async function triggerWorldBookAutoUpdate(
+  projectId: string,
+  chapterId?: string,
+): Promise<{ task_id: string; chapter_id?: string | null }> {
+  const params = new URLSearchParams();
+  if (chapterId) params.set("chapter_id", chapterId);
+  const qs = params.toString();
+  const res = await apiJson<{ task_id: string; chapter_id?: string | null }>(
+    `/api/projects/${projectId}/worldbook_entries/auto_update${qs ? `?${qs}` : ""}`,
+    {
+      method: "POST",
+    },
+  );
+  return res.data;
+}
+
+export async function getLatestWorldBookAutoUpdateTask(projectId: string): Promise<ProjectTask | null> {
+  const params = new URLSearchParams();
+  params.set("kind", "worldbook_auto_update");
+  params.set("limit", "1");
+  const res = await apiJson<PagedResult<ProjectTask>>(`/api/projects/${projectId}/tasks?${params.toString()}`);
+  const first = res.data.items?.[0];
+  if (!first) return null;
+  const detail = await apiJson<ProjectTask>(`/api/tasks/${encodeURIComponent(first.id)}`);
+  return detail.data;
+}
+
+export async function retryProjectTask(taskId: string): Promise<ProjectTask> {
+  const res = await apiJson<ProjectTask>(`/api/tasks/${encodeURIComponent(taskId)}/retry`, { method: "POST" });
   return res.data;
 }

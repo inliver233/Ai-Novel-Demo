@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { Badge } from "../components/ui/Badge";
 import { Drawer } from "../components/ui/Drawer";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
+import { humanizeTaskStatus } from "../lib/humanize";
 import { containsPinyinMatch, looksLikePinyinToken, tokenizeSearch } from "../lib/pinyin";
 import { UI_COPY } from "../lib/uiCopy";
 import type { ApiError } from "../services/apiClient";
@@ -16,15 +17,19 @@ import {
   deleteWorldBookEntry,
   duplicateWorldBookEntries,
   exportAllWorldBookEntries,
+  getLatestWorldBookAutoUpdateTask,
   importAllWorldBookEntries,
   listWorldBookEntries,
   previewWorldBookTrigger,
+  retryProjectTask as retryProjectTaskApi,
+  triggerWorldBookAutoUpdate,
   type WorldBookEntry,
   type WorldBookExportAllV1,
   type WorldBookImportAllReport,
   type WorldBookImportMode,
   type WorldBookPreviewTriggerResult,
   type WorldBookPriority,
+  type ProjectTask,
   updateWorldBookEntry,
 } from "../services/worldbookApi";
 
@@ -44,6 +49,15 @@ const EMPTY_WORLD_BOOK_ENTRIES: WorldBookEntry[] = [];
 
 const WORLD_BOOK_ENTRY_RENDER_THRESHOLD = 150;
 const WORLD_BOOK_ENTRY_PAGE_SIZE = 100;
+
+function taskStatusTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
+  const s = String(status || "").trim();
+  if (s === "failed") return "danger";
+  if (s === "running") return "warning";
+  if (s === "queued") return "info";
+  if (s === "done" || s === "succeeded") return "success";
+  return "neutral";
+}
 
 function highlightText(text: string, tokens: string[]): ReactNode {
   const raw = String(text ?? "");
@@ -142,6 +156,10 @@ export function WorldBookPage() {
   const loading = entriesQuery.loading;
   const setEntries = entriesQuery.setData;
 
+  const autoUpdateTaskQuery = useProjectData<ProjectTask | null>(projectId, async (id) => getLatestWorldBookAutoUpdateTask(id));
+  const autoUpdateTask = autoUpdateTaskQuery.data;
+  const [autoUpdateActionLoading, setAutoUpdateActionLoading] = useState(false);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<WorldBookEntry | null>(null);
   const [saving, setSaving] = useState(false);
@@ -170,6 +188,42 @@ export function WorldBookPage() {
   const [importJson, setImportJson] = useState<WorldBookExportAllV1 | null>(null);
   const [importReport, setImportReport] = useState<WorldBookImportAllReport | null>(null);
   const [importLoading, setImportLoading] = useState(false);
+
+  const triggerAutoUpdate = useCallback(async () => {
+    if (!projectId) {
+      toast.toastError(UI_COPY.worldbook.missingProjectId);
+      return;
+    }
+    if (autoUpdateActionLoading) return;
+    setAutoUpdateActionLoading(true);
+    try {
+      await triggerWorldBookAutoUpdate(projectId);
+      toast.toastSuccess("已触发世界书自动更新（后台任务）");
+      await autoUpdateTaskQuery.refresh();
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`触发失败：${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setAutoUpdateActionLoading(false);
+    }
+  }, [autoUpdateActionLoading, autoUpdateTaskQuery, projectId, toast]);
+
+  const retryAutoUpdate = useCallback(async () => {
+    const t = autoUpdateTask;
+    if (!t || t.status !== "failed") return;
+    if (autoUpdateActionLoading) return;
+    setAutoUpdateActionLoading(true);
+    try {
+      await retryProjectTaskApi(t.id);
+      toast.toastSuccess("已提交重试");
+      await autoUpdateTaskQuery.refresh();
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`重试失败：${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setAutoUpdateActionLoading(false);
+    }
+  }, [autoUpdateActionLoading, autoUpdateTask, autoUpdateTaskQuery, toast]);
 
   const bulkSelectedExplicitSet = useMemo(() => new Set(bulkSelectedIds), [bulkSelectedIds]);
   const bulkExcludedSet = useMemo(() => new Set(bulkExcludedIds), [bulkExcludedIds]);
@@ -802,6 +856,110 @@ export function WorldBookPage() {
           <button className="btn btn-primary" onClick={openNew} type="button">
             {UI_COPY.worldbook.create}
           </button>
+        </div>
+      </div>
+
+      <div className="panel p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm text-ink">世界书自动更新</div>
+            <div className="mt-1 text-xs text-subtext">章节定稿后会后台抽取并合并条目；失败不影响写作，可重试。</div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="btn btn-secondary"
+              disabled={!projectId || autoUpdateActionLoading}
+              onClick={() => void autoUpdateTaskQuery.refresh()}
+              type="button"
+            >
+              刷新状态
+            </button>
+            <button
+              className="btn btn-secondary"
+              disabled={!projectId || autoUpdateActionLoading || autoUpdateTask?.status !== "failed"}
+              onClick={() => void retryAutoUpdate()}
+              type="button"
+            >
+              重试
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={!projectId || autoUpdateActionLoading}
+              onClick={() => void triggerAutoUpdate()}
+              type="button"
+            >
+              {autoUpdateActionLoading ? "处理中..." : "手动触发"}
+            </button>
+            {projectId ? (
+              <Link className="btn btn-secondary" to={`/projects/${projectId}/tasks`}>
+                任务中心
+              </Link>
+            ) : (
+              <button className="btn btn-secondary" disabled type="button">
+                任务中心
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-3">
+          {autoUpdateTaskQuery.loading ? <div className="text-xs text-subtext">{UI_COPY.common.loading}</div> : null}
+          {!autoUpdateTaskQuery.loading && !autoUpdateTask ? (
+            <div className="text-xs text-subtext">暂无任务记录（章节定稿后会自动创建）。</div>
+          ) : null}
+          {autoUpdateTask ? (
+            <div className="grid gap-1 text-xs text-subtext">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={taskStatusTone(autoUpdateTask.status)}>{humanizeTaskStatus(autoUpdateTask.status)}</Badge>
+                <span className="font-mono text-subtext">{autoUpdateTask.kind}</span>
+                <span className="font-mono text-subtext">({autoUpdateTask.id})</span>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <span>request_id:</span>
+                <span className="font-mono text-ink">
+                  {typeof (autoUpdateTask.params as Record<string, unknown> | null)?.request_id === "string"
+                    ? ((autoUpdateTask.params as Record<string, unknown>).request_id as string)
+                    : "-"}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <span>chapter_id:</span>
+                <span className="font-mono text-ink">
+                  {typeof (autoUpdateTask.params as Record<string, unknown> | null)?.chapter_id === "string"
+                    ? ((autoUpdateTask.params as Record<string, unknown>).chapter_id as string)
+                    : "-"}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <span>run_id:</span>
+                <span className="font-mono text-ink">
+                  {typeof (autoUpdateTask.result as Record<string, unknown> | null)?.run_id === "string"
+                    ? ((autoUpdateTask.result as Record<string, unknown>).run_id as string)
+                    : "-"}
+                </span>
+              </div>
+
+              {typeof (autoUpdateTask.result as Record<string, unknown> | null)?.applied === "object" &&
+              (autoUpdateTask.result as Record<string, unknown>).applied ? (
+                <div className="flex flex-wrap gap-2">
+                  <span>applied:</span>
+                  <span className="font-mono text-ink">
+                    {JSON.stringify((autoUpdateTask.result as Record<string, unknown>).applied)}
+                  </span>
+                </div>
+              ) : null}
+
+              {autoUpdateTask.status === "failed" ? (
+                <div className="text-xs text-danger">
+                  {autoUpdateTask.error_type ? `${autoUpdateTask.error_type}: ` : ""}
+                  {autoUpdateTask.error_message || "任务失败"}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 

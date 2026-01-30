@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from sqlalchemy import select
 
 from app.api.deps import (
@@ -15,6 +15,7 @@ from app.api.deps import (
 from app.core.config import settings
 from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id, utc_now
+from app.models.chapter import Chapter
 from app.models.project_settings import ProjectSettings
 from app.models.worldbook_entry import WorldBookEntry
 from app.schemas.worldbook import (
@@ -30,6 +31,7 @@ from app.schemas.worldbook import (
     WorldBookPreviewTriggerRequest,
 )
 from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
+from app.services.project_task_service import schedule_worldbook_auto_update_task
 from app.services.search_index_service import schedule_search_rebuild_task
 from app.services.vector_rag_service import schedule_vector_rebuild_task
 from app.services.worldbook_service import preview_worldbook_trigger
@@ -105,6 +107,57 @@ def list_worldbook_entries(request: Request, db: DbDep, user_id: UserIdDep, proj
         .all()
     )
     return ok_payload(request_id=request_id, data={"worldbook_entries": [_to_out(r) for r in rows]})
+
+
+@router.post("/projects/{project_id}/worldbook_entries/auto_update")
+def trigger_worldbook_auto_update(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    chapter_id: str | None = Query(default=None, max_length=36),
+) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    chapter: Chapter | None = None
+    if chapter_id is not None and str(chapter_id).strip():
+        chapter = db.get(Chapter, str(chapter_id))
+        if chapter is None or str(chapter.project_id) != str(project_id):
+            raise AppError.not_found("章节不存在")
+        if str(getattr(chapter, "status", "") or "") != "done":
+            raise AppError.validation(details={"reason": "chapter_not_done"})
+    else:
+        chapter = (
+            db.execute(
+                select(Chapter)
+                .where(
+                    Chapter.project_id == project_id,
+                    Chapter.status == "done",
+                )
+                .order_by(Chapter.updated_at.desc(), Chapter.id.desc())
+                .limit(1)
+            )
+            .scalars()
+            .first()
+        )
+
+    cid = str(getattr(chapter, "id", "") or "").strip() or None
+    updated_at = getattr(chapter, "updated_at", None) if chapter is not None else None
+    token = updated_at.isoformat().replace("+00:00", "Z") if updated_at is not None else utc_now().isoformat().replace("+00:00", "Z")
+
+    task_id = schedule_worldbook_auto_update_task(
+        db=db,
+        project_id=project_id,
+        actor_user_id=user_id,
+        request_id=request_id,
+        chapter_id=cid,
+        chapter_token=token,
+        reason="manual_worldbook_auto_update",
+    )
+    if not task_id:
+        raise AppError.validation(details={"reason": "schedule_failed"})
+    return ok_payload(request_id=request_id, data={"task_id": task_id, "chapter_id": cid})
 
 
 @router.get("/projects/{project_id}/worldbook_entries/export_all")
