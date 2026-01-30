@@ -129,9 +129,9 @@ const ImportPage = lazy(async () => {
   return { default: mod.ImportPage };
 });
 
-const GlossaryPage = lazy(async () => {
-  const mod = await import("./pages/GlossaryPage");
-  return { default: mod.GlossaryPage };
+const SearchPage = lazy(async () => {
+  const mod = await import("./pages/SearchPage");
+  return { default: mod.SearchPage };
 });
 
 const NotFoundPage = lazy(async () => {
@@ -254,7 +254,11 @@ const router = createBrowserRouter([
               },
               {
                 path: "glossary",
-                element: <GlossaryPage />,
+                element: <Navigate to="../search" replace />,
+              },
+              {
+                path: "search",
+                element: <SearchPage />,
               },
             ],
           },
