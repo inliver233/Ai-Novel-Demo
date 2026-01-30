@@ -29,7 +29,7 @@ from app.models.structured_memory import (
     MemoryRelation,
 )
 from app.schemas.memory_update import AFTER_MODEL_BY_TABLE, MemoryUpdateV1Request
-from app.services.table_executor import TableUpdateV1Request, validate_row_data_for_table
+from app.services.table_executor import TableUpdateV1Request, is_key_value_schema, validate_row_data_for_table
 from app.services.fractal_memory_service import rebuild_fractal_memory
 from app.services.vector_embedding_overrides import vector_embedding_overrides
 from app.services.vector_rag_service import build_project_chunks, rebuild_project, vector_rag_status
@@ -735,7 +735,32 @@ def propose_project_table_change_set(
                 raise AppError.validation(details={"item_index": idx, "reason": "target_not_found", "row_id": target_id})
             before_row = row
         else:
-            target_id = str(op.row_id or "").strip() or new_id()
+            target_id = str(op.row_id or "").strip()
+            if not target_id:
+                schema_obj = _compact_json_loads(getattr(table, "schema_json", None))
+                schema_dict = schema_obj if isinstance(schema_obj, dict) else {}
+                if is_key_value_schema(schema_dict) and isinstance(op.data, dict):
+                    key_value = str(op.data.get("key") or "").strip()
+                    if key_value:
+                        candidates = (
+                            db.execute(
+                                select(ProjectTableRow.id, ProjectTableRow.data_json)
+                                .where(
+                                    ProjectTableRow.project_id == project_id,
+                                    ProjectTableRow.table_id == table_id,
+                                )
+                                .order_by(ProjectTableRow.updated_at.desc(), ProjectTableRow.id.desc())
+                                .limit(2000)
+                            )
+                            .all()
+                        )
+                        for row_id, data_json in candidates:
+                            data_obj = _compact_json_loads(data_json)
+                            if isinstance(data_obj, dict) and str(data_obj.get("key") or "").strip() == key_value:
+                                target_id = str(row_id)
+                                break
+            if not target_id:
+                target_id = new_id()
             before_row = db.get(ProjectTableRow, target_id)
             if before_row is not None and (str(before_row.project_id) != str(project_id) or str(before_row.table_id) != str(table_id)):
                 raise AppError.validation(details={"item_index": idx, "reason": "row_table_mismatch", "row_id": target_id})

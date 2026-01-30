@@ -53,7 +53,7 @@ class InlineTaskQueue:
             except Exception:
                 task_kind = ""
 
-            if task_kind in {"noop", "search_rebuild", "worldbook_auto_update"}:
+            if task_kind in {"noop", "search_rebuild", "worldbook_auto_update", "table_ai_update"}:
                 from app.services.project_task_service import run_project_task
 
                 run_project_task(task_id=task_id)

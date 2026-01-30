@@ -76,6 +76,33 @@ def normalize_schema(schema: object) -> dict[str, Any]:
     return {"version": version_int, "columns": columns}
 
 
+def is_key_value_schema(schema: object) -> bool:
+    """
+    Returns True when schema looks like the default Key/Value table:
+    - columns: ["key"(required string), "value"(optional string)]
+    """
+    if not isinstance(schema, dict):
+        return False
+    cols = schema.get("columns") if isinstance(schema.get("columns"), list) else []
+    if len(cols) != 2:
+        return False
+    keys: list[str] = []
+    key_required = False
+    key_type: str | None = None
+    for c in cols:
+        if not isinstance(c, dict):
+            return False
+        k = str(c.get("key") or "").strip()
+        if not k:
+            return False
+        keys.append(k)
+        if k == "key":
+            key_required = bool(c.get("required"))
+            key_type = str(c.get("type") or "string").strip().lower() or "string"
+    keys.sort()
+    return keys == ["key", "value"] and key_required and (key_type in (None, "string"))
+
+
 def validate_row_data(*, schema: dict[str, Any], data: object) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise AppError.validation(message="data 必须是 JSON object")
@@ -178,4 +205,3 @@ class TableUpdateV1Request(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     summary_md: str | None = Field(default=None, max_length=40000)
     ops: list[TableRowOpV1] = Field(min_length=1, max_length=MAX_OPS_V1)
-

@@ -11,8 +11,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import DbDep, UserIdDep, require_project_editor, require_project_viewer
 from app.core.errors import AppError, ok_payload
-from app.db.utils import new_id
+from app.db.utils import new_id, utc_now
+from app.models.chapter import Chapter
 from app.models.project_table import ProjectTable, ProjectTableRow
+from app.services.table_ai_update_service import schedule_table_ai_update_task
 
 router = APIRouter()
 
@@ -196,6 +198,10 @@ class TableRowCreateRequest(BaseModel):
 
 class TableRowUpdateRequest(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
+
+
+class TableAiUpdateRequest(BaseModel):
+    focus: str | None = Field(default=None, max_length=4000)
 
 
 @router.get("/projects/{project_id}/tables")
@@ -503,3 +509,61 @@ def delete_project_table_row(
     db.commit()
     return ok_payload(request_id=request_id, data={"deleted": True})
 
+
+@router.post("/projects/{project_id}/tables/{table_id}/ai_update")
+def schedule_project_table_ai_update(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    table_id: str,
+    body: TableAiUpdateRequest,
+    chapter_id: str | None = Query(default=None, max_length=36),
+) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+
+    table = db.get(ProjectTable, table_id)
+    if table is None or str(table.project_id) != str(project_id):
+        raise AppError.not_found()
+
+    chapter: Chapter | None = None
+    if chapter_id is not None and str(chapter_id).strip():
+        chapter = db.get(Chapter, str(chapter_id))
+        if chapter is None or str(getattr(chapter, "project_id", "")) != str(project_id):
+            raise AppError.not_found("章节不存在")
+        if str(getattr(chapter, "status", "") or "") != "done":
+            raise AppError.validation(details={"reason": "chapter_not_done"})
+    else:
+        chapter = (
+            db.execute(
+                select(Chapter)
+                .where(
+                    Chapter.project_id == project_id,
+                    Chapter.status == "done",
+                )
+                .order_by(Chapter.updated_at.desc(), Chapter.id.desc())
+                .limit(1)
+            )
+            .scalars()
+            .first()
+        )
+
+    cid = str(getattr(chapter, "id", "") or "").strip() or None
+    updated_at = getattr(chapter, "updated_at", None) if chapter is not None else None
+    token = updated_at.isoformat().replace("+00:00", "Z") if updated_at is not None else utc_now().isoformat().replace("+00:00", "Z")
+
+    task_id = schedule_table_ai_update_task(
+        db=db,
+        project_id=project_id,
+        actor_user_id=user_id,
+        request_id=request_id,
+        table_id=table_id,
+        chapter_id=cid,
+        chapter_token=token,
+        focus=body.focus,
+        reason="manual_table_ai_update",
+    )
+    if not task_id:
+        raise AppError.validation(details={"reason": "schedule_failed"})
+    return ok_payload(request_id=request_id, data={"task_id": task_id, "chapter_id": cid, "table_id": table_id})
