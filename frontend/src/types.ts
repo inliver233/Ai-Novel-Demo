@@ -35,10 +35,25 @@ export interface ProjectSettings {
   vector_rerank_enabled: boolean | null;
   vector_rerank_method: string | null;
   vector_rerank_top_k: number | null;
+  vector_rerank_provider: string;
+  vector_rerank_base_url: string;
+  vector_rerank_model: string;
+  vector_rerank_timeout_seconds: number | null;
+  vector_rerank_hybrid_alpha: number | null;
+  vector_rerank_has_api_key: boolean;
+  vector_rerank_masked_api_key: string;
   vector_rerank_effective_enabled: boolean;
   vector_rerank_effective_method: string;
   vector_rerank_effective_top_k: number;
   vector_rerank_effective_source: string;
+  vector_rerank_effective_provider: string;
+  vector_rerank_effective_base_url: string;
+  vector_rerank_effective_model: string;
+  vector_rerank_effective_timeout_seconds: number;
+  vector_rerank_effective_hybrid_alpha: number;
+  vector_rerank_effective_has_api_key: boolean;
+  vector_rerank_effective_masked_api_key: string;
+  vector_rerank_effective_config_source: string;
 
   vector_embedding_provider: string;
   vector_embedding_base_url: string;

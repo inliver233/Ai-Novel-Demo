@@ -14,6 +14,7 @@ import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { copyText } from "../lib/copyText";
 import { humanizeMemberRole } from "../lib/humanize";
+import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
 import { markWizardProjectChanged } from "../services/wizard";
 import type { Project, ProjectSettings, QueryPreprocessingConfig } from "../types";
@@ -31,6 +32,11 @@ type SettingsForm = {
   vector_rerank_enabled: boolean;
   vector_rerank_method: string;
   vector_rerank_top_k: number;
+  vector_rerank_provider: string;
+  vector_rerank_base_url: string;
+  vector_rerank_model: string;
+  vector_rerank_timeout_seconds: number | null;
+  vector_rerank_hybrid_alpha: number | null;
   vector_embedding_provider: string;
   vector_embedding_base_url: string;
   vector_embedding_model: string;
@@ -86,6 +92,11 @@ export function SettingsPage() {
     vector_rerank_enabled: false,
     vector_rerank_method: "auto",
     vector_rerank_top_k: 20,
+    vector_rerank_provider: "",
+    vector_rerank_base_url: "",
+    vector_rerank_model: "",
+    vector_rerank_timeout_seconds: null,
+    vector_rerank_hybrid_alpha: null,
     vector_embedding_provider: "",
     vector_embedding_base_url: "",
     vector_embedding_model: "",
@@ -94,6 +105,10 @@ export function SettingsPage() {
     vector_embedding_sentence_transformers_model: "",
   });
   const [vectorRerankTopKDraft, setVectorRerankTopKDraft] = useState("20");
+  const [vectorRerankTimeoutDraft, setVectorRerankTimeoutDraft] = useState("");
+  const [vectorRerankHybridAlphaDraft, setVectorRerankHybridAlphaDraft] = useState("");
+  const [rerankApiKeyDraft, setRerankApiKeyDraft] = useState("");
+  const [rerankApiKeyClearRequested, setRerankApiKeyClearRequested] = useState(false);
   const [vectorApiKeyDraft, setVectorApiKeyDraft] = useState("");
   const [vectorApiKeyClearRequested, setVectorApiKeyClearRequested] = useState(false);
 
@@ -142,6 +157,11 @@ export function SettingsPage() {
       vector_rerank_enabled: Boolean(settings.vector_rerank_effective_enabled),
       vector_rerank_method: String(settings.vector_rerank_effective_method ?? "auto") || "auto",
       vector_rerank_top_k: rerankTopK,
+      vector_rerank_provider: settings.vector_rerank_provider ?? "",
+      vector_rerank_base_url: settings.vector_rerank_base_url ?? "",
+      vector_rerank_model: settings.vector_rerank_model ?? "",
+      vector_rerank_timeout_seconds: settings.vector_rerank_timeout_seconds ?? null,
+      vector_rerank_hybrid_alpha: settings.vector_rerank_hybrid_alpha ?? null,
       vector_embedding_provider: settings.vector_embedding_provider ?? "",
       vector_embedding_base_url: settings.vector_embedding_base_url ?? "",
       vector_embedding_model: settings.vector_embedding_model ?? "",
@@ -150,6 +170,14 @@ export function SettingsPage() {
       vector_embedding_sentence_transformers_model: settings.vector_embedding_sentence_transformers_model ?? "",
     });
     setVectorRerankTopKDraft(String(rerankTopK));
+    setVectorRerankTimeoutDraft(
+      settings.vector_rerank_timeout_seconds != null ? String(settings.vector_rerank_timeout_seconds) : "",
+    );
+    setVectorRerankHybridAlphaDraft(
+      settings.vector_rerank_hybrid_alpha != null ? String(settings.vector_rerank_hybrid_alpha) : "",
+    );
+    setRerankApiKeyDraft("");
+    setRerankApiKeyClearRequested(false);
     setVectorApiKeyDraft("");
     setVectorApiKeyClearRequested(false);
   }, [settingsQuery.data]);
@@ -403,6 +431,7 @@ export function SettingsPage() {
   const dirty = useMemo(() => {
     if (!baselineProject || !baselineSettings) return false;
     const vectorApiKeyDirty = vectorApiKeyClearRequested || vectorApiKeyDraft.trim().length > 0;
+    const rerankApiKeyDirty = rerankApiKeyClearRequested || rerankApiKeyDraft.trim().length > 0;
     const qpDirty = !isSameQueryPreprocess(
       queryPreprocessFromForm(settingsForm),
       queryPreprocessFromBaseline(baselineSettings),
@@ -420,6 +449,12 @@ export function SettingsPage() {
       settingsForm.vector_rerank_method.trim() !== baselineSettings.vector_rerank_effective_method ||
       Math.max(1, Math.min(1000, Math.floor(settingsForm.vector_rerank_top_k))) !==
         baselineSettings.vector_rerank_effective_top_k ||
+      settingsForm.vector_rerank_provider !== baselineSettings.vector_rerank_provider ||
+      settingsForm.vector_rerank_base_url !== baselineSettings.vector_rerank_base_url ||
+      settingsForm.vector_rerank_model !== baselineSettings.vector_rerank_model ||
+      (settingsForm.vector_rerank_timeout_seconds ?? null) !==
+        (baselineSettings.vector_rerank_timeout_seconds ?? null) ||
+      (settingsForm.vector_rerank_hybrid_alpha ?? null) !== (baselineSettings.vector_rerank_hybrid_alpha ?? null) ||
       settingsForm.vector_embedding_provider !== baselineSettings.vector_embedding_provider ||
       settingsForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
       settingsForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
@@ -427,7 +462,8 @@ export function SettingsPage() {
       settingsForm.vector_embedding_azure_api_version !== baselineSettings.vector_embedding_azure_api_version ||
       settingsForm.vector_embedding_sentence_transformers_model !==
         baselineSettings.vector_embedding_sentence_transformers_model ||
-      vectorApiKeyDirty
+      vectorApiKeyDirty ||
+      rerankApiKeyDirty
     );
   }, [
     baselineProject,
@@ -439,6 +475,8 @@ export function SettingsPage() {
     settingsForm,
     vectorApiKeyClearRequested,
     vectorApiKeyDraft,
+    rerankApiKeyClearRequested,
+    rerankApiKeyDraft,
   ]);
 
   useEffect(() => {
@@ -466,6 +504,7 @@ export function SettingsPage() {
         nextProjectForm.genre.trim() !== (baselineProject.genre ?? "") ||
         nextProjectForm.logline.trim() !== (baselineProject.logline ?? "");
       const vectorApiKeyDirty = vectorApiKeyClearRequested || vectorApiKeyDraft.trim().length > 0;
+      const rerankApiKeyDirty = rerankApiKeyClearRequested || rerankApiKeyDraft.trim().length > 0;
       const qpDirty = !isSameQueryPreprocess(
         queryPreprocessFromForm(nextSettingsForm),
         queryPreprocessFromBaseline(baselineSettings),
@@ -488,6 +527,46 @@ export function SettingsPage() {
         setSettingsForm((v) => ({ ...v, vector_rerank_top_k: rerankTopK }));
         setVectorRerankTopKDraft(String(rerankTopK));
       }
+
+      const timeoutRaw = !snapshot ? vectorRerankTimeoutDraft.trim() : "";
+      let rerankTimeoutSeconds: number | null = snapshot ? nextSettingsForm.vector_rerank_timeout_seconds : null;
+      if (!snapshot) {
+        if (!timeoutRaw) {
+          rerankTimeoutSeconds = null;
+        } else {
+          const next = Math.floor(Number(timeoutRaw));
+          if (!Number.isFinite(next)) {
+            if (!silent) toast.toastError("rerank timeout_seconds 必须为 1-120 的整数");
+            return false;
+          }
+          rerankTimeoutSeconds = Math.max(1, Math.min(120, next));
+        }
+      }
+
+      const alphaRaw = !snapshot ? vectorRerankHybridAlphaDraft.trim() : "";
+      let rerankHybridAlpha: number | null = snapshot ? nextSettingsForm.vector_rerank_hybrid_alpha : null;
+      if (!snapshot) {
+        if (!alphaRaw) {
+          rerankHybridAlpha = null;
+        } else {
+          const next = Number(alphaRaw);
+          if (!Number.isFinite(next)) {
+            if (!silent) toast.toastError("rerank alpha 必须为 0-1 的数字");
+            return false;
+          }
+          rerankHybridAlpha = Math.max(0, Math.min(1, next));
+        }
+      }
+
+      if (!snapshot) {
+        setSettingsForm((v) => ({
+          ...v,
+          vector_rerank_timeout_seconds: rerankTimeoutSeconds,
+          vector_rerank_hybrid_alpha: rerankHybridAlpha,
+        }));
+        setVectorRerankTimeoutDraft(rerankTimeoutSeconds != null ? String(rerankTimeoutSeconds) : "");
+        setVectorRerankHybridAlphaDraft(rerankHybridAlpha != null ? String(rerankHybridAlpha) : "");
+      }
       const settingsDirty =
         nextSettingsForm.world_setting !== baselineSettings.world_setting ||
         nextSettingsForm.style_guide !== baselineSettings.style_guide ||
@@ -497,6 +576,11 @@ export function SettingsPage() {
         Boolean(nextSettingsForm.vector_rerank_enabled) !== Boolean(baselineSettings.vector_rerank_effective_enabled) ||
         rerankMethod !== baselineSettings.vector_rerank_effective_method ||
         rerankTopK !== baselineSettings.vector_rerank_effective_top_k ||
+        nextSettingsForm.vector_rerank_provider !== baselineSettings.vector_rerank_provider ||
+        nextSettingsForm.vector_rerank_base_url !== baselineSettings.vector_rerank_base_url ||
+        nextSettingsForm.vector_rerank_model !== baselineSettings.vector_rerank_model ||
+        (rerankTimeoutSeconds ?? null) !== (baselineSettings.vector_rerank_timeout_seconds ?? null) ||
+        (rerankHybridAlpha ?? null) !== (baselineSettings.vector_rerank_hybrid_alpha ?? null) ||
         nextSettingsForm.vector_embedding_provider !== baselineSettings.vector_embedding_provider ||
         nextSettingsForm.vector_embedding_base_url !== baselineSettings.vector_embedding_base_url ||
         nextSettingsForm.vector_embedding_model !== baselineSettings.vector_embedding_model ||
@@ -504,7 +588,8 @@ export function SettingsPage() {
         nextSettingsForm.vector_embedding_azure_api_version !== baselineSettings.vector_embedding_azure_api_version ||
         nextSettingsForm.vector_embedding_sentence_transformers_model !==
           baselineSettings.vector_embedding_sentence_transformers_model ||
-        vectorApiKeyDirty;
+        vectorApiKeyDirty ||
+        rerankApiKeyDirty;
       if (!projectDirty && !settingsDirty) return true;
 
       if (qpDirty) {
@@ -557,6 +642,14 @@ export function SettingsPage() {
                   vector_rerank_enabled: Boolean(nextSettingsForm.vector_rerank_enabled),
                   vector_rerank_method: rerankMethod,
                   vector_rerank_top_k: rerankTopK,
+                  vector_rerank_provider: nextSettingsForm.vector_rerank_provider,
+                  vector_rerank_base_url: nextSettingsForm.vector_rerank_base_url,
+                  vector_rerank_model: nextSettingsForm.vector_rerank_model,
+                  vector_rerank_timeout_seconds: rerankTimeoutSeconds,
+                  vector_rerank_hybrid_alpha: rerankHybridAlpha,
+                  ...(rerankApiKeyDirty
+                    ? { vector_rerank_api_key: rerankApiKeyClearRequested ? "" : rerankApiKeyDraft }
+                    : {}),
                   vector_embedding_provider: nextSettingsForm.vector_embedding_provider,
                   vector_embedding_base_url: nextSettingsForm.vector_embedding_base_url,
                   vector_embedding_model: nextSettingsForm.vector_embedding_model,
@@ -575,6 +668,8 @@ export function SettingsPage() {
         if (pRes) setBaselineProject(pRes.data.project);
         if (sRes) {
           setBaselineSettings(sRes.data.settings);
+          setRerankApiKeyDraft("");
+          setRerankApiKeyClearRequested(false);
           setVectorApiKeyDraft("");
           setVectorApiKeyClearRequested(false);
         }
@@ -620,17 +715,22 @@ export function SettingsPage() {
       settingsForm,
       toast,
       validateQueryPreprocess,
+      rerankApiKeyClearRequested,
+      rerankApiKeyDraft,
       vectorApiKeyClearRequested,
       vectorApiKeyDraft,
       vectorRerankTopKDraft,
+      vectorRerankTimeoutDraft,
+      vectorRerankHybridAlphaDraft,
     ],
   );
 
   useSaveHotkey(() => void save(), dirty);
 
   const vectorApiKeyDirty = vectorApiKeyClearRequested || vectorApiKeyDraft.trim().length > 0;
+  const rerankApiKeyDirty = rerankApiKeyClearRequested || rerankApiKeyDraft.trim().length > 0;
   useAutoSave({
-    enabled: Boolean(projectId && baselineProject && baselineSettings && !vectorApiKeyDirty),
+    enabled: Boolean(projectId && baselineProject && baselineSettings && !vectorApiKeyDirty && !rerankApiKeyDirty),
     dirty,
     delayMs: 1200,
     getSnapshot: () => ({ projectForm: { ...projectForm }, settingsForm: { ...settingsForm } }),
@@ -652,6 +752,11 @@ export function SettingsPage() {
       settingsForm.vector_rerank_enabled,
       settingsForm.vector_rerank_method,
       settingsForm.vector_rerank_top_k,
+      settingsForm.vector_rerank_provider,
+      settingsForm.vector_rerank_base_url,
+      settingsForm.vector_rerank_model,
+      settingsForm.vector_rerank_timeout_seconds,
+      settingsForm.vector_rerank_hybrid_alpha,
       settingsForm.vector_embedding_provider,
       settingsForm.vector_embedding_base_url,
       settingsForm.vector_embedding_model,
@@ -885,13 +990,9 @@ export function SettingsPage() {
       <details className="panel" aria-label="向量检索（Vector RAG）">
         <summary className="ui-focus-ring ui-transition-fast cursor-pointer select-none p-6">
           <div className="grid gap-1">
-            <div className="font-content text-xl text-ink">向量检索（Vector RAG）</div>
-            <div className="text-xs text-subtext">
-              Embedding 用于把文本变成向量以便检索；Rerank 用于对候选结果二次排序提升命中（可能增加耗时/成本）。
-            </div>
-            <div className="text-xs text-subtext">
-              API Key（接口密钥）加密存储，仅回显 masked；留空可使用后端环境变量。
-            </div>
+            <div className="font-content text-xl text-ink">{UI_COPY.vectorRag.title}</div>
+            <div className="text-xs text-subtext">{UI_COPY.vectorRag.subtitle}</div>
+            <div className="text-xs text-subtext">{UI_COPY.vectorRag.apiKeyHint}</div>
           </div>
         </summary>
 
@@ -922,14 +1023,18 @@ export function SettingsPage() {
               </div>
               <div className="mt-1">
                 Rerank：{baselineSettings.vector_rerank_effective_enabled ? "enabled" : "disabled"}（method:{" "}
-                {baselineSettings.vector_rerank_effective_method}；top_k:{" "}
-                {baselineSettings.vector_rerank_effective_top_k}
-                ；来源: {baselineSettings.vector_rerank_effective_source}）
+                {baselineSettings.vector_rerank_effective_method}；provider:{" "}
+                {baselineSettings.vector_rerank_effective_provider || "（空）"}；model:{" "}
+                {baselineSettings.vector_rerank_effective_model || "（空）"}；top_k:{" "}
+                {baselineSettings.vector_rerank_effective_top_k}；alpha:{" "}
+                {baselineSettings.vector_rerank_effective_hybrid_alpha ?? 0}
+                ；来源: {baselineSettings.vector_rerank_effective_source}；配置:{" "}
+                {baselineSettings.vector_rerank_effective_config_source}）
               </div>
             </div>
 
             <div className="grid gap-2">
-              <div className="text-sm text-ink">Rerank（重排）</div>
+              <div className="text-sm text-ink">{UI_COPY.vectorRag.rerankTitle}</div>
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
                   <input
@@ -944,6 +1049,7 @@ export function SettingsPage() {
                   <span className="text-xs text-subtext">重排算法（rerank method）</span>
                   <select
                     className="select"
+                    aria-label="settings_vector_rerank_method"
                     value={settingsForm.vector_rerank_method}
                     onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_method: e.target.value }))}
                   >
@@ -956,6 +1062,7 @@ export function SettingsPage() {
                   <span className="text-xs text-subtext">候选数量（top_k）</span>
                   <input
                     className="input"
+                    aria-label="settings_vector_rerank_top_k"
                     type="number"
                     min={1}
                     max={1000}
@@ -982,11 +1089,209 @@ export function SettingsPage() {
               <div className="text-[11px] text-subtext">
                 提示：启用后会对候选结果做二次排序，通常命中更好，但可能增加耗时/成本。
               </div>
+
+              <details className="rounded-atelier border border-border bg-canvas p-4" aria-label="Rerank 提供方配置">
+                <summary className="ui-transition-fast cursor-pointer select-none text-sm text-ink hover:text-ink">
+                  {UI_COPY.vectorRag.rerankConfigDetailsTitle}
+                </summary>
+                <div className="mt-4 grid gap-4">
+                  <div className="text-xs text-subtext">不确定怎么配时，可保持留空让后端从环境变量读取。</div>
+
+                  <label className="grid gap-1">
+                    <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankProviderLabel}</span>
+                    <select
+                      className="select"
+                      aria-label="settings_vector_rerank_provider"
+                      value={settingsForm.vector_rerank_provider}
+                      onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_provider: e.target.value }))}
+                    >
+                      <option value="">（使用后端环境变量）</option>
+                      <option value="external_rerank_api">external_rerank_api</option>
+                    </select>
+                    <div className="text-[11px] text-subtext">
+                      当前有效：{baselineSettings.vector_rerank_effective_provider || "（空）"}
+                    </div>
+                  </label>
+
+                  <label className="grid gap-1">
+                    <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankBaseUrlLabel}</span>
+                    <input
+                      className="input"
+                      aria-label="settings_vector_rerank_base_url"
+                      value={settingsForm.vector_rerank_base_url}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setSettingsForm((v) => {
+                          const shouldAutoSetProvider = !v.vector_rerank_provider.trim() && next.trim().length > 0;
+                          return {
+                            ...v,
+                            vector_rerank_base_url: next,
+                            ...(shouldAutoSetProvider ? { vector_rerank_provider: "external_rerank_api" } : {}),
+                          };
+                        });
+                      }}
+                    />
+                    <div className="text-[11px] text-subtext">
+                      当前有效：{baselineSettings.vector_rerank_effective_base_url || "（空）"}
+                    </div>
+                  </label>
+
+                  <label className="grid gap-1">
+                    <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankModelLabel}</span>
+                    <input
+                      className="input"
+                      aria-label="settings_vector_rerank_model"
+                      value={settingsForm.vector_rerank_model}
+                      onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_model: e.target.value }))}
+                    />
+                    <div className="text-[11px] text-subtext">
+                      当前有效：{baselineSettings.vector_rerank_effective_model || "（空）"}
+                    </div>
+                  </label>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="grid gap-1">
+                      <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankTimeoutLabel}</span>
+                      <input
+                        className="input"
+                        aria-label="settings_vector_rerank_timeout_seconds"
+                        type="number"
+                        min={1}
+                        max={120}
+                        value={vectorRerankTimeoutDraft}
+                        onBlur={() => {
+                          const raw = vectorRerankTimeoutDraft.trim();
+                          if (!raw) {
+                            setSettingsForm((v) => ({ ...v, vector_rerank_timeout_seconds: null }));
+                            setVectorRerankTimeoutDraft("");
+                            return;
+                          }
+                          const next = Math.floor(Number(raw));
+                          if (!Number.isFinite(next)) {
+                            setVectorRerankTimeoutDraft(
+                              settingsForm.vector_rerank_timeout_seconds != null
+                                ? String(settingsForm.vector_rerank_timeout_seconds)
+                                : "",
+                            );
+                            return;
+                          }
+                          const clamped = Math.max(1, Math.min(120, next));
+                          setSettingsForm((v) => ({ ...v, vector_rerank_timeout_seconds: clamped }));
+                          setVectorRerankTimeoutDraft(String(clamped));
+                        }}
+                        onChange={(e) => setVectorRerankTimeoutDraft(e.target.value)}
+                      />
+                      <div className="text-[11px] text-subtext">
+                        当前有效：{baselineSettings.vector_rerank_effective_timeout_seconds ?? 15}
+                      </div>
+                    </label>
+
+                    <label className="grid gap-1">
+                      <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankHybridAlphaLabel}</span>
+                      <input
+                        className="input"
+                        aria-label="settings_vector_rerank_hybrid_alpha"
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={vectorRerankHybridAlphaDraft}
+                        onBlur={() => {
+                          const raw = vectorRerankHybridAlphaDraft.trim();
+                          if (!raw) {
+                            setSettingsForm((v) => ({ ...v, vector_rerank_hybrid_alpha: null }));
+                            setVectorRerankHybridAlphaDraft("");
+                            return;
+                          }
+                          const next = Number(raw);
+                          if (!Number.isFinite(next)) {
+                            setVectorRerankHybridAlphaDraft(
+                              settingsForm.vector_rerank_hybrid_alpha != null
+                                ? String(settingsForm.vector_rerank_hybrid_alpha)
+                                : "",
+                            );
+                            return;
+                          }
+                          const clamped = Math.max(0, Math.min(1, next));
+                          setSettingsForm((v) => ({ ...v, vector_rerank_hybrid_alpha: clamped }));
+                          setVectorRerankHybridAlphaDraft(String(clamped));
+                        }}
+                        onChange={(e) => setVectorRerankHybridAlphaDraft(e.target.value)}
+                      />
+                      <div className="text-[11px] text-subtext">
+                        当前有效：{baselineSettings.vector_rerank_effective_hybrid_alpha ?? 0}
+                      </div>
+                    </label>
+                  </div>
+
+                  <label className="grid gap-1">
+                    <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankApiKeyLabel}</span>
+                    <input
+                      className="input"
+                      aria-label="settings_vector_rerank_api_key"
+                      type="password"
+                      autoComplete="off"
+                      value={rerankApiKeyDraft}
+                      onChange={(e) => {
+                        setRerankApiKeyDraft(e.target.value);
+                        setRerankApiKeyClearRequested(false);
+                      }}
+                    />
+                    <div className="text-[11px] text-subtext">
+                      已保存（项目覆盖）：
+                      {baselineSettings.vector_rerank_has_api_key
+                        ? baselineSettings.vector_rerank_masked_api_key
+                        : "（无）"}
+                      {baselineSettings.vector_rerank_effective_has_api_key
+                        ? ` | 当前有效：${baselineSettings.vector_rerank_effective_masked_api_key}`
+                        : " | 当前有效：（无）"}
+                      {rerankApiKeyClearRequested ? " | 将在保存时清除" : ""}
+                    </div>
+                  </label>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="btn btn-secondary"
+                      aria-label="settings_vector_rerank_api_key_clear"
+                      disabled={saving || !baselineSettings.vector_rerank_has_api_key}
+                      onClick={() => {
+                        setRerankApiKeyDraft("");
+                        setRerankApiKeyClearRequested(true);
+                      }}
+                      type="button"
+                    >
+                      {UI_COPY.vectorRag.rerankClearApiKey}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      aria-label="settings_vector_rerank_reset_overrides"
+                      disabled={saving}
+                      onClick={() => {
+                        setSettingsForm((v) => ({
+                          ...v,
+                          vector_rerank_provider: "",
+                          vector_rerank_base_url: "",
+                          vector_rerank_model: "",
+                          vector_rerank_timeout_seconds: null,
+                          vector_rerank_hybrid_alpha: null,
+                        }));
+                        setVectorRerankTimeoutDraft("");
+                        setVectorRerankHybridAlphaDraft("");
+                        setRerankApiKeyDraft("");
+                        setRerankApiKeyClearRequested(true);
+                      }}
+                      type="button"
+                    >
+                      {UI_COPY.vectorRag.rerankResetOverrides}
+                    </button>
+                  </div>
+                </div>
+              </details>
             </div>
 
             <details className="rounded-atelier border border-border bg-canvas p-4">
               <summary className="ui-transition-fast cursor-pointer select-none text-sm text-ink hover:text-ink">
-                Embedding（向量化）配置
+                {UI_COPY.vectorRag.embeddingTitle}
               </summary>
               <div className="mt-4 grid gap-4">
                 <div className="text-xs text-subtext">不确定怎么配时，可保持留空让后端从环境变量读取。</div>

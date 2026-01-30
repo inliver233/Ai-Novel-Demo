@@ -307,7 +307,9 @@ export function TaskCenterPage() {
         });
         toast.toastSuccess("已重试任务", res.request_id);
         await refreshProjectTasks();
-        setSelected((prev) => (prev?.kind === "project_task" && prev.item.id === taskId ? { kind: "project_task", item: res.data } : prev));
+        setSelected((prev) =>
+          prev?.kind === "project_task" && prev.item.id === taskId ? { kind: "project_task", item: res.data } : prev,
+        );
       } catch (e) {
         const err =
           e instanceof ApiError
@@ -476,14 +478,14 @@ export function TaskCenterPage() {
           {tasksQuery.loading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
           {!tasksQuery.loading && tasks.length === 0 ? <div className="mt-3 text-sm text-subtext">暂无任务</div> : null}
 
-           <div className="mt-3 grid gap-2">
-             {tasks.map((t) => (
-               <button
-                 key={t.id}
-                 className="surface surface-interactive w-full p-3 text-left"
-                 onClick={() => setSelected({ kind: "task", item: t })}
-                 type="button"
-               >
+          <div className="mt-3 grid gap-2">
+            {tasks.map((t) => (
+              <button
+                key={t.id}
+                className="surface surface-interactive w-full p-3 text-left"
+                onClick={() => setSelected({ kind: "task", item: t })}
+                type="button"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="truncate text-sm text-ink">
@@ -517,9 +519,9 @@ export function TaskCenterPage() {
                   <StatusBadge status={t.status} kind="task" />
                 </div>
               </button>
-             ))}
-           </div>
-         </section>
+            ))}
+          </div>
+        </section>
 
         <section className="panel p-4 lg:col-span-2" aria-label="项目任务 (taskcenter_projecttasks_section)">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -666,13 +668,22 @@ export function TaskCenterPage() {
                   幂等键：<span className="font-mono text-ink">{selected.item.idempotency_key || "-"}</span>
                 </div>
                 <div>
-                  created_at：<span className="font-mono text-ink">{String((selected.item.timings as any)?.created_at ?? "-")}</span>
+                  created_at：
+                  <span className="font-mono text-ink">
+                    {String((selected.item.timings as Record<string, unknown> | null | undefined)?.created_at ?? "-")}
+                  </span>
                 </div>
                 <div>
-                  started_at：<span className="font-mono text-ink">{String((selected.item.timings as any)?.started_at ?? "-")}</span>
+                  started_at：
+                  <span className="font-mono text-ink">
+                    {String((selected.item.timings as Record<string, unknown> | null | undefined)?.started_at ?? "-")}
+                  </span>
                 </div>
                 <div>
-                  finished_at：<span className="font-mono text-ink">{String((selected.item.timings as any)?.finished_at ?? "-")}</span>
+                  finished_at：
+                  <span className="font-mono text-ink">
+                    {String((selected.item.timings as Record<string, unknown> | null | undefined)?.finished_at ?? "-")}
+                  </span>
                 </div>
               </div>
             </section>
