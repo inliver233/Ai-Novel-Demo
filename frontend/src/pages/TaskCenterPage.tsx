@@ -3,10 +3,11 @@ import { Link, useParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { Drawer } from "../components/ui/Drawer";
+import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
 import { copyText } from "../lib/copyText";
 import { humanizeChangeSetStatus, humanizeTaskStatus } from "../lib/humanize";
-import { apiJson } from "../services/apiClient";
+import { ApiError, apiJson } from "../services/apiClient";
 import { UI_COPY } from "../lib/uiCopy";
 
 type MemoryChangeSetSummary = {
@@ -32,6 +33,21 @@ type MemoryTaskSummary = {
   error_type?: string | null;
   error_message?: string | null;
   timings?: Record<string, unknown>;
+};
+
+type ProjectTaskSummary = {
+  id: string;
+  project_id: string;
+  actor_user_id?: string | null;
+  kind: string;
+  status: string;
+  idempotency_key?: string | null;
+  error_type?: string | null;
+  error_message?: string | null;
+  timings?: Record<string, unknown>;
+  params?: unknown;
+  result?: unknown;
+  error?: unknown;
 };
 
 type PagedResult<T> = { items: T[]; next_before?: string | null };
@@ -68,9 +84,11 @@ function safeJsonStringify(value: unknown): string {
 
 export function TaskCenterPage() {
   const { projectId } = useParams();
+  const toast = useToast();
 
   const [changeSetStatus, setChangeSetStatus] = useState<string>("all");
   const [taskStatus, setTaskStatus] = useState<string>("all");
+  const [projectTaskStatus, setProjectTaskStatus] = useState<string>("all");
 
   const loadChangeSets = useCallback(
     async (id: string): Promise<PagedResult<MemoryChangeSetSummary>> => {
@@ -100,11 +118,25 @@ export function TaskCenterPage() {
     [taskStatus],
   );
 
+  const loadProjectTasks = useCallback(
+    async (id: string): Promise<PagedResult<ProjectTaskSummary>> => {
+      const params = new URLSearchParams();
+      if (projectTaskStatus !== "all") params.set("status", projectTaskStatus);
+      params.set("limit", "50");
+      const qs = params.toString();
+      const res = await apiJson<PagedResult<ProjectTaskSummary>>(`/api/projects/${id}/tasks${qs ? `?${qs}` : ""}`);
+      return res.data;
+    },
+    [projectTaskStatus],
+  );
+
   const changeSetsQuery = useProjectData(projectId, loadChangeSets);
   const tasksQuery = useProjectData(projectId, loadTasks);
+  const projectTasksQuery = useProjectData(projectId, loadProjectTasks);
 
   const refreshChangeSets = changeSetsQuery.refresh;
   const refreshTasks = tasksQuery.refresh;
+  const refreshProjectTasks = projectTasksQuery.refresh;
 
   useEffect(() => {
     if (!projectId) return;
@@ -116,8 +148,14 @@ export function TaskCenterPage() {
     void refreshTasks();
   }, [projectId, refreshTasks, taskStatus]);
 
+  useEffect(() => {
+    if (!projectId) return;
+    void refreshProjectTasks();
+  }, [projectId, projectTaskStatus, refreshProjectTasks]);
+
   const changeSets = useMemo(() => changeSetsQuery.data?.items ?? [], [changeSetsQuery.data?.items]);
   const tasks = useMemo(() => tasksQuery.data?.items ?? [], [tasksQuery.data?.items]);
+  const projectTasks = useMemo(() => projectTasksQuery.data?.items ?? [], [projectTasksQuery.data?.items]);
 
   const changeSetSummary = useMemo(() => {
     const out = { all: changeSets.length, proposed: 0, applied: 0, rolled_back: 0, failed: 0, other: 0 };
@@ -145,26 +183,46 @@ export function TaskCenterPage() {
     return out;
   }, [tasks]);
 
+  const projectTaskSummary = useMemo(() => {
+    const out = { all: projectTasks.length, queued: 0, running: 0, done: 0, failed: 0, other: 0 };
+    for (const it of projectTasks) {
+      const s = String(it.status || "").trim();
+      if (s === "queued") out.queued += 1;
+      else if (s === "running") out.running += 1;
+      else if (s === "done" || s === "succeeded") out.done += 1;
+      else if (s === "failed") out.failed += 1;
+      else out.other += 1;
+    }
+    return out;
+  }, [projectTasks]);
+
   const [selected, setSelected] = useState<
-    { kind: "change_set"; item: MemoryChangeSetSummary } | { kind: "task"; item: MemoryTaskSummary } | null
+    | { kind: "change_set"; item: MemoryChangeSetSummary }
+    | { kind: "task"; item: MemoryTaskSummary }
+    | { kind: "project_task"; item: ProjectTaskSummary }
+    | null
   >(null);
+  const [projectTaskDetailLoading, setProjectTaskDetailLoading] = useState<boolean>(false);
 
   const detailTitle = useMemo(() => {
     if (!selected) return "";
     if (selected.kind === "change_set") return "ChangeSet 详情";
-    return "Task 详情";
+    if (selected.kind === "task") return "Task 详情";
+    return "ProjectTask 详情";
   }, [selected]);
 
   const detailHeading = useMemo(() => {
     if (!selected) return "";
     if (selected.kind === "change_set") return "变更集详情";
-    return "任务详情";
+    if (selected.kind === "task") return "任务详情";
+    return "项目任务详情";
   }, [selected]);
 
   const refreshAll = useCallback(() => {
     void refreshChangeSets();
     void refreshTasks();
-  }, [refreshChangeSets, refreshTasks]);
+    void refreshProjectTasks();
+  }, [refreshChangeSets, refreshProjectTasks, refreshTasks]);
 
   const copyDebugInfo = useCallback(async () => {
     if (!selected) return;
@@ -184,16 +242,31 @@ export function TaskCenterPage() {
       return;
     }
 
-    const t = selected.item;
+    if (selected.kind === "task") {
+      const t = selected.item;
+      const lines = [
+        "[TaskCenter][Task]",
+        `id=${t.id}`,
+        `kind=${t.kind}`,
+        `status=${String(t.status || "-")} (${humanizeTaskStatus(String(t.status || ""))})`,
+        `change_set_id=${t.change_set_id}`,
+        `request_id=${t.request_id || "-"}`,
+        `error_type=${t.error_type || "-"}`,
+        `error_message=${t.error_message || "-"}`,
+      ];
+      await copyText(lines.join("\n"), { title: "复制失败：请手动复制 Debug 信息" });
+      return;
+    }
+
+    const pt = selected.item;
     const lines = [
-      "[TaskCenter][Task]",
-      `id=${t.id}`,
-      `kind=${t.kind}`,
-      `status=${String(t.status || "-")} (${humanizeTaskStatus(String(t.status || ""))})`,
-      `change_set_id=${t.change_set_id}`,
-      `request_id=${t.request_id || "-"}`,
-      `error_type=${t.error_type || "-"}`,
-      `error_message=${t.error_message || "-"}`,
+      "[TaskCenter][ProjectTask]",
+      `id=${pt.id}`,
+      `kind=${pt.kind}`,
+      `status=${String(pt.status || "-")} (${humanizeTaskStatus(String(pt.status || ""))})`,
+      `idempotency_key=${pt.idempotency_key || "-"}`,
+      `error_type=${pt.error_type || "-"}`,
+      `error_message=${pt.error_message || "-"}`,
     ];
     await copyText(lines.join("\n"), { title: "复制失败：请手动复制 Debug 信息" });
   }, [selected]);
@@ -202,6 +275,49 @@ export function TaskCenterPage() {
     if (!selected) return;
     await copyText(safeJsonStringify(selected.item), { title: "复制失败：请手动复制 Debug 信息" });
   }, [selected]);
+
+  const selectProjectTask = useCallback(
+    async (t: ProjectTaskSummary) => {
+      setSelected({ kind: "project_task", item: t });
+      setProjectTaskDetailLoading(true);
+      try {
+        const res = await apiJson<ProjectTaskSummary>(`/api/tasks/${encodeURIComponent(t.id)}`);
+        setSelected({ kind: "project_task", item: res.data });
+      } catch (e) {
+        const err =
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setProjectTaskDetailLoading(false);
+      }
+    },
+    [toast],
+  );
+
+  const retryProjectTask = useCallback(
+    async (id: string) => {
+      const taskId = String(id || "").trim();
+      if (!taskId) return;
+      try {
+        const res = await apiJson<ProjectTaskSummary>(`/api/tasks/${encodeURIComponent(taskId)}/retry`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        toast.toastSuccess("已重试任务", res.request_id);
+        await refreshProjectTasks();
+        setSelected((prev) => (prev?.kind === "project_task" && prev.item.id === taskId ? { kind: "project_task", item: res.data } : prev));
+      } catch (e) {
+        const err =
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      }
+    },
+    [refreshProjectTasks, toast],
+  );
 
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
 
@@ -360,14 +476,14 @@ export function TaskCenterPage() {
           {tasksQuery.loading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
           {!tasksQuery.loading && tasks.length === 0 ? <div className="mt-3 text-sm text-subtext">暂无任务</div> : null}
 
-          <div className="mt-3 grid gap-2">
-            {tasks.map((t) => (
-              <button
-                key={t.id}
-                className="surface surface-interactive w-full p-3 text-left"
-                onClick={() => setSelected({ kind: "task", item: t })}
-                type="button"
-              >
+           <div className="mt-3 grid gap-2">
+             {tasks.map((t) => (
+               <button
+                 key={t.id}
+                 className="surface surface-interactive w-full p-3 text-left"
+                 onClick={() => setSelected({ kind: "task", item: t })}
+                 type="button"
+               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="truncate text-sm text-ink">
@@ -401,6 +517,99 @@ export function TaskCenterPage() {
                   <StatusBadge status={t.status} kind="task" />
                 </div>
               </button>
+             ))}
+           </div>
+         </section>
+
+        <section className="panel p-4 lg:col-span-2" aria-label="项目任务 (taskcenter_projecttasks_section)">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm text-ink">项目任务（Project Task）</div>
+              <div className="mt-1 text-xs text-subtext">
+                用于 worldbook/search/vector/graph 等自动化后台更新；点击条目查看详情（params/result/error 已脱敏）
+              </div>
+              <div className="mt-1 text-[11px] text-subtext">状态说明：排队中→运行中→完成/失败</div>
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-subtext">
+                <span>总计 {projectTaskSummary.all}</span>
+                <span>排队中 {projectTaskSummary.queued}</span>
+                <span>运行中 {projectTaskSummary.running}</span>
+                <span>完成 {projectTaskSummary.done}</span>
+                <span>失败 {projectTaskSummary.failed}</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <button
+                className="btn btn-secondary"
+                aria-label="项目任务仅看失败 (taskcenter_projecttask_failed_only)"
+                onClick={() => setProjectTaskStatus((prev) => (prev === "failed" ? "all" : "failed"))}
+                type="button"
+              >
+                仅看失败
+              </button>
+              <label className="grid gap-1">
+                <span className="text-[11px] text-subtext">状态</span>
+                <select
+                  className="select"
+                  aria-label="taskcenter_projecttask_status"
+                  value={projectTaskStatus}
+                  onChange={(e) => setProjectTaskStatus(e.target.value)}
+                >
+                  <option value="all">全部</option>
+                  <option value="queued">{humanizeTaskStatus("queued")}</option>
+                  <option value="running">{humanizeTaskStatus("running")}</option>
+                  <option value="done">{humanizeTaskStatus("done")}</option>
+                  <option value="failed">{humanizeTaskStatus("failed")}</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          {projectTasksQuery.loading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
+          {!projectTasksQuery.loading && projectTasks.length === 0 ? (
+            <div className="mt-3 text-sm text-subtext">暂无项目任务</div>
+          ) : null}
+
+          <div className="mt-3 grid gap-2">
+            {projectTasks.map((t) => (
+              <button
+                key={t.id}
+                className="surface surface-interactive w-full p-3 text-left"
+                onClick={() => void selectProjectTask(t)}
+                type="button"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm text-ink">
+                      {t.kind} <span className="text-subtext">({t.id})</span>
+                    </div>
+                    {t.idempotency_key ? (
+                      <div className="mt-1 truncate text-xs text-subtext">幂等键：{t.idempotency_key}</div>
+                    ) : null}
+                    {t.status === "failed" ? (
+                      <div className="mt-1 truncate text-xs text-danger">
+                        {t.error_type || "ERROR"}: {t.error_message || "未知错误"}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {t.status === "failed" ? (
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        aria-label="项目任务重试 (taskcenter_projecttask_retry)"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void retryProjectTask(t.id);
+                        }}
+                        type="button"
+                      >
+                        重试
+                      </button>
+                    ) : null}
+                    <StatusBadge status={t.status} kind="task" />
+                  </div>
+                </div>
+              </button>
             ))}
           </div>
         </section>
@@ -420,7 +629,9 @@ export function TaskCenterPage() {
                 ID：{selected.item.id}{" "}
                 {selected.kind === "task"
                   ? `| ${UI_COPY.common.requestIdLabel}: ${selected.item.request_id ?? "-"}`
-                  : ""}
+                  : selected.kind === "project_task"
+                    ? `| 幂等键：${selected.item.idempotency_key ?? "-"}`
+                    : ""}
               </div>
             ) : null}
           </div>
@@ -438,6 +649,84 @@ export function TaskCenterPage() {
             </button>
           </div>
         </div>
+
+        {selected?.kind === "project_task" ? (
+          <div className="mt-5 grid gap-3">
+            <section className="rounded-atelier border border-border bg-surface p-3" aria-label="projecttask_overview">
+              <div className="text-sm text-ink">Overview</div>
+              <div className="mt-2 grid gap-1 text-xs text-subtext">
+                <div>
+                  Kind：<span className="font-mono text-ink">{selected.item.kind}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>状态：</span>
+                  <StatusBadge status={selected.item.status} kind="task" />
+                </div>
+                <div>
+                  幂等键：<span className="font-mono text-ink">{selected.item.idempotency_key || "-"}</span>
+                </div>
+                <div>
+                  created_at：<span className="font-mono text-ink">{String((selected.item.timings as any)?.created_at ?? "-")}</span>
+                </div>
+                <div>
+                  started_at：<span className="font-mono text-ink">{String((selected.item.timings as any)?.started_at ?? "-")}</span>
+                </div>
+                <div>
+                  finished_at：<span className="font-mono text-ink">{String((selected.item.timings as any)?.finished_at ?? "-")}</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-atelier border border-border bg-surface p-3" aria-label="projecttask_actions">
+              <div className="text-sm text-ink">Actions</div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  aria-label="刷新项目任务详情 (taskcenter_projecttask_refresh_detail)"
+                  onClick={() => void selectProjectTask(selected.item)}
+                  type="button"
+                >
+                  刷新详情
+                </button>
+                {selected.item.status === "failed" ? (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    aria-label="重试项目任务 (taskcenter_projecttask_retry_detail)"
+                    onClick={() => void retryProjectTask(selected.item.id)}
+                    type="button"
+                  >
+                    重试
+                  </button>
+                ) : null}
+              </div>
+              {projectTaskDetailLoading ? <div className="mt-2 text-xs text-subtext">加载中...</div> : null}
+            </section>
+
+            <section className="rounded-atelier border border-border bg-surface p-3" aria-label="projecttask_results">
+              <div className="text-sm text-ink">Results</div>
+              <div className="mt-2 grid gap-2">
+                <details className="rounded-atelier border border-border bg-canvas p-2">
+                  <summary className="cursor-pointer select-none text-xs text-subtext">params（脱敏）</summary>
+                  <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-ink">
+                    {safeJsonStringify(selected.item.params ?? null)}
+                  </pre>
+                </details>
+                <details className="rounded-atelier border border-border bg-canvas p-2">
+                  <summary className="cursor-pointer select-none text-xs text-subtext">result</summary>
+                  <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-ink">
+                    {safeJsonStringify(selected.item.result ?? null)}
+                  </pre>
+                </details>
+                <details className="rounded-atelier border border-border bg-canvas p-2">
+                  <summary className="cursor-pointer select-none text-xs text-subtext">error（脱敏）</summary>
+                  <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-ink">
+                    {safeJsonStringify(selected.item.error ?? null)}
+                  </pre>
+                </details>
+              </div>
+            </section>
+          </div>
+        ) : null}
 
         {selected ? (
           <details className="mt-5 rounded-atelier border border-border bg-surface p-3">
