@@ -2776,6 +2776,27 @@
         },
         {
           "dflt_value": null,
+          "name": "vector_rerank_api_key_ciphertext",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_rerank_api_key_masked",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_rerank_base_url",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(2048)"
+        },
+        {
+          "dflt_value": null,
           "name": "vector_rerank_enabled",
           "notnull": 0,
           "pk": 0,
@@ -2783,10 +2804,38 @@
         },
         {
           "dflt_value": null,
+          "name": "vector_rerank_hybrid_alpha",
+          "notnull": 0,
+          "pk": 0,
+          "type": "FLOAT"
+        },
+        {
+          "dflt_value": null,
           "name": "vector_rerank_method",
           "notnull": 0,
           "pk": 0,
           "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_rerank_model",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_rerank_provider",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "vector_rerank_timeout_seconds",
+          "notnull": 0,
+          "pk": 0,
+          "type": "INTEGER"
         },
         {
           "dflt_value": null,
