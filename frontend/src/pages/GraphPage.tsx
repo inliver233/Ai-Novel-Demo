@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { RequestIdBadge } from "../components/ui/RequestIdBadge";
@@ -147,6 +147,15 @@ export function GraphPage() {
           <button className="btn btn-secondary" onClick={() => void runQuery()} disabled={loading} type="button">
             {loading ? "查询..." : UI_COPY.graph.queryRun}
           </button>
+          {projectId ? (
+            <Link
+              className="btn btn-secondary"
+              to={`/projects/${projectId}/structured-memory?view=character-relations`}
+              aria-label="graph_open_character_relations"
+            >
+              人物关系编辑
+            </Link>
+          ) : null}
         </>
       }
     >
