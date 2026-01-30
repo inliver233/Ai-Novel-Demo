@@ -32,7 +32,7 @@ test("ui: chapter analyze -> apply -> ChapterAnalysisPage highlights + sidebar",
   await page.getByRole("button", { name: "打开标注页", exact: true }).click();
 
   await expect(page.getByText("章节标注回溯", { exact: true })).toBeVisible();
-  await expect(page.getByText("记忆侧栏", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("story_memory_sidebar", { exact: true })).toBeVisible();
 
   const highlights = page.locator("[data-annotation-id]");
   await expect.poll(async () => await highlights.count(), { timeout: 60_000 }).toBeGreaterThan(0);

@@ -36,7 +36,7 @@ test("ui: chapter analysis annotated text groups overlap + adjacency; click sele
 
   await page.goto(`/projects/${projectId}/chapter-analysis?chapterId=${chapterId}`);
   await expect(page.getByText("章节标注回溯", { exact: true })).toBeVisible();
-  await expect(page.getByText("记忆侧栏", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("story_memory_sidebar", { exact: true })).toBeVisible();
 
   const highlights = page.locator("[data-annotation-id]");
   await expect.poll(async () => await highlights.count(), { timeout: 60_000 }).toBeGreaterThan(0);

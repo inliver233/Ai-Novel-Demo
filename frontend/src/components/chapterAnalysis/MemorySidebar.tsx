@@ -355,7 +355,7 @@ export function MemorySidebar(props: {
   }, [active, props.validIds]);
 
   return (
-    <aside className="min-w-0 grid gap-2">
+    <aside className="min-w-0 grid gap-2" aria-label="story_memory_sidebar">
       <div className="rounded-atelier border border-border bg-surface p-2">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -364,7 +364,13 @@ export function MemorySidebar(props: {
               共 {props.annotations.length} 条{invalidCount > 0 ? `（${invalidCount} 条未定位）` : ""}
             </div>
           </div>
-          <button className="btn btn-primary px-3 py-1 text-xs" type="button" onClick={openCreate} disabled={saving}>
+          <button
+            className="btn btn-primary px-3 py-1 text-xs"
+            type="button"
+            onClick={openCreate}
+            disabled={saving}
+            aria-label="story_memory_create"
+          >
             新增记忆
           </button>
         </div>
@@ -422,7 +428,7 @@ export function MemorySidebar(props: {
                         )}
                         type="button"
                         onClick={() => props.onSelect(a)}
-                        aria-label={`定位：${normalizeTitle(a)}`}
+                        aria-label={`story_memory_item:${normalizeTitle(a)}`}
                         title={valid ? "点击定位到正文" : "未定位：无法在正文中高亮"}
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -462,14 +468,26 @@ export function MemorySidebar(props: {
                 </div>
               </div>
               <div className="shrink-0">
-                <button className="btn btn-secondary px-3 py-1 text-xs" type="button" onClick={openEdit} disabled={saving}>
+                <button
+                  className="btn btn-secondary px-3 py-1 text-xs"
+                  type="button"
+                  onClick={openEdit}
+                  disabled={saving}
+                  aria-label="story_memory_edit"
+                >
                   编辑
                 </button>
               </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button className="btn btn-secondary px-3 py-1 text-xs" type="button" onClick={toggleDone} disabled={saving}>
+              <button
+                className="btn btn-secondary px-3 py-1 text-xs"
+                type="button"
+                onClick={toggleDone}
+                disabled={saving}
+                aria-label="story_memory_toggle_done"
+              >
                 {selectedInfo?.done ? "取消完成" : "标记完成"}
               </button>
               <button
@@ -477,10 +495,17 @@ export function MemorySidebar(props: {
                 type="button"
                 onClick={openMerge}
                 disabled={saving || props.annotations.length < 2}
+                aria-label="story_memory_merge"
               >
                 合并
               </button>
-              <button className="btn btn-danger px-3 py-1 text-xs" type="button" onClick={() => void deleteSelected()} disabled={saving}>
+              <button
+                className="btn btn-danger px-3 py-1 text-xs"
+                type="button"
+                onClick={() => void deleteSelected()}
+                disabled={saving}
+                aria-label="story_memory_delete"
+              >
                 删除
               </button>
             </div>
@@ -504,10 +529,16 @@ export function MemorySidebar(props: {
             <div className="mt-1 text-xs text-subtext">{saving ? "保存中..." : "可直接编辑后保存（失败不影响正文）"}</div>
           </div>
           <div className="flex gap-2">
-            <button className="btn btn-secondary" type="button" onClick={closeEditor} disabled={saving}>
+            <button className="btn btn-secondary" type="button" onClick={closeEditor} disabled={saving} aria-label="story_memory_close">
               关闭
             </button>
-            <button className="btn btn-primary" type="button" onClick={() => void saveStoryMemory()} disabled={saving || !form.content.trim()}>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => void saveStoryMemory()}
+              disabled={saving || !form.content.trim()}
+              aria-label="story_memory_save"
+            >
               保存
             </button>
           </div>
@@ -539,6 +570,7 @@ export function MemorySidebar(props: {
               onChange={(e) => setForm((v) => ({ ...v, title: e.target.value }))}
               placeholder="例如：主角发现异常线索"
               disabled={saving}
+              aria-label="story_memory_title"
             />
           </label>
 
@@ -551,6 +583,7 @@ export function MemorySidebar(props: {
               onChange={(e) => setForm((v) => ({ ...v, content: e.target.value }))}
               placeholder="写下可复用、可检索的剧情记忆条目…"
               disabled={saving}
+              aria-label="story_memory_content"
             />
           </label>
 
@@ -563,6 +596,7 @@ export function MemorySidebar(props: {
               onChange={(e) => setForm((v) => ({ ...v, tags_raw: e.target.value }))}
               placeholder="例如：伏笔\n人物状态\n时间线"
               disabled={saving}
+              aria-label="story_memory_tags"
             />
           </label>
 
@@ -578,6 +612,7 @@ export function MemorySidebar(props: {
                 value={Number.isFinite(form.importance_score) ? form.importance_score : 0}
                 onChange={(e) => setForm((v) => ({ ...v, importance_score: Number(e.target.value) }))}
                 disabled={saving}
+                aria-label="story_memory_importance"
               />
             </label>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -589,6 +624,7 @@ export function MemorySidebar(props: {
                   value={Number.isFinite(form.text_position) ? form.text_position : -1}
                   onChange={(e) => setForm((v) => ({ ...v, text_position: Number(e.target.value) }))}
                   disabled={saving}
+                  aria-label="story_memory_position"
                 />
               </label>
               <label className="grid gap-1">
@@ -600,6 +636,7 @@ export function MemorySidebar(props: {
                   value={Number.isFinite(form.text_length) ? form.text_length : 0}
                   onChange={(e) => setForm((v) => ({ ...v, text_length: Number(e.target.value) }))}
                   disabled={saving}
+                  aria-label="story_memory_length"
                 />
               </label>
             </div>
@@ -633,6 +670,7 @@ export function MemorySidebar(props: {
               type="button"
               onClick={() => void applyMerge()}
               disabled={mergeSaving || mergeSources.size === 0 || !active}
+              aria-label="story_memory_merge_apply"
             >
               合并
             </button>
@@ -666,7 +704,7 @@ export function MemorySidebar(props: {
                         return next;
                       });
                     }}
-                    aria-label={`merge_source:${normalizeTitle(a)}`}
+                    aria-label={`story_memory_merge_source:${normalizeTitle(a)}`}
                     disabled={mergeSaving}
                     className="mt-1"
                   />
@@ -686,4 +724,3 @@ export function MemorySidebar(props: {
     </aside>
   );
 }
-
