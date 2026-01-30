@@ -176,8 +176,8 @@ export function ChapterAnalysisPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-        <section className="min-h-0 rounded-atelier border border-border bg-surface p-3">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="min-h-0 min-w-0 rounded-atelier border border-border bg-surface p-3">
           {loading ? (
             <div className="rounded-atelier border border-border bg-canvas p-4" aria-busy="true" aria-live="polite">
               <span className="sr-only">{UI_COPY.common.loading}</span>
@@ -211,7 +211,7 @@ export function ChapterAnalysisPage() {
         </section>
 
         {loading ? (
-          <aside className="grid gap-3" aria-busy="true" aria-live="polite">
+          <aside className="min-w-0 grid gap-3" aria-busy="true" aria-live="polite">
             <span className="sr-only">{UI_COPY.common.loading}</span>
             <div className="rounded-atelier border border-border bg-surface p-3">
               <div className="skeleton h-4 w-24" />

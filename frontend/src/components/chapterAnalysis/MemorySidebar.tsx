@@ -55,14 +55,14 @@ export function MemorySidebar(props: {
   const invalidCount = props.annotations.length - props.validIds.size;
 
   return (
-    <aside className="grid gap-3">
-      <div className="rounded-atelier border border-border bg-surface p-3">
+    <aside className="min-w-0 grid gap-2">
+      <div className="rounded-atelier border border-border bg-surface p-2">
         <div className="text-sm text-ink">记忆侧栏</div>
         <div className="mt-1 text-xs text-subtext">
           共 {props.annotations.length} 条{invalidCount > 0 ? `（${invalidCount} 条未定位）` : ""}
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           {allTypes.map((t) => {
             const enabled = enabledTypes.has(t.type);
             return (
