@@ -61,7 +61,7 @@ from app.services.memory_query_service import normalize_query_text, parse_query_
 from app.services.memory_retrieval_service import build_memory_retrieval_log_json, retrieve_memory_context_pack
 from app.services.prompt_presets import ensure_default_plan_preset, ensure_default_post_edit_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
-from app.services.project_task_service import schedule_worldbook_auto_update_task
+from app.services.project_task_service import schedule_chapter_done_tasks
 from app.services.run_store import write_generation_run
 from app.services.search_index_service import schedule_search_rebuild_task
 from app.services.vector_rag_service import schedule_vector_rebuild_task
@@ -392,8 +392,38 @@ def create_chapter(
         db.rollback()
         raise AppError.conflict("章节号已存在", details={"field": "number"})
     db.refresh(row)
-    schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="chapter_create")
-    schedule_search_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="chapter_create")
+    if str(row.status or "") == "done":
+        token = None
+        updated_at = getattr(row, "updated_at", None)
+        if updated_at is not None:
+            token = updated_at.isoformat().replace("+00:00", "Z")
+        try:
+            schedule_chapter_done_tasks(
+                db=db,
+                project_id=project_id,
+                actor_user_id=user_id,
+                request_id=request_id,
+                chapter_id=str(row.id),
+                chapter_token=token,
+                reason="chapter_done",
+            )
+        except Exception as exc:
+            log_event(
+                logger,
+                "warning",
+                event="CHAPTER_DONE_TASKS",
+                action="trigger_failed",
+                project_id=str(row.project_id),
+                chapter_id=str(row.id),
+                **exception_log_fields(exc),
+            )
+    else:
+        schedule_vector_rebuild_task(
+            db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="chapter_create"
+        )
+        schedule_search_rebuild_task(
+            db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="chapter_create"
+        )
     return ok_payload(request_id=request_id, data={"chapter": ChapterOut.model_validate(row).model_dump()})
 
 
@@ -489,21 +519,16 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
     _mark_vector_index_dirty(db, project_id=str(row.project_id))
     db.commit()
     db.refresh(row)
-    schedule_vector_rebuild_task(
-        db=db, project_id=str(row.project_id), actor_user_id=user_id, request_id=request_id, reason="chapter_update"
-    )
-    schedule_search_rebuild_task(
-        db=db, project_id=str(row.project_id), actor_user_id=user_id, request_id=request_id, reason="chapter_update"
-    )
 
     next_status = str(row.status or "")
     if prev_status != "done" and next_status == "done":
+        token = None
+        updated_at = getattr(row, "updated_at", None)
+        if updated_at is not None:
+            token = updated_at.isoformat().replace("+00:00", "Z")
+
         try:
-            token = None
-            updated_at = getattr(row, "updated_at", None)
-            if updated_at is not None:
-                token = updated_at.isoformat().replace("+00:00", "Z")
-            schedule_worldbook_auto_update_task(
+            schedule_chapter_done_tasks(
                 db=db,
                 project_id=str(row.project_id),
                 actor_user_id=user_id,
@@ -516,7 +541,7 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
             log_event(
                 logger,
                 "warning",
-                event="WORLDBOOK_AUTO_UPDATE_TASK",
+                event="CHAPTER_DONE_TASKS",
                 action="trigger_failed",
                 project_id=str(row.project_id),
                 chapter_id=str(row.id),
@@ -534,6 +559,13 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
                 chapter_id=str(row.id),
                 **exception_log_fields(exc),
             )
+    else:
+        schedule_vector_rebuild_task(
+            db=db, project_id=str(row.project_id), actor_user_id=user_id, request_id=request_id, reason="chapter_update"
+        )
+        schedule_search_rebuild_task(
+            db=db, project_id=str(row.project_id), actor_user_id=user_id, request_id=request_id, reason="chapter_update"
+        )
     return ok_payload(request_id=request_id, data={"chapter": ChapterOut.model_validate(row).model_dump()})
 
 

@@ -260,6 +260,137 @@ def schedule_worldbook_auto_update_task(
             db.close()
 
 
+def schedule_chapter_done_tasks(
+    *,
+    db: Session,
+    project_id: str,
+    actor_user_id: str | None,
+    request_id: str | None,
+    chapter_id: str,
+    chapter_token: str | None,
+    reason: str,
+) -> dict[str, str | None]:
+    """
+    Fail-soft scheduler bundle for chapter status transition -> done.
+
+    Schedules:
+    - ProjectTask(kind=vector_rebuild)
+    - ProjectTask(kind=search_rebuild)
+    - ProjectTask(kind=worldbook_auto_update)
+    - ProjectTask(kind=graph_auto_update)
+
+    All schedulers are idempotent; this helper never raises.
+    """
+
+    pid = str(project_id or "").strip()
+    cid = str(chapter_id or "").strip()
+    reason_norm = str(reason or "").strip() or "chapter_done"
+    token_norm = str(chapter_token or "").strip() or utc_now().isoformat().replace("+00:00", "Z")
+
+    out: dict[str, str | None] = {
+        "vector_rebuild": None,
+        "search_rebuild": None,
+        "worldbook_auto_update": None,
+        "graph_auto_update": None,
+    }
+
+    if not pid or not cid:
+        return out
+
+    try:
+        from app.services.vector_rag_service import schedule_vector_rebuild_task
+
+        out["vector_rebuild"] = schedule_vector_rebuild_task(
+            db=db,
+            project_id=pid,
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+            reason=reason_norm,
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            "warning",
+            event="CHAPTER_DONE_TASK_SCHEDULE_ERROR",
+            project_id=pid,
+            chapter_id=cid,
+            kind="vector_rebuild",
+            error_type=type(exc).__name__,
+            **exception_log_fields(exc),
+        )
+
+    try:
+        from app.services.search_index_service import schedule_search_rebuild_task
+
+        out["search_rebuild"] = schedule_search_rebuild_task(
+            db=db,
+            project_id=pid,
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+            reason=reason_norm,
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            "warning",
+            event="CHAPTER_DONE_TASK_SCHEDULE_ERROR",
+            project_id=pid,
+            chapter_id=cid,
+            kind="search_rebuild",
+            error_type=type(exc).__name__,
+            **exception_log_fields(exc),
+        )
+
+    try:
+        out["worldbook_auto_update"] = schedule_worldbook_auto_update_task(
+            db=db,
+            project_id=pid,
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+            chapter_id=cid,
+            chapter_token=token_norm,
+            reason=reason_norm,
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            "warning",
+            event="CHAPTER_DONE_TASK_SCHEDULE_ERROR",
+            project_id=pid,
+            chapter_id=cid,
+            kind="worldbook_auto_update",
+            error_type=type(exc).__name__,
+            **exception_log_fields(exc),
+        )
+
+    try:
+        from app.services.graph_auto_update_service import schedule_graph_auto_update_task
+
+        out["graph_auto_update"] = schedule_graph_auto_update_task(
+            db=db,
+            project_id=pid,
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+            chapter_id=cid,
+            chapter_token=token_norm,
+            focus=None,
+            reason=reason_norm,
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            "warning",
+            event="CHAPTER_DONE_TASK_SCHEDULE_ERROR",
+            project_id=pid,
+            chapter_id=cid,
+            kind="graph_auto_update",
+            error_type=type(exc).__name__,
+            **exception_log_fields(exc),
+        )
+
+    return out
+
+
 def retry_project_task(*, db: Session, task: ProjectTask) -> ProjectTask:
     """
     Idempotent retry for failed ProjectTask.
