@@ -462,6 +462,40 @@ def run_project_task(*, task_id: str) -> str:
                 suffix = f" run_id={run_id}" if run_id else ""
                 raise RuntimeError(f"table_ai_update failed: {reason}{suffix}")
             result = res
+        elif kind == "graph_auto_update":
+            params = _compact_json_loads(task.params_json) if task.params_json else None
+            params_dict = params if isinstance(params, dict) else {}
+            chapter_id = str(params_dict.get("chapter_id") or "").strip()
+            focus = str(params_dict.get("focus") or "").strip() or None
+            request_id2 = str(params_dict.get("request_id") or "").strip() or None
+            change_set_idempotency_key = str(params_dict.get("change_set_idempotency_key") or "").strip() or None
+
+            actor_user_id = str(getattr(task, "actor_user_id", "") or "").strip()
+            if not actor_user_id:
+                raise ValueError("Missing ProjectTask.actor_user_id for graph_auto_update")
+            if not chapter_id:
+                raise ValueError("Missing ProjectTask.params_json.chapter_id for graph_auto_update")
+
+            from app.services.graph_auto_update_service import (
+                graph_auto_update_v1,
+                memory_update_changeset_key_from_task_idempotency_key,
+            )
+
+            res = graph_auto_update_v1(
+                project_id=project_id,
+                actor_user_id=actor_user_id,
+                request_id=request_id2 or f"project_task:{task_id}",
+                chapter_id=chapter_id,
+                change_set_idempotency_key=change_set_idempotency_key
+                or memory_update_changeset_key_from_task_idempotency_key(str(task.idempotency_key)),
+                focus=focus,
+            )
+            if not bool(res.get("ok")):
+                reason = str(res.get("reason") or "unknown").strip() or "unknown"
+                run_id = str(res.get("run_id") or "").strip()
+                suffix = f" run_id={run_id}" if run_id else ""
+                raise RuntimeError(f"graph_auto_update failed: {reason}{suffix}")
+            result = res
         else:
             raise ValueError(f"Unsupported ProjectTask.kind: {kind!r}")
 
