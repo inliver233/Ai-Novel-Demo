@@ -381,3 +381,128 @@ def rebuild_project_search_index_async(*, project_id: str) -> dict[str, Any]:
         return {"ok": False, "project_id": pid, "error_type": type(exc).__name__}
     finally:
         db_write.close()
+
+
+def _fts_query_literal(q: str) -> str:
+    s = (q or "").strip()
+    if not s:
+        return ""
+    s = s.replace('"', '""')
+    return f"\"{s}\""
+
+
+def _like_snippet(*, content: str, q: str, window: int = 120) -> str:
+    text_s = (content or "").strip()
+    q_s = (q or "").strip()
+    if not text_s:
+        return ""
+    if not q_s:
+        return _truncate(text_s, limit=window * 2)
+    idx = text_s.lower().find(q_s.lower())
+    if idx < 0:
+        return _truncate(text_s, limit=window * 2)
+    start = max(0, idx - window)
+    end = min(len(text_s), idx + len(q_s) + window)
+    prefix = "..." if start > 0 else ""
+    suffix = "..." if end < len(text_s) else ""
+    return f"{prefix}{text_s[start:end]}{suffix}"
+
+
+def query_project_search(
+    *,
+    db: Session,
+    project_id: str,
+    q: str,
+    sources: list[str] | None,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    pid = str(project_id or "").strip()
+    q_raw = str(q or "").strip()
+    sources_norm = [str(s or "").strip() for s in (sources or []) if str(s or "").strip()]
+    limit = max(1, min(int(limit or 20), 200))
+    offset = max(0, int(offset or 0))
+
+    if not pid:
+        return {"items": [], "next_offset": None, "mode": "none"}
+    if not q_raw:
+        return {"items": [], "next_offset": None, "mode": "empty"}
+
+    params: dict[str, Any] = {"project_id": pid, "limit": limit, "offset": offset}
+
+    if _fts_enabled(db):
+        fts_q = _fts_query_literal(q_raw)
+        if not fts_q:
+            return {"items": [], "next_offset": None, "mode": "empty"}
+        params["q"] = fts_q
+
+        where = "d.project_id = :project_id AND search_index MATCH :q"
+        if sources_norm:
+            keys: list[str] = []
+            for idx, src in enumerate(sources_norm):
+                k = f"src_{idx}"
+                params[k] = src
+                keys.append(f":{k}")
+            where += f" AND d.source_type IN ({','.join(keys)})"
+
+        sql = text(
+            "SELECT d.source_type,d.source_id,COALESCE(d.title,'') AS title,"
+            "snippet(search_index,1,'[',']','...',12) AS snippet,"
+            "d.url_path AS jump_url,"
+            "bm25(search_index,5.0,1.0) AS rank "
+            "FROM search_index JOIN search_documents d ON d.id = search_index.rowid "
+            f"WHERE {where} "
+            "ORDER BY rank ASC, d.id DESC "
+            "LIMIT :limit OFFSET :offset"
+        )
+        rows = db.execute(sql, params).all()
+        items = [
+            {
+                "source_type": str(r[0] or ""),
+                "source_id": str(r[1] or ""),
+                "title": str(r[2] or ""),
+                "snippet": str(r[3] or ""),
+                "jump_url": (str(r[4] or "").strip() or None),
+            }
+            for r in rows
+        ]
+        next_offset = (offset + limit) if len(items) >= limit else None
+        return {"items": items, "next_offset": next_offset, "mode": "fts", "fts_enabled": True}
+
+    # Fallback: LIKE on normalized documents. Lower quality but keeps the UI usable.
+    pattern = f"%{q_raw}%"
+    params["pattern"] = pattern
+    where = "project_id = :project_id AND (title LIKE :pattern OR content LIKE :pattern)"
+    if sources_norm:
+        keys = []
+        for idx, src in enumerate(sources_norm):
+            k = f"src_{idx}"
+            params[k] = src
+            keys.append(f":{k}")
+        where += f" AND source_type IN ({','.join(keys)})"
+
+    rows2 = (
+        db.execute(
+            text(
+                "SELECT source_type,source_id,COALESCE(title,'') AS title,content, url_path "
+                "FROM search_documents "
+                f"WHERE {where} "
+                "ORDER BY updated_at DESC, id DESC "
+                "LIMIT :limit OFFSET :offset"
+            ),
+            params,
+        )
+        .all()
+    )
+    items2 = [
+        {
+            "source_type": str(r[0] or ""),
+            "source_id": str(r[1] or ""),
+            "title": str(r[2] or ""),
+            "snippet": _like_snippet(content=str(r[3] or ""), q=q_raw),
+            "jump_url": (str(r[4] or "").strip() or None),
+        }
+        for r in rows2
+    ]
+    next_offset2 = (offset + limit) if len(items2) >= limit else None
+    return {"items": items2, "next_offset": next_offset2, "mode": "like", "fts_enabled": False}

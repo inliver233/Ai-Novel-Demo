@@ -25,6 +25,7 @@ from app.api.routes import (
     outlines,
     projects,
     prompts,
+    search,
     settings,
     tasks,
     tables,
@@ -42,6 +43,7 @@ api_router.include_router(memory.router, tags=["memory"])
 api_router.include_router(tasks.router, tags=["tasks"])
 api_router.include_router(mcp.router, tags=["mcp"])
 api_router.include_router(glossary.router, tags=["glossary"])
+api_router.include_router(search.router, tags=["search"])
 api_router.include_router(tables.router, tags=["tables"])
 api_router.include_router(vector.router, tags=["vector"])
 api_router.include_router(graph.router, tags=["graph"])
