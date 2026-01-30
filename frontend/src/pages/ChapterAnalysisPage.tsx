@@ -232,10 +232,14 @@ export function ChapterAnalysisPage() {
           </aside>
         ) : (
           <MemorySidebar
+            projectId={projectId}
+            chapterId={chapterId}
             annotations={annotations}
             validIds={validIds}
             activeAnnotationId={activeAnnotationId}
             onSelect={(a) => selectAnnotation(a, { scroll: true })}
+            onRefresh={refresh}
+            onSetActiveAnnotationId={setActiveAnnotationId}
           />
         )}
       </div>
