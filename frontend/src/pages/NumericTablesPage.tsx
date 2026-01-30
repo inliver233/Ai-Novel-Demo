@@ -47,7 +47,9 @@ export function NumericTablesPage() {
       });
     } catch (e) {
       const err =
-        e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       setTablesError(`${err.message} (${err.code})${err.requestId ? ` request_id:${err.requestId}` : ""}`);
     } finally {
       setTablesLoading(false);
@@ -80,7 +82,9 @@ export function NumericTablesPage() {
       toast.toastSuccess("已创建 AI 更新任务", res.request_id);
     } catch (e) {
       const err =
-        e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
       setScheduling(false);

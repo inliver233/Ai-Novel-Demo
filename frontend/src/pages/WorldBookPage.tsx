@@ -156,7 +156,9 @@ export function WorldBookPage() {
   const loading = entriesQuery.loading;
   const setEntries = entriesQuery.setData;
 
-  const autoUpdateTaskQuery = useProjectData<ProjectTask | null>(projectId, async (id) => getLatestWorldBookAutoUpdateTask(id));
+  const autoUpdateTaskQuery = useProjectData<ProjectTask | null>(projectId, async (id) =>
+    getLatestWorldBookAutoUpdateTask(id),
+  );
   const autoUpdateTask = autoUpdateTaskQuery.data;
   const [autoUpdateActionLoading, setAutoUpdateActionLoading] = useState(false);
 

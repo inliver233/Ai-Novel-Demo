@@ -71,20 +71,30 @@ export async function updateStoryMemory(
 }
 
 export async function deleteStoryMemory(projectId: string, storyMemoryId: string): Promise<string> {
-  const res = await apiJson<{ deleted_id: string }>(`/api/projects/${projectId}/story_memories/${encodeURIComponent(storyMemoryId)}`, {
-    method: "DELETE",
-  });
+  const res = await apiJson<{ deleted_id: string }>(
+    `/api/projects/${projectId}/story_memories/${encodeURIComponent(storyMemoryId)}`,
+    {
+      method: "DELETE",
+    },
+  );
   return res.data.deleted_id;
 }
 
 export async function mergeStoryMemories(projectId: string, args: { targetId: string; sourceIds: string[] }) {
-  return apiJson<{ story_memory: StoryMemory; deleted_ids: string[] }>(`/api/projects/${projectId}/story_memories/merge`, {
-    method: "POST",
-    body: JSON.stringify({ target_id: args.targetId, source_ids: args.sourceIds }),
-  });
+  return apiJson<{ story_memory: StoryMemory; deleted_ids: string[] }>(
+    `/api/projects/${projectId}/story_memories/merge`,
+    {
+      method: "POST",
+      body: JSON.stringify({ target_id: args.targetId, source_ids: args.sourceIds }),
+    },
+  );
 }
 
-export async function markStoryMemoryDone(projectId: string, storyMemoryId: string, done: boolean): Promise<StoryMemory> {
+export async function markStoryMemoryDone(
+  projectId: string,
+  storyMemoryId: string,
+  done: boolean,
+): Promise<StoryMemory> {
   const res = await apiJson<{ story_memory: StoryMemory }>(
     `/api/projects/${projectId}/story_memories/${encodeURIComponent(storyMemoryId)}/mark_done`,
     {
@@ -94,4 +104,3 @@ export async function markStoryMemoryDone(projectId: string, storyMemoryId: stri
   );
   return res.data.story_memory;
 }
-

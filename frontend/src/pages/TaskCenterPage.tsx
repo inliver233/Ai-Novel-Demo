@@ -354,15 +354,20 @@ export function TaskCenterPage() {
       if (!changeSetId) return;
       setChangeSetActionLoading(true);
       try {
-        const res = await apiJson<ChangeSetApplyResult>(`/api/memory_change_sets/${encodeURIComponent(changeSetId)}/apply`, {
-          method: "POST",
-          body: JSON.stringify({}),
-        });
+        const res = await apiJson<ChangeSetApplyResult>(
+          `/api/memory_change_sets/${encodeURIComponent(changeSetId)}/apply`,
+          {
+            method: "POST",
+            body: JSON.stringify({}),
+          },
+        );
         toast.toastSuccess("已应用 ChangeSet", res.request_id);
         await refreshChangeSets();
       } catch (e) {
         const err =
-          e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       } finally {
         setChangeSetActionLoading(false);
@@ -388,7 +393,9 @@ export function TaskCenterPage() {
         await refreshChangeSets();
       } catch (e) {
         const err =
-          e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       } finally {
         setChangeSetActionLoading(false);
@@ -408,7 +415,9 @@ export function TaskCenterPage() {
       .then((res) => setSelected({ kind: "project_task", item: res.data }))
       .catch((e) => {
         const err =
-          e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       })
       .finally(() => setProjectTaskDetailLoading(false));
@@ -824,7 +833,10 @@ export function TaskCenterPage() {
             </section>
 
             {selected.item.kind === "table_ai_update" ? (
-              <section className="rounded-atelier border border-border bg-surface p-3" aria-label="projecttask_changeset">
+              <section
+                className="rounded-atelier border border-border bg-surface p-3"
+                aria-label="projecttask_changeset"
+              >
                 <div className="text-sm text-ink">ChangeSet</div>
                 {selectedProjectTaskChangeSetId ? (
                   <div className="mt-2 grid gap-2 text-xs text-subtext">
@@ -860,7 +872,9 @@ export function TaskCenterPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="mt-2 text-xs text-subtext">该任务 result 未包含 change_set（可能仍在运行或已失败）。</div>
+                  <div className="mt-2 text-xs text-subtext">
+                    该任务 result 未包含 change_set（可能仍在运行或已失败）。
+                  </div>
                 )}
               </section>
             ) : null}

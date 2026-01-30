@@ -721,13 +721,13 @@ export function AppShell() {
                           ariaLabel="知识库（RAG） (nav_rag)"
                           to={`/projects/${projectId}/rag`}
                         />
-                         <SidebarLink
-                           collapsed={collapsed}
-                           icon={<BookText size={18} />}
-                           label={UI_COPY.nav.search}
-                           ariaLabel="术语表 (nav_glossary)"
-                           to={`/projects/${projectId}/search`}
-                         />
+                        <SidebarLink
+                          collapsed={collapsed}
+                          icon={<BookText size={18} />}
+                          label={UI_COPY.nav.search}
+                          ariaLabel="术语表 (nav_glossary)"
+                          to={`/projects/${projectId}/search`}
+                        />
                         <SidebarLink
                           collapsed={collapsed}
                           icon={<Share2 size={18} />}
@@ -783,13 +783,13 @@ export function AppShell() {
                             ariaLabel="知识库（RAG） (nav_rag)"
                             to={`/projects/${projectId}/rag`}
                           />
-                           <SidebarLink
-                             collapsed={collapsed}
-                             icon={<BookText size={18} />}
-                             label={UI_COPY.nav.search}
-                             ariaLabel="术语表 (nav_glossary)"
-                             to={`/projects/${projectId}/search`}
-                           />
+                          <SidebarLink
+                            collapsed={collapsed}
+                            icon={<BookText size={18} />}
+                            label={UI_COPY.nav.search}
+                            ariaLabel="术语表 (nav_glossary)"
+                            to={`/projects/${projectId}/search`}
+                          />
                           <SidebarLink
                             collapsed={collapsed}
                             icon={<Share2 size={18} />}

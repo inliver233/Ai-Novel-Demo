@@ -103,7 +103,9 @@ export function MemorySidebar(props: {
     }
     return Array.from(counts.entries())
       .map(([type, count]) => ({ type, count }))
-      .sort((a, b) => sortKeyForAnnotationType(a.type) - sortKeyForAnnotationType(b.type) || a.type.localeCompare(b.type));
+      .sort(
+        (a, b) => sortKeyForAnnotationType(a.type) - sortKeyForAnnotationType(b.type) || a.type.localeCompare(b.type),
+      );
   }, [props.annotations]);
 
   const [enabledTypes, setEnabledTypes] = useState<Set<string>>(() => new Set(allTypes.map((t) => t.type)));
@@ -129,7 +131,9 @@ export function MemorySidebar(props: {
 
   const filtered = useMemo(() => {
     const out = props.annotations.filter((a) => enabledTypes.has(a.type));
-    out.sort((a, b) => sortKeyForAnnotationType(a.type) - sortKeyForAnnotationType(b.type) || b.importance - a.importance);
+    out.sort(
+      (a, b) => sortKeyForAnnotationType(a.type) - sortKeyForAnnotationType(b.type) || b.importance - a.importance,
+    );
     return out;
   }, [enabledTypes, props.annotations]);
 
@@ -304,7 +308,9 @@ export function MemorySidebar(props: {
   const mergeCandidates = useMemo(() => {
     if (!active) return [];
     const out = props.annotations.filter((a) => a.id !== active.id);
-    out.sort((a, b) => sortKeyForAnnotationType(a.type) - sortKeyForAnnotationType(b.type) || b.importance - a.importance);
+    out.sort(
+      (a, b) => sortKeyForAnnotationType(a.type) - sortKeyForAnnotationType(b.type) || b.importance - a.importance,
+    );
     return out;
   }, [active, props.annotations]);
 
@@ -435,9 +441,13 @@ export function MemorySidebar(props: {
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <div className="truncate text-sm text-ink">{normalizeTitle(a)}</div>
-                              {done ? <span className="rounded bg-success/20 px-1.5 py-0.5 text-[11px] text-ink">已完成</span> : null}
+                              {done ? (
+                                <span className="rounded bg-success/20 px-1.5 py-0.5 text-[11px] text-ink">已完成</span>
+                              ) : null}
                             </div>
-                            <div className="mt-1 line-clamp-2 text-xs text-subtext">{(a.content ?? "").trim().slice(0, 140)}</div>
+                            <div className="mt-1 line-clamp-2 text-xs text-subtext">
+                              {(a.content ?? "").trim().slice(0, 140)}
+                            </div>
                           </div>
                           <div className="shrink-0 text-right">
                             <div className="text-xs text-subtext">{(a.importance * 10).toFixed(1)}</div>
@@ -526,10 +536,18 @@ export function MemorySidebar(props: {
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="font-content text-2xl text-ink">{editing ? "编辑剧情记忆" : "新增剧情记忆"}</div>
-            <div className="mt-1 text-xs text-subtext">{saving ? "保存中..." : "可直接编辑后保存（失败不影响正文）"}</div>
+            <div className="mt-1 text-xs text-subtext">
+              {saving ? "保存中..." : "可直接编辑后保存（失败不影响正文）"}
+            </div>
           </div>
           <div className="flex gap-2">
-            <button className="btn btn-secondary" type="button" onClick={closeEditor} disabled={saving} aria-label="story_memory_close">
+            <button
+              className="btn btn-secondary"
+              type="button"
+              onClick={closeEditor}
+              disabled={saving}
+              aria-label="story_memory_close"
+            >
               关闭
             </button>
             <button
@@ -713,7 +731,9 @@ export function MemorySidebar(props: {
                       <div className="truncate text-sm text-ink">{normalizeTitle(a)}</div>
                       <div className="text-xs text-subtext">{labelForAnnotationType(a.type)}</div>
                     </div>
-                    <div className="mt-1 line-clamp-2 text-xs text-subtext">{(a.content ?? "").trim().slice(0, 160)}</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-subtext">
+                      {(a.content ?? "").trim().slice(0, 160)}
+                    </div>
                   </div>
                 </label>
               );
