@@ -12,17 +12,32 @@ def _external_rerank_candidates(
     *,
     query_text: str,
     candidates: list[dict[str, Any]],
+    external: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    base_url_raw = str(getattr(settings, "vector_rerank_external_base_url", "") or "").strip()
+    base_url_raw = str((external or {}).get("base_url") or "").strip() if isinstance(external, dict) else ""
+    if not base_url_raw:
+        base_url_raw = str(getattr(settings, "vector_rerank_external_base_url", "") or "").strip()
     if not base_url_raw:
         raise RuntimeError("external_rerank_api base_url not configured")
 
     base_url = normalize_base_url(base_url_raw)
     url = base_url if base_url.endswith("/rerank") else base_url + "/rerank"
 
-    model = str(getattr(settings, "vector_rerank_external_model", "") or "").strip() or None
-    api_key = str(getattr(settings, "vector_rerank_external_api_key", "") or "").strip() or None
-    timeout_s = float(getattr(settings, "vector_rerank_external_timeout_seconds", 15.0) or 15.0)
+    model = str((external or {}).get("model") or "").strip() if isinstance(external, dict) else ""
+    if not model:
+        model = str(getattr(settings, "vector_rerank_external_model", "") or "").strip()
+    model = model or None
+
+    api_key = str((external or {}).get("api_key") or "").strip() if isinstance(external, dict) else ""
+    if not api_key:
+        api_key = str(getattr(settings, "vector_rerank_external_api_key", "") or "").strip()
+    api_key = api_key or None
+
+    timeout_raw = (external or {}).get("timeout_seconds") if isinstance(external, dict) else None
+    try:
+        timeout_s = float(timeout_raw) if timeout_raw is not None else float(getattr(settings, "vector_rerank_external_timeout_seconds", 15.0) or 15.0)
+    except Exception:
+        timeout_s = float(getattr(settings, "vector_rerank_external_timeout_seconds", 15.0) or 15.0)
     timeout_s = max(1.0, min(timeout_s, 120.0))
 
     docs = [str(c.get("text") or "") for c in candidates if isinstance(c, dict)]
@@ -100,6 +115,7 @@ def rerank_candidates(
     top_k: int,
     score_fn: Callable[..., float],
     hybrid_alpha: float | None = None,
+    external: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     before = [str(c.get("id") or "") for c in candidates if isinstance(c, dict)]
     start = time.perf_counter()
@@ -170,7 +186,7 @@ def rerank_candidates(
     for try_method in plan:
         if try_method == "external_rerank_api":
             try:
-                reranked_head, ext = _external_rerank_candidates(query_text=qtext, candidates=head)
+                reranked_head, ext = _external_rerank_candidates(query_text=qtext, candidates=head, external=external)
                 reranked = list(reranked_head) + list(tail)
                 after_rerank = [str(c.get("id") or "") for c in reranked if isinstance(c, dict)]
                 final = list(reranked)
