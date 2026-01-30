@@ -21,6 +21,7 @@ export function humanizeTaskStatus(status: string): string {
   if (s === "queued") return formatWithKey("排队中", s);
   if (s === "running") return formatWithKey("运行中", s);
   if (s === "done") return formatWithKey("完成", s);
+  if (s === "succeeded") return formatWithKey("完成", s);
   if (s === "failed") return formatWithKey("失败", s);
   return s || "未知";
 }

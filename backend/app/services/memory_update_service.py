@@ -255,12 +255,13 @@ def list_memory_change_sets(
     return {"items": items, "next_before": next_before}
 
 
-_ALLOWED_TASK_STATUSES = {"queued", "running", "succeeded", "failed"}
+_ALLOWED_TASK_STATUSES_QUERY = {"queued", "running", "failed", "done", "succeeded"}
+_TASK_DONE_ALIASES = {"succeeded", "done"}
 
 
 def _memory_task_status_to_public(status: str) -> str:
     s = str(status or "").strip().lower()
-    return "done" if s == "succeeded" else s
+    return "done" if s in _TASK_DONE_ALIASES else s
 
 
 def _memory_task_error_fields(task: MemoryTask) -> tuple[str | None, str | None]:
@@ -318,9 +319,9 @@ def list_memory_tasks(
 ) -> dict[str, Any]:
     status_norm = str(status or "").strip().lower() or None
     if status_norm is not None:
-        if status_norm == "done":
-            status_norm = "succeeded"
-        if status_norm not in _ALLOWED_TASK_STATUSES:
+        if status_norm == "succeeded":
+            status_norm = "done"
+        if status_norm not in _ALLOWED_TASK_STATUSES_QUERY:
             raise AppError.validation(details={"reason": "invalid_status", "status": status})
 
     before_raw = str(before or "").strip()
@@ -332,7 +333,10 @@ def list_memory_tasks(
         MemoryTask.project_id == project_id
     )
     if status_norm is not None:
-        q = q.where(MemoryTask.status == status_norm)
+        if status_norm == "done":
+            q = q.where(MemoryTask.status.in_(sorted(_TASK_DONE_ALIASES)))
+        else:
+            q = q.where(MemoryTask.status == status_norm)
     if before_dt is not None:
         q = q.where(MemoryTask.created_at < before_dt)
 
