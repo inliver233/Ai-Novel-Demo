@@ -98,6 +98,7 @@ complexity: complex
 
 ## References
 - `docs/design/graph-model.md`
+- `docs/design/search-engine.md`
 - `docs/ux/ui-api-map.md`
 - `docs/ux/advanced-debug-page-guidelines.md`
 - `backend/app/services/worldbook_service.py:56`
