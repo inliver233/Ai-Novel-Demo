@@ -48,6 +48,7 @@ from app.services.memory_update_service import (
 from app.services.table_executor import TableUpdateV1Request
 from app.services.output_contracts import contract_for_task
 from app.services.prompt_presets import _ensure_default_preset_from_resource, render_preset_for_task
+from app.services.vector_rag_service import schedule_vector_rebuild_task
 
 router = APIRouter()
 logger = logging.getLogger("ainovel")
@@ -176,6 +177,9 @@ def import_all_story_memories(
     settings_row.vector_index_dirty = True
 
     db.commit()
+    schedule_vector_rebuild_task(
+        db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="story_memory_import_all"
+    )
     return ok_payload(request_id=request_id, data={"created": len(created_ids), "ids": created_ids})
 
 
@@ -291,6 +295,9 @@ def resolve_story_memory_foreshadow(
 
     db.commit()
     db.refresh(m)
+    schedule_vector_rebuild_task(
+        db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="story_memory_foreshadow_resolve"
+    )
 
     return ok_payload(
         request_id=request_id,

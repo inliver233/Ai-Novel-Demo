@@ -62,6 +62,7 @@ from app.services.memory_retrieval_service import build_memory_retrieval_log_jso
 from app.services.prompt_presets import ensure_default_plan_preset, ensure_default_post_edit_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
 from app.services.run_store import write_generation_run
+from app.services.vector_rag_service import schedule_vector_rebuild_task
 from app.utils.sse_response import (
     create_sse_response,
     sse_chunk,
@@ -389,6 +390,7 @@ def create_chapter(
         db.rollback()
         raise AppError.conflict("章节号已存在", details={"field": "number"})
     db.refresh(row)
+    schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="chapter_create")
     return ok_payload(request_id=request_id, data={"chapter": ChapterOut.model_validate(row).model_dump()})
 
 
@@ -449,6 +451,7 @@ def bulk_create(
         raise AppError.conflict("章节创建冲突（请检查章节号）")
 
     created_sorted = sorted(created, key=lambda x: x.number)
+    schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="chapters_bulk_create")
     return ok_payload(
         request_id=request_id,
         data={"chapters": [ChapterOut.model_validate(r).model_dump() for r in created_sorted]},
@@ -482,6 +485,9 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
     _mark_vector_index_dirty(db, project_id=str(row.project_id))
     db.commit()
     db.refresh(row)
+    schedule_vector_rebuild_task(
+        db=db, project_id=str(row.project_id), actor_user_id=user_id, request_id=request_id, reason="chapter_update"
+    )
 
     next_status = str(row.status or "")
     if prev_status != "done" and next_status == "done":
@@ -544,6 +550,7 @@ def delete_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
     db.delete(row)
     _mark_vector_index_dirty(db, project_id=str(row.project_id))
     db.commit()
+    schedule_vector_rebuild_task(db=db, project_id=str(row.project_id), actor_user_id=user_id, request_id=request_id, reason="chapter_delete")
     return ok_payload(request_id=request_id, data={})
 
 

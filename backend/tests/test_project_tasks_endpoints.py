@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 from typing import Generator
+from unittest.mock import patch
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -158,7 +159,15 @@ class TestProjectTasksEndpoints(unittest.TestCase):
     def test_retry_failed_task_sets_queued(self) -> None:
         client = TestClient(self.app)
 
-        resp = client.post("/api/tasks/pt2/retry", headers={"X-Test-User": "u_owner"})
+        class _NoopQueue:
+            def enqueue(self, *, kind: str, task_id: str) -> str:  # type: ignore[no-untyped-def]
+                return task_id
+
+            def enqueue_batch_generation_task(self, task_id: str) -> str:
+                return task_id
+
+        with patch("app.services.task_queue.get_task_queue", return_value=_NoopQueue()):
+            resp = client.post("/api/tasks/pt2/retry", headers={"X-Test-User": "u_owner"})
         self.assertEqual(resp.status_code, 200)
         data = resp.json().get("data") or {}
         self.assertEqual(data.get("status"), "queued")
@@ -170,4 +179,3 @@ class TestProjectTasksEndpoints(unittest.TestCase):
             assert row is not None
             self.assertEqual(row.status, "queued")
             self.assertIsNone(row.error_json)
-

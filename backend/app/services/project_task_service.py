@@ -173,6 +173,29 @@ def retry_project_task(*, db: Session, task: ProjectTask) -> ProjectTask:
 
     task.updated_at = utc_now()
     db.commit()
+
+    from app.services.task_queue import get_task_queue
+
+    queue = get_task_queue()
+    try:
+        queue.enqueue(kind="project_task", task_id=str(task.id))
+    except Exception as exc:
+        fields = exception_log_fields(exc)
+        msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:200]
+        task.status = "failed"
+        task.finished_at = utc_now()
+        task.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": msg})
+        db.commit()
+        log_event(
+            logger,
+            "warning",
+            event="PROJECT_TASK_ENQUEUE_ERROR",
+            task_id=str(task.id),
+            project_id=str(task.project_id),
+            kind=str(task.kind),
+            error_type=type(exc).__name__,
+            **fields,
+        )
     return task
 
 
@@ -196,15 +219,77 @@ def run_project_task(*, task_id: str) -> str:
         db.commit()
 
         kind = str(task.kind)
+        project_id = str(task.project_id)
 
         result: dict[str, Any]
         if kind == "noop":
             result = {"skipped": True, "note": "noop"}
+        elif kind == "vector_rebuild":
+            from app.models.project_settings import ProjectSettings
+            from app.services.vector_embedding_overrides import vector_embedding_overrides
+            from app.services.vector_kb_service import list_kbs as list_vector_kbs
+            from app.services.vector_rag_service import build_project_chunks, rebuild_project, vector_rag_status
+
+            db2 = SessionLocal()
+            kb_ids: list[str] = []
+            embedding: dict[str, str | None] = {}
+            chunks = []
+            try:
+                settings_row = db2.get(ProjectSettings, project_id)
+                embedding = vector_embedding_overrides(settings_row)
+                status = vector_rag_status(project_id=project_id, embedding=embedding)
+                if not bool(status.get("enabled")):
+                    result = {"skipped": True, **status}
+                else:
+                    kbs = list_vector_kbs(db2, project_id=project_id)
+                    kb_ids = [str(r.kb_id) for r in kbs if bool(getattr(r, "enabled", True))]
+                    if not kb_ids:
+                        kb_ids = ["default"]
+                    chunks = build_project_chunks(db=db2, project_id=project_id)
+                    result = {}
+            finally:
+                db2.close()
+
+            if not result:
+                per_kb: dict[str, dict[str, Any]] = {}
+                for kid in kb_ids:
+                    per_kb[kid] = rebuild_project(project_id=project_id, kb_id=kid, chunks=chunks, embedding=embedding)
+
+                results = list(per_kb.values())
+                enabled = all(bool(r.get("enabled")) for r in results) if results else False
+                skipped = all(bool(r.get("skipped")) for r in results) if results else True
+                rebuilt = sum(int(r.get("rebuilt") or 0) for r in results)
+                disabled_reason = next((r.get("disabled_reason") for r in results if r.get("disabled_reason")), None)
+                backend = next((r.get("backend") for r in results if r.get("backend")), None)
+                error = next((r.get("error") for r in results if r.get("error")), None)
+
+                result = {
+                    "enabled": bool(enabled),
+                    "skipped": bool(skipped),
+                    "disabled_reason": disabled_reason,
+                    "rebuilt": int(rebuilt),
+                    "backend": backend,
+                    "error": error,
+                    "kbs": {"selected": list(kb_ids), "per_kb": per_kb},
+                }
+
+                if bool(enabled) and not bool(skipped):
+                    db3 = SessionLocal()
+                    try:
+                        settings_row2 = db3.get(ProjectSettings, project_id)
+                        if settings_row2 is None:
+                            settings_row2 = ProjectSettings(project_id=project_id)
+                            db3.add(settings_row2)
+                        settings_row2.vector_index_dirty = False
+                        settings_row2.last_vector_build_at = utc_now()
+                        db3.commit()
+                    finally:
+                        db3.close()
         else:
             raise ValueError(f"Unsupported ProjectTask.kind: {kind!r}")
 
         task.status = "succeeded"
-        task.result_json = _compact_json_dumps(result)
+        task.result_json = _compact_json_dumps(redact_api_keys(result))
         task.finished_at = utc_now()
         db.commit()
 
@@ -221,8 +306,10 @@ def run_project_task(*, task_id: str) -> str:
         try:
             task2 = db.get(ProjectTask, task_id)
             if task2 is not None:
+                fields = exception_log_fields(exc)
+                msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:400]
                 task2.status = "failed"
-                task2.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": str(exc)[:400]})
+                task2.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": msg})
                 task2.finished_at = utc_now()
                 db.commit()
         except Exception:

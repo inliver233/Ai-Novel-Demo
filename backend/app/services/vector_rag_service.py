@@ -11,13 +11,17 @@ from pathlib import Path
 from typing import Any, Literal
 
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.logging import exception_log_fields, log_event
 from app.db.session import SessionLocal, engine
+from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
 from app.models.outline import Outline
+from app.models.project_settings import ProjectSettings
+from app.models.project_task import ProjectTask
 from app.models.story_memory import StoryMemory
 from app.models.worldbook_entry import WorldBookEntry
 from app.services.embedding_service import (
@@ -677,6 +681,141 @@ def vector_rag_status(
         "hybrid_enabled": bool(getattr(settings, "vector_hybrid_enabled", True)),
         "rerank": rerank_obs,
     }
+
+
+def schedule_vector_rebuild_task(
+    *,
+    db: Session | None = None,
+    project_id: str,
+    actor_user_id: str | None,
+    request_id: str | None,
+    reason: str,
+) -> str | None:
+    """
+    Fail-soft scheduler: ensure/enqueue a ProjectTask(kind=vector_rebuild) for the project.
+
+    Idempotency key is derived from `ProjectSettings.last_vector_build_at` to avoid task storms while still allowing
+    a new task after each successful rebuild.
+    """
+
+    pid = str(project_id or "").strip()
+    if not pid:
+        return None
+    reason_norm = str(reason or "").strip() or "dirty"
+    owns_session = db is None
+    if db is None:
+        db = SessionLocal()
+    try:
+        settings_row = db.get(ProjectSettings, pid)
+        if settings_row is not None and not bool(getattr(settings_row, "vector_index_dirty", False)):
+            return None
+
+        last_build_at = getattr(settings_row, "last_vector_build_at", None) if settings_row is not None else None
+        token = "none"
+        if last_build_at is not None:
+            token = last_build_at.isoformat().replace("+00:00", "Z")
+
+        idempotency_key = f"vector:project:since:{token}:v1"
+        task = (
+            db.execute(
+                select(ProjectTask).where(
+                    ProjectTask.project_id == pid,
+                    ProjectTask.idempotency_key == idempotency_key,
+                )
+            )
+            .scalars()
+            .first()
+        )
+
+        if task is None:
+            task = ProjectTask(
+                id=new_id(),
+                project_id=pid,
+                actor_user_id=actor_user_id,
+                kind="vector_rebuild",
+                status="queued",
+                idempotency_key=idempotency_key,
+                params_json=json.dumps(
+                    {"reason": reason_norm, "request_id": request_id, "triggered_at": utc_now().isoformat().replace("+00:00", "Z")},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                result_json=None,
+                error_json=None,
+            )
+            db.add(task)
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                task = (
+                    db.execute(
+                        select(ProjectTask).where(
+                            ProjectTask.project_id == pid,
+                            ProjectTask.idempotency_key == idempotency_key,
+                        )
+                    )
+                    .scalars()
+                    .first()
+                )
+                if task is None:
+                    return None
+        else:
+            status_norm = str(getattr(task, "status", "") or "").strip().lower()
+            if status_norm not in {"queued", "running"}:
+                task.status = "queued"
+                task.started_at = None
+                task.finished_at = None
+                task.result_json = None
+                task.error_json = None
+                db.commit()
+
+        from app.services.task_queue import get_task_queue
+
+        queue = get_task_queue()
+        try:
+            queue.enqueue(kind="project_task", task_id=str(task.id))
+        except Exception as exc:
+            fields = exception_log_fields(exc)
+            msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:200]
+            task.status = "failed"
+            task.finished_at = utc_now()
+            task.error_json = json.dumps(
+                {"error_type": type(exc).__name__, "message": msg},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            db.commit()
+            log_event(
+                logger,
+                "warning",
+                event="PROJECT_TASK_ENQUEUE_ERROR",
+                task_id=str(task.id),
+                project_id=pid,
+                kind="vector_rebuild",
+                error_type=type(exc).__name__,
+                request_id=request_id,
+                **fields,
+            )
+        return str(task.id)
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        log_event(
+            logger,
+            "warning",
+            event="VECTOR_REBUILD_SCHEDULE_ERROR",
+            project_id=pid,
+            error_type=type(exc).__name__,
+            request_id=request_id,
+            **exception_log_fields(exc),
+        )
+        return None
+    finally:
+        if owns_session:
+            db.close()
 
 
 def _import_chromadb() -> Any:

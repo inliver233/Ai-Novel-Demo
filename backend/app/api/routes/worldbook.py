@@ -30,6 +30,7 @@ from app.schemas.worldbook import (
     WorldBookPreviewTriggerRequest,
 )
 from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
+from app.services.vector_rag_service import schedule_vector_rebuild_task
 from app.services.worldbook_service import preview_worldbook_trigger
 
 router = APIRouter()
@@ -247,6 +248,7 @@ def import_all_worldbook_entries(
         _mark_vector_index_dirty(db, project_id=project_id)
 
     db.commit()
+    schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="worldbook_import")
     return ok_payload(
         request_id=request_id,
         data={
@@ -313,6 +315,7 @@ def bulk_update_worldbook_entries(
     for row in rows:
         db.refresh(row)
 
+    schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="worldbook_bulk_update")
     return ok_payload(request_id=request_id, data={"worldbook_entries": [_to_out(by_id[eid]) for eid in entry_ids]})
 
 
@@ -342,6 +345,7 @@ def bulk_delete_worldbook_entries(
         db.delete(row)
     _mark_vector_index_dirty(db, project_id=project_id)
     db.commit()
+    schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="worldbook_bulk_delete")
     return ok_payload(request_id=request_id, data={"deleted_ids": entry_ids})
 
 
@@ -402,6 +406,7 @@ def duplicate_worldbook_entries(
     for row in created:
         db.refresh(row)
 
+    schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="worldbook_duplicate")
     return ok_payload(request_id=request_id, data={"worldbook_entries": [_to_out(r) for r in created]})
 
 
@@ -431,6 +436,7 @@ def create_worldbook_entry(
     _mark_vector_index_dirty(db, project_id=project_id)
     db.commit()
     db.refresh(row)
+    schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="worldbook_create")
     return ok_payload(request_id=request_id, data={"worldbook_entry": _to_out(row)})
 
 
@@ -464,6 +470,9 @@ def update_worldbook_entry(
     _mark_vector_index_dirty(db, project_id=str(row.project_id))
     db.commit()
     db.refresh(row)
+    schedule_vector_rebuild_task(
+        db=db, project_id=str(row.project_id), actor_user_id=user_id, request_id=request_id, reason="worldbook_update"
+    )
     return ok_payload(request_id=request_id, data={"worldbook_entry": _to_out(row)})
 
 
@@ -474,6 +483,7 @@ def delete_worldbook_entry(request: Request, db: DbDep, user_id: UserIdDep, entr
     db.delete(row)
     _mark_vector_index_dirty(db, project_id=str(row.project_id))
     db.commit()
+    schedule_vector_rebuild_task(db=db, project_id=str(row.project_id), actor_user_id=user_id, request_id=request_id, reason="worldbook_delete")
     return ok_payload(request_id=request_id, data={})
 
 
