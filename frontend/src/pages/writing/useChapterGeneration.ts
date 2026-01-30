@@ -51,7 +51,7 @@ const DEFAULT_GEN_FORM: GenerateForm = {
   post_edit: false,
   post_edit_sanitize: false,
   style_id: null,
-  memory_injection_enabled: false,
+  memory_injection_enabled: true,
   memory_query_text: "",
   memory_modules: {
     worldbook: true,

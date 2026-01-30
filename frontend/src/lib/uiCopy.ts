@@ -437,4 +437,19 @@ export const UI_COPY = {
     usageHint: "何时用：生成/记忆更新后结果不符合预期，或需要查看后台任务是否失败/排队/运行中。",
     riskHint: "风险：该页包含较多排障字段（request_id/error 等）；对外分享时注意脱敏。",
   },
+  featureDefaults: {
+    ariaLabel: "默认行为（Feature Defaults）",
+    title: "默认行为（默认开启）",
+    subtitle: "普通用户默认开启记忆注入与后台自动更新；高级用户可按需关闭以节省成本/提升速度。",
+    memoryInjectionLabel: "写作默认开启记忆注入（Memory Injection）",
+    memoryInjectionHint:
+      "关闭后：章节生成/上下文预览默认不注入世界书/记忆模块；仍可在写作页临时开启（建议用于成本控制/排障）。",
+    reset: "恢复默认（开启）",
+    resetHint: "仅对当前浏览器生效（localStorage；可随时切换）。",
+    toastEnabled: "已开启：写作默认记忆注入",
+    toastDisabled: "已关闭：写作默认记忆注入",
+    toastReset: "已恢复默认：写作默认记忆注入（开启）",
+    autoUpdateHint:
+      "后台自动更新（世界书/图谱/向量/搜索）默认开启：章节定稿/内容变更后会静默调度任务；可在「任务中心」查看状态与重试。",
+  },
 } as const;

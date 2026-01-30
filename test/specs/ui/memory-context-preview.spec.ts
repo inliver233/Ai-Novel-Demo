@@ -57,8 +57,11 @@ test("ui: writing ContextPreviewDrawer supports worldbook injection toggle", asy
 
   const toggle = dialog.getByRole("checkbox", { name: "世界书注入", exact: true });
   await expect(toggle).toBeVisible();
-  await expect(dialog.getByText("世界书注入已关闭。开启后可查看触发条目与 text_md。")).toBeVisible();
+  await expect(toggle).toBeChecked();
 
+  // Advanced users can still disable it.
+  await toggle.uncheck();
+  await expect(dialog.getByText("世界书注入已关闭。开启后可查看触发条目与 text_md。", { exact: true })).toBeVisible();
   await toggle.check();
 
   const packSummary = dialog.locator("summary", { hasText: "Pack sections" });

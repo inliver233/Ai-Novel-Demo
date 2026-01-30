@@ -16,6 +16,8 @@ import { copyText } from "../lib/copyText";
 import { humanizeMemberRole } from "../lib/humanize";
 import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
+import { getCurrentUserId } from "../services/currentUser";
+import { writingMemoryInjectionEnabledStorageKey } from "../services/uiState";
 import { markWizardProjectChanged } from "../services/wizard";
 import type { Project, ProjectSettings, QueryPreprocessingConfig } from "../types";
 
@@ -111,6 +113,37 @@ export function SettingsPage() {
   const [rerankApiKeyClearRequested, setRerankApiKeyClearRequested] = useState(false);
   const [vectorApiKeyDraft, setVectorApiKeyDraft] = useState("");
   const [vectorApiKeyClearRequested, setVectorApiKeyClearRequested] = useState(false);
+  const [writingMemoryInjectionEnabled, setWritingMemoryInjectionEnabled] = useState(true);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const key = writingMemoryInjectionEnabledStorageKey(getCurrentUserId(), projectId);
+    const raw = localStorage.getItem(key);
+    if (raw === null) {
+      setWritingMemoryInjectionEnabled(true);
+      return;
+    }
+    setWritingMemoryInjectionEnabled(raw === "1");
+  }, [projectId]);
+
+  const saveWritingMemoryInjectionEnabled = useCallback(
+    (enabled: boolean) => {
+      if (!projectId) return;
+      setWritingMemoryInjectionEnabled(enabled);
+      const key = writingMemoryInjectionEnabledStorageKey(getCurrentUserId(), projectId);
+      localStorage.setItem(key, enabled ? "1" : "0");
+      toast.toastSuccess(enabled ? UI_COPY.featureDefaults.toastEnabled : UI_COPY.featureDefaults.toastDisabled);
+    },
+    [projectId, toast],
+  );
+
+  const resetWritingMemoryInjectionEnabled = useCallback(() => {
+    if (!projectId) return;
+    setWritingMemoryInjectionEnabled(true);
+    const key = writingMemoryInjectionEnabledStorageKey(getCurrentUserId(), projectId);
+    localStorage.removeItem(key);
+    toast.toastSuccess(UI_COPY.featureDefaults.toastReset);
+  }, [projectId, toast]);
 
   const settingsQuery = useProjectData<SettingsLoaded>(projectId, async (id) => {
     try {
@@ -1797,6 +1830,45 @@ export function SettingsPage() {
         saving={saving}
         onSave={save}
       />
+
+      <details className="panel" aria-label={UI_COPY.featureDefaults.ariaLabel}>
+        <summary className="ui-focus-ring ui-transition-fast cursor-pointer select-none p-6">
+          <div className="grid gap-1">
+            <div className="font-content text-xl text-ink">{UI_COPY.featureDefaults.title}</div>
+            <div className="text-xs text-subtext">{UI_COPY.featureDefaults.subtitle}</div>
+            <div className="text-xs text-subtext">
+              status: memory_injection_default={writingMemoryInjectionEnabled ? "enabled" : "disabled"} (localStorage)
+            </div>
+          </div>
+        </summary>
+
+        <div className="px-6 pb-6 pt-0">
+          <div className="mt-4 grid gap-2">
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input
+                className="checkbox"
+                checked={writingMemoryInjectionEnabled}
+                onChange={(e) => saveWritingMemoryInjectionEnabled(e.target.checked)}
+                aria-label="settings_writing_memory_injection_default"
+                type="checkbox"
+              />
+              {UI_COPY.featureDefaults.memoryInjectionLabel}
+            </label>
+            <div className="text-[11px] text-subtext">{UI_COPY.featureDefaults.memoryInjectionHint}</div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button className="btn btn-secondary btn-sm" onClick={resetWritingMemoryInjectionEnabled} type="button">
+                {UI_COPY.featureDefaults.reset}
+              </button>
+              <div className="text-[11px] text-subtext">{UI_COPY.featureDefaults.resetHint}</div>
+            </div>
+
+            <div className="mt-3 rounded-atelier border border-border bg-canvas p-3 text-[11px] text-subtext">
+              {UI_COPY.featureDefaults.autoUpdateHint}
+            </div>
+          </div>
+        </div>
+      </details>
     </div>
   );
 }
