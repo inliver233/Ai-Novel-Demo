@@ -349,6 +349,70 @@ def list_memory_tasks(
     return {"items": items, "next_before": next_before}
 
 
+def retry_memory_task(*, db: Session, request_id: str, task: MemoryTask) -> MemoryTask:
+    """
+    Idempotent retry for failed MemoryTask.
+
+    - If task is not failed: noop.
+    - If failed: reset -> queued, clear error/result/timings, enqueue again.
+    """
+
+    status_norm = str(getattr(task, "status", "") or "").strip().lower()
+    if status_norm != "failed":
+        return task
+
+    task.status = "queued"
+    task.started_at = None
+    task.finished_at = None
+    task.result_json = None
+    task.error_json = None
+
+    try:
+        value = _compact_json_loads(task.params_json) if task.params_json else {}
+        if isinstance(value, dict):
+            value["retry_count"] = int(value.get("retry_count") or 0) + 1
+            task.params_json = _compact_json_dumps(value)
+    except Exception:
+        pass
+
+    db.commit()
+
+    from app.services.task_queue import get_task_queue
+
+    queue = get_task_queue()
+    try:
+        queue.enqueue(kind="memory_task", task_id=str(task.id))
+    except Exception as exc:
+        task.status = "failed"
+        task.finished_at = utc_now()
+        task.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": str(exc)[:200]})
+        db.commit()
+        log_event(
+            logger,
+            "warning",
+            event="MEMORY_TASK_RETRY_ENQUEUE_ERROR",
+            project_id=str(task.project_id),
+            change_set_id=str(task.change_set_id),
+            task_id=str(task.id),
+            kind=str(task.kind),
+            request_id=request_id,
+            error_type=type(exc).__name__,
+        )
+        raise
+
+    log_event(
+        logger,
+        "info",
+        event="MEMORY_TASK_RETRIED",
+        project_id=str(task.project_id),
+        change_set_id=str(task.change_set_id),
+        task_id=str(task.id),
+        kind=str(task.kind),
+        request_id=request_id,
+    )
+    return task
+
+
 def _item_to_dict(item: MemoryChangeSetItem) -> dict[str, Any]:
     return {
         "id": str(item.id),

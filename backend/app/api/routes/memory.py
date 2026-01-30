@@ -42,6 +42,7 @@ from app.services.memory_update_service import (
     memory_task_to_dict,
     propose_chapter_memory_change_set,
     propose_project_table_change_set,
+    retry_memory_task,
     rollback_memory_change_set,
 )
 from app.services.table_executor import TableUpdateV1Request
@@ -807,6 +808,27 @@ def get_memory_task(
     require_project_viewer(db, project_id=str(task.project_id), user_id=user_id)
     change_set = db.get(MemoryChangeSet, str(task.change_set_id))
     return ok_payload(request_id=request_id, data=memory_task_to_dict(task=task, change_set_request_id=change_set.request_id if change_set else None))
+
+
+@router.post("/memory_tasks/{task_id}/retry")
+def retry_memory_task_endpoint(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    task_id: str,
+) -> dict:
+    request_id = request.state.request_id
+    task = db.get(MemoryTask, task_id)
+    if task is None:
+        raise AppError.not_found()
+    require_project_editor(db, project_id=str(task.project_id), user_id=user_id)
+
+    retry_memory_task(db=db, request_id=request_id, task=task)
+    change_set = db.get(MemoryChangeSet, str(task.change_set_id))
+    return ok_payload(
+        request_id=request_id,
+        data=memory_task_to_dict(task=task, change_set_request_id=change_set.request_id if change_set else None),
+    )
 
 
 @router.post("/memory_change_sets/{change_set_id}/rollback")
