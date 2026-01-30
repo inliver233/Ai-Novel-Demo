@@ -4100,6 +4100,260 @@
         }
       ]
     },
+    "search_documents": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "content",
+          "notnull": 1,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "deleted_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "locator_json",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "project_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(36)"
+        },
+        {
+          "dflt_value": null,
+          "name": "source_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "source_type",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "title",
+          "notnull": 0,
+          "pk": 0,
+          "type": "TEXT"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "url_path",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(512)"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "project_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "projects",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "project_id"
+          ],
+          "name": "ix_search_documents_project_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_search_documents_project_id ON search_documents (project_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "source_type"
+          ],
+          "name": "ix_search_documents_project_id_source_type",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_search_documents_project_id_source_type ON search_documents (project_id, source_type)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "project_id",
+            "source_type",
+            "source_id"
+          ],
+          "name": "sqlite_autoindex_search_documents_1",
+          "origin": "u",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "search_index": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "content",
+          "notnull": 0,
+          "pk": 0,
+          "type": ""
+        },
+        {
+          "dflt_value": null,
+          "name": "title",
+          "notnull": 0,
+          "pk": 0,
+          "type": ""
+        }
+      ],
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "search_index_config": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "k",
+          "notnull": 1,
+          "pk": 1,
+          "type": ""
+        },
+        {
+          "dflt_value": null,
+          "name": "v",
+          "notnull": 0,
+          "pk": 0,
+          "type": ""
+        }
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "columns": [
+            "k"
+          ],
+          "name": "sqlite_autoindex_search_index_config_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "search_index_data": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "block",
+          "notnull": 0,
+          "pk": 0,
+          "type": "BLOB"
+        },
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 0,
+          "pk": 1,
+          "type": "INTEGER"
+        }
+      ],
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "search_index_docsize": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "id",
+          "notnull": 0,
+          "pk": 1,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "sz",
+          "notnull": 0,
+          "pk": 0,
+          "type": "BLOB"
+        }
+      ],
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "search_index_idx": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "pgno",
+          "notnull": 0,
+          "pk": 0,
+          "type": ""
+        },
+        {
+          "dflt_value": null,
+          "name": "segid",
+          "notnull": 1,
+          "pk": 1,
+          "type": ""
+        },
+        {
+          "dflt_value": null,
+          "name": "term",
+          "notnull": 1,
+          "pk": 2,
+          "type": ""
+        }
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "columns": [
+            "segid",
+            "term"
+          ],
+          "name": "sqlite_autoindex_search_index_idx_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
     "story_memories": {
       "checks": [],
       "columns": [

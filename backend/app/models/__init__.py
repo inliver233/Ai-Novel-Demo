@@ -19,6 +19,7 @@ from app.models.project_default_style import ProjectDefaultStyle
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
 from app.models.plot_analysis import PlotAnalysis
+from app.models.search_index import SearchDocument
 from app.models.story_memory import StoryMemory
 from app.models.structured_memory import (
     MemoryChangeSet,
@@ -59,6 +60,7 @@ __all__ = [
     "PromptBlock",
     "PromptPreset",
     "PlotAnalysis",
+    "SearchDocument",
     "MemoryChangeSet",
     "MemoryChangeSetItem",
     "MemoryEntity",
