@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -56,7 +56,7 @@ class WorldbookAutoUpdateOpV1(BaseModel):
     match_title: str | None = Field(default=None, max_length=255)
 
     # For create/update/merge.
-    entry: WorldbookEntryCreateV1 | WorldbookEntryPatchV1 | None = None
+    entry: dict[str, Any] | None = None
 
     # For merge ops only (how to combine new info with existing).
     merge_mode: WorldbookMergeMode | None = None
@@ -77,15 +77,17 @@ class WorldbookAutoUpdateOpV1(BaseModel):
             return self
 
         if self.op == "create":
-            if not isinstance(self.entry, WorldbookEntryCreateV1):
-                raise ValueError("entry must be WorldbookEntryCreateV1 for create")
+            if self.entry is None:
+                raise ValueError("entry is required for create")
+            WorldbookEntryCreateV1.model_validate(self.entry)
             return self
 
         if self.op in {"update", "merge"}:
             if not (self.match_title or "").strip():
                 raise ValueError("match_title is required for update/merge")
-            if not isinstance(self.entry, WorldbookEntryPatchV1):
-                raise ValueError("entry must be WorldbookEntryPatchV1 for update/merge")
+            if self.entry is None:
+                raise ValueError("entry is required for update/merge")
+            WorldbookEntryPatchV1.model_validate(self.entry)
             if self.op == "merge" and not (self.merge_mode or "").strip():
                 raise ValueError("merge_mode is required for merge")
             return self
@@ -100,4 +102,3 @@ class WorldbookAutoUpdateV1Request(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     summary_md: str | None = Field(default=None, max_length=MAX_MD_CHARS_V1)
     ops: list[WorldbookAutoUpdateOpV1] = Field(min_length=1, max_length=MAX_OPS_V1)
-
