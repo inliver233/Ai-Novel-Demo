@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { Drawer } from "../components/ui/Drawer";
@@ -52,6 +52,30 @@ type ProjectTaskSummary = {
 
 type PagedResult<T> = { items: T[]; next_before?: string | null };
 
+type ChangeSetApplyResult = {
+  idempotent: boolean;
+  change_set?: { id?: string | null; status?: string | null } | null;
+  warnings?: unknown;
+};
+
+function extractChangeSetIdFromProjectTaskResult(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null;
+  const o = result as Record<string, unknown>;
+  const cs = o.change_set;
+  if (!cs || typeof cs !== "object") return null;
+  const id = (cs as Record<string, unknown>).id;
+  return typeof id === "string" && id.trim() ? id.trim() : null;
+}
+
+function extractChangeSetStatusFromProjectTaskResult(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null;
+  const o = result as Record<string, unknown>;
+  const cs = o.change_set;
+  if (!cs || typeof cs !== "object") return null;
+  const s = (cs as Record<string, unknown>).status;
+  return typeof s === "string" && s.trim() ? s.trim() : null;
+}
+
 function statusTone(status: string): "ok" | "warn" | "bad" | "info" {
   const s = String(status || "").trim();
   if (s === "failed") return "bad";
@@ -85,10 +109,12 @@ function safeJsonStringify(value: unknown): string {
 export function TaskCenterPage() {
   const { projectId } = useParams();
   const toast = useToast();
+  const [searchParams] = useSearchParams();
 
   const [changeSetStatus, setChangeSetStatus] = useState<string>("all");
   const [taskStatus, setTaskStatus] = useState<string>("all");
   const [projectTaskStatus, setProjectTaskStatus] = useState<string>("all");
+  const [autoOpenedProjectTask, setAutoOpenedProjectTask] = useState<boolean>(false);
 
   const loadChangeSets = useCallback(
     async (id: string): Promise<PagedResult<MemoryChangeSetSummary>> => {
@@ -203,6 +229,7 @@ export function TaskCenterPage() {
     | null
   >(null);
   const [projectTaskDetailLoading, setProjectTaskDetailLoading] = useState<boolean>(false);
+  const [changeSetActionLoading, setChangeSetActionLoading] = useState<boolean>(false);
 
   const detailTitle = useMemo(() => {
     if (!selected) return "";
@@ -320,6 +347,89 @@ export function TaskCenterPage() {
     },
     [refreshProjectTasks, toast],
   );
+
+  const applyChangeSet = useCallback(
+    async (id: string) => {
+      const changeSetId = String(id || "").trim();
+      if (!changeSetId) return;
+      setChangeSetActionLoading(true);
+      try {
+        const res = await apiJson<ChangeSetApplyResult>(`/api/memory_change_sets/${encodeURIComponent(changeSetId)}/apply`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        toast.toastSuccess("已应用 ChangeSet", res.request_id);
+        await refreshChangeSets();
+      } catch (e) {
+        const err =
+          e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setChangeSetActionLoading(false);
+      }
+    },
+    [refreshChangeSets, toast],
+  );
+
+  const rollbackChangeSet = useCallback(
+    async (id: string) => {
+      const changeSetId = String(id || "").trim();
+      if (!changeSetId) return;
+      setChangeSetActionLoading(true);
+      try {
+        const res = await apiJson<ChangeSetApplyResult>(
+          `/api/memory_change_sets/${encodeURIComponent(changeSetId)}/rollback`,
+          {
+            method: "POST",
+            body: JSON.stringify({}),
+          },
+        );
+        toast.toastSuccess("已回滚 ChangeSet", res.request_id);
+        await refreshChangeSets();
+      } catch (e) {
+        const err =
+          e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      } finally {
+        setChangeSetActionLoading(false);
+      }
+    },
+    [refreshChangeSets, toast],
+  );
+
+  useEffect(() => {
+    if (!projectId) return;
+    const targetId = String(searchParams.get("project_task_id") || "").trim();
+    if (!targetId) return;
+    if (autoOpenedProjectTask) return;
+    setAutoOpenedProjectTask(true);
+    setProjectTaskDetailLoading(true);
+    apiJson<ProjectTaskSummary>(`/api/tasks/${encodeURIComponent(targetId)}`)
+      .then((res) => setSelected({ kind: "project_task", item: res.data }))
+      .catch((e) => {
+        const err =
+          e instanceof ApiError ? e : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      })
+      .finally(() => setProjectTaskDetailLoading(false));
+  }, [autoOpenedProjectTask, projectId, searchParams, toast]);
+
+  const selectedProjectTaskChangeSetId = useMemo(() => {
+    if (selected?.kind !== "project_task") return null;
+    return extractChangeSetIdFromProjectTaskResult(selected.item.result);
+  }, [selected]);
+
+  const selectedProjectTaskChangeSetStatus = useMemo(() => {
+    if (selected?.kind !== "project_task") return null;
+    return extractChangeSetStatusFromProjectTaskResult(selected.item.result);
+  }, [selected]);
+
+  const liveChangeSetStatus = useMemo(() => {
+    const id = selectedProjectTaskChangeSetId;
+    if (!id) return selectedProjectTaskChangeSetStatus;
+    const live = changeSets.find((it) => it.id === id);
+    return (live?.status ? String(live.status) : null) ?? selectedProjectTaskChangeSetStatus;
+  }, [changeSets, selectedProjectTaskChangeSetId, selectedProjectTaskChangeSetStatus]);
 
   if (!projectId) return <div className="text-subtext">缺少 projectId</div>;
 
@@ -712,6 +822,48 @@ export function TaskCenterPage() {
               </div>
               {projectTaskDetailLoading ? <div className="mt-2 text-xs text-subtext">加载中...</div> : null}
             </section>
+
+            {selected.item.kind === "table_ai_update" ? (
+              <section className="rounded-atelier border border-border bg-surface p-3" aria-label="projecttask_changeset">
+                <div className="text-sm text-ink">ChangeSet</div>
+                {selectedProjectTaskChangeSetId ? (
+                  <div className="mt-2 grid gap-2 text-xs text-subtext">
+                    <div>
+                      change_set_id：<span className="font-mono text-ink">{selectedProjectTaskChangeSetId}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>状态：</span>
+                      <StatusBadge status={String(liveChangeSetStatus || "unknown")} kind="change_set" />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        disabled={changeSetActionLoading || liveChangeSetStatus === "applied"}
+                        onClick={() => void applyChangeSet(selectedProjectTaskChangeSetId)}
+                        aria-label="应用变更集 (taskcenter_changeset_apply)"
+                        type="button"
+                      >
+                        {changeSetActionLoading ? "处理中..." : "Apply"}
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        disabled={changeSetActionLoading || liveChangeSetStatus !== "applied"}
+                        onClick={() => void rollbackChangeSet(selectedProjectTaskChangeSetId)}
+                        aria-label="回滚变更集 (taskcenter_changeset_rollback)"
+                        type="button"
+                      >
+                        {changeSetActionLoading ? "处理中..." : "Rollback"}
+                      </button>
+                    </div>
+                    <div className="text-[11px] text-subtext">
+                      提示：Apply/Rollback 需要 editor 权限；失败时可复制 request_id 排障。
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-xs text-subtext">该任务 result 未包含 change_set（可能仍在运行或已失败）。</div>
+                )}
+              </section>
+            ) : null}
 
             <section className="rounded-atelier border border-border bg-surface p-3" aria-label="projecttask_results">
               <div className="text-sm text-ink">Results</div>
