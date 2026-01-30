@@ -7,7 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.secrets import redact_api_keys
+from app.core.secrets import SecretCryptoError, decrypt_secret, redact_api_keys
 from app.models.chapter import Chapter
 from app.models.project_settings import ProjectSettings
 from app.models.story_memory import StoryMemory
@@ -85,7 +85,53 @@ def _vector_rerank_config(*, db: Session, project_id: str) -> dict[str, object]:
     top_k = int(override_top_k) if override_top_k is not None else int(getattr(settings, "vector_max_candidates", 20) or 20)
     top_k = max(1, min(int(top_k), 1000))
 
-    return {"enabled": bool(enabled), "method": method, "top_k": int(top_k)}
+    override_provider = (getattr(row, "vector_rerank_provider", None) or "").strip() if row is not None else ""
+    override_base_url = (getattr(row, "vector_rerank_base_url", None) or "").strip() if row is not None else ""
+    override_model = (getattr(row, "vector_rerank_model", None) or "").strip() if row is not None else ""
+    override_timeout_seconds = getattr(row, "vector_rerank_timeout_seconds", None) if row is not None else None
+    override_hybrid_alpha = getattr(row, "vector_rerank_hybrid_alpha", None) if row is not None else None
+
+    override_api_key_ciphertext = getattr(row, "vector_rerank_api_key_ciphertext", None) if row is not None else None
+    override_api_key = ""
+    if override_api_key_ciphertext:
+        try:
+            override_api_key = decrypt_secret(str(override_api_key_ciphertext)).strip()
+        except SecretCryptoError:
+            override_api_key = ""
+
+    env_base_url = str(getattr(settings, "vector_rerank_external_base_url", "") or "").strip()
+    env_model = str(getattr(settings, "vector_rerank_external_model", "") or "").strip()
+    env_api_key = str(getattr(settings, "vector_rerank_external_api_key", "") or "").strip()
+    env_timeout_raw = float(getattr(settings, "vector_rerank_external_timeout_seconds", 15.0) or 15.0)
+    env_timeout_seconds = float(max(1.0, min(env_timeout_raw, 120.0)))
+
+    base_url = override_base_url or env_base_url
+    provider = override_provider or ("external_rerank_api" if base_url else "")
+    model = override_model or env_model
+    timeout_seconds = float(override_timeout_seconds) if override_timeout_seconds is not None else env_timeout_seconds
+
+    hybrid_alpha: float = 0.0
+    if override_hybrid_alpha is not None:
+        try:
+            hybrid_alpha = float(override_hybrid_alpha)
+        except Exception:
+            hybrid_alpha = 0.0
+    hybrid_alpha = max(0.0, min(float(hybrid_alpha), 1.0))
+
+    out: dict[str, object] = {
+        "enabled": bool(enabled),
+        "method": method,
+        "top_k": int(top_k),
+        "provider": provider or None,
+        "base_url": base_url or None,
+        "model": model or None,
+        "timeout_seconds": float(timeout_seconds),
+        "hybrid_alpha": float(hybrid_alpha),
+    }
+    api_key_effective = override_api_key or env_api_key
+    if api_key_effective:
+        out["api_key"] = api_key_effective
+    return out
 
 
 def _wrap_and_truncate_block(*, tag: str, inner: str, char_limit: int) -> tuple[str, bool]:

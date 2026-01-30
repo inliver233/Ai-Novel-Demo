@@ -109,7 +109,13 @@ def _rerank_score(*, method: str, query_text: str, candidate_text: str) -> float
 
 
 def _rerank_candidates(
-    *, query_text: str, candidates: list[dict[str, Any]], method: str, top_k: int, hybrid_alpha: float | None = None
+    *,
+    query_text: str,
+    candidates: list[dict[str, Any]],
+    method: str,
+    top_k: int,
+    hybrid_alpha: float | None = None,
+    external: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     return rerank_candidates_with_providers(
         query_text=query_text,
@@ -117,6 +123,7 @@ def _rerank_candidates(
         method=method,
         top_k=top_k,
         hybrid_alpha=hybrid_alpha,
+        external=external,
         score_fn=_rerank_score,
     )
 
@@ -553,6 +560,10 @@ def _resolve_rerank_config(rerank: dict[str, Any] | None) -> tuple[bool, str, in
     raw_method = str(rerank.get("method") or "").strip()
     if raw_method:
         method = raw_method
+
+    provider_raw = str(rerank.get("provider") or "").strip()
+    if method == "auto" and provider_raw == "external_rerank_api":
+        method = "external_rerank_api"
     if "top_k" in rerank and rerank.get("top_k") is not None:
         try:
             top_k = int(rerank.get("top_k"))
@@ -567,6 +578,33 @@ def _resolve_rerank_config(rerank: dict[str, Any] | None) -> tuple[bool, str, in
     return enabled, method, max(1, min(int(top_k), 1000)), float(hybrid_alpha)
 
 
+def _resolve_rerank_external_config(rerank: dict[str, Any] | None) -> dict[str, Any] | None:
+    if rerank is None:
+        return None
+    if not isinstance(rerank, dict):
+        return None
+
+    out: dict[str, Any] = {}
+
+    base_url = str(rerank.get("base_url") or "").strip()
+    if base_url:
+        out["base_url"] = base_url
+
+    model = str(rerank.get("model") or "").strip()
+    if model:
+        out["model"] = model
+
+    api_key = str(rerank.get("api_key") or "").strip()
+    if api_key:
+        out["api_key"] = api_key
+
+    timeout_seconds = rerank.get("timeout_seconds")
+    if timeout_seconds is not None:
+        out["timeout_seconds"] = timeout_seconds
+
+    return out or None
+
+
 def vector_rag_status(
     *,
     project_id: str,
@@ -577,13 +615,26 @@ def vector_rag_status(
     sources = sources or list(_ALL_SOURCES)
     enabled, disabled_reason = _vector_enabled_reason(embedding=embedding)
     rerank_enabled, rerank_method, rerank_top_k, rerank_hybrid_alpha = _resolve_rerank_config(rerank)
+    rerank_external = _resolve_rerank_external_config(rerank)
+    rerank_provider: str | None = None
+    rerank_model: str | None = None
+    rerank_method_effective: str | None = None
+    if rerank_enabled:
+        rerank_method_effective = str(rerank_method or "").strip() or None
+        if rerank_method_effective == "external_rerank_api":
+            rerank_provider = "external_rerank_api"
+            rerank_model_raw = (rerank_external or {}).get("model")
+            rerank_model = str(rerank_model_raw or "").strip() or None
+        else:
+            rerank_provider = "local"
+            rerank_model = None
     rerank_obs = {
         "enabled": bool(rerank_enabled),
         "applied": False,
         "requested_method": rerank_method,
-        "method": None,
-        "provider": None,
-        "model": None,
+        "method": rerank_method_effective,
+        "provider": rerank_provider,
+        "model": rerank_model,
         "top_k": int(rerank_top_k),
         "hybrid_alpha": float(rerank_hybrid_alpha),
         "hybrid_applied": False,
@@ -1711,14 +1762,27 @@ def query_project(
     sources = sources or list(_ALL_SOURCES)
     enabled, disabled_reason = _vector_enabled_reason(embedding=embedding)
     rerank_enabled, rerank_method, rerank_top_k, rerank_hybrid_alpha = _resolve_rerank_config(rerank)
+    rerank_external = _resolve_rerank_external_config(rerank)
+    rerank_provider: str | None = None
+    rerank_model: str | None = None
+    rerank_method_effective: str | None = None
+    if rerank_enabled:
+        rerank_method_effective = str(rerank_method or "").strip() or None
+        if rerank_method_effective == "external_rerank_api":
+            rerank_provider = "external_rerank_api"
+            rerank_model_raw = (rerank_external or {}).get("model")
+            rerank_model = str(rerank_model_raw or "").strip() or None
+        else:
+            rerank_provider = "local"
+            rerank_model = None
     if not enabled:
         rerank_obs = {
             "enabled": bool(rerank_enabled),
             "applied": False,
             "requested_method": rerank_method,
-            "method": None,
-            "provider": None,
-            "model": None,
+            "method": rerank_method_effective,
+            "provider": rerank_provider,
+            "model": rerank_model,
             "top_k": int(rerank_top_k),
             "hybrid_alpha": float(rerank_hybrid_alpha),
             "hybrid_applied": False,
@@ -1847,6 +1911,7 @@ def query_project(
                     method=rerank_method,
                     top_k=rerank_top_k,
                     hybrid_alpha=rerank_hybrid_alpha,
+                    external=rerank_external,
                 )
             else:
                 rerank_obs = {
@@ -2101,6 +2166,7 @@ def query_project(
             method=rerank_method,
             top_k=rerank_top_k,
             hybrid_alpha=rerank_hybrid_alpha,
+            external=rerank_external,
         )
     else:
         rerank_obs = {
