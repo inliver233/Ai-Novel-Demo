@@ -130,16 +130,19 @@ export function SearchPage() {
         return;
       }
       if (it.source_type === "worldbook_entry") {
+        const key = `ainovel:worldbook:filter:${projectId}`;
+        let sortMode = "updated_desc";
         try {
-          const key = `ainovel:worldbook:filter:${projectId}`;
           const raw = localStorage.getItem(key) || "";
-          const prev = raw ? JSON.parse(raw) : {};
-          const next = {
-            ...(prev ?? {}),
-            searchText: it.title || query.trim(),
-            sortMode: (prev ?? {}).sortMode ?? "updated_desc",
-          };
-          localStorage.setItem(key, JSON.stringify(next));
+          if (raw) {
+            const prev = JSON.parse(raw) as { sortMode?: unknown } | null;
+            if (prev && typeof prev === "object" && typeof prev.sortMode === "string") sortMode = prev.sortMode;
+          }
+        } catch {
+          // ignore
+        }
+        try {
+          localStorage.setItem(key, JSON.stringify({ searchText: it.title || query.trim(), sortMode }));
         } catch {
           // ignore
         }

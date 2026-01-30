@@ -37,9 +37,26 @@ class InlineTaskQueue:
             # Use TASK_QUEUE_BACKEND=rq + worker for async execution.
             return task_id
         if kind == "project_task":
-            from app.services.project_task_service import run_project_task
+            # Keep heavy ProjectTask kinds async even in inline mode.
+            # Inline is a dev/test fallback and should not block request latency.
+            task_kind = ""
+            try:
+                from app.db.session import SessionLocal
+                from app.models.project_task import ProjectTask
 
-            run_project_task(task_id=task_id)
+                db = SessionLocal()
+                try:
+                    row = db.get(ProjectTask, task_id)
+                    task_kind = str(getattr(row, "kind", "") or "")
+                finally:
+                    db.close()
+            except Exception:
+                task_kind = ""
+
+            if task_kind in {"noop", "search_rebuild"}:
+                from app.services.project_task_service import run_project_task
+
+                run_project_task(task_id=task_id)
             return task_id
         raise ValueError(f"Unsupported task kind: {kind!r}")
 
