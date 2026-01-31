@@ -48,7 +48,7 @@ test("ui: chapter analysis annotated text groups overlap + adjacency; click sele
   expect(overlapTitle).toContain("CDEF");
 
   await overlap.click();
-  await expect(overlap).toHaveClass(/bg-sky-500\/10/);
+  await expect(overlap).toHaveClass(/bg-info\/10/);
 
   const gap = highlights.filter({ hasText: "++" }).first();
   await expect(gap).toBeVisible();
@@ -58,5 +58,5 @@ test("ui: chapter analysis annotated text groups overlap + adjacency; click sele
 
   const mnop = highlights.filter({ hasText: "MNOP" }).first();
   await gap.click();
-  await expect(mnop).toHaveClass(/bg-sky-500\/10/);
+  await expect(mnop).toHaveClass(/bg-info\/10/);
 });

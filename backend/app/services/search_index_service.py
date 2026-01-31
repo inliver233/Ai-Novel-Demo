@@ -536,6 +536,102 @@ def schedule_search_rebuild_task(
     if db is None:
         db = SessionLocal()
     try:
+        running = (
+            db.execute(
+                select(ProjectTask)
+                .where(
+                    ProjectTask.project_id == pid,
+                    ProjectTask.kind == "search_rebuild",
+                    ProjectTask.status == "running",
+                )
+                .order_by(ProjectTask.started_at.desc(), ProjectTask.created_at.desc(), ProjectTask.id.desc())
+                .limit(1)
+            )
+            .scalars()
+            .first()
+        )
+
+        # If a rebuild is already running, changes may happen while it is executing (especially with async inline queue).
+        # Schedule a follow-up rebuild so the index eventually converges to the latest project state.
+        if running is not None:
+            idempotency_key = f"search:project:after:{running.id}:v1"
+            task = (
+                db.execute(
+                    select(ProjectTask).where(
+                        ProjectTask.project_id == pid,
+                        ProjectTask.idempotency_key == idempotency_key,
+                    )
+                )
+                .scalars()
+                .first()
+            )
+
+            if task is None:
+                task = ProjectTask(
+                    id=new_id(),
+                    project_id=pid,
+                    actor_user_id=actor_user_id,
+                    kind="search_rebuild",
+                    status="queued",
+                    idempotency_key=idempotency_key,
+                    params_json=json.dumps(
+                        {
+                            "reason": reason_norm,
+                            "request_id": request_id,
+                            "triggered_at": utc_now().isoformat().replace("+00:00", "Z"),
+                            "after_task_id": str(running.id),
+                        },
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                    result_json=None,
+                    error_json=None,
+                )
+                db.add(task)
+                try:
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()
+                    task = (
+                        db.execute(
+                            select(ProjectTask).where(
+                                ProjectTask.project_id == pid,
+                                ProjectTask.idempotency_key == idempotency_key,
+                            )
+                        )
+                        .scalars()
+                        .first()
+                    )
+                    if task is None:
+                        return None
+            else:
+                status_norm = str(getattr(task, "status", "") or "").strip().lower()
+                if status_norm not in {"queued", "running"}:
+                    task.status = "queued"
+                    task.started_at = None
+                    task.finished_at = None
+                    task.result_json = None
+                    task.error_json = None
+                    db.commit()
+
+            from app.services.task_queue import get_task_queue
+
+            queue = get_task_queue()
+            try:
+                queue.enqueue(kind="project_task", task_id=str(task.id))
+            except Exception as exc:
+                fields = exception_log_fields(exc)
+                log_event(
+                    logger,
+                    "warning",
+                    event="SEARCH_TASK_ENQUEUE_ERROR",
+                    project_id=pid,
+                    task_id=str(task.id),
+                    idempotency_key=idempotency_key,
+                    **fields,
+                )
+            return str(task.id)
+
         last = (
             db.execute(
                 select(ProjectTask)

@@ -192,7 +192,6 @@ def get_active_batch_generation_task(
             select(BatchGenerationTask)
             .where(
                 BatchGenerationTask.project_id == project_id,
-                BatchGenerationTask.status.in_(["queued", "running"]),
             )
             .order_by(BatchGenerationTask.created_at.desc())
             .limit(1)
@@ -249,6 +248,9 @@ def cancel_batch_generation_task(
     require_project_editor(db, project_id=task.project_id, user_id=user_id)
 
     if task.status not in ("queued", "running"):
+        return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "canceled": False})
+
+    if task.cancel_requested:
         return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "canceled": False})
 
     task.cancel_requested = True

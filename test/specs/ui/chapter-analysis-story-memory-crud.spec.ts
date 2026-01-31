@@ -57,7 +57,7 @@ test("ui: chapter analysis StoryMemory CRUD + locate", async ({ page, request })
 
   const highlight = page.locator(`[data-annotation-id="${storyMemoryId}"]`).first();
   await expect(highlight).toBeVisible();
-  await expect(highlight).toHaveClass(/bg-emerald-500\/10/);
+  await expect(highlight).toHaveClass(/bg-success\/10/);
 
   await page.getByLabel("story_memory_edit", { exact: true }).click();
   const editDrawer = page.getByRole("dialog", { name: "编辑剧情记忆", exact: true });
@@ -92,4 +92,3 @@ test("ui: chapter analysis StoryMemory CRUD + locate", async ({ page, request })
   await expect(page.getByLabel(`story_memory_item:${title}`, { exact: true })).toHaveCount(0);
   await expect(page.locator(`[data-annotation-id="${storyMemoryId}"]`)).toHaveCount(0);
 });
-
