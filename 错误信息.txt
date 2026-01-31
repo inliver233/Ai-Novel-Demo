@@ -1,0 +1,147 @@
+[TaskCenter][ProjectTask]
+id=66281f85-caf4-4acf-9c1d-7ecfa918dcc5
+kind=graph_auto_update
+status=failed (失败（failed）)
+idempotency_key=graph_ai:ch:0c289770-6dc:since:2026-01-30T21:00:10:v1
+error_type=AppError
+error_message=-
+
+{
+  "id": "66281f85-caf4-4acf-9c1d-7ecfa918dcc5",
+  "project_id": "336d42a5-f95b-4412-a445-7b15268ac95b",
+  "actor_user_id": "local-user",
+  "kind": "graph_auto_update",
+  "status": "failed",
+  "idempotency_key": "graph_ai:ch:0c289770-6dc:since:2026-01-30T21:00:10:v1",
+  "error_type": "AppError",
+  "error_message": null,
+  "timings": {
+    "created_at": "2026-01-30T21:00:22",
+    "started_at": null,
+    "finished_at": "2026-01-30T21:00:26",
+    "updated_at": "2026-01-30T21:00:26"
+  },
+  "params": {
+    "reason": "chapter_done",
+    "request_id": "b3273ad6-d7f3-46c5-8975-7374ae5c2296",
+    "chapter_id": "0c289770-6dcd-4cca-98a9-7d20cde8b031",
+    "chapter_token": "2026-01-30T21:00:10",
+    "focus": null,
+    "change_set_idempotency_key": "graphupd-510c2cd3ee6e02e5",
+    "triggered_at": "2026-01-30T21:00:22Z"
+  },
+  "result": null,
+  "error": {
+    "error_type": "AppError",
+    "message": ""
+  }
+}
+
+[TaskCenter][ProjectTask]
+id=32e675fb-1721-4aab-99a3-83bba679d14d
+kind=worldbook_auto_update
+status=failed (失败（failed）)
+idempotency_key=worldbook:chapter:0c289770-6dcd-4cca-98a9-7d20cde8b031:since:2026-01-30T21:00:10:v1
+error_type=AppError
+error_message=-
+{
+  "id": "32e675fb-1721-4aab-99a3-83bba679d14d",
+  "project_id": "336d42a5-f95b-4412-a445-7b15268ac95b",
+  "actor_user_id": "local-user",
+  "kind": "worldbook_auto_update",
+  "status": "failed",
+  "idempotency_key": "worldbook:chapter:0c289770-6dcd-4cca-98a9-7d20cde8b031:since:2026-01-30T21:00:10:v1",
+  "error_type": "AppError",
+  "error_message": null,
+  "timings": {
+    "created_at": "2026-01-30T21:00:18",
+    "started_at": null,
+    "finished_at": "2026-01-30T21:00:52",
+    "updated_at": "2026-01-30T21:00:52"
+  },
+  "params": {
+    "reason": "chapter_done",
+    "request_id": "b3273ad6-d7f3-46c5-8975-7374ae5c2296",
+    "chapter_id": "0c289770-6dcd-4cca-98a9-7d20cde8b031",
+    "chapter_token": "2026-01-30T21:00:10",
+    "triggered_at": "2026-01-30T21:00:18Z",
+    "retry_count": 1
+  },
+  "result": null,
+  "error": {
+    "error_type": "AppError",
+    "message": ""
+  }
+}
+[TaskCenter][ProjectTask]
+id=d5d5c820-152a-41a5-9430-19fe704b2e9a
+kind=graph_auto_update
+status=failed (失败（failed）)
+idempotency_key=graph_ai:ch:0c289770-6dc:since:2026-01-30T20:58:31:v1
+error_type=AppError
+error_message=-
+{
+  "id": "d5d5c820-152a-41a5-9430-19fe704b2e9a",
+  "project_id": "336d42a5-f95b-4412-a445-7b15268ac95b",
+  "actor_user_id": "local-user",
+  "kind": "graph_auto_update",
+  "status": "failed",
+  "idempotency_key": "graph_ai:ch:0c289770-6dc:since:2026-01-30T20:58:31:v1",
+  "error_type": "AppError",
+  "error_message": null,
+  "timings": {
+    "created_at": "2026-01-30T20:58:43",
+    "started_at": null,
+    "finished_at": "2026-01-30T20:58:47",
+    "updated_at": "2026-01-30T20:58:47"
+  },
+  "params": {
+    "reason": "chapter_done",
+    "request_id": "5e1f7d1e-b58c-4195-8a89-b9b58705f1c5",
+    "chapter_id": "0c289770-6dcd-4cca-98a9-7d20cde8b031",
+    "chapter_token": "2026-01-30T20:58:31",
+    "focus": null,
+    "change_set_idempotency_key": "graphupd-da2f62bbb2893c13",
+    "triggered_at": "2026-01-30T20:58:43Z"
+  },
+  "result": null,
+  "error": {
+    "error_type": "AppError",
+    "message": ""
+  }
+}
+[TaskCenter][ProjectTask]
+id=91597e37-266b-4a9b-bfc8-e787aeb5357f
+kind=worldbook_auto_update
+status=failed (失败（failed）)
+idempotency_key=worldbook:chapter:0c289770-6dcd-4cca-98a9-7d20cde8b031:since:2026-01-30T20:58:31:v1
+error_type=AppError
+error_message=-
+{
+  "id": "91597e37-266b-4a9b-bfc8-e787aeb5357f",
+  "project_id": "336d42a5-f95b-4412-a445-7b15268ac95b",
+  "actor_user_id": "local-user",
+  "kind": "worldbook_auto_update",
+  "status": "failed",
+  "idempotency_key": "worldbook:chapter:0c289770-6dcd-4cca-98a9-7d20cde8b031:since:2026-01-30T20:58:31:v1",
+  "error_type": "AppError",
+  "error_message": null,
+  "timings": {
+    "created_at": "2026-01-30T20:58:39",
+    "started_at": null,
+    "finished_at": "2026-01-30T20:58:43",
+    "updated_at": "2026-01-30T20:58:43"
+  },
+  "params": {
+    "reason": "chapter_done",
+    "request_id": "5e1f7d1e-b58c-4195-8a89-b9b58705f1c5",
+    "chapter_id": "0c289770-6dcd-4cca-98a9-7d20cde8b031",
+    "chapter_token": "2026-01-30T20:58:31",
+    "triggered_at": "2026-01-30T20:58:39Z"
+  },
+  "result": null,
+  "error": {
+    "error_type": "AppError",
+    "message": ""
+  }
+}
