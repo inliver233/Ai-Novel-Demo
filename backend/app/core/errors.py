@@ -11,6 +11,9 @@ class AppError(Exception):
     status_code: int = 400
     details: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        super().__init__(self.message)
+
     @staticmethod
     def unauthorized(message: str = "未登录", *, details: dict[str, Any] | None = None) -> "AppError":
         return AppError(code="UNAUTHORIZED", message=message, status_code=401, details=details or {})
