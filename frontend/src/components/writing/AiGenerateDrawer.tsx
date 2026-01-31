@@ -703,7 +703,7 @@ export function AiGenerateDrawer(props: Props) {
             onClick={() => void props.onSaveAndGenerateNext?.()}
             type="button"
           >
-            保存并继续
+            {props.saving ? "保存中..." : "保存并继续"}
           </button>
         ) : null}
         <button
@@ -720,7 +720,7 @@ export function AiGenerateDrawer(props: Props) {
           onClick={() => void props.onSave()}
           type="button"
         >
-          保存
+          {props.saving ? "保存中..." : "保存"}
         </button>
       </div>
     </Drawer>

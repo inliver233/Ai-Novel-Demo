@@ -101,6 +101,7 @@ export function WritingPage() {
     saveChapter,
     requestSelectChapter: requestSelectChapterBase,
     loadingChapter,
+    saving,
   } = chapterEditor;
   const contentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [contentEditorTab, setContentEditorTab] = useState<"edit" | "preview">("edit");
@@ -407,11 +408,11 @@ export function WritingPage() {
                   </button>
                   <button
                     className="btn btn-primary"
-                    disabled={!dirty || loadingChapter}
+                    disabled={!dirty || saving || loadingChapter || generating}
                     onClick={() => void saveChapter()}
                     type="button"
                   >
-                    保存
+                    {saving ? "保存中..." : "保存"}
                   </button>
                 </div>
               </div>
@@ -632,7 +633,7 @@ export function WritingPage() {
         projectId={projectId}
         activeChapter={Boolean(activeChapter)}
         dirty={dirty}
-        saving={loadingChapter}
+        saving={saving || loadingChapter}
         genForm={genForm}
         setGenForm={setGenForm}
         characters={characters}
@@ -751,7 +752,7 @@ export function WritingPage() {
         progress={wizard.progress}
         loading={wizard.loading}
         dirty={dirty}
-        saving={loadingChapter || generating}
+        saving={saving || loadingChapter || generating}
         onSave={saveChapter}
       />
     </ToolContent>

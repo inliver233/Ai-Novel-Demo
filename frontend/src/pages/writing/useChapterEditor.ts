@@ -52,6 +52,9 @@ export function useChapterEditor(args: {
   const saveQueuedRef = useRef(false);
   const queuedSnapshotRef = useRef<ChapterForm | null>(null);
   const queuedSilentRef = useRef(true);
+  const queuedPromiseRef = useRef<Promise<boolean> | null>(null);
+  const queuedPromiseResolveRef = useRef<((ok: boolean) => void) | null>(null);
+  const queuedToastShownRef = useRef(false);
 
   useEffect(() => {
     const listGuard = chapterListGuardRef.current;
@@ -165,12 +168,6 @@ export function useChapterEditor(args: {
       const silent = Boolean(opts?.silent);
       const snapshot = opts?.snapshot ?? current;
       if (!dirty && !opts?.snapshot) return true;
-      if (savingRef.current) {
-        saveQueuedRef.current = true;
-        queuedSnapshotRef.current = snapshot;
-        queuedSilentRef.current = queuedSilentRef.current && silent;
-        return false;
-      }
 
       const scheduleWizardRefresh = () => {
         if (refreshWizardDebounceRef.current !== null) {
@@ -179,62 +176,101 @@ export function useChapterEditor(args: {
         refreshWizardDebounceRef.current = window.setTimeout(() => void refreshWizard(), 1200);
       };
 
-      const seq = saveGuardRef.current.next();
-      savingRef.current = true;
-      setSaving(true);
-      try {
-        const res = await apiJson<{ chapter: Chapter }>(`/api/chapters/${chapter.id}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            title: snapshot.title.trim(),
-            plan: snapshot.plan,
-            content_md: snapshot.content_md,
-            summary: snapshot.summary,
-            status: snapshot.status,
-          }),
-        });
-        if (!saveGuardRef.current.isLatest(seq)) return true;
-        setActiveChapter(res.data.chapter);
-        const nextBaseline = chapterToForm(res.data.chapter);
-        setBaseline(nextBaseline);
-        setForm((prev) => {
-          if (!prev) return prev;
-          if (
-            prev.title === snapshot.title &&
-            prev.plan === snapshot.plan &&
-            prev.content_md === snapshot.content_md &&
-            prev.summary === snapshot.summary &&
-            prev.status === snapshot.status
-          ) {
-            return nextBaseline;
-          }
-          return prev;
-        });
-        setChapters((prev) => prev.map((c) => (c.id === res.data.chapter.id ? res.data.chapter : c)));
-        markWizardProjectChanged(chapter.project_id);
-        bumpWizardLocal();
-        if (silent) scheduleWizardRefresh();
-        else await refreshWizard();
-        if (!silent) toast.toastSuccess("已保存", res.request_id);
-        return true;
-      } catch (e) {
-        const err = e as ApiError;
-        toast.toastError(`${err.message} (${err.code})`, err.requestId);
-        return false;
-      } finally {
-        setSaving(false);
-        savingRef.current = false;
-        if (saveQueuedRef.current) {
-          const nextSnapshot = queuedSnapshotRef.current ?? formRef.current;
-          const nextSilent = queuedSilentRef.current;
-          saveQueuedRef.current = false;
-          queuedSnapshotRef.current = null;
-          queuedSilentRef.current = true;
-          if (nextSnapshot && activeChapterRef.current) {
-            void saveChapter({ snapshot: nextSnapshot, silent: nextSilent });
-          }
+      const enqueue = () => {
+        saveQueuedRef.current = true;
+        queuedSnapshotRef.current = snapshot;
+        queuedSilentRef.current = queuedSilentRef.current && silent;
+        if (!silent && !queuedToastShownRef.current) {
+          toast.toastWarning("保存中：已加入队列，将自动保存。");
+          queuedToastShownRef.current = true;
         }
+        if (!queuedPromiseRef.current) {
+          queuedPromiseRef.current = new Promise<boolean>((resolve) => {
+            queuedPromiseResolveRef.current = resolve;
+          });
+        }
+        return queuedPromiseRef.current;
+      };
+
+      const performSave = async (nextSnapshot: ChapterForm, nextSilent: boolean): Promise<boolean> => {
+        const latestChapter = activeChapterRef.current;
+        if (!latestChapter) return false;
+
+        const seq = saveGuardRef.current.next();
+        savingRef.current = true;
+        setSaving(true);
+        try {
+          const res = await apiJson<{ chapter: Chapter }>(`/api/chapters/${latestChapter.id}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              title: nextSnapshot.title.trim(),
+              plan: nextSnapshot.plan,
+              content_md: nextSnapshot.content_md,
+              summary: nextSnapshot.summary,
+              status: nextSnapshot.status,
+            }),
+          });
+          if (!saveGuardRef.current.isLatest(seq)) return true;
+          setActiveChapter(res.data.chapter);
+          const nextBaseline = chapterToForm(res.data.chapter);
+          setBaseline(nextBaseline);
+          setForm((prev) => {
+            if (!prev) return prev;
+            if (
+              prev.title === nextSnapshot.title &&
+              prev.plan === nextSnapshot.plan &&
+              prev.content_md === nextSnapshot.content_md &&
+              prev.summary === nextSnapshot.summary &&
+              prev.status === nextSnapshot.status
+            ) {
+              return nextBaseline;
+            }
+            return prev;
+          });
+          setChapters((prev) => prev.map((c) => (c.id === res.data.chapter.id ? res.data.chapter : c)));
+          markWizardProjectChanged(latestChapter.project_id);
+          bumpWizardLocal();
+          if (nextSilent) scheduleWizardRefresh();
+          else await refreshWizard();
+          if (!nextSilent) toast.toastSuccess("已保存", res.request_id);
+          return true;
+        } catch (e) {
+          const err = e as ApiError;
+          toast.toastError(`${err.message} (${err.code})`, err.requestId);
+          return false;
+        } finally {
+          setSaving(false);
+          savingRef.current = false;
+        }
+      };
+
+      if (savingRef.current) {
+        return enqueue();
       }
+
+      let ok = await performSave(snapshot, silent);
+
+      while (saveQueuedRef.current) {
+        const nextSnapshot = queuedSnapshotRef.current ?? formRef.current;
+        const nextSilent = queuedSilentRef.current;
+        saveQueuedRef.current = false;
+        queuedSnapshotRef.current = null;
+        queuedSilentRef.current = true;
+        queuedToastShownRef.current = false;
+
+        if (!nextSnapshot || !activeChapterRef.current) break;
+        ok = await performSave(nextSnapshot, nextSilent);
+        if (!ok) break;
+      }
+
+      if (queuedPromiseResolveRef.current) {
+        queuedPromiseResolveRef.current(ok);
+        queuedPromiseResolveRef.current = null;
+        queuedPromiseRef.current = null;
+        queuedToastShownRef.current = false;
+      }
+
+      return ok;
     },
     [bumpWizardLocal, dirty, refreshWizard, toast],
   );
