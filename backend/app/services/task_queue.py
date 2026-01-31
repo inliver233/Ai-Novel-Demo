@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import queue as queue_mod
 import threading
+import time
 from functools import lru_cache
 from typing import Any, Literal, Protocol
 
@@ -15,6 +17,38 @@ TaskQueueBackend = Literal["rq", "inline"]
 TaskKind = Literal["batch_generation", "memory_task", "import_task", "project_task"]
 
 logger = logging.getLogger("ainovel")
+
+_REDIS_PING_CACHE: dict[str, tuple[float, bool, str | None]] = {}
+_REDIS_PING_TTL_SECONDS = 2.0
+
+
+def _redis_ping(redis_url: str, *, timeout_seconds: float) -> tuple[bool, str | None]:
+    redis_url_norm = str(redis_url or "").strip()
+    if not redis_url_norm:
+        return False, "missing_redis_url"
+    try:
+        from redis import Redis
+
+        conn = Redis.from_url(
+            redis_url_norm,
+            socket_connect_timeout=timeout_seconds,
+            socket_timeout=timeout_seconds,
+            retry_on_timeout=False,
+        )
+        conn.ping()
+        return True, None
+    except Exception as exc:  # pragma: no cover - env dependent
+        return False, type(exc).__name__
+
+
+def _redis_ping_cached(redis_url: str, *, timeout_seconds: float) -> tuple[bool, str | None]:
+    now = time.monotonic()
+    cached = _REDIS_PING_CACHE.get(redis_url)
+    if cached is not None and (now - cached[0]) < _REDIS_PING_TTL_SECONDS:
+        return cached[1], cached[2]
+    ok, error_type = _redis_ping(redis_url, timeout_seconds=timeout_seconds)
+    _REDIS_PING_CACHE[redis_url] = (now, ok, error_type)
+    return ok, error_type
 
 
 class _InlineWorker:
@@ -167,8 +201,27 @@ def get_task_queue() -> TaskQueue:
     if backend == "inline":
         return InlineTaskQueue()
     if backend == "rq":
+        app_env = str(getattr(settings, "app_env", "dev") or "dev").strip().lower()
         redis_url: str = str(getattr(settings, "redis_url", "redis://localhost:6379/0") or "").strip()
         queue_name: str = str(getattr(settings, "rq_queue_name", "default") or "default").strip() or "default"
+
+        # Dev experience: allow running without Redis by falling back to the inline worker.
+        # This keeps RAG rebuild and other background tasks from being permanently stuck in "dirty" state.
+        if app_env != "prod":
+            # Avoid surprising explicit rq setups in development environments.
+            explicit_backend = str(os.environ.get("TASK_QUEUE_BACKEND") or "").strip().lower()
+            if explicit_backend not in {"rq"}:
+                redis_ok, redis_error_type = _redis_ping_cached(redis_url, timeout_seconds=0.2)
+                if not redis_ok:
+                    log_event(
+                        logger,
+                        "warning",
+                        event="TASK_QUEUE_FALLBACK_INLINE",
+                        requested_backend="rq",
+                        redis_ok=False,
+                        redis_error_type=redis_error_type,
+                    )
+                    return InlineTaskQueue()
         return RqTaskQueue(redis_url=redis_url, queue_name=queue_name)
     raise ValueError(f"Unsupported TASK_QUEUE_BACKEND: {backend!r}")
 
@@ -213,8 +266,12 @@ def get_queue_status_for_health() -> dict[str, Any]:
         if not redis_ok:
             hint += (
                 f" 当前 redis_ok=false（{redis_error_type or 'unknown'}）。"
-                " 可临时切换 TASK_QUEUE_BACKEND=inline（dev/test；不需要 Redis；进程内单线程 worker）"
+                " 可临时切换 TASK_QUEUE_BACKEND=inline（dev/test；不需要 Redis；进程内单线程 worker）。"
             )
+            app_env = str(getattr(settings, "app_env", "dev") or "dev").strip().lower()
+            explicit_backend = str(os.environ.get("TASK_QUEUE_BACKEND") or "").strip().lower()
+            if app_env != "prod" and explicit_backend not in {"rq"}:
+                hint += " 当前 dev 环境将自动回落到 inline 以保证任务可执行。"
         return {
             "queue_backend": "rq",
             "rq_queue_name": queue_name,
