@@ -173,7 +173,7 @@ export function SearchPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className="btn"
+            className="btn btn-secondary"
             aria-label="search_clear"
             disabled={loading && Boolean(query.trim())}
             onClick={clear}
@@ -182,7 +182,7 @@ export function SearchPage() {
           </button>
           <button
             type="button"
-            className="btn-primary"
+            className="btn btn-primary"
             aria-label="search_submit"
             disabled={!projectId || !query.trim() || loading}
             onClick={() => void runQuery({ append: false })}
@@ -205,18 +205,20 @@ export function SearchPage() {
             }}
           />
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="text-xs text-subtext">{UI_COPY.search.sourcesTitle}</div>
-            {SOURCE_OPTIONS.map((s) => (
-              <label key={s.key} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  aria-label={`search_source_${s.key}`}
-                  checked={Boolean(sourcesState[s.key])}
-                  onChange={() => toggleSource(s.key)}
-                />
-                <span>{s.label}</span>
-              </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="text-xs text-subtext">{UI_COPY.search.sourcesTitle}</div>
+              {SOURCE_OPTIONS.map((s) => (
+                <label key={s.key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    aria-label={`search_source_${s.key}`}
+                    name={`search_source_${s.key}`}
+                    className="checkbox"
+                    checked={Boolean(sourcesState[s.key])}
+                    onChange={() => toggleSource(s.key)}
+                  />
+                  <span>{s.label}</span>
+                </label>
             ))}
           </div>
         </div>
@@ -239,7 +241,7 @@ export function SearchPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      className="btn"
+                      className="btn btn-secondary"
                       aria-label="search_copy_id"
                       onClick={() => void copySourceId(it)}
                     >
@@ -247,7 +249,7 @@ export function SearchPage() {
                     </button>
                     <button
                       type="button"
-                      className="btn-primary"
+                      className="btn btn-primary"
                       aria-label="search_jump"
                       disabled={!canJump(it)}
                       onClick={() => jump(it)}
@@ -270,7 +272,7 @@ export function SearchPage() {
           <div className="flex justify-center">
             <button
               type="button"
-              className="btn"
+              className="btn btn-secondary"
               aria-label="search_load_more"
               disabled={loading}
               onClick={() => void runQuery({ append: true })}
