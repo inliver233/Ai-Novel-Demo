@@ -724,7 +724,7 @@ export function MemorySidebar(props: {
                     }}
                     aria-label={`story_memory_merge_source:${normalizeTitle(a)}`}
                     disabled={mergeSaving}
-                    className="mt-1"
+                    className="checkbox mt-1"
                   />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
