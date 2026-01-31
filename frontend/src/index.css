@@ -82,6 +82,16 @@
     color: rgb(var(--color-ink));
   }
 
+  ::selection {
+    background: rgb(var(--color-accent) / 0.28);
+    color: rgb(var(--color-ink));
+  }
+
+  ::-moz-selection {
+    background: rgb(var(--color-accent) / 0.28);
+    color: rgb(var(--color-ink));
+  }
+
   a {
     color: rgb(var(--color-accent));
     text-decoration: none;
