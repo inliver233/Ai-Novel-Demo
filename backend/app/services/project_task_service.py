@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.core.logging import exception_log_fields, log_event
+from app.core.logging import exception_log_fields, log_event, redact_secrets_text
 from app.core.secrets import redact_api_keys
 from app.db.session import SessionLocal
 from app.db.utils import new_id, utc_now
@@ -648,10 +648,23 @@ def run_project_task(*, task_id: str) -> str:
         try:
             task2 = db.get(ProjectTask, task_id)
             if task2 is not None:
-                fields = exception_log_fields(exc)
-                msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:400]
+                safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+                if not safe_message:
+                    safe_message = type(exc).__name__
+
+                if isinstance(exc, AppError):
+                    details = exc.details if isinstance(exc.details, dict) else {}
+                    error_payload = {
+                        "error_type": type(exc).__name__,
+                        "code": str(exc.code),
+                        "message": safe_message[:400],
+                        "details": redact_api_keys(details),
+                    }
+                else:
+                    error_payload = {"error_type": type(exc).__name__, "message": safe_message[:400]}
+
                 task2.status = "failed"
-                task2.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": msg})
+                task2.error_json = _compact_json_dumps(error_payload)
                 task2.finished_at = utc_now()
                 db.commit()
         except Exception:

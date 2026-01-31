@@ -51,13 +51,17 @@ def _redact_secrets(text: str) -> str:
     return s
 
 
+def redact_secrets_text(text: str) -> str:
+    return _redact_secrets(text)
+
+
 def exception_log_fields(exc: Exception) -> dict[str, Any]:
     exc_type = type(exc).__name__
     msg = str(exc)
     if settings.app_env == "dev":
         return {
             "exception_type": exc_type,
-            "exception": _redact_secrets(msg.replace("\n", " ").strip())[:500],
+            "exception": redact_secrets_text(msg.replace("\n", " ").strip())[:500],
             # Keep stack frames but avoid including the exception message line (which may carry secrets).
             "stack": "".join(traceback.format_tb(exc.__traceback__)),
         }
