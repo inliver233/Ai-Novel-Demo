@@ -179,3 +179,30 @@ class TestProjectTasksEndpoints(unittest.TestCase):
             assert row is not None
             self.assertEqual(row.status, "queued")
             self.assertIsNone(row.error_json)
+
+    def test_retry_enqueue_failure_records_non_empty_error_message(self) -> None:
+        client = TestClient(self.app)
+
+        class _FailQueue:
+            def enqueue(self, *, kind: str, task_id: str) -> str:  # type: ignore[no-untyped-def]
+                raise AppError(
+                    code="QUEUE_UNAVAILABLE",
+                    message="任务队列不可用：请启动 Redis + worker，或切换 TASK_QUEUE_BACKEND=inline（仅 dev/test）",
+                    status_code=503,
+                    details={"how_to_fix": ["start redis", "start worker"]},
+                )
+
+            def enqueue_batch_generation_task(self, task_id: str) -> str:
+                return task_id
+
+        with patch("app.services.task_queue.get_task_queue", return_value=_FailQueue()):
+            resp = client.post("/api/tasks/pt2/retry", headers={"X-Test-User": "u_owner"})
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json().get("data") or {}
+        self.assertEqual(data.get("status"), "failed")
+        self.assertTrue(str(data.get("error_message") or "").strip())
+
+        err = data.get("error") or {}
+        self.assertEqual(err.get("code"), "QUEUE_UNAVAILABLE")
+        self.assertTrue(str(err.get("message") or "").strip())

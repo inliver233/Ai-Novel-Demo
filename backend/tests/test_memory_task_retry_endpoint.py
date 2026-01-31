@@ -167,4 +167,5 @@ class TestMemoryTaskRetryEndpoint(unittest.TestCase):
             err = json.loads(task.error_json or "{}")
             self.assertEqual(err.get("error_type"), "AppError")
             self.assertEqual(err.get("code"), "QUEUE_UNAVAILABLE")
+            self.assertTrue(str(err.get("message") or "").strip())
             self.assertIn("details", err)

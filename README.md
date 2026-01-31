@@ -28,7 +28,9 @@ copy .env.example .env  # Windows 可用；或手动创建
 # macOS/Linux:
 ./.venv/bin/python -m uvicorn app.main:app --reload --workers 1 --port 8000
 
-# 批量生成（P1-04）：任务队列 worker（RQ + Redis）
+# 后台任务队列（RAG/世界书/搜索/批量生成等）
+# - dev/test（推荐）：TASK_QUEUE_BACKEND=inline（不依赖 Redis；进程内单线程 worker）
+# - rq 模式（生产必须）：需要 Redis + worker
 # 1) 先启动 Redis（任选其一）：
 #   - Docker: docker run --name ainovel-redis -p 6379:6379 redis:7-alpine
 #   - 或 WSL / 本机 Redis 服务
