@@ -205,20 +205,20 @@ export function SearchPage() {
             }}
           />
 
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="text-xs text-subtext">{UI_COPY.search.sourcesTitle}</div>
-              {SOURCE_OPTIONS.map((s) => (
-                <label key={s.key} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    aria-label={`search_source_${s.key}`}
-                    name={`search_source_${s.key}`}
-                    className="checkbox"
-                    checked={Boolean(sourcesState[s.key])}
-                    onChange={() => toggleSource(s.key)}
-                  />
-                  <span>{s.label}</span>
-                </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-xs text-subtext">{UI_COPY.search.sourcesTitle}</div>
+            {SOURCE_OPTIONS.map((s) => (
+              <label key={s.key} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  aria-label={`search_source_${s.key}`}
+                  name={`search_source_${s.key}`}
+                  className="checkbox"
+                  checked={Boolean(sourcesState[s.key])}
+                  onChange={() => toggleSource(s.key)}
+                />
+                <span>{s.label}</span>
+              </label>
             ))}
           </div>
         </div>
