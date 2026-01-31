@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -49,6 +50,11 @@ class TestInlineTaskQueue(unittest.TestCase):
         with patch("app.services.batch_generation_service.run_batch_generation_task") as run:
             tq = InlineTaskQueue()
             job_id = tq.enqueue_batch_generation_task("task-abc")
+
+            for _ in range(200):
+                if run.called:
+                    break
+                time.sleep(0.01)
 
         self.assertEqual(job_id, "task-abc")
         run.assert_called_once_with(task_id="task-abc")

@@ -21,7 +21,6 @@ from app.models.memory_task import MemoryTask
 from app.models.project import Project
 from app.models.structured_memory import MemoryChangeSet
 from app.models.user import User
-from app.services.task_queue import InlineTaskQueue
 
 
 def _make_test_app(SessionLocal: sessionmaker) -> FastAPI:
@@ -107,7 +106,14 @@ class TestMemoryTaskRetryEndpoint(unittest.TestCase):
     def test_retry_failed_task_sets_queued_and_is_idempotent(self) -> None:
         client = TestClient(self.app)
 
-        with patch("app.services.task_queue.get_task_queue", return_value=InlineTaskQueue()):
+        class _NoopQueue:
+            def enqueue(self, *, kind: str, task_id: str) -> str:  # type: ignore[no-untyped-def]
+                return task_id
+
+            def enqueue_batch_generation_task(self, task_id: str) -> str:
+                return task_id
+
+        with patch("app.services.task_queue.get_task_queue", return_value=_NoopQueue()):
             resp = client.post("/api/memory_tasks/t1/retry", headers={"X-Test-User": "u_owner"})
 
         self.assertEqual(resp.status_code, 200)
@@ -124,7 +130,7 @@ class TestMemoryTaskRetryEndpoint(unittest.TestCase):
             self.assertIsNone(task.error_json)
             self.assertIsNotNone(task.params_json)
 
-        with patch("app.services.task_queue.get_task_queue", return_value=InlineTaskQueue()):
+        with patch("app.services.task_queue.get_task_queue", return_value=_NoopQueue()):
             resp2 = client.post("/api/memory_tasks/t1/retry", headers={"X-Test-User": "u_owner"})
         self.assertEqual(resp2.status_code, 200)
         data2 = resp2.json().get("data") or {}

@@ -56,7 +56,6 @@ from app.services.chapter_context_service import (
     build_chapter_generate_render_values,
     inject_plan_into_render_values,
 )
-from app.services.fractal_memory_service import rebuild_fractal_memory
 from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
 from app.services.memory_retrieval_service import build_memory_retrieval_log_json, retrieve_memory_context_pack
 from app.services.prompt_presets import ensure_default_plan_preset, ensure_default_post_edit_preset, render_preset_for_task
@@ -542,18 +541,6 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
                 logger,
                 "warning",
                 event="CHAPTER_DONE_TASKS",
-                action="trigger_failed",
-                project_id=str(row.project_id),
-                chapter_id=str(row.id),
-                **exception_log_fields(exc),
-            )
-        try:
-            rebuild_fractal_memory(db=db, project_id=str(row.project_id), reason="chapter_done")
-        except Exception as exc:
-            log_event(
-                logger,
-                "warning",
-                event="FRACTAL_MEMORY",
                 action="trigger_failed",
                 project_id=str(row.project_id),
                 chapter_id=str(row.id),

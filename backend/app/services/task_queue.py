@@ -1,14 +1,75 @@
 from __future__ import annotations
 
+import logging
+import queue as queue_mod
+import threading
 from functools import lru_cache
 from typing import Any, Literal, Protocol
 
 from app.core.config import settings
 from app.core.errors import AppError
+from app.core.logging import exception_log_fields, log_event
 
 
 TaskQueueBackend = Literal["rq", "inline"]
 TaskKind = Literal["batch_generation", "memory_task", "import_task", "project_task"]
+
+logger = logging.getLogger("ainovel")
+
+
+class _InlineWorker:
+    def __init__(self) -> None:
+        self._queue: queue_mod.Queue[tuple[TaskKind, str]] = queue_mod.Queue()
+        self._thread = threading.Thread(target=self._run, name="ainovel-inline-worker", daemon=True)
+        self._thread.start()
+
+    def enqueue(self, *, kind: TaskKind, task_id: str) -> None:
+        self._queue.put((kind, task_id))
+
+    def _run(self) -> None:
+        while True:
+            kind, task_id = self._queue.get()
+            try:
+                if kind == "batch_generation":
+                    from app.services.batch_generation_service import run_batch_generation_task
+
+                    run_batch_generation_task(task_id=task_id)
+                elif kind == "import_task":
+                    from app.services.import_export_service import run_import_task
+
+                    run_import_task(task_id=task_id)
+                elif kind == "memory_task":
+                    from app.services.memory_update_service import run_memory_task
+
+                    run_memory_task(task_id=task_id)
+                elif kind == "project_task":
+                    from app.services.project_task_service import run_project_task
+
+                    run_project_task(task_id=task_id)
+                else:
+                    raise ValueError(f"Unsupported task kind: {kind!r}")
+            except Exception as exc:
+                try:
+                    log_event(
+                        logger,
+                        "error",
+                        event="INLINE_TASK_ERROR",
+                        task_kind=kind,
+                        task_id=str(task_id),
+                        **exception_log_fields(exc),
+                    )
+                except Exception:
+                    pass
+            finally:
+                try:
+                    self._queue.task_done()
+                except Exception:
+                    pass
+
+
+@lru_cache(maxsize=1)
+def _get_inline_worker() -> _InlineWorker:
+    return _InlineWorker()
 
 
 class TaskQueue(Protocol):
@@ -22,43 +83,9 @@ class InlineTaskQueue:
     """
 
     def enqueue(self, *, kind: TaskKind, task_id: str) -> str:
-        if kind == "batch_generation":
-            from app.services.batch_generation_service import run_batch_generation_task
-
-            run_batch_generation_task(task_id=task_id)
-            return task_id
-        if kind == "import_task":
-            from app.services.import_export_service import run_import_task
-
-            run_import_task(task_id=task_id)
-            return task_id
-        if kind == "memory_task":
-            # NOTE: memory_tasks are intentionally NOT executed inline to keep request latency stable.
-            # Use TASK_QUEUE_BACKEND=rq + worker for async execution.
-            return task_id
-        if kind == "project_task":
-            # Keep heavy ProjectTask kinds async even in inline mode.
-            # Inline is a dev/test fallback and should not block request latency.
-            task_kind = ""
-            try:
-                from app.db.session import SessionLocal
-                from app.models.project_task import ProjectTask
-
-                db = SessionLocal()
-                try:
-                    row = db.get(ProjectTask, task_id)
-                    task_kind = str(getattr(row, "kind", "") or "")
-                finally:
-                    db.close()
-            except Exception:
-                task_kind = ""
-
-            if task_kind in {"noop", "search_rebuild", "worldbook_auto_update", "table_ai_update", "graph_auto_update"}:
-                from app.services.project_task_service import run_project_task
-
-                run_project_task(task_id=task_id)
-            return task_id
-        raise ValueError(f"Unsupported task kind: {kind!r}")
+        # Inline backend should behave like a real queue: return quickly and execute in a single background worker.
+        _get_inline_worker().enqueue(kind=kind, task_id=task_id)
+        return task_id
 
     def enqueue_batch_generation_task(self, task_id: str) -> str:
         return self.enqueue(kind="batch_generation", task_id=task_id)
@@ -125,7 +152,7 @@ class RqTaskQueue:
                     "how_to_fix": [
                         "启动 Redis（或修正 REDIS_URL）",
                         f"启动 RQ worker（queue={self._queue_name}；单 worker）",
-                        "或开发环境临时设置 TASK_QUEUE_BACKEND=inline（不需要 Redis；但 memory_task 不会自动执行）",
+                        "或开发环境临时设置 TASK_QUEUE_BACKEND=inline（不需要 Redis；进程内单线程 worker）",
                     ],
                     "enqueue_error_type": type(exc).__name__,
                 },
@@ -159,7 +186,7 @@ def get_queue_status_for_health() -> dict[str, Any]:
         return {
             "queue_backend": "inline",
             "redis_ok": None,
-            "worker_hint": "inline 模式不会执行 MemoryTask；需要 rq+worker 才能异步跑 memory_task（或在 UI 手动重试）",
+            "worker_hint": "inline 模式使用进程内单线程 worker 执行任务（无需 Redis；适合 dev/test；生产请用 rq+worker）",
         }
 
     if backend == "rq":
@@ -186,7 +213,7 @@ def get_queue_status_for_health() -> dict[str, Any]:
         if not redis_ok:
             hint += (
                 f" 当前 redis_ok=false（{redis_error_type or 'unknown'}）。"
-                " 可临时切换 TASK_QUEUE_BACKEND=inline（dev/test；不需要 Redis；但 memory_task 不会自动执行）"
+                " 可临时切换 TASK_QUEUE_BACKEND=inline（dev/test；不需要 Redis；进程内单线程 worker）"
             )
         return {
             "queue_backend": "rq",
