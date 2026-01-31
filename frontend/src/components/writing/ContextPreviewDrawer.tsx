@@ -1012,9 +1012,7 @@ export function ContextPreviewDrawer(props: Props) {
                       {it.enabled ? (
                         <span className="text-success">enabled</span>
                       ) : (
-                        <span className="text-amber-700 dark:text-amber-300">
-                          disabled: {it.disabled_reason ?? "unknown"}
-                        </span>
+                        <span className="text-warning">disabled: {it.disabled_reason ?? "unknown"}</span>
                       )}
                     </div>
                     {it.note ? <div className="mt-1 text-[11px] text-subtext">{it.note}</div> : null}
@@ -1121,7 +1119,7 @@ export function ContextPreviewDrawer(props: Props) {
                     : "disabled"}
             </div>
             {contextOptimizerSettingsError ? (
-              <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+              <div className="mt-2 text-xs text-danger">
                 settings 加载失败：{contextOptimizerSettingsError.message} ({contextOptimizerSettingsError.code})
                 {contextOptimizerSettingsError.requestId ? (
                   <span className="ml-2">request_id: {contextOptimizerSettingsError.requestId}</span>
@@ -1148,7 +1146,7 @@ export function ContextPreviewDrawer(props: Props) {
 
                 {optimizerCompareLoading ? <div className="text-xs text-subtext">{UI_COPY.common.loading}</div> : null}
                 {optimizerCompareError ? (
-                  <div className="text-xs text-amber-700 dark:text-amber-300">
+                  <div className="text-xs text-danger">
                     对比失败：{optimizerCompareError.message} ({optimizerCompareError.code})
                     {optimizerCompareError.requestId ? (
                       <span className="ml-2">request_id: {optimizerCompareError.requestId}</span>
@@ -1293,7 +1291,7 @@ export function ContextPreviewDrawer(props: Props) {
               </div>
 
               {tablesPreviewError ? (
-                <div className="text-xs text-amber-700 dark:text-amber-300">
+                <div className="text-xs text-danger">
                   {tablesPreviewError.message} ({tablesPreviewError.code})
                   {tablesPreviewError.requestId ? (
                     <span className="ml-2">request_id: {tablesPreviewError.requestId}</span>

@@ -96,9 +96,9 @@ export function ToastProvider(props: { children: React.ReactNode }) {
                 className={clsx(
                   "rounded-atelier border bg-surface/85 p-3 shadow-sm backdrop-blur",
                   t.variant === "error"
-                    ? "border-red-500/50"
+                    ? "border-danger/50"
                     : t.variant === "warning"
-                      ? "border-amber-500/50"
+                      ? "border-warning/50"
                       : "border-success/50",
                 )}
               >

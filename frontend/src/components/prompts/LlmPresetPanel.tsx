@@ -132,9 +132,7 @@ export function LlmPresetPanel(props: Props) {
             </button>
           </div>
           {testDisabledReason ? <div className="text-[11px] text-subtext">{testDisabledReason}</div> : null}
-          {extraErrorText ? (
-            <div className="text-[11px] text-amber-600 dark:text-amber-400">{extraErrorText}</div>
-          ) : null}
+          {extraErrorText ? <div className="text-[11px] text-warning">{extraErrorText}</div> : null}
         </div>
       </div>
 
@@ -306,7 +304,7 @@ export function LlmPresetPanel(props: Props) {
               必须是合法 JSON。示例：<span className="font-mono">{'{"response_format":{"type":"json_object"}}'}</span>
               。不要在 extra 里填写 API Key。
             </div>
-            {extraErrorText ? <div className="text-xs text-amber-600 dark:text-amber-400">{extraErrorText}</div> : null}
+            {extraErrorText ? <div className="text-xs text-warning">{extraErrorText}</div> : null}
           </label>
         </div>
       </details>

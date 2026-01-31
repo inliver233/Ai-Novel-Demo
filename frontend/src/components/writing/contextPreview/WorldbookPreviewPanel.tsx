@@ -16,9 +16,7 @@ export function WorldbookPreviewPanel(props: {
           {worldbookPreview.triggered.length}
           {UI_COPY.worldbook.previewTriggeredSuffix}
         </span>
-        {worldbookPreview.truncated ? (
-          <span className="text-amber-600 dark:text-amber-400">{UI_COPY.worldbook.previewTruncated}</span>
-        ) : null}
+        {worldbookPreview.truncated ? <span className="text-warning">{UI_COPY.worldbook.previewTruncated}</span> : null}
       </div>
 
       <details className="mt-3">
