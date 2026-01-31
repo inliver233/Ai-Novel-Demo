@@ -92,6 +92,35 @@
     color: rgb(var(--color-ink));
   }
 
+  /* Scrollbar theming (Firefox + WebKit). */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--color-subtext) / 0.45) rgb(var(--color-surface));
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: rgb(var(--color-surface));
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--color-subtext) / 0.45);
+    border-radius: 999px;
+    border: 2px solid rgb(var(--color-surface));
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--color-accent) / 0.35);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: rgb(var(--color-surface));
+  }
+
   a {
     color: rgb(var(--color-accent));
     text-decoration: none;
