@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.errors import AppError
-from app.core.logging import exception_log_fields, log_event
+from app.core.logging import exception_log_fields, log_event, redact_secrets_text
+from app.core.secrets import redact_api_keys
 from app.db.session import SessionLocal
 from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
@@ -295,6 +296,7 @@ def _memory_task_timings(task: MemoryTask) -> dict[str, Any]:
 
 def memory_task_to_dict(*, task: MemoryTask, change_set_request_id: str | None = None) -> dict[str, Any]:
     error_type, error_message = _memory_task_error_fields(task)
+    err = _compact_json_loads(task.error_json) if task.error_json else None
     return {
         "id": str(task.id),
         "project_id": str(task.project_id),
@@ -305,6 +307,7 @@ def memory_task_to_dict(*, task: MemoryTask, change_set_request_id: str | None =
         "status": _memory_task_status_to_public(str(task.status)),
         "error_type": error_type,
         "error_message": error_message,
+        "error": redact_api_keys(err) if err is not None else None,
         "timings": _memory_task_timings(task),
     }
 
@@ -1229,8 +1232,23 @@ def run_memory_task(*, task_id: str) -> str:
         try:
             task2 = db.get(MemoryTask, task_id)
             if task2 is not None:
+                safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+                if not safe_message:
+                    safe_message = type(exc).__name__
+
+                if isinstance(exc, AppError):
+                    details = exc.details if isinstance(exc.details, dict) else {}
+                    error_payload = {
+                        "error_type": type(exc).__name__,
+                        "code": str(exc.code),
+                        "message": safe_message[:400],
+                        "details": redact_api_keys(details),
+                    }
+                else:
+                    error_payload = {"error_type": type(exc).__name__, "message": safe_message[:400]}
+
                 task2.status = "failed"
-                task2.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": str(exc)[:400]})
+                task2.error_json = _compact_json_dumps(error_payload)
                 task2.finished_at = utc_now()
                 db.commit()
         except Exception:

@@ -32,6 +32,7 @@ type MemoryTaskSummary = {
   status: string;
   error_type?: string | null;
   error_message?: string | null;
+  error?: unknown;
   timings?: Record<string, unknown>;
 };
 
@@ -280,6 +281,7 @@ export function TaskCenterPage() {
         `request_id=${t.request_id || "-"}`,
         `error_type=${t.error_type || "-"}`,
         `error_message=${t.error_message || "-"}`,
+        `error=${safeJsonStringify(t.error ?? null)}`,
       ];
       await copyText(lines.join("\n"), { title: "复制失败：请手动复制 Debug 信息" });
       return;
