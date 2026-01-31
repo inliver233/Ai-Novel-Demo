@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from app.core.config import settings
 from app.core.errors import AppError
@@ -134,3 +134,54 @@ def get_task_queue() -> TaskQueue:
         queue_name: str = str(getattr(settings, "rq_queue_name", "default") or "default").strip() or "default"
         return RqTaskQueue(redis_url=redis_url, queue_name=queue_name)
     raise ValueError(f"Unsupported TASK_QUEUE_BACKEND: {backend!r}")
+
+
+def get_queue_status_for_health() -> dict[str, Any]:
+    """
+    Health payload for queue observability.
+
+    Security: must NOT leak redis_url (may include credentials).
+    """
+
+    backend: str = str(getattr(settings, "task_queue_backend", "rq") or "rq").strip().lower()
+
+    if backend == "inline":
+        return {
+            "queue_backend": "inline",
+            "redis_ok": None,
+            "worker_hint": "inline 模式不会执行 MemoryTask；需要 rq+worker 才能异步跑 memory_task（或在 UI 手动重试）",
+        }
+
+    if backend == "rq":
+        redis_url: str = str(getattr(settings, "redis_url", "redis://localhost:6379/0") or "").strip()
+        queue_name: str = str(getattr(settings, "rq_queue_name", "default") or "default").strip() or "default"
+
+        redis_ok = False
+        redis_error_type: str | None = None
+        try:
+            from redis import Redis
+
+            conn = Redis.from_url(
+                redis_url,
+                socket_connect_timeout=0.5,
+                socket_timeout=0.5,
+                retry_on_timeout=False,
+            )
+            conn.ping()
+            redis_ok = True
+        except Exception as exc:
+            redis_error_type = type(exc).__name__
+
+        hint = (
+            f"rq 模式需要 Redis + worker（单 worker）。队列名={queue_name}。"
+            + ("" if redis_ok else f" 当前 redis_ok=false（{redis_error_type or 'unknown'}）")
+        )
+        return {
+            "queue_backend": "rq",
+            "rq_queue_name": queue_name,
+            "redis_ok": redis_ok,
+            "redis_error_type": redis_error_type,
+            "worker_hint": hint,
+        }
+
+    return {"queue_backend": backend, "redis_ok": None, "worker_hint": "unknown task queue backend"}

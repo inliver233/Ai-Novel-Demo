@@ -59,6 +59,16 @@ type ChangeSetApplyResult = {
   warnings?: unknown;
 };
 
+type HealthData = {
+  status: string;
+  version?: string;
+  queue_backend?: string | null;
+  redis_ok?: boolean | null;
+  rq_queue_name?: string | null;
+  redis_error_type?: string | null;
+  worker_hint?: string | null;
+};
+
 function extractChangeSetIdFromProjectTaskResult(result: unknown): string | null {
   if (!result || typeof result !== "object") return null;
   const o = result as Record<string, unknown>;
@@ -112,10 +122,28 @@ export function TaskCenterPage() {
   const toast = useToast();
   const [searchParams] = useSearchParams();
 
+  const [health, setHealth] = useState<HealthData | null>(null);
+
   const [changeSetStatus, setChangeSetStatus] = useState<string>("all");
   const [taskStatus, setTaskStatus] = useState<string>("all");
   const [projectTaskStatus, setProjectTaskStatus] = useState<string>("all");
   const [autoOpenedProjectTask, setAutoOpenedProjectTask] = useState<boolean>(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiJson<HealthData>("/api/health")
+      .then((res) => {
+        if (cancelled) return;
+        setHealth(res.data);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHealth(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadChangeSets = useCallback(
     async (id: string): Promise<PagedResult<MemoryChangeSetSummary>> => {
@@ -471,6 +499,26 @@ export function TaskCenterPage() {
             </div>
           ) : null}
           <div className="text-warning">{UI_COPY.taskCenter.riskHint}</div>
+          {health?.queue_backend ? (
+            <div className="rounded-atelier border border-border bg-surface p-2 text-[11px] text-subtext">
+              <div>
+                队列后端：<span className="font-mono text-ink">{health.queue_backend}</span>
+                {health.queue_backend === "rq" ? (
+                  <>
+                    {" "}
+                    | redis_ok：<span className="font-mono text-ink">{String(health.redis_ok ?? "-")}</span>
+                    {health.rq_queue_name ? (
+                      <>
+                        {" "}
+                        | queue：<span className="font-mono text-ink">{health.rq_queue_name}</span>
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+              {health.worker_hint ? <div className="mt-1">{health.worker_hint}</div> : null}
+            </div>
+          ) : null}
         </div>
       </DebugDetails>
 
