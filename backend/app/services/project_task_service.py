@@ -238,10 +238,23 @@ def schedule_worldbook_auto_update_task(
             queue.enqueue(kind="project_task", task_id=str(task.id))
         except Exception as exc:
             fields = exception_log_fields(exc)
-            msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:200]
+            safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+            if not safe_message:
+                safe_message = type(exc).__name__
             task.status = "failed"
             task.finished_at = utc_now()
-            task.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": msg})
+            if isinstance(exc, AppError):
+                details = exc.details if isinstance(exc.details, dict) else {}
+                error_payload = {
+                    "error_type": type(exc).__name__,
+                    "code": str(exc.code),
+                    "message": safe_message[:200],
+                    "details": redact_api_keys(details),
+                }
+            else:
+                error_payload = {"error_type": type(exc).__name__, "message": safe_message[:200]}
+
+            task.error_json = _compact_json_dumps(error_payload)
             db.commit()
             log_event(
                 logger,
@@ -426,10 +439,22 @@ def retry_project_task(*, db: Session, task: ProjectTask) -> ProjectTask:
         queue.enqueue(kind="project_task", task_id=str(task.id))
     except Exception as exc:
         fields = exception_log_fields(exc)
-        msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:200]
+        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+        if not safe_message:
+            safe_message = type(exc).__name__
         task.status = "failed"
         task.finished_at = utc_now()
-        task.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": msg})
+        if isinstance(exc, AppError):
+            details = exc.details if isinstance(exc.details, dict) else {}
+            error_payload = {
+                "error_type": type(exc).__name__,
+                "code": str(exc.code),
+                "message": safe_message[:200],
+                "details": redact_api_keys(details),
+            }
+        else:
+            error_payload = {"error_type": type(exc).__name__, "message": safe_message[:200]}
+        task.error_json = _compact_json_dumps(error_payload)
         db.commit()
         log_event(
             logger,

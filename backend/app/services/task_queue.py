@@ -117,8 +117,18 @@ class RqTaskQueue:
         except Exception as exc:
             raise AppError(
                 code="QUEUE_UNAVAILABLE",
-                message="任务队列不可用：请确认 Redis 与 worker 已启动",
+                message="任务队列不可用：请启动 Redis + worker，或切换 TASK_QUEUE_BACKEND=inline（仅 dev/test）",
                 status_code=503,
+                details={
+                    "queue_backend": "rq",
+                    "rq_queue_name": self._queue_name,
+                    "how_to_fix": [
+                        "启动 Redis（或修正 REDIS_URL）",
+                        f"启动 RQ worker（queue={self._queue_name}；单 worker）",
+                        "或开发环境临时设置 TASK_QUEUE_BACKEND=inline（不需要 Redis；但 memory_task 不会自动执行）",
+                    ],
+                    "enqueue_error_type": type(exc).__name__,
+                },
             ) from exc
 
     def enqueue_batch_generation_task(self, task_id: str) -> str:
@@ -172,10 +182,12 @@ def get_queue_status_for_health() -> dict[str, Any]:
         except Exception as exc:
             redis_error_type = type(exc).__name__
 
-        hint = (
-            f"rq 模式需要 Redis + worker（单 worker）。队列名={queue_name}。"
-            + ("" if redis_ok else f" 当前 redis_ok=false（{redis_error_type or 'unknown'}）")
-        )
+        hint = f"rq 模式需要 Redis + worker（单 worker）。队列名={queue_name}。"
+        if not redis_ok:
+            hint += (
+                f" 当前 redis_ok=false（{redis_error_type or 'unknown'}）。"
+                " 可临时切换 TASK_QUEUE_BACKEND=inline（dev/test；不需要 Redis；但 memory_task 不会自动执行）"
+            )
         return {
             "queue_backend": "rq",
             "rq_queue_name": queue_name,

@@ -117,6 +117,15 @@ function safeJsonStringify(value: unknown): string {
   }
 }
 
+function extractHowToFix(error: unknown): string[] {
+  if (!error || typeof error !== "object") return [];
+  const details = (error as Record<string, unknown>).details;
+  if (!details || typeof details !== "object") return [];
+  const how = (details as Record<string, unknown>).how_to_fix;
+  if (!Array.isArray(how)) return [];
+  return how.filter((it) => typeof it === "string" && it.trim()).map((it) => it.trim());
+}
+
 export function TaskCenterPage() {
   const { projectId } = useParams();
   const toast = useToast();
@@ -951,6 +960,70 @@ export function TaskCenterPage() {
                   </pre>
                 </details>
               </div>
+            </section>
+          </div>
+        ) : null}
+
+        {selected?.kind === "task" ? (
+          <div className="mt-5 grid gap-3">
+            <section className="rounded-atelier border border-border bg-surface p-3" aria-label="memorytask_overview">
+              <div className="text-sm text-ink">Overview</div>
+              <div className="mt-2 grid gap-1 text-xs text-subtext">
+                <div>
+                  Kind：<span className="font-mono text-ink">{selected.item.kind}</span>
+                </div>
+                <div>
+                  change_set_id：<span className="font-mono text-ink">{selected.item.change_set_id}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>状态：</span>
+                  <StatusBadge status={selected.item.status} kind="task" />
+                </div>
+                <div>
+                  created_at：
+                  <span className="font-mono text-ink">
+                    {String((selected.item.timings as Record<string, unknown> | null | undefined)?.created_at ?? "-")}
+                  </span>
+                </div>
+                <div>
+                  started_at：
+                  <span className="font-mono text-ink">
+                    {String((selected.item.timings as Record<string, unknown> | null | undefined)?.started_at ?? "-")}
+                  </span>
+                </div>
+                <div>
+                  finished_at：
+                  <span className="font-mono text-ink">
+                    {String((selected.item.timings as Record<string, unknown> | null | undefined)?.finished_at ?? "-")}
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-atelier border border-border bg-surface p-3" aria-label="memorytask_error">
+              <div className="text-sm text-ink">Error</div>
+              {selected.item.status === "failed" ? (
+                <div className="mt-2 grid gap-2 text-xs text-subtext">
+                  <div className="text-danger">
+                    {selected.item.error_type || "ERROR"}: {selected.item.error_message || "未知错误"}
+                  </div>
+                  {extractHowToFix(selected.item.error).length > 0 ? (
+                    <ul className="list-disc pl-5 text-[11px] text-subtext">
+                      {extractHowToFix(selected.item.error).map((it, idx) => (
+                        <li key={idx}>{it}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <details className="rounded-atelier border border-border bg-canvas p-2">
+                    <summary className="cursor-pointer select-none text-xs text-subtext">error（脱敏）</summary>
+                    <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-ink">
+                      {safeJsonStringify(selected.item.error ?? null)}
+                    </pre>
+                  </details>
+                </div>
+              ) : (
+                <div className="mt-2 text-xs text-subtext">无错误信息</div>
+              )}
             </section>
           </div>
         ) : null}

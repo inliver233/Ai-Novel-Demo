@@ -130,3 +130,35 @@ class TestMemoryTaskRetryEndpoint(unittest.TestCase):
         data2 = resp2.json().get("data") or {}
         self.assertEqual(data2.get("status"), "queued")
 
+    def test_retry_enqueue_failure_records_error_and_returns_503(self) -> None:
+        client = TestClient(self.app)
+
+        class _FailQueue:
+            def enqueue(self, *, kind: str, task_id: str) -> str:  # type: ignore[no-untyped-def]
+                raise AppError(
+                    code="QUEUE_UNAVAILABLE",
+                    message="任务队列不可用：请启动 Redis + worker，或切换 TASK_QUEUE_BACKEND=inline（仅 dev/test）",
+                    status_code=503,
+                    details={"how_to_fix": ["start redis", "start worker"]},
+                )
+
+            def enqueue_batch_generation_task(self, task_id: str) -> str:
+                return task_id
+
+        with patch("app.services.task_queue.get_task_queue", return_value=_FailQueue()):
+            resp = client.post("/api/memory_tasks/t1/retry", headers={"X-Test-User": "u_owner"})
+
+        self.assertEqual(resp.status_code, 503)
+        payload = resp.json()
+        self.assertFalse(payload.get("ok"))
+        self.assertEqual((payload.get("error") or {}).get("code"), "QUEUE_UNAVAILABLE")
+
+        with self.SessionLocal() as db:
+            task = db.get(MemoryTask, "t1")
+            self.assertIsNotNone(task)
+            assert task is not None
+            self.assertEqual(task.status, "failed")
+            err = json.loads(task.error_json or "{}")
+            self.assertEqual(err.get("error_type"), "AppError")
+            self.assertEqual(err.get("code"), "QUEUE_UNAVAILABLE")
+            self.assertIn("details", err)

@@ -38,6 +38,10 @@ class TestRqTaskQueue(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, "QUEUE_UNAVAILABLE")
         self.assertEqual(ctx.exception.status_code, 503)
+        self.assertEqual(ctx.exception.details.get("queue_backend"), "rq")
+        self.assertEqual(ctx.exception.details.get("rq_queue_name"), "default")
+        self.assertIn("how_to_fix", ctx.exception.details)
+        self.assertNotIn("redis_url", ctx.exception.details)
 
 
 class TestInlineTaskQueue(unittest.TestCase):

@@ -22,6 +22,7 @@ def configure_logging() -> None:
 LogLevel = Literal["debug", "info", "warning", "error"]
 
 _QUERY_SECRET_RE = re.compile(r"(?i)([?&](?:key|api_key|apikey|token)=)([^&\s]+)")
+_URL_CREDENTIALS_RE = re.compile(r"(?i)\b([a-z][a-z0-9+\-.]*://)([^\s/@]*:[^\s/@]+@)")
 _KEY_TOKEN_RE = re.compile(r"\b(?:sk|rk|pk)-[A-Za-z0-9_-]{8,}\b")
 _GOOGLE_API_KEY_RE = re.compile(r"\bAIza[0-9A-Za-z_\-]{10,}\b")
 _BEARER_TOKEN_RE = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{8,}")
@@ -43,6 +44,7 @@ def _mask_key_token(token: str) -> str:
 
 def _redact_secrets(text: str) -> str:
     s = text
+    s = _URL_CREDENTIALS_RE.sub(lambda m: m.group(1) + "***@", s)
     s = _QUERY_SECRET_RE.sub(lambda m: m.group(1) + "****", s)
     s = _KEY_TOKEN_RE.sub(lambda m: _mask_key_token(m.group(0)), s)
     s = _GOOGLE_API_KEY_RE.sub("AIza***", s)

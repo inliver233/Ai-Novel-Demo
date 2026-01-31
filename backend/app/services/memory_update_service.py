@@ -386,9 +386,24 @@ def retry_memory_task(*, db: Session, request_id: str, task: MemoryTask) -> Memo
     try:
         queue.enqueue(kind="memory_task", task_id=str(task.id))
     except Exception as exc:
+        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+        if not safe_message:
+            safe_message = type(exc).__name__
+
+        if isinstance(exc, AppError):
+            details = exc.details if isinstance(exc.details, dict) else {}
+            error_payload = {
+                "error_type": type(exc).__name__,
+                "code": str(exc.code),
+                "message": safe_message[:200],
+                "details": redact_api_keys(details),
+            }
+        else:
+            error_payload = {"error_type": type(exc).__name__, "message": safe_message[:200]}
+
         task.status = "failed"
         task.finished_at = utc_now()
-        task.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": str(exc)[:200]})
+        task.error_json = _compact_json_dumps(error_payload)
         db.commit()
         log_event(
             logger,
@@ -1134,9 +1149,24 @@ def _schedule_memory_tasks_after_apply(*, db: Session, request_id: str, actor_us
         try:
             queue.enqueue(kind="memory_task", task_id=str(task.id))
         except Exception as exc:
+            safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+            if not safe_message:
+                safe_message = type(exc).__name__
+
+            if isinstance(exc, AppError):
+                details = exc.details if isinstance(exc.details, dict) else {}
+                error_payload = {
+                    "error_type": type(exc).__name__,
+                    "code": str(exc.code),
+                    "message": safe_message[:200],
+                    "details": redact_api_keys(details),
+                }
+            else:
+                error_payload = {"error_type": type(exc).__name__, "message": safe_message[:200]}
+
             task.status = "failed"
             task.finished_at = utc_now()
-            task.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": str(exc)[:200]})
+            task.error_json = _compact_json_dumps(error_payload)
             db.commit()
             log_event(
                 logger,
