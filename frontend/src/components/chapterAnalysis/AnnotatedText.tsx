@@ -22,11 +22,11 @@ function colorClassForType(type: string): { border: string; activeBg: string; ho
     case "hook":
       return { border: "border-accent/70", activeBg: "bg-accent/10", hoverBg: "hover:bg-accent/5" };
     case "foreshadow":
-      return { border: "border-sky-500/70", activeBg: "bg-sky-500/10", hoverBg: "hover:bg-sky-500/5" };
+      return { border: "border-info/70", activeBg: "bg-info/10", hoverBg: "hover:bg-info/5" };
     case "plot_point":
-      return { border: "border-emerald-500/70", activeBg: "bg-emerald-500/10", hoverBg: "hover:bg-emerald-500/5" };
+      return { border: "border-success/70", activeBg: "bg-success/10", hoverBg: "hover:bg-success/5" };
     case "character_state":
-      return { border: "border-violet-500/70", activeBg: "bg-violet-500/10", hoverBg: "hover:bg-violet-500/5" };
+      return { border: "border-warning/70", activeBg: "bg-warning/10", hoverBg: "hover:bg-warning/5" };
     case "chapter_summary":
       return { border: "border-border", activeBg: "bg-canvas/60", hoverBg: "hover:bg-canvas/40" };
     default:
