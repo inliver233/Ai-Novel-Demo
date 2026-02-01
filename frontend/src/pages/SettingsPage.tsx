@@ -1508,6 +1508,8 @@ export function SettingsPage() {
                     <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankProviderLabel}</span>
                     <select
                       className="select"
+                      id="settings_vector_rerank_provider"
+                      name="vector_rerank_provider"
                       aria-label="settings_vector_rerank_provider"
                       value={settingsForm.vector_rerank_provider}
                       onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_provider: e.target.value }))}
@@ -1524,6 +1526,8 @@ export function SettingsPage() {
                     <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankBaseUrlLabel}</span>
                     <input
                       className="input"
+                      id="settings_vector_rerank_base_url"
+                      name="vector_rerank_base_url"
                       aria-label="settings_vector_rerank_base_url"
                       value={settingsForm.vector_rerank_base_url}
                       onChange={(e) => {
@@ -1547,6 +1551,8 @@ export function SettingsPage() {
                     <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankModelLabel}</span>
                     <input
                       className="input"
+                      id="settings_vector_rerank_model"
+                      name="vector_rerank_model"
                       aria-label="settings_vector_rerank_model"
                       value={settingsForm.vector_rerank_model}
                       onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_model: e.target.value }))}
@@ -1635,6 +1641,8 @@ export function SettingsPage() {
                     <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankApiKeyLabel}</span>
                     <input
                       className="input"
+                      id="settings_vector_rerank_api_key"
+                      name="vector_rerank_api_key"
                       aria-label="settings_vector_rerank_api_key"
                       type="password"
                       autoComplete="off"
