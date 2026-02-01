@@ -21,6 +21,7 @@ from app.models.llm_profile import LLMProfile
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.project_settings import ProjectSettings
+from app.models.project_table import ProjectTable, ProjectTableRow
 from app.models.user import User
 from app.models.worldbook_entry import WorldBookEntry
 from app.services.memory_retrieval_service import retrieve_memory_context_pack
@@ -86,6 +87,8 @@ class TestMemoryPreviewEndpoints(unittest.TestCase):
                 Outline.__table__,
                 Project.__table__,
                 ProjectSettings.__table__,
+                ProjectTable.__table__,
+                ProjectTableRow.__table__,
                 WorldBookEntry.__table__,
             ],
         )
@@ -166,6 +169,115 @@ class TestMemoryPreviewEndpoints(unittest.TestCase):
         self.assertIsNotNone(worldbook_log)
         self.assertEqual(worldbook_log.get("budget_char_limit"), 200)
         self.assertEqual(worldbook_log.get("budget_source"), "override")
+
+    def test_memory_preview_tables_section_empty_when_no_tables(self) -> None:
+        client = TestClient(self.app)
+        resp = client.post(
+            "/api/projects/p1/memory/preview",
+            headers={"X-Test-User": "u_owner"},
+            json={
+                "query_text": "hello",
+                "section_enabled": {
+                    "worldbook": False,
+                    "story_memory": False,
+                    "structured": False,
+                    "vector_rag": False,
+                    "graph": False,
+                    "fractal": False,
+                    "tables": True,
+                },
+                "budget_overrides": {"tables": 200},
+            },
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertTrue(payload.get("ok"))
+
+        data = payload.get("data") or {}
+        tables = data.get("tables") or {}
+        self.assertEqual(tables.get("enabled"), False)
+        self.assertEqual(tables.get("disabled_reason"), "empty")
+        self.assertEqual((tables.get("counts") or {}).get("tables"), 0)
+        self.assertEqual((tables.get("counts") or {}).get("rows"), 0)
+        self.assertEqual(str(tables.get("text_md") or ""), "")
+
+    def test_memory_preview_tables_section_formats_text_and_respects_budget(self) -> None:
+        with self.SessionLocal() as db:
+            db.add(
+                ProjectTable(
+                    id="t1",
+                    project_id="p1",
+                    table_key="money",
+                    name="Money",
+                    schema_version=1,
+                    schema_json=json.dumps(
+                        {
+                            "version": 1,
+                            "columns": [
+                                {"key": "key", "type": "string", "label": "Key", "required": True},
+                                {"key": "value", "type": "string", "label": "Value", "required": False},
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            )
+            db.add(
+                ProjectTableRow(
+                    id="r1",
+                    project_id="p1",
+                    table_id="t1",
+                    row_index=0,
+                    data_json=json.dumps({"key": "gold", "value": "100"}, ensure_ascii=False),
+                )
+            )
+            db.add(
+                ProjectTableRow(
+                    id="r2",
+                    project_id="p1",
+                    table_id="t1",
+                    row_index=1,
+                    data_json=json.dumps({"key": "gem", "value": "2"}, ensure_ascii=False),
+                )
+            )
+            db.commit()
+
+        client = TestClient(self.app)
+        resp = client.post(
+            "/api/projects/p1/memory/preview",
+            headers={"X-Test-User": "u_owner"},
+            json={
+                "query_text": "gold",
+                "section_enabled": {
+                    "worldbook": False,
+                    "story_memory": False,
+                    "structured": False,
+                    "vector_rag": False,
+                    "graph": False,
+                    "fractal": False,
+                    "tables": True,
+                },
+                "budget_overrides": {"tables": 120},
+            },
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertTrue(payload.get("ok"))
+
+        data = payload.get("data") or {}
+        tables = data.get("tables") or {}
+        self.assertEqual(tables.get("disabled_reason"), None)
+
+        counts = tables.get("counts") or {}
+        self.assertEqual(counts.get("tables"), 1)
+        self.assertGreaterEqual(int(counts.get("rows") or 0), 1)
+
+        text_md = str(tables.get("text_md") or "")
+        self.assertTrue(text_md.startswith("<TABLES>\n"))
+        self.assertTrue(text_md.endswith("\n</TABLES>") or text_md.endswith("</TABLES>"))
+        self.assertLessEqual(len(text_md), 120)
 
     def test_retrieve_memory_context_pack_never_returns_plain_api_key(self) -> None:
         secret = "sk-test-SECRET1234"

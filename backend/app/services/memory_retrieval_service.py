@@ -16,6 +16,7 @@ from app.schemas.memory_pack import MemoryContextPackOut
 from app.services.fractal_memory_service import get_fractal_context
 from app.services.graph_context_service import query_graph_context
 from app.services.prompt_budget import estimate_tokens
+from app.services.table_context_service import build_tables_context_text_md
 from app.services.vector_rerank_overrides import vector_rerank_overrides
 from app.services.vector_embedding_overrides import vector_embedding_overrides
 from app.services.vector_rag_service import query_project, vector_rag_status
@@ -643,9 +644,20 @@ def retrieve_memory_context_pack(
                 "error": "structured_query_failed",
             }
 
-    tables: dict[str, Any] = {"enabled": False, "disabled_reason": "disabled", "text_md": ""}
-    if tables_enabled:
-        tables = {"enabled": False, "disabled_reason": "not_implemented", "text_md": ""}
+    tables: dict[str, Any] = {"enabled": False, "disabled_reason": "empty", "counts": {"tables": 0, "rows": 0}, "text_md": ""}
+    if not tables_enabled:
+        tables = {"enabled": False, "disabled_reason": "disabled", "counts": {"tables": 0, "rows": 0}, "text_md": ""}
+    else:
+        try:
+            tables = build_tables_context_text_md(db=db, project_id=project_id, char_limit=int(tables_budget))
+        except Exception:
+            tables = {
+                "enabled": False,
+                "disabled_reason": "error",
+                "counts": {"tables": 0, "rows": 0},
+                "text_md": "",
+                "error": "tables_query_failed",
+            }
 
     graph = query_graph_context(db=db, project_id=project_id, query_text=query_text, enabled=graph_enabled)
     if isinstance(graph, dict):
@@ -788,7 +800,8 @@ def retrieve_memory_context_pack(
             "section": "tables",
             "enabled": bool(tables.get("enabled")),
             "disabled_reason": tables.get("disabled_reason"),
-            "note": "Phase 3 placeholder: project_tables/project_table_rows",
+            "note": "table_context_service.build_tables_context_text_md",
+            "counts": tables.get("counts"),
             "token_estimate": estimate_tokens(str(tables.get("text_md") or "")),
             "truncated": bool(tables.get("truncated")) if "truncated" in tables else None,
             "budget_char_limit": int(tables_budget),
