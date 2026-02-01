@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,6 +28,9 @@ logger = logging.getLogger("ainovel")
 
 _MAX_TITLE_CHARS = 400
 _MAX_CONTENT_CHARS = 6000
+_MAX_QUERY_TERMS = 8
+
+_SAFE_FTS_TERM_RE = re.compile(r"^[0-9A-Za-z_]+$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -627,6 +631,32 @@ def _fts_query_literal(q: str) -> str:
     return f"\"{s}\""
 
 
+def _split_query_terms(q: str) -> list[str]:
+    q_norm = (q or "").strip()
+    if not q_norm:
+        return []
+    parts = [p.strip() for p in re.split(r"\s+", q_norm) if p.strip()]
+    return parts[:_MAX_QUERY_TERMS]
+
+
+def _fts_query_fuzzy(q: str) -> str:
+    parts = _split_query_terms(q)
+    if not parts:
+        return ""
+
+    def render_term(t: str) -> str:
+        t_norm = (t or "").strip()
+        if not t_norm:
+            return ""
+        if _SAFE_FTS_TERM_RE.match(t_norm) and len(t_norm) >= 2:
+            return f"{t_norm}*"
+        return _fts_query_literal(t_norm)
+
+    rendered = [render_term(p) for p in parts]
+    rendered = [x for x in rendered if x]
+    return " ".join(rendered).strip()
+
+
 def _like_snippet(*, content: str, q: str, window: int = 120) -> str:
     text_s = (content or "").strip()
     q_s = (q or "").strip()
@@ -667,7 +697,7 @@ def query_project_search(
     params: dict[str, Any] = {"project_id": pid, "limit": limit, "offset": offset}
 
     if _fts_enabled(db):
-        fts_q = _fts_query_literal(q_raw)
+        fts_q = _fts_query_fuzzy(q_raw)
         if not fts_q:
             return {"items": [], "next_offset": None, "mode": "empty"}
         params["q"] = fts_q
@@ -708,9 +738,17 @@ def query_project_search(
         return {"items": items, "next_offset": next_offset, "mode": "fts", "fts_enabled": True}
 
     # Fallback: LIKE on normalized documents. Lower quality but keeps the UI usable.
-    pattern = f"%{q_raw}%"
-    params["pattern"] = pattern
-    where = "project_id = :project_id AND (title LIKE :pattern OR content LIKE :pattern)"
+    terms = _split_query_terms(q_raw)
+    if not terms:
+        return {"items": [], "next_offset": None, "mode": "empty", "fts_enabled": False}
+    params["q_primary"] = terms[0]
+
+    where_parts: list[str] = []
+    for idx, term in enumerate(terms):
+        k = f"term_{idx}"
+        params[k] = f"%{term}%"
+        where_parts.append(f"(COALESCE(title,'') LIKE :{k} OR content LIKE :{k})")
+    where = f"project_id = :project_id AND ({' AND '.join(where_parts)})"
     if sources_norm:
         keys = []
         for idx, src in enumerate(sources_norm):
@@ -722,10 +760,17 @@ def query_project_search(
     rows2 = (
         db.execute(
             text(
-                "SELECT source_type,source_id,COALESCE(title,'') AS title,content, url_path, locator_json "
+                "SELECT source_type,source_id,COALESCE(title,'') AS title,content, url_path, locator_json, "
+                "CASE WHEN COALESCE(title,'') LIKE :term_0 THEN 0 ELSE 1 END AS title_hit, "
+                "CASE WHEN content LIKE :term_0 THEN 0 ELSE 1 END AS content_hit, "
+                "instr(lower(COALESCE(title,'')), lower(:q_primary)) AS title_pos, "
+                "instr(lower(content), lower(:q_primary)) AS content_pos "
                 "FROM search_documents "
                 f"WHERE {where} "
-                "ORDER BY updated_at DESC, id DESC "
+                "ORDER BY title_hit ASC, content_hit ASC, "
+                "CASE WHEN title_pos > 0 THEN title_pos ELSE 999999 END ASC, "
+                "CASE WHEN content_pos > 0 THEN content_pos ELSE 999999 END ASC, "
+                "updated_at DESC, id DESC "
                 "LIMIT :limit OFFSET :offset"
             ),
             params,
@@ -737,7 +782,7 @@ def query_project_search(
             "source_type": str(r[0] or ""),
             "source_id": str(r[1] or ""),
             "title": str(r[2] or ""),
-            "snippet": _like_snippet(content=str(r[3] or ""), q=q_raw),
+            "snippet": _like_snippet(content=str(r[3] or ""), q=str(params.get("q_primary") or "")),
             "jump_url": (str(r[4] or "").strip() or None),
             "locator_json": (str(r[5] or "").strip() or None),
         }
