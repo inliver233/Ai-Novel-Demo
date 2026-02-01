@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { RequestIdBadge } from "../components/ui/RequestIdBadge";
@@ -58,6 +58,9 @@ function safeJson(value: unknown): string {
 export function GraphPage() {
   const { projectId } = useParams();
   const toast = useToast();
+  const [searchParams] = useSearchParams();
+
+  const chapterId = String(searchParams.get("chapterId") || "").trim() || null;
 
   const [enabled, setEnabled] = useState(true);
   const [queryText, setQueryText] = useState("");
@@ -86,6 +89,14 @@ export function GraphPage() {
   );
 
   const matchedIds = useMemo(() => new Set(result?.matched?.entity_ids ?? []), [result?.matched?.entity_ids]);
+
+  const characterRelationsHref = useMemo(() => {
+    if (!projectId) return "";
+    const params = new URLSearchParams();
+    params.set("view", "character-relations");
+    if (chapterId) params.set("chapterId", chapterId);
+    return `/projects/${projectId}/structured-memory?${params.toString()}`;
+  }, [chapterId, projectId]);
 
   const runQuery = useCallback(async () => {
     if (!projectId) return;
@@ -148,11 +159,7 @@ export function GraphPage() {
             {loading ? "查询..." : UI_COPY.graph.queryRun}
           </button>
           {projectId ? (
-            <Link
-              className="btn btn-secondary"
-              to={`/projects/${projectId}/structured-memory?view=character-relations`}
-              aria-label="graph_open_character_relations"
-            >
+            <Link className="btn btn-secondary" to={characterRelationsHref} aria-label="graph_open_character_relations">
               人物关系编辑
             </Link>
           ) : null}
@@ -284,6 +291,24 @@ export function GraphPage() {
                   {e.from_name || e.from_entity_id} --({e.relation_type})→ {e.to_name || e.to_entity_id}
                 </div>
                 {e.description_md ? <div className="mt-1 text-subtext">{e.description_md}</div> : null}
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[11px] text-subtext">id: {e.id}</div>
+                  {projectId ? (
+                    <Link
+                      className="btn btn-secondary btn-sm"
+                      to={`/projects/${projectId}/structured-memory?${(() => {
+                        const params = new URLSearchParams();
+                        params.set("view", "character-relations");
+                        params.set("relationId", String(e.id));
+                        if (chapterId) params.set("chapterId", chapterId);
+                        return params.toString();
+                      })()}`}
+                      aria-label={`graph_open_relation_editor_${e.id}`}
+                    >
+                      打开编辑/证据
+                    </Link>
+                  ) : null}
+                </div>
               </div>
             ))}
             {(result?.edges ?? []).length === 0 ? <div className="text-xs text-subtext">暂无关系</div> : null}

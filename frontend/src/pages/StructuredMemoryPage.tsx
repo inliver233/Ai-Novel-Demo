@@ -198,15 +198,18 @@ type MemoryUpdateApplyResponse = {
 function CharacterRelationsView(props: {
   projectId: string;
   chapterId?: string;
+  focusRelationId?: string | null;
   includeDeleted: boolean;
   onRequestId: (value: string | null) => void;
 }) {
-  const { projectId, chapterId, includeDeleted, onRequestId } = props;
+  const { projectId, chapterId, focusRelationId, includeDeleted, onRequestId } = props;
   const toast = useToast();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
+  const [lastChangeSetId, setLastChangeSetId] = useState<string>("");
 
   const [characters, setCharacters] = useState<EntityRow[]>([]);
   const [relations, setRelations] = useState<RelationRow[]>([]);
@@ -320,6 +323,7 @@ function CharacterRelationsView(props: {
         if (warnings.length) toast.toastWarning(`已应用，但有 ${warnings.length} 条 warning`, applyRes.request_id);
         else toast.toastSuccess("已应用变更集", applyRes.request_id);
 
+        setLastChangeSetId(String(changeSetId));
         setEvidenceByRelationId({});
         setEvidenceOpen({});
         await refresh();
@@ -336,6 +340,33 @@ function CharacterRelationsView(props: {
     },
     [chapterId, onRequestId, refresh, toast],
   );
+
+  const rollbackLastChangeSet = useCallback(async () => {
+    const id = lastChangeSetId.trim();
+    if (!id) return;
+    setRollingBack(true);
+    try {
+      const res = await apiJson<{ idempotent?: boolean; change_set?: { id: string } }>(
+        `/api/memory_change_sets/${encodeURIComponent(id)}/rollback`,
+        { method: "POST" },
+      );
+      onRequestId(res.request_id ?? null);
+      toast.toastSuccess("已回滚最近变更集", res.request_id);
+      setEvidenceByRelationId({});
+      setEvidenceOpen({});
+      setEditingId(null);
+      await refresh();
+    } catch (e) {
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      onRequestId(err.requestId ?? null);
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setRollingBack(false);
+    }
+  }, [lastChangeSetId, onRequestId, refresh, toast]);
 
   const createRelation = useCallback(async () => {
     const fromId = createFromId.trim();
@@ -454,6 +485,14 @@ function CharacterRelationsView(props: {
     [evidenceByRelationId, evidenceOpen, includeDeleted, onRequestId, projectId, toast],
   );
 
+  useEffect(() => {
+    const rid = String(focusRelationId || "").trim();
+    if (!rid) return;
+    if (!relations.some((r) => String(r.id) === rid)) return;
+    setEditingId(rid);
+    if (!evidenceOpen[rid]) void toggleEvidence(rid);
+  }, [evidenceOpen, focusRelationId, relations, toggleEvidence]);
+
   return (
     <div className="grid gap-3">
       <div className="rounded-atelier border border-border bg-canvas p-3">
@@ -480,6 +519,29 @@ function CharacterRelationsView(props: {
         <div className="mt-1 text-xs text-subtext">
           提示：该视图会过滤出人物实体，并提供关系 CRUD；写入将走 Memory Update 变更集（需要 ?chapterId）。
         </div>
+        {lastChangeSetId ? (
+          <div className="mt-2 rounded-atelier border border-border bg-surface p-2 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-subtext">
+                最近变更集：<span className="font-mono text-ink">{lastChangeSetId}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link className="btn btn-secondary btn-sm" to={`/projects/${projectId}/tasks`}>
+                  打开 Task Center
+                </Link>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => void rollbackLastChangeSet()}
+                  aria-label="structured_character_relations_rollback_last"
+                  disabled={saving || rollingBack}
+                  type="button"
+                >
+                  {rollingBack ? "回滚中..." : "回滚最近变更集"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {!chapterId ? (
           <div className="mt-2 rounded-atelier border border-border bg-surface p-2 text-xs text-amber-700 dark:text-amber-300">
             缺少 chapterId：创建/编辑/删除会被禁用。建议从写作页进入，或手动在 URL 加上 ?chapterId=...。
@@ -766,6 +828,7 @@ export function StructuredMemoryPage() {
   const chapterId = searchParams.get("chapterId") || undefined;
   const initialView: ViewMode = searchParams.get("view") === "character-relations" ? "character_relations" : "table";
   const [viewMode, setViewMode] = useState<ViewMode>(initialView);
+  const focusRelationId = String(searchParams.get("relationId") || "").trim() || null;
 
   const [activeTable, setActiveTable] = useState<TableName>("entities");
   const [includeDeleted, setIncludeDeleted] = useState(false);
@@ -1292,6 +1355,7 @@ export function StructuredMemoryPage() {
         <CharacterRelationsView
           projectId={projectId}
           chapterId={chapterId}
+          focusRelationId={focusRelationId}
           includeDeleted={includeDeleted}
           onRequestId={setRequestId}
         />

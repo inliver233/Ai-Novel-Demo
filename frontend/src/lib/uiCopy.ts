@@ -122,7 +122,7 @@ export const UI_COPY = {
   },
   structuredMemory: {
     title: "图谱底座数据（StructuredMemory）",
-    subtitle: "图谱底座数据表：实体 / 关系 / 事件 / 伏笔 / 证据。",
+    subtitle: "图谱底座数据表：实体 / 关系 / 事件 / 伏笔 / 证据（含人物关系编辑与回滚）。",
     usageHint: "何时用：排查“图谱抽取/增量更新/注入”是否写入底层表，或需要按关键词检索与导出操作（不是数值表格）。",
     exampleHint: "示例：在查询框输入人物名，再切换到“关系/证据”观察命中与数量变化。",
     bulkOpsHint: "批量操作会生成 Memory Update 的 ops JSON：复制后到 Memory Update 粘贴并 Apply 才会生效。",
@@ -371,8 +371,8 @@ export const UI_COPY = {
   },
   graph: {
     title: "图谱",
-    subtitle: "图谱上下文（GraphContext）：命中实体 + 1-hop 扩散与回放。",
-    usageHint: "何时用：想确认“哪些实体/关系被识别并注入”，或排查图谱开关/命中不符合预期。",
+    subtitle: "图谱上下文（GraphContext）：查询命中实体 + 1-hop 关系 + 证据回放；支持跳转到人物关系编辑。",
+    usageHint: "何时用：想确认“哪些实体/关系被识别并注入”，或从查询结果跳到人物关系编辑/证据定位。",
     exampleHint: "示例：把章节中的一句话粘贴到查询框，点击“查询”，查看命中实体与证据来源。",
     riskHint: "风险：该页为高级调试，会展示部分原始结果与证据片段；请避免在共享环境泄露项目内容。",
 
