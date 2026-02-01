@@ -14,6 +14,7 @@ from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
 from app.models.project_table import ProjectTable, ProjectTableRow
+from app.services.project_seed_service import ensure_default_numeric_tables
 from app.services.table_ai_update_service import schedule_table_ai_update_task
 
 router = APIRouter()
@@ -215,6 +216,18 @@ def list_project_tables(
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
 
+    # Seed defaults for empty projects (idempotent).
+    existing = (
+        db.execute(select(ProjectTable.id).where(ProjectTable.project_id == project_id).limit(1)).scalars().first() is not None
+    )
+    if not existing:
+        try:
+            require_project_editor(db, project_id=project_id, user_id=user_id)
+        except AppError:
+            pass
+        else:
+            ensure_default_numeric_tables(db, project_id=project_id)
+
     tables = (
         db.execute(
             select(ProjectTable)
@@ -239,6 +252,14 @@ def list_project_tables(
             "tables": [_table_public(t, include_schema=include_schema, row_count=int(counts.get(t.id, 0))) for t in tables]
         },
     )
+
+
+@router.post("/projects/{project_id}/tables/seed_defaults")
+def seed_default_project_tables(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
+    request_id = request.state.request_id
+    require_project_editor(db, project_id=project_id, user_id=user_id)
+    result = ensure_default_numeric_tables(db, project_id=project_id)
+    return ok_payload(request_id=request_id, data={"result": result})
 
 
 @router.post("/projects/{project_id}/tables")

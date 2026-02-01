@@ -25,6 +25,7 @@ from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
 from app.schemas.base import RequestModel
 from app.services.import_export_service import import_project_bundle
 from app.services.prompt_presets import ensure_default_chapter_preset, ensure_default_outline_preset
+from app.services.project_seed_service import ensure_default_numeric_tables
 from app.services.vector_rag_service import purge_project_vectors
 
 router = APIRouter()
@@ -244,6 +245,8 @@ def create_project(request: Request, db: DbDep, user_id: UserIdDep, body: Projec
             )
         )
         db.commit()
+
+    ensure_default_numeric_tables(db, project_id=project.id)
 
     return ok_payload(request_id=request_id, data={"project": ProjectOut.model_validate(project).model_dump()})
 
