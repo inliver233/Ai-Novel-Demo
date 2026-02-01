@@ -116,7 +116,9 @@ export function NumericTablesPage() {
             <label className="grid gap-1">
               <div className="text-xs text-subtext">目标表</div>
               <select
-                className="input"
+                className="select"
+                id="numeric_tables_select_table"
+                name="numeric_tables_select_table"
                 value={selectedTableId}
                 onChange={(e) => setSelectedTableId(e.target.value)}
                 aria-label="选择目标表 (numeric_tables_select_table)"
@@ -141,7 +143,9 @@ export function NumericTablesPage() {
             <label className="grid gap-1">
               <div className="text-xs text-subtext">Focus（可选）</div>
               <textarea
-                className="input min-h-[88px]"
+                className="textarea min-h-[88px]"
+                id="numeric_tables_ai_focus"
+                name="numeric_tables_ai_focus"
                 value={focus}
                 onChange={(e) => setFocus(e.target.value)}
                 placeholder="例如：根据最新章节更新金币与装备数量；不要捏造"
