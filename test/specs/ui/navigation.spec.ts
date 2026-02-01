@@ -60,8 +60,7 @@ test("ui: core pages navigate and render", async ({ page, request }) => {
   await page.getByLabel("知识库（RAG） (nav_rag)", { exact: true }).click();
   await expect(page.getByText("Vector RAG 管理", { exact: true })).toBeVisible();
 
-  await openAdvancedDebugGroup();
-  await page.getByLabel("图谱 (nav_graph)", { exact: true }).click();
+  await page.getByLabel("图谱/关系 (nav_graph)", { exact: true }).click();
   await expect(page.getByLabel("graph_enabled", { exact: true })).toBeVisible();
 
   await openAdvancedDebugGroup();
@@ -69,7 +68,7 @@ test("ui: core pages navigate and render", async ({ page, request }) => {
   await expect(page.getByText("Fractal", { exact: true })).toBeVisible();
 
   await openAdvancedDebugGroup();
-  await page.getByLabel("结构化记忆 (nav_structured_memory)", { exact: true }).click();
+  await page.getByLabel("图谱底座数据 (nav_structured_memory)", { exact: true }).click();
   await expect(page.getByLabel("structured_search", { exact: true })).toBeVisible();
 
   await openAdvancedDebugGroup();

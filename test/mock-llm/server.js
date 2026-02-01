@@ -142,6 +142,26 @@ function chooseOutputText(payload) {
     );
   }
 
+  if (all.includes("schema: table_update_v1")) {
+    const value = all.includes("e2e_table_set_gold_100") ? 100 : 0;
+    return JSON.stringify(
+      {
+        title: "E2E Table Update",
+        summary_md: "E2E: update numeric tables",
+        ops: [
+          {
+            op: "upsert",
+            table_id: "",
+            row_id: null,
+            data: { key: "gold", value },
+          },
+        ],
+      },
+      null,
+      2,
+    );
+  }
+
   if (all.includes("worldbook_auto_update_v1")) {
     // Default behavior keeps the existing fail-soft test stable (invalid output => parse_error).
     // Opt-in success path for a dedicated E2E test via a marker in chapter content.

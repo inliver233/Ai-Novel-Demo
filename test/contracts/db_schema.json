@@ -2670,6 +2670,62 @@
       "checks": [],
       "columns": [
         {
+          "dflt_value": "1",
+          "name": "auto_update_characters_enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": "1",
+          "name": "auto_update_fractal_enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": "1",
+          "name": "auto_update_graph_enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": "1",
+          "name": "auto_update_search_enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": "1",
+          "name": "auto_update_story_memory_enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": "1",
+          "name": "auto_update_tables_enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": "1",
+          "name": "auto_update_vector_enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
+          "dflt_value": "1",
+          "name": "auto_update_worldbook_enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
           "dflt_value": null,
           "name": "constraints",
           "notnull": 0,
