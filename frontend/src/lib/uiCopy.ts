@@ -95,6 +95,14 @@ export const UI_COPY = {
     copyFailedToast: "自动复制失败：已打开手动复制弹窗。",
     debugTitle: "Debug",
   },
+  chapterAnalysis: {
+    introTitle: "用途说明",
+    introLine1: "将“剧情记忆标注”高亮映射回正文，便于核对与定位；点击高亮或右侧列表可跳转到对应片段。",
+    introLine2: "注意：这里管理的是剧情记忆（Hook/伏笔/情节/摘要），不等于世界书设定（人物/地点/物品）。",
+    entryLine: "入口：写作页（选中章节）→ 右上角“标注回溯”（需要 chapterId）。",
+    storyMemoryTitle: "剧情记忆（StoryMemory）",
+    storyMemorySubtitle: "这里的条目用于回溯定位与检索，可在此手工新增/编辑/合并/完成标记/删除；不会自动改动世界书。",
+  },
   vectorRag: {
     title: "向量检索（Vector RAG）",
     subtitle: "Embedding 用于把文本变成向量以便检索；Rerank 用于对候选结果二次排序提升命中（可能增加耗时/成本）。",

@@ -10,6 +10,7 @@ import {
   mergeStoryMemories,
   updateStoryMemory,
 } from "../../services/storyMemoryApi";
+import { UI_COPY } from "../../lib/uiCopy";
 import { Drawer } from "../ui/Drawer";
 import { useConfirm } from "../ui/confirm";
 import { useToast } from "../ui/toast";
@@ -365,10 +366,11 @@ export function MemorySidebar(props: {
       <div className="rounded-atelier border border-border bg-surface p-2">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-sm text-ink">剧情记忆（StoryMemory）</div>
+            <div className="text-sm text-ink">{UI_COPY.chapterAnalysis.storyMemoryTitle}</div>
             <div className="mt-1 text-xs text-subtext">
               共 {props.annotations.length} 条{invalidCount > 0 ? `（${invalidCount} 条未定位）` : ""}
             </div>
+            <div className="mt-2 callout-info">{UI_COPY.chapterAnalysis.storyMemorySubtitle}</div>
           </div>
           <button
             className="btn btn-primary px-3 py-1 text-xs"
@@ -377,7 +379,7 @@ export function MemorySidebar(props: {
             disabled={saving}
             aria-label="story_memory_create"
           >
-            新增记忆
+            新增剧情记忆
           </button>
         </div>
 
@@ -465,66 +467,64 @@ export function MemorySidebar(props: {
       </div>
 
       <div className="rounded-atelier border border-border bg-surface p-2">
-        {active ? (
-          <div className="grid gap-2">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-xs text-subtext">已选中</div>
-                <div className="mt-1 truncate text-sm text-ink">{normalizeTitle(active)}</div>
-                <div className="mt-1 text-[11px] text-subtext">
-                  类型：{labelForAnnotationType(active.type)} · 重要度：{(active.importance * 10).toFixed(1)} ·{" "}
-                  {selectedInfo?.valid ? "可定位" : "未定位"}
-                  {selectedInfo?.done ? " · 已完成" : ""}
-                </div>
-              </div>
-              <div className="shrink-0">
-                <button
-                  className="btn btn-secondary px-3 py-1 text-xs"
-                  type="button"
-                  onClick={openEdit}
-                  disabled={saving}
-                  aria-label="story_memory_edit"
-                >
-                  编辑
-                </button>
-              </div>
+        <div className="grid gap-2">
+          <div className="min-w-0">
+            <div className="text-xs text-subtext">{active ? "已选中" : "未选择"}</div>
+            <div className="mt-1 truncate text-sm text-ink">
+              {active ? normalizeTitle(active) : "请先在上方选择条目"}
             </div>
+            {active ? (
+              <div className="mt-1 text-[11px] text-subtext">
+                类型：{labelForAnnotationType(active.type)} · 重要度：{(active.importance * 10).toFixed(1)} ·{" "}
+                {selectedInfo?.valid ? "可定位" : "未定位"}
+                {selectedInfo?.done ? " · 已完成" : ""}
+              </div>
+            ) : (
+              <div className="mt-1 text-[11px] text-subtext">
+                提示：点击上方条目可定位到正文，并在此处进行编辑/合并/完成标记/删除。
+              </div>
+            )}
+          </div>
 
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="btn btn-secondary px-3 py-1 text-xs"
-                type="button"
-                onClick={toggleDone}
-                disabled={saving}
-                aria-label="story_memory_toggle_done"
-              >
-                {selectedInfo?.done ? "取消完成" : "标记完成"}
-              </button>
-              <button
-                className="btn btn-secondary px-3 py-1 text-xs"
-                type="button"
-                onClick={openMerge}
-                disabled={saving || props.annotations.length < 2}
-                aria-label="story_memory_merge"
-              >
-                合并
-              </button>
-              <button
-                className="btn btn-danger px-3 py-1 text-xs"
-                type="button"
-                onClick={() => void deleteSelected()}
-                disabled={saving}
-                aria-label="story_memory_delete"
-              >
-                删除
-              </button>
-            </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="btn btn-secondary px-3 py-1 text-xs"
+              type="button"
+              onClick={openEdit}
+              disabled={!active || saving}
+              aria-label="story_memory_edit"
+            >
+              编辑
+            </button>
+            <button
+              className="btn btn-secondary px-3 py-1 text-xs"
+              type="button"
+              onClick={toggleDone}
+              disabled={!active || saving}
+              aria-label="story_memory_toggle_done"
+            >
+              {selectedInfo?.done ? "取消完成" : "标记完成"}
+            </button>
+            <button
+              className="btn btn-secondary px-3 py-1 text-xs"
+              type="button"
+              onClick={openMerge}
+              disabled={!active || saving || props.annotations.length < 2}
+              aria-label="story_memory_merge"
+            >
+              合并
+            </button>
+            <button
+              className="btn btn-danger px-3 py-1 text-xs"
+              type="button"
+              onClick={() => void deleteSelected()}
+              disabled={!active || saving}
+              aria-label="story_memory_delete"
+            >
+              删除
+            </button>
           </div>
-        ) : (
-          <div className="p-3 text-sm text-subtext">
-            提示：点击上方条目可定位到正文，并在此处进行编辑/合并/完成标记/删除。
-          </div>
-        )}
+        </div>
       </div>
 
       <Drawer
