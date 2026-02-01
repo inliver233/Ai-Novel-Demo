@@ -10,6 +10,7 @@ MemoryContextSection = Literal[
     "semantic_history",
     "foreshadow_open_loops",
     "structured",
+    "tables",
     "vector_rag",
     "graph",
     "fractal",
@@ -43,6 +44,7 @@ class MemoryContextPackOut(BaseModel):
     semantic_history: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
     foreshadow_open_loops: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
     structured: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
+    tables: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
     vector_rag: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
     graph: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)
     fractal: MemoryContextSectionOut = Field(default_factory=MemoryContextSectionOut)

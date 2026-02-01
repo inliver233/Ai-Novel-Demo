@@ -30,6 +30,7 @@ _ALLOWED_SECTIONS = {
     "semantic_history",
     "foreshadow_open_loops",
     "structured",
+    "tables",
     "vector_rag",
     "graph",
     "fractal",
@@ -250,6 +251,7 @@ def retrieve_memory_context_pack(
     semantic_history_enabled = bool(enabled_map.get("semantic_history", False))
     foreshadow_open_loops_enabled = bool(enabled_map.get("foreshadow_open_loops", False))
     structured_enabled = bool(enabled_map.get("structured", True))
+    tables_enabled = bool(enabled_map.get("tables", False))
     vector_rag_enabled = bool(enabled_map.get("vector_rag", True))
     graph_enabled = bool(enabled_map.get("graph", True))
     fractal_enabled = bool(enabled_map.get("fractal", True)) and bool(getattr(settings, "fractal_enabled", True))
@@ -275,6 +277,7 @@ def retrieve_memory_context_pack(
         if "structured" in budgets
         else _MEMORY_TEXT_MD_CHAR_LIMIT
     )
+    tables_budget = _clamp_char_limit(budgets.get("tables"), default=_MEMORY_TEXT_MD_CHAR_LIMIT) if "tables" in budgets else _MEMORY_TEXT_MD_CHAR_LIMIT
     vector_rag_budget = (
         _clamp_char_limit(budgets.get("vector_rag"), default=int(getattr(settings, "vector_final_char_limit", 6000) or 6000))
         if "vector_rag" in budgets
@@ -640,6 +643,10 @@ def retrieve_memory_context_pack(
                 "error": "structured_query_failed",
             }
 
+    tables: dict[str, Any] = {"enabled": False, "disabled_reason": "disabled", "text_md": ""}
+    if tables_enabled:
+        tables = {"enabled": False, "disabled_reason": "not_implemented", "text_md": ""}
+
     graph = query_graph_context(db=db, project_id=project_id, query_text=query_text, enabled=graph_enabled)
     if isinstance(graph, dict):
         pb = graph.get("prompt_block") if isinstance(graph.get("prompt_block"), dict) else {}
@@ -778,6 +785,16 @@ def retrieve_memory_context_pack(
             "budget_source": "override" if "structured" in budgets else "default",
         },
         {
+            "section": "tables",
+            "enabled": bool(tables.get("enabled")),
+            "disabled_reason": tables.get("disabled_reason"),
+            "note": "Phase 3 placeholder: project_tables/project_table_rows",
+            "token_estimate": estimate_tokens(str(tables.get("text_md") or "")),
+            "truncated": bool(tables.get("truncated")) if "truncated" in tables else None,
+            "budget_char_limit": int(tables_budget),
+            "budget_source": "override" if "tables" in budgets else "default",
+        },
+        {
             "section": "vector_rag",
             "enabled": bool(vector_rag.get("enabled")),
             "disabled_reason": vector_rag.get("disabled_reason"),
@@ -827,6 +844,7 @@ def retrieve_memory_context_pack(
                 "semantic_history": semantic_history,
                 "foreshadow_open_loops": foreshadow_open_loops,
                 "structured": structured,
+                "tables": tables,
                 "vector_rag": vector_rag,
                 "graph": graph,
                 "fractal": fractal,
