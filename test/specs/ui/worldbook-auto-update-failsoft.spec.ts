@@ -37,7 +37,7 @@ test("ui: worldbook auto_update is fail-soft + retryable", async ({ page, reques
 
   const worldbookTask = projectTasksPanel.locator("button.surface").filter({ hasText: "worldbook_auto_update" }).first();
   await expect(worldbookTask).toBeVisible({ timeout: 60_000 });
-  await expect(worldbookTask).toContainText("worldbook_auto_update failed");
+  await expect(worldbookTask).toContainText("（failed）");
 
   await worldbookTask.getByRole("button", { name: "项目任务重试 (taskcenter_projecttask_retry)", exact: true }).click();
 

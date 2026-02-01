@@ -142,6 +142,40 @@ function chooseOutputText(payload) {
     );
   }
 
+  if (all.includes("worldbook_auto_update_v1")) {
+    // Default behavior keeps the existing fail-soft test stable (invalid output => parse_error).
+    // Opt-in success path for a dedicated E2E test via a marker in chapter content.
+    if (all.includes("e2e_worldbook_success")) {
+      return JSON.stringify(
+        {
+          schema_version: "worldbook_auto_update_v1",
+          title: "E2E Worldbook Auto Update",
+          summary_md: "E2E: create a deterministic worldbook entry",
+          ops: [
+            {
+              op: "create",
+              reason: "E2E marker detected in chapter content",
+              entry: {
+                title: "E2E 城市：阿卡迪亚",
+                content_md: "这是由 **E2E** worldbook_auto_update 创建的条目，用于验证自动更新成功链路。",
+                keywords: ["阿卡迪亚", "Arcadia", "E2E 城市"],
+                aliases: ["E2E_CITY_ARCADIA"],
+                enabled: true,
+                constant: false,
+                exclude_recursion: false,
+                prevent_recursion: false,
+                char_limit: 12000,
+                priority: "important",
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      );
+    }
+  }
+
   return "E2E mock response.";
 }
 
