@@ -34,6 +34,7 @@ export type GenerateForm = {
     semantic_history: boolean;
     foreshadow_open_loops: boolean;
     structured: boolean;
+    tables: boolean;
     vector_rag: boolean;
     graph: boolean;
     fractal: boolean;

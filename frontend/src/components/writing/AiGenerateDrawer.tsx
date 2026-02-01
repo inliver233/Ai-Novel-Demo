@@ -268,6 +268,23 @@ export function AiGenerateDrawer(props: Props) {
                     />
                   </label>
 
+                  <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                    <span>表格系统（tables）</span>
+                    <input
+                      className="checkbox"
+                      checked={props.genForm.memory_modules.tables}
+                      disabled={props.generating}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        props.setGenForm((v) => ({
+                          ...v,
+                          memory_modules: { ...v.memory_modules, tables: checked },
+                        }));
+                      }}
+                      type="checkbox"
+                    />
+                  </label>
+
                   <details className="rounded-atelier border border-border bg-surface p-2">
                     <summary className="cursor-pointer text-sm text-ink">更多模块（高级）</summary>
                     <div className="mt-2 grid gap-2">
