@@ -13,6 +13,7 @@ type SearchItem = {
   title: string;
   snippet: string;
   jump_url: string | null;
+  locator_json?: string | null;
 };
 
 type SearchQueryResponse = {
@@ -28,6 +29,11 @@ const SOURCE_OPTIONS: Array<{ key: string; label: string }> = [
   { key: "worldbook_entry", label: UI_COPY.search.sourceLabels.worldbookEntry },
   { key: "character", label: UI_COPY.search.sourceLabels.character },
   { key: "story_memory", label: UI_COPY.search.sourceLabels.storyMemory },
+  { key: "source_document", label: UI_COPY.search.sourceLabels.sourceDocument },
+  { key: "project_table_row", label: UI_COPY.search.sourceLabels.projectTableRow },
+  { key: "memory_entity", label: UI_COPY.search.sourceLabels.memoryEntity },
+  { key: "memory_relation", label: UI_COPY.search.sourceLabels.memoryRelation },
+  { key: "memory_evidence", label: UI_COPY.search.sourceLabels.memoryEvidence },
 ];
 
 function dedupeItems(items: SearchItem[]): SearchItem[] {
@@ -109,18 +115,59 @@ export function SearchPage() {
     setSourcesState((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  const sourceLabel = useCallback((sourceType: string) => {
+    switch (sourceType) {
+      case "chapter":
+        return UI_COPY.search.sourceLabels.chapter;
+      case "outline":
+        return UI_COPY.search.sourceLabels.outline;
+      case "worldbook_entry":
+        return UI_COPY.search.sourceLabels.worldbookEntry;
+      case "character":
+        return UI_COPY.search.sourceLabels.character;
+      case "story_memory":
+        return UI_COPY.search.sourceLabels.storyMemory;
+      case "source_document":
+        return UI_COPY.search.sourceLabels.sourceDocument;
+      case "project_table_row":
+        return UI_COPY.search.sourceLabels.projectTableRow;
+      case "memory_entity":
+        return UI_COPY.search.sourceLabels.memoryEntity;
+      case "memory_relation":
+        return UI_COPY.search.sourceLabels.memoryRelation;
+      case "memory_evidence":
+        return UI_COPY.search.sourceLabels.memoryEvidence;
+      default:
+        return sourceType;
+    }
+  }, []);
+
   const canJump = useCallback((it: SearchItem) => {
+    if (it.jump_url && it.jump_url.startsWith("/")) return true;
     return (
       it.source_type === "chapter" ||
       it.source_type === "outline" ||
       it.source_type === "worldbook_entry" ||
-      it.source_type === "character"
+      it.source_type === "character" ||
+      it.source_type === "story_memory" ||
+      it.source_type === "source_document" ||
+      it.source_type === "project_table_row" ||
+      it.source_type === "memory_entity" ||
+      it.source_type === "memory_relation" ||
+      it.source_type === "memory_evidence"
     );
   }, []);
 
   const jump = useCallback(
     (it: SearchItem) => {
       if (!projectId) return;
+      if (it.source_type !== "worldbook_entry") {
+        const raw = String(it.jump_url || "").trim();
+        if (raw && raw.startsWith("/")) {
+          navigate(raw);
+          return;
+        }
+      }
       if (it.source_type === "chapter") {
         navigate(`/projects/${projectId}/writing?chapterId=${encodeURIComponent(it.source_id)}`);
         return;
@@ -151,9 +198,19 @@ export function SearchPage() {
       }
       if (it.source_type === "character") {
         navigate(`/projects/${projectId}/characters`);
+        return;
       }
+      if (it.source_type === "project_table_row") {
+        navigate(`/projects/${projectId}/numeric-tables`);
+        return;
+      }
+      if (it.source_type === "memory_entity" || it.source_type === "memory_evidence") {
+        navigate(`/projects/${projectId}/structured-memory`);
+        return;
+      }
+      toast.toastWarning(`该来源暂不支持跳转：${it.source_type}`);
     },
-    [navigate, projectId, query],
+    [navigate, projectId, query, toast],
   );
 
   const copySourceId = useCallback(
@@ -245,6 +302,8 @@ export function SearchPage() {
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-ink">{it.title || it.source_id}</div>
                     <div className="mt-0.5 text-xs text-subtext">
+                      <span>{sourceLabel(it.source_type)}</span>
+                      <span className="mx-2">·</span>
                       <span className="font-mono">{it.source_type}</span>
                       <span className="mx-2">·</span>
                       <span className="font-mono">{it.source_id}</span>
@@ -259,15 +318,23 @@ export function SearchPage() {
                     >
                       {UI_COPY.search.copyId}
                     </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      aria-label="search_jump"
-                      disabled={!canJump(it)}
-                      onClick={() => jump(it)}
-                    >
-                      {UI_COPY.search.jump}
-                    </button>
+                    {canJump(it) ? (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        aria-label="search_jump"
+                        disabled={false}
+                        onClick={() => jump(it)}
+                      >
+                        {UI_COPY.search.jump}
+                      </button>
+                    ) : (
+                      <span title={UI_COPY.search.jumpDisabledHint}>
+                        <button type="button" className="btn btn-primary" aria-label="search_jump" disabled>
+                          {UI_COPY.search.jump}
+                        </button>
+                      </span>
+                    )}
                   </div>
                 </div>
                 {it.snippet ? (
