@@ -82,9 +82,12 @@ def build_worldbook_auto_update_prompt_v1(
         "- 不要捏造不存在的设定；信息不足则宁可少写。\n"
         "- 避免重复条目：优先 update/merge，只有不存在才 create。\n"
         "- update/merge 的 match_title 必须严格等于 existing_worldbook_titles 中的某一个 title（忽略大小写）。\n"
-        "- merge 时倾向补全缺失信息（append_missing），不要覆盖已有内容。\n"
+        "- 内容更新时优先使用 merge：merge_mode 推荐 append_missing（补全缺失信息，不覆盖已有高质量内容）。\n"
+        "- update 更适合修改元数据（enabled/priority/keywords 等）或非常确定的新内容会比旧内容更完整；不要用 update 覆盖更长/更高质量的旧内容。\n"
+        "- merge_mode=replace 只在旧内容明显低质量且你提供的是更完整版本时使用，并在 reason 说明取舍。\n"
         "- dedupe 用于指出重复条目并给出 canonical_title 与 duplicate_titles。\n"
         "- keywords/aliases 用于提高触发命中（别名/同义词/外号）。\n"
+        "- 尽量填写 op.reason：说明为何 create/update/merge/dedupe，以及你如何避免多/漏/捏造。\n"
     )
 
     user = (
@@ -303,15 +306,14 @@ def apply_worldbook_auto_update_ops(*, db: Session, project_id: str, ops: list[d
                 # Treat create as merge to keep idempotent-ish.
                 merged = merge_worldbook_markdown(old=str(existing.content_md or ""), new=str(entry.content_md or ""), mode="append_missing")
                 existing.content_md = merged
-                existing.enabled = bool(entry.enabled)
-                existing.constant = bool(entry.constant)
-                existing.exclude_recursion = bool(entry.exclude_recursion)
-                existing.prevent_recursion = bool(entry.prevent_recursion)
-                existing.char_limit = int(entry.char_limit)
-                existing.priority = str(entry.priority or "important")
-                existing.keywords_json = json.dumps(
-                    _build_keywords(title=title, keywords=list(entry.keywords or []), aliases=list(entry.aliases or [])),
-                    ensure_ascii=False,
+
+                existing_keywords = _parse_json_list(getattr(existing, "keywords_json", None))
+                merged_keywords = list(existing_keywords)
+                merged_keywords.extend(list(entry.keywords or []))
+                merged_keywords.extend(list(entry.aliases or []))
+                merged_keywords.insert(0, str(existing.title or title))
+                existing.keywords_json = (
+                    json.dumps(_dedupe_strings(merged_keywords, limit=40), ensure_ascii=False) if merged_keywords else "[]"
                 )
                 updated_ids.append(str(existing.id))
                 _reindex_entry(existing)
@@ -362,7 +364,18 @@ def apply_worldbook_auto_update_ops(*, db: Session, project_id: str, ops: list[d
                         mode=str(op.merge_mode or "append_missing"),
                     )
                 else:
-                    target.content_md = str(patch.content_md or "")
+                    old_s = str(target.content_md or "").strip()
+                    new_s = str(patch.content_md or "").strip()
+                    if not new_s:
+                        # Do not wipe existing content via update.
+                        pass
+                    elif not old_s:
+                        target.content_md = new_s
+                    elif len(new_s) < int(len(old_s) * 0.8):
+                        # Avoid overwriting potentially high-quality content with a shorter patch.
+                        target.content_md = merge_worldbook_markdown(old=old_s, new=new_s, mode="append")
+                    else:
+                        target.content_md = new_s
 
             if patch.enabled is not None:
                 target.enabled = bool(patch.enabled)
