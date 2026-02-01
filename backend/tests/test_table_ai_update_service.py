@@ -110,3 +110,63 @@ class TestTableAiUpdateService(unittest.TestCase):
             self.assertEqual(after.get("data", {}).get("key"), "gold")
             self.assertEqual(after.get("data", {}).get("value"), "100")
 
+    def test_propose_project_table_change_set_resolves_kv_upsert_for_numeric_value_schema(self) -> None:
+        with self.SessionLocal() as db:
+            schema = {
+                "version": 1,
+                "columns": [
+                    {"key": "key", "type": "string", "label": "Key", "required": True},
+                    {"key": "value", "type": "number", "label": "Value", "required": True},
+                ],
+            }
+            db.add(
+                ProjectTable(
+                    id="t2",
+                    project_id="p1",
+                    table_key="tbl_money_num",
+                    name="MoneyNum",
+                    schema_version=1,
+                    schema_json=_compact_json_dumps(schema),
+                )
+            )
+            db.add(
+                ProjectTableRow(
+                    id="r2",
+                    project_id="p1",
+                    table_id="t2",
+                    row_index=0,
+                    data_json=_compact_json_dumps({"key": "gold", "value": 50}),
+                )
+            )
+            db.commit()
+
+        with self.SessionLocal() as db:
+            payload = TableUpdateV1Request(
+                schema_version="table_update_v1",
+                idempotency_key="idem-22345678",
+                title="Update gold numeric",
+                ops=[
+                    {
+                        "op": "upsert",
+                        "table_id": "t2",
+                        "row_id": None,
+                        "data": {"key": "gold", "value": 100},
+                    }
+                ],
+            )
+            out = propose_project_table_change_set(
+                db=db,
+                request_id="rid-test",
+                actor_user_id="u1",
+                project_id="p1",
+                payload=payload,
+            )
+
+            self.assertEqual(len(out.get("items") or []), 1)
+            item = out["items"][0]
+            self.assertEqual(item.get("target_table"), "project_table_rows")
+            self.assertEqual(item.get("target_id"), "r2")
+
+            after = json.loads(item.get("after_json") or "{}")
+            self.assertEqual(after.get("data", {}).get("key"), "gold")
+            self.assertEqual(after.get("data", {}).get("value"), 100)

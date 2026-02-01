@@ -78,8 +78,8 @@ def normalize_schema(schema: object) -> dict[str, Any]:
 
 def is_key_value_schema(schema: object) -> bool:
     """
-    Returns True when schema looks like the default Key/Value table:
-    - columns: ["key"(required string), "value"(optional string)]
+    Returns True when schema looks like a Key/Value table:
+    - columns: ["key"(required string), "value"(any type)]
     """
     if not isinstance(schema, dict):
         return False

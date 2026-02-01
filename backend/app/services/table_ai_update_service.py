@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.logging import exception_log_fields, log_event
 from app.db.session import SessionLocal
 from app.db.utils import new_id, utc_now
@@ -92,6 +93,13 @@ def build_table_ai_update_prompt_v1(
     table_name = str(getattr(table, "name", "") or "").strip()
 
     is_kv = is_key_value_schema(schema)
+    cols = schema.get("columns") if isinstance(schema.get("columns"), list) else []
+    col_by_key = {
+        str(c.get("key") or "").strip(): c
+        for c in cols
+        if isinstance(c, dict) and str(c.get("key") or "").strip()
+    }
+    value_type = str((col_by_key.get("value") or {}).get("type") or "").strip().lower()
     focus_text = (focus or "").strip()
 
     chapter_number = int(getattr(chapter, "number", 0) or 0) if chapter is not None else 0
@@ -100,7 +108,8 @@ def build_table_ai_update_prompt_v1(
     chapter_content = _truncate(getattr(chapter, "content_md", "") if chapter is not None else "", limit=_MAX_CHAPTER_CHARS)
 
     system = (
-        "你是小说写作助手，负责把最新章节内容中的“可数字化状态变化”同步到「数值表格系统」中。\n"
+        "你是数据同步助手：负责把最新章节内容中的“可用数字表示的状态变化”同步到「结构化记忆（数值表格）」中。\n"
+        "重要边界：不要把剧情、人物关系、设定文本写进表格；这些属于世界书/图谱/剧情记忆。\n"
         "你必须只输出一个 JSON object（允许使用 ```json 代码块包裹）。不要输出任何其它文字。\n"
         "schema: table_update_v1\n"
         "输出必须是一个 JSON object：\n"
@@ -115,7 +124,9 @@ def build_table_ai_update_prompt_v1(
         "- 只能修改给定的 table_id（不要写其它 table_id）\n"
         '- op=upsert 时 data 必填；op=delete 时 row_id 必填且 data 必须为 null\n'
         "- data 必须严格符合 schema.columns（字段名与类型）\n"
-        "- 信息不足时宁可少更新，不要捏造\n"
+        "- number 字段必须输出 JSON number（不要用字符串，例如 10 而不是 \"10\"）\n"
+        "- 信息不足时宁可少更新：不要猜测、不要捏造、不要凭空新增 key\n"
+        "- 若章节只描述增量（+/-），可基于 existing_rows 中的现值计算新值；若现值缺失则保守不更新\n"
     )
 
     if is_kv:
@@ -125,6 +136,8 @@ def build_table_ai_update_prompt_v1(
             "- 你可以省略 upsert 的 row_id：后端会用 data.key 匹配现有行并更新，避免重复 key。\n"
             "- 严禁创建重复 key：同一个 key 只能对应一行。\n"
         )
+        if value_type:
+            system += f"- value 字段类型为 {value_type}（必须严格匹配 schema；number 不要加引号）。\n"
 
     user = (
         f"project_id: {pid}\n"
@@ -405,6 +418,15 @@ def table_ai_update_v1(
             payload=payload,
         )
     except Exception as exc:
+        if isinstance(exc, AppError):
+            return {
+                "ok": False,
+                "project_id": pid,
+                "table_id": tid,
+                "reason": "propose_failed",
+                "run_id": recorded.run_id,
+                "error": {"code": exc.code, "message": exc.message, "details": exc.details},
+            }
         return {
             "ok": False,
             "project_id": pid,
