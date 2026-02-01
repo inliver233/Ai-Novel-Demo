@@ -1284,7 +1284,7 @@ export function PromptsPage() {
 
               {embeddingDryRunError ? (
                 <div className="mt-3 rounded-atelier border border-border bg-surface p-3">
-                  <div className="text-xs text-red-600 dark:text-red-300">
+                  <div className="text-xs text-danger">
                     Embedding 测试失败：{embeddingDryRunError.message} ({embeddingDryRunError.code})
                   </div>
                   <RequestIdBadge requestId={embeddingDryRunError.requestId} className="mt-2" />
@@ -1308,7 +1308,7 @@ export function PromptsPage() {
 
               {rerankDryRunError ? (
                 <div className="mt-3 rounded-atelier border border-border bg-surface p-3">
-                  <div className="text-xs text-red-600 dark:text-red-300">
+                  <div className="text-xs text-danger">
                     Rerank 测试失败：{rerankDryRunError.message} ({rerankDryRunError.code})
                   </div>
                   <RequestIdBadge requestId={rerankDryRunError.requestId} className="mt-2" />
