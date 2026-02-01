@@ -231,6 +231,36 @@ def schedule_worldbook_auto_update_task(
         if task is None:
             return None
 
+        # Retry policy: allow re-scheduling the same idempotency_key when the previous attempt failed.
+        # This keeps "chapter done" and manual triggers idempotent while still allowing a one-click retry.
+        status_norm = str(getattr(task, "status", "") or "").strip().lower()
+        actor_norm = str(actor_user_id or "").strip() or None
+        if status_norm in {"queued", "failed"} and actor_norm and not (str(getattr(task, "actor_user_id", "") or "").strip()):
+            # If a user-triggered run provides actor_user_id, fill it for previously system-triggered tasks.
+            task.actor_user_id = actor_norm
+            db.commit()
+
+        if status_norm == "failed":
+            # Reset for retry (idempotent: keeps the same task row/idempotency_key).
+
+            task.status = "queued"
+            task.started_at = None
+            task.finished_at = None
+            task.result_json = None
+            task.error_json = None
+            try:
+                value = _compact_json_loads(task.params_json) if task.params_json else {}
+                if isinstance(value, dict):
+                    value["retry_count"] = int(value.get("retry_count") or 0) + 1
+                    task.params_json = _compact_json_dumps(value)
+            except Exception:
+                pass
+            task.updated_at = utc_now()
+            db.commit()
+        elif status_norm in {"running", "succeeded"}:
+            # Avoid enqueue storms; worker will no-op anyway.
+            return str(task.id)
+
         from app.services.task_queue import get_task_queue
 
         queue = get_task_queue()
