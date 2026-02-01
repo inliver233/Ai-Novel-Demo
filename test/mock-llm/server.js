@@ -2,6 +2,53 @@
 const crypto = require("node:crypto");
 const http = require("node:http");
 
+const requestStats = {
+  embeddings_calls: 0,
+  last_embeddings: null,
+  rerank_calls: 0,
+  last_rerank: null,
+};
+
+function resetRequestStats() {
+  requestStats.embeddings_calls = 0;
+  requestStats.last_embeddings = null;
+  requestStats.rerank_calls = 0;
+  requestStats.last_rerank = null;
+}
+
+function captureEmbeddingsCall(req, body, pathname) {
+  const model = typeof body?.model === "string" ? body.model : null;
+  const input = body?.input;
+  const inputs = Array.isArray(input) ? input : input != null ? [input] : [];
+  const hasAuth = typeof req?.headers?.authorization === "string" && req.headers.authorization.trim().length > 0;
+
+  requestStats.embeddings_calls += 1;
+  requestStats.last_embeddings = {
+    at: new Date().toISOString(),
+    path: pathname,
+    model,
+    inputs_count: inputs.length,
+    has_api_key: hasAuth,
+  };
+}
+
+function captureRerankCall(req, body, pathname) {
+  const query = typeof body?.query === "string" ? body.query : null;
+  const docs = Array.isArray(body?.documents) ? body.documents : [];
+  const model = typeof body?.model === "string" ? body.model : null;
+  const hasAuth = typeof req?.headers?.authorization === "string" && req.headers.authorization.trim().length > 0;
+
+  requestStats.rerank_calls += 1;
+  requestStats.last_rerank = {
+    at: new Date().toISOString(),
+    path: pathname,
+    query,
+    model,
+    documents_count: docs.length,
+    has_api_key: hasAuth,
+  };
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let buf = "";
@@ -133,6 +180,8 @@ function makeEmbeddingVector(input, dims = 64) {
 
 async function handleEmbeddings(req, res) {
   const body = await readJson(req);
+  const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
+  captureEmbeddingsCall(req, body, url.pathname);
   const input = body?.input;
   const inputs = Array.isArray(input) ? input : [input];
   const data = inputs.map((v, idx) => ({
@@ -160,6 +209,8 @@ function makeRerankScore(query, doc, idx) {
 
 async function handleRerank(req, res) {
   const body = await readJson(req);
+  const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
+  captureRerankCall(req, body, url.pathname);
   const query = body?.query;
   const docs = body?.documents;
   if (typeof query !== "string" || !Array.isArray(docs)) {
@@ -167,12 +218,20 @@ async function handleRerank(req, res) {
     return;
   }
 
-  const results = docs
-    .map((d, idx) => ({
-      index: idx,
-      score: makeRerankScore(query, d, idx),
-    }))
-    .sort((a, b) => (b.score !== a.score ? b.score - a.score : a.index - b.index));
+  let results;
+  if (query.includes("E2E_RERANK_REVERSE")) {
+    // Deterministic: reverse by index to make E2E assertions stable.
+    results = docs
+      .map((_d, idx) => ({ index: idx, score: idx }))
+      .sort((a, b) => (b.score !== a.score ? b.score - a.score : a.index - b.index));
+  } else {
+    results = docs
+      .map((d, idx) => ({
+        index: idx,
+        score: makeRerankScore(query, d, idx),
+      }))
+      .sort((a, b) => (b.score !== a.score ? b.score - a.score : a.index - b.index));
+  }
 
   writeJson(res, 200, {
     object: "list",
@@ -294,6 +353,23 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
     if (req.method === "GET" && url.pathname === "/health") {
       writeJson(res, 200, { ok: true });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/debug/reset") {
+      resetRequestStats();
+      writeJson(res, 200, { ok: true });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/debug/stats") {
+      writeJson(res, 200, {
+        ok: true,
+        data: {
+          embeddings_calls: requestStats.embeddings_calls,
+          last_embeddings: requestStats.last_embeddings,
+          rerank_calls: requestStats.rerank_calls,
+          last_rerank: requestStats.last_rerank,
+        },
+      });
       return;
     }
     if (req.method === "POST" && url.pathname === "/v1/embeddings") {

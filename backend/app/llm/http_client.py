@@ -14,7 +14,7 @@ def get_llm_http_client() -> httpx.Client:
     if client is not None and not client.is_closed:
         return client
 
-    client = httpx.Client()
+    client = httpx.Client(trust_env=False)
     _local.client = client
     with _lock:
         _clients.add(client)
