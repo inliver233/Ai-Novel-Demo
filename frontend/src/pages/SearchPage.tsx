@@ -174,6 +174,18 @@ export function SearchPage() {
           <button
             type="button"
             className="btn btn-secondary"
+            aria-label="search_open_glossary"
+            disabled={!projectId}
+            onClick={() => {
+              if (!projectId) return;
+              navigate(`/projects/${projectId}/glossary`);
+            }}
+          >
+            术语映射
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
             aria-label="search_clear"
             disabled={loading && Boolean(query.trim())}
             onClick={clear}

@@ -286,7 +286,7 @@ export function GlossaryPage() {
 
   return (
     <DebugPageShell
-      title="术语表（Glossary）"
+      title="术语映射（Glossary）"
       description={
         <div className="grid gap-1">
           <div>维护“术语 → 别名”映射，供 worldbook/graph/rag 进行可选增强（默认关闭）。</div>
@@ -317,9 +317,14 @@ export function GlossaryPage() {
             {exporting ? "导出中…" : "导出 JSON"}
           </button>
           {projectId ? (
-            <Link className="btn btn-secondary" to={`/projects/${projectId}/rag`}>
-              返回 RAG
-            </Link>
+            <>
+              <Link className="btn btn-secondary" to={`/projects/${projectId}/search`}>
+                返回搜索
+              </Link>
+              <Link className="btn btn-secondary" to={`/projects/${projectId}/rag`}>
+                RAG 配置
+              </Link>
+            </>
           ) : null}
         </div>
       }

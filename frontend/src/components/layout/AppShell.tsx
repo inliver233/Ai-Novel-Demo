@@ -512,7 +512,7 @@ export function AppShell() {
                                 collapsed={false}
                                 icon={<BookText size={18} />}
                                 label={UI_COPY.nav.search}
-                                ariaLabel="术语表 (nav_glossary)"
+                                ariaLabel="搜索引擎 (nav_search)"
                                 to={`/projects/${projectId}/search`}
                                 onClick={closeMobileNav}
                               />
@@ -754,7 +754,7 @@ export function AppShell() {
                           collapsed={collapsed}
                           icon={<BookText size={18} />}
                           label={UI_COPY.nav.search}
-                          ariaLabel="术语表 (nav_glossary)"
+                          ariaLabel="搜索引擎 (nav_search)"
                           to={`/projects/${projectId}/search`}
                         />
                         <SidebarLink
@@ -802,7 +802,7 @@ export function AppShell() {
                             collapsed={collapsed}
                             icon={<BookText size={18} />}
                             label={UI_COPY.nav.search}
-                            ariaLabel="术语表 (nav_glossary)"
+                            ariaLabel="搜索引擎 (nav_search)"
                             to={`/projects/${projectId}/search`}
                           />
                           <SidebarLink

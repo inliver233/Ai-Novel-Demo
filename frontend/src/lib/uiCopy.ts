@@ -31,8 +31,8 @@ export const UI_COPY = {
 
     worldBook: "世界书",
     rag: "知识库（RAG）",
-    search: "搜索",
-    glossary: "搜索",
+    search: "搜索引擎",
+    glossary: "术语映射",
     graph: "图谱/关系",
     fractal: "分形（Fractal）",
     styles: "风格",
@@ -73,7 +73,7 @@ export const UI_COPY = {
     ],
   },
   search: {
-    title: "全局搜索",
+    title: "搜索引擎",
     subtitle: "VSCode 式全项目搜索（多源聚合，可筛选与跳转）",
     queryPlaceholder: "输入关键词…",
     search: "搜索",
