@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -12,6 +13,7 @@ from app.db.session import SessionLocal
 from app.db.utils import utc_now
 from app.models.knowledge_base import KnowledgeBase
 from app.models.project_settings import ProjectSettings
+from app.services.embedding_service import embed_texts, resolve_embedding_config
 from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
 from app.services.vector_embedding_overrides import vector_embedding_overrides
 from app.services.vector_rerank_overrides import vector_rerank_overrides
@@ -93,6 +95,10 @@ class VectorStatusRequest(BaseModel):
     sources: list[VectorSource] = Field(default_factory=lambda: ["worldbook", "outline", "chapter"], max_length=10)
 
 
+class VectorEmbeddingDryRunRequest(BaseModel):
+    text: str = Field(default="hello", max_length=8000)
+
+
 class VectorKbCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     kb_id: str | None = Field(default=None, max_length=64)
@@ -131,6 +137,50 @@ def get_vector_status(request: Request, user_id: UserIdDep, project_id: str, bod
 
     result = vector_rag_status(project_id=project_id, sources=body.sources, embedding=embedding, rerank=rerank)
     result["index"] = index_state
+    return ok_payload(request_id=request_id, data=redact_api_keys({"result": result}))
+
+
+@router.post("/projects/{project_id}/vector/embeddings/dry-run")
+def dry_run_vector_embeddings(request: Request, user_id: UserIdDep, project_id: str, body: VectorEmbeddingDryRunRequest) -> dict:
+    request_id = request.state.request_id
+    text = str(body.text or "").strip()
+    if not text:
+        raise AppError.validation("text 不能为空")
+
+    db = SessionLocal()
+    embedding: dict[str, str | None] = {}
+    try:
+        require_project_editor(db, project_id=project_id, user_id=user_id)
+        settings_row = db.get(ProjectSettings, project_id)
+        embedding = vector_embedding_overrides(settings_row)
+    finally:
+        db.close()
+
+    cfg = resolve_embedding_config(embedding)
+
+    start = time.perf_counter()
+    out = embed_texts([text], embedding=embedding)
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
+
+    vectors = out.get("vectors") if isinstance(out.get("vectors"), list) else []
+    dims: int | None = None
+    if vectors and isinstance(vectors[0], list):
+        dims = len(vectors[0])
+
+    error = str(out.get("error") or "").strip() or None
+    api_key = str(embedding.get("api_key") or "").strip()
+    if api_key and error and api_key in error:
+        error = error.replace(api_key, "[REDACTED]")
+
+    result = {
+        "enabled": bool(out.get("enabled")),
+        "disabled_reason": out.get("disabled_reason"),
+        "provider": cfg.provider,
+        "dims": dims,
+        "timings_ms": {"total": int(elapsed_ms)},
+        "error": error,
+        "embedding": cfg.model_dump(),
+    }
     return ok_payload(request_id=request_id, data=redact_api_keys({"result": result}))
 
 
