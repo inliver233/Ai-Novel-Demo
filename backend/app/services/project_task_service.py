@@ -474,16 +474,28 @@ def schedule_chapter_done_tasks(
     if not pid or not cid:
         return out
 
+    from app.models.project_settings import ProjectSettings
+
+    settings_row = db.get(ProjectSettings, pid)
+    auto_worldbook = bool(getattr(settings_row, "auto_update_worldbook_enabled", True)) if settings_row is not None else True
+    auto_characters = bool(getattr(settings_row, "auto_update_characters_enabled", True)) if settings_row is not None else True
+    auto_story_memory = bool(getattr(settings_row, "auto_update_story_memory_enabled", True)) if settings_row is not None else True
+    auto_graph = bool(getattr(settings_row, "auto_update_graph_enabled", True)) if settings_row is not None else True
+    auto_vector = bool(getattr(settings_row, "auto_update_vector_enabled", True)) if settings_row is not None else True
+    auto_search = bool(getattr(settings_row, "auto_update_search_enabled", True)) if settings_row is not None else True
+    auto_fractal = bool(getattr(settings_row, "auto_update_fractal_enabled", True)) if settings_row is not None else True
+
     try:
         from app.services.vector_rag_service import schedule_vector_rebuild_task
 
-        out["vector_rebuild"] = schedule_vector_rebuild_task(
-            db=db,
-            project_id=pid,
-            actor_user_id=actor_user_id,
-            request_id=request_id,
-            reason=reason_norm,
-        )
+        if auto_vector:
+            out["vector_rebuild"] = schedule_vector_rebuild_task(
+                db=db,
+                project_id=pid,
+                actor_user_id=actor_user_id,
+                request_id=request_id,
+                reason=reason_norm,
+            )
     except Exception as exc:
         log_event(
             logger,
@@ -499,13 +511,14 @@ def schedule_chapter_done_tasks(
     try:
         from app.services.search_index_service import schedule_search_rebuild_task
 
-        out["search_rebuild"] = schedule_search_rebuild_task(
-            db=db,
-            project_id=pid,
-            actor_user_id=actor_user_id,
-            request_id=request_id,
-            reason=reason_norm,
-        )
+        if auto_search:
+            out["search_rebuild"] = schedule_search_rebuild_task(
+                db=db,
+                project_id=pid,
+                actor_user_id=actor_user_id,
+                request_id=request_id,
+                reason=reason_norm,
+            )
     except Exception as exc:
         log_event(
             logger,
@@ -518,89 +531,93 @@ def schedule_chapter_done_tasks(
             **exception_log_fields(exc),
         )
 
-    try:
-        out["worldbook_auto_update"] = schedule_worldbook_auto_update_task(
-            db=db,
-            project_id=pid,
-            actor_user_id=actor_user_id,
-            request_id=request_id,
-            chapter_id=cid,
-            chapter_token=token_norm,
-            reason=reason_norm,
-        )
-    except Exception as exc:
-        log_event(
-            logger,
-            "warning",
-            event="CHAPTER_DONE_TASK_SCHEDULE_ERROR",
-            project_id=pid,
-            chapter_id=cid,
-            kind="worldbook_auto_update",
-            error_type=type(exc).__name__,
-            **exception_log_fields(exc),
-        )
+    if auto_worldbook:
+        try:
+            out["worldbook_auto_update"] = schedule_worldbook_auto_update_task(
+                db=db,
+                project_id=pid,
+                actor_user_id=actor_user_id,
+                request_id=request_id,
+                chapter_id=cid,
+                chapter_token=token_norm,
+                reason=reason_norm,
+            )
+        except Exception as exc:
+            log_event(
+                logger,
+                "warning",
+                event="CHAPTER_DONE_TASK_SCHEDULE_ERROR",
+                project_id=pid,
+                chapter_id=cid,
+                kind="worldbook_auto_update",
+                error_type=type(exc).__name__,
+                **exception_log_fields(exc),
+            )
 
-    try:
-        from app.services.characters_auto_update_service import schedule_characters_auto_update_task
+    if auto_characters:
+        try:
+            from app.services.characters_auto_update_service import schedule_characters_auto_update_task
 
-        out["characters_auto_update"] = schedule_characters_auto_update_task(
-            db=db,
-            project_id=pid,
-            actor_user_id=actor_user_id,
-            request_id=request_id,
-            chapter_id=cid,
-            chapter_token=token_norm,
-            reason=reason_norm,
-        )
-    except Exception as exc:
-        log_event(
-            logger,
-            "warning",
-            event="CHAPTER_DONE_TASK_SCHEDULE_ERROR",
-            project_id=pid,
-            chapter_id=cid,
-            kind="characters_auto_update",
-            error_type=type(exc).__name__,
-            **exception_log_fields(exc),
-        )
+            out["characters_auto_update"] = schedule_characters_auto_update_task(
+                db=db,
+                project_id=pid,
+                actor_user_id=actor_user_id,
+                request_id=request_id,
+                chapter_id=cid,
+                chapter_token=token_norm,
+                reason=reason_norm,
+            )
+        except Exception as exc:
+            log_event(
+                logger,
+                "warning",
+                event="CHAPTER_DONE_TASK_SCHEDULE_ERROR",
+                project_id=pid,
+                chapter_id=cid,
+                kind="characters_auto_update",
+                error_type=type(exc).__name__,
+                **exception_log_fields(exc),
+            )
 
-    try:
-        from app.services.plot_analysis_service import schedule_plot_auto_update_task
+    if auto_story_memory:
+        try:
+            from app.services.plot_analysis_service import schedule_plot_auto_update_task
 
-        out["plot_auto_update"] = schedule_plot_auto_update_task(
-            db=db,
-            project_id=pid,
-            actor_user_id=actor_user_id,
-            request_id=request_id,
-            chapter_id=cid,
-            chapter_token=token_norm,
-            reason=reason_norm,
-        )
-    except Exception as exc:
-        log_event(
-            logger,
-            "warning",
-            event="CHAPTER_DONE_TASK_SCHEDULE_ERROR",
-            project_id=pid,
-            chapter_id=cid,
-            kind="plot_auto_update",
-            error_type=type(exc).__name__,
-            **exception_log_fields(exc),
-        )
+            out["plot_auto_update"] = schedule_plot_auto_update_task(
+                db=db,
+                project_id=pid,
+                actor_user_id=actor_user_id,
+                request_id=request_id,
+                chapter_id=cid,
+                chapter_token=token_norm,
+                reason=reason_norm,
+            )
+        except Exception as exc:
+            log_event(
+                logger,
+                "warning",
+                event="CHAPTER_DONE_TASK_SCHEDULE_ERROR",
+                project_id=pid,
+                chapter_id=cid,
+                kind="plot_auto_update",
+                error_type=type(exc).__name__,
+                **exception_log_fields(exc),
+            )
 
     try:
         from app.services.graph_auto_update_service import schedule_graph_auto_update_task
 
-        out["graph_auto_update"] = schedule_graph_auto_update_task(
-            db=db,
-            project_id=pid,
-            actor_user_id=actor_user_id,
-            request_id=request_id,
-            chapter_id=cid,
-            chapter_token=token_norm,
-            focus=None,
-            reason=reason_norm,
-        )
+        if auto_graph:
+            out["graph_auto_update"] = schedule_graph_auto_update_task(
+                db=db,
+                project_id=pid,
+                actor_user_id=actor_user_id,
+                request_id=request_id,
+                chapter_id=cid,
+                chapter_token=token_norm,
+                focus=None,
+                reason=reason_norm,
+            )
     except Exception as exc:
         log_event(
             logger,
@@ -614,15 +631,16 @@ def schedule_chapter_done_tasks(
         )
 
     try:
-        out["fractal_rebuild"] = schedule_fractal_rebuild_task(
-            db=db,
-            project_id=pid,
-            actor_user_id=actor_user_id,
-            request_id=request_id,
-            chapter_id=cid,
-            chapter_token=token_norm,
-            reason=reason_norm,
-        )
+        if auto_fractal:
+            out["fractal_rebuild"] = schedule_fractal_rebuild_task(
+                db=db,
+                project_id=pid,
+                actor_user_id=actor_user_id,
+                request_id=request_id,
+                chapter_id=cid,
+                chapter_token=token_norm,
+                reason=reason_norm,
+            )
     except Exception as exc:
         log_event(
             logger,

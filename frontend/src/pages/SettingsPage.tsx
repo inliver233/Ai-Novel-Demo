@@ -27,6 +27,14 @@ type SettingsForm = {
   style_guide: string;
   constraints: string;
   context_optimizer_enabled: boolean;
+  auto_update_worldbook_enabled: boolean;
+  auto_update_characters_enabled: boolean;
+  auto_update_story_memory_enabled: boolean;
+  auto_update_graph_enabled: boolean;
+  auto_update_vector_enabled: boolean;
+  auto_update_search_enabled: boolean;
+  auto_update_fractal_enabled: boolean;
+  auto_update_tables_enabled: boolean;
   query_preprocessing_enabled: boolean;
   query_preprocessing_tags: string;
   query_preprocessing_exclusion_rules: string;
@@ -123,6 +131,14 @@ export function SettingsPage() {
     style_guide: "",
     constraints: "",
     context_optimizer_enabled: false,
+    auto_update_worldbook_enabled: true,
+    auto_update_characters_enabled: true,
+    auto_update_story_memory_enabled: true,
+    auto_update_graph_enabled: true,
+    auto_update_vector_enabled: true,
+    auto_update_search_enabled: true,
+    auto_update_fractal_enabled: true,
+    auto_update_tables_enabled: true,
     query_preprocessing_enabled: false,
     query_preprocessing_tags: "",
     query_preprocessing_exclusion_rules: "",
@@ -234,6 +250,14 @@ export function SettingsPage() {
       style_guide: settings.style_guide ?? "",
       constraints: settings.constraints ?? "",
       context_optimizer_enabled: Boolean(settings.context_optimizer_enabled),
+      auto_update_worldbook_enabled: Boolean(settings.auto_update_worldbook_enabled ?? true),
+      auto_update_characters_enabled: Boolean(settings.auto_update_characters_enabled ?? true),
+      auto_update_story_memory_enabled: Boolean(settings.auto_update_story_memory_enabled ?? true),
+      auto_update_graph_enabled: Boolean(settings.auto_update_graph_enabled ?? true),
+      auto_update_vector_enabled: Boolean(settings.auto_update_vector_enabled ?? true),
+      auto_update_search_enabled: Boolean(settings.auto_update_search_enabled ?? true),
+      auto_update_fractal_enabled: Boolean(settings.auto_update_fractal_enabled ?? true),
+      auto_update_tables_enabled: Boolean(settings.auto_update_tables_enabled ?? true),
       query_preprocessing_enabled: Boolean(settings.query_preprocessing_effective?.enabled),
       query_preprocessing_tags: Array.isArray(settings.query_preprocessing_effective?.tags)
         ? settings.query_preprocessing_effective?.tags.join("\n")
@@ -532,6 +556,14 @@ export function SettingsPage() {
       settingsForm.style_guide !== baselineSettings.style_guide ||
       settingsForm.constraints !== baselineSettings.constraints ||
       settingsForm.context_optimizer_enabled !== baselineSettings.context_optimizer_enabled ||
+      settingsForm.auto_update_worldbook_enabled !== baselineSettings.auto_update_worldbook_enabled ||
+      settingsForm.auto_update_characters_enabled !== baselineSettings.auto_update_characters_enabled ||
+      settingsForm.auto_update_story_memory_enabled !== baselineSettings.auto_update_story_memory_enabled ||
+      settingsForm.auto_update_graph_enabled !== baselineSettings.auto_update_graph_enabled ||
+      settingsForm.auto_update_vector_enabled !== baselineSettings.auto_update_vector_enabled ||
+      settingsForm.auto_update_search_enabled !== baselineSettings.auto_update_search_enabled ||
+      settingsForm.auto_update_fractal_enabled !== baselineSettings.auto_update_fractal_enabled ||
+      settingsForm.auto_update_tables_enabled !== baselineSettings.auto_update_tables_enabled ||
       qpDirty ||
       settingsForm.vector_rerank_enabled !== baselineSettings.vector_rerank_effective_enabled ||
       settingsForm.vector_rerank_method.trim() !== baselineSettings.vector_rerank_effective_method ||
@@ -660,6 +692,14 @@ export function SettingsPage() {
         nextSettingsForm.style_guide !== baselineSettings.style_guide ||
         nextSettingsForm.constraints !== baselineSettings.constraints ||
         nextSettingsForm.context_optimizer_enabled !== baselineSettings.context_optimizer_enabled ||
+        nextSettingsForm.auto_update_worldbook_enabled !== baselineSettings.auto_update_worldbook_enabled ||
+        nextSettingsForm.auto_update_characters_enabled !== baselineSettings.auto_update_characters_enabled ||
+        nextSettingsForm.auto_update_story_memory_enabled !== baselineSettings.auto_update_story_memory_enabled ||
+        nextSettingsForm.auto_update_graph_enabled !== baselineSettings.auto_update_graph_enabled ||
+        nextSettingsForm.auto_update_vector_enabled !== baselineSettings.auto_update_vector_enabled ||
+        nextSettingsForm.auto_update_search_enabled !== baselineSettings.auto_update_search_enabled ||
+        nextSettingsForm.auto_update_fractal_enabled !== baselineSettings.auto_update_fractal_enabled ||
+        nextSettingsForm.auto_update_tables_enabled !== baselineSettings.auto_update_tables_enabled ||
         qpDirty ||
         Boolean(nextSettingsForm.vector_rerank_enabled) !== Boolean(baselineSettings.vector_rerank_effective_enabled) ||
         rerankMethod !== baselineSettings.vector_rerank_effective_method ||
@@ -726,6 +766,14 @@ export function SettingsPage() {
                   style_guide: nextSettingsForm.style_guide,
                   constraints: nextSettingsForm.constraints,
                   context_optimizer_enabled: Boolean(nextSettingsForm.context_optimizer_enabled),
+                  auto_update_worldbook_enabled: Boolean(nextSettingsForm.auto_update_worldbook_enabled),
+                  auto_update_characters_enabled: Boolean(nextSettingsForm.auto_update_characters_enabled),
+                  auto_update_story_memory_enabled: Boolean(nextSettingsForm.auto_update_story_memory_enabled),
+                  auto_update_graph_enabled: Boolean(nextSettingsForm.auto_update_graph_enabled),
+                  auto_update_vector_enabled: Boolean(nextSettingsForm.auto_update_vector_enabled),
+                  auto_update_search_enabled: Boolean(nextSettingsForm.auto_update_search_enabled),
+                  auto_update_fractal_enabled: Boolean(nextSettingsForm.auto_update_fractal_enabled),
+                  auto_update_tables_enabled: Boolean(nextSettingsForm.auto_update_tables_enabled),
                   ...(qpDirty ? { query_preprocessing: queryPreprocessFromForm(nextSettingsForm) } : {}),
                   vector_rerank_enabled: Boolean(nextSettingsForm.vector_rerank_enabled),
                   vector_rerank_method: rerankMethod,
@@ -1136,6 +1184,122 @@ export function SettingsPage() {
               onChange={(e) => setSettingsForm((v) => ({ ...v, constraints: e.target.value }))}
             />
           </label>
+        </div>
+      </section>
+
+      <section className="panel p-6">
+        <div className="grid gap-1">
+          <div className="font-content text-xl">自动更新（推荐）</div>
+          <div className="text-xs text-subtext">章节定稿（done）后自动触发后台更新任务；普通用户建议保持开启。</div>
+        </div>
+
+        <div className="mt-4 grid gap-2">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={settingsForm.auto_update_worldbook_enabled}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, auto_update_worldbook_enabled: e.target.checked }))}
+              type="checkbox"
+            />
+            世界书：自动更新条目（worldbook_auto_update）
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={settingsForm.auto_update_characters_enabled}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, auto_update_characters_enabled: e.target.checked }))}
+              type="checkbox"
+            />
+            角色卡：自动更新（characters_auto_update）
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={settingsForm.auto_update_story_memory_enabled}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, auto_update_story_memory_enabled: e.target.checked }))}
+              type="checkbox"
+            />
+            剧情记忆：自动分析并写入（plot_auto_update）
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={settingsForm.auto_update_graph_enabled}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, auto_update_graph_enabled: e.target.checked }))}
+              type="checkbox"
+            />
+            图谱：自动更新（graph_auto_update）
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={settingsForm.auto_update_vector_enabled}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, auto_update_vector_enabled: e.target.checked }))}
+              type="checkbox"
+            />
+            向量索引：自动重建（vector_rebuild）
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={settingsForm.auto_update_search_enabled}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, auto_update_search_enabled: e.target.checked }))}
+              type="checkbox"
+            />
+            搜索索引：自动重建（search_rebuild）
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={settingsForm.auto_update_fractal_enabled}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, auto_update_fractal_enabled: e.target.checked }))}
+              type="checkbox"
+            />
+            分形记忆：自动重建（fractal_rebuild）
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              className="checkbox"
+              checked={settingsForm.auto_update_tables_enabled}
+              onChange={(e) => setSettingsForm((v) => ({ ...v, auto_update_tables_enabled: e.target.checked }))}
+              type="checkbox"
+            />
+            数值表格：自动更新（table_ai_update）
+          </label>
+        </div>
+
+        <div className="mt-2 text-xs text-subtext">
+          提示：关闭后不会在「章节定稿」时自动排队；仍可在对应页面/任务中心手动触发。
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            className="btn btn-secondary btn-sm"
+            disabled={saving}
+            onClick={() =>
+              setSettingsForm((v) => ({
+                ...v,
+                auto_update_worldbook_enabled: true,
+                auto_update_characters_enabled: true,
+                auto_update_story_memory_enabled: true,
+                auto_update_graph_enabled: true,
+                auto_update_vector_enabled: true,
+                auto_update_search_enabled: true,
+                auto_update_fractal_enabled: true,
+                auto_update_tables_enabled: true,
+              }))
+            }
+            type="button"
+          >
+            恢复推荐默认
+          </button>
         </div>
       </section>
 
