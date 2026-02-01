@@ -95,6 +95,7 @@ export function WritingPage() {
     activeId,
     setActiveId,
     activeChapter,
+    baseline,
     form,
     setForm,
     dirty,
@@ -136,15 +137,11 @@ export function WritingPage() {
   const [memoryUpdateOpen, setMemoryUpdateOpen] = useState(false);
   const [foreshadowOpen, setForeshadowOpen] = useState(false);
   const autoGenerateNextRef = useRef<{ chapterId: string; mode: "replace" | "append" } | null>(null);
-  const editedDoneAutoRevertedRef = useRef(false);
+  const isDoneReadonly = Boolean(baseline && form && baseline.status === "done" && form.status === "done");
 
   useEffect(() => {
     if (!activeChapter) autoGenerateNextRef.current = null;
   }, [activeChapter]);
-
-  useEffect(() => {
-    editedDoneAutoRevertedRef.current = false;
-  }, [activeId]);
 
   useApplyGenerationRun({
     applyRunId,
@@ -371,6 +368,20 @@ export function WritingPage() {
             </div>
           ) : (
             <div className="mx-auto w-full max-w-4xl rounded-atelier border border-border bg-surface p-5 shadow-sm">
+              {isDoneReadonly ? (
+                <div className="callout-warning mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs">
+                    本章已定稿：为避免误操作，编辑区默认只读。如需修改，请先回退为 {humanizeChapterStatus("drafting")}。
+                  </div>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setForm((v) => (v ? { ...v, status: "drafting" } : v))}
+                    type="button"
+                  >
+                    回退为 {humanizeChapterStatus("drafting")} 并编辑
+                  </button>
+                </div>
+              ) : null}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-content text-2xl text-ink">
@@ -435,19 +446,9 @@ export function WritingPage() {
                     className="input-underline font-content text-xl"
                     name="title"
                     value={form.title}
+                    readOnly={isDoneReadonly}
                     onChange={(e) => {
-                      const nextTitle = e.target.value;
-                      if (form.status === "done") {
-                        if (!editedDoneAutoRevertedRef.current) {
-                          editedDoneAutoRevertedRef.current = true;
-                          toast.toastWarning(
-                            `已将章节状态从 ${humanizeChapterStatus("done")} 回退为 ${humanizeChapterStatus("drafting")}：编辑定稿章会产生草稿污染风险。`,
-                          );
-                        }
-                        setForm((v) => (v ? { ...v, title: nextTitle, status: "drafting" } : v));
-                        return;
-                      }
-                      setForm((v) => (v ? { ...v, title: nextTitle } : v));
+                      setForm((v) => (v ? { ...v, title: e.target.value } : v));
                     }}
                   />
                 </label>
@@ -459,7 +460,6 @@ export function WritingPage() {
                     value={form.status}
                     onChange={(e) => {
                       const next = e.target.value as ChapterStatus;
-                      if (next === "done") editedDoneAutoRevertedRef.current = false;
                       setForm((v) => (v ? { ...v, status: next } : v));
                     }}
                   >
@@ -469,7 +469,7 @@ export function WritingPage() {
                   </select>
                   <div className="text-[11px] text-subtext">
                     提示：保存不等于定稿。仅状态为 {humanizeChapterStatus("done")} 的章节允许进行记忆更新（Memory
-                    Update）写入长期记忆。
+                    Update）写入长期记忆； 定稿章默认只读，修改请先切回 {humanizeChapterStatus("drafting")}。
                   </div>
                 </label>
               </div>
@@ -482,19 +482,9 @@ export function WritingPage() {
                     name="plan"
                     rows={4}
                     value={form.plan}
+                    readOnly={isDoneReadonly}
                     onChange={(e) => {
-                      const nextPlan = e.target.value;
-                      if (form.status === "done") {
-                        if (!editedDoneAutoRevertedRef.current) {
-                          editedDoneAutoRevertedRef.current = true;
-                          toast.toastWarning(
-                            `已将章节状态从 ${humanizeChapterStatus("done")} 回退为 ${humanizeChapterStatus("drafting")}：编辑定稿章会产生草稿污染风险。`,
-                          );
-                        }
-                        setForm((v) => (v ? { ...v, plan: nextPlan, status: "drafting" } : v));
-                        return;
-                      }
-                      setForm((v) => (v ? { ...v, plan: nextPlan } : v));
+                      setForm((v) => (v ? { ...v, plan: e.target.value } : v));
                     }}
                   />
                 </label>
@@ -503,21 +493,12 @@ export function WritingPage() {
                   <MarkdownEditor
                     value={form.content_md}
                     onChange={(next) => {
-                      if (form.status === "done") {
-                        if (!editedDoneAutoRevertedRef.current) {
-                          editedDoneAutoRevertedRef.current = true;
-                          toast.toastWarning(
-                            `已将章节状态从 ${humanizeChapterStatus("done")} 回退为 ${humanizeChapterStatus("drafting")}：编辑定稿章会产生草稿污染风险。`,
-                          );
-                        }
-                        setForm((v) => (v ? { ...v, content_md: next, status: "drafting" } : v));
-                        return;
-                      }
                       setForm((v) => (v ? { ...v, content_md: next } : v));
                     }}
                     placeholder="开始写作..."
                     minRows={16}
                     name="content_md"
+                    readOnly={isDoneReadonly}
                     tab={contentEditorTab}
                     onTabChange={setContentEditorTab}
                     textareaRef={(el) => {
@@ -532,19 +513,9 @@ export function WritingPage() {
                     name="summary"
                     rows={3}
                     value={form.summary}
+                    readOnly={isDoneReadonly}
                     onChange={(e) => {
-                      const nextSummary = e.target.value;
-                      if (form.status === "done") {
-                        if (!editedDoneAutoRevertedRef.current) {
-                          editedDoneAutoRevertedRef.current = true;
-                          toast.toastWarning(
-                            `已将章节状态从 ${humanizeChapterStatus("done")} 回退为 ${humanizeChapterStatus("drafting")}：编辑定稿章会产生草稿污染风险。`,
-                          );
-                        }
-                        setForm((v) => (v ? { ...v, summary: nextSummary, status: "drafting" } : v));
-                        return;
-                      }
-                      setForm((v) => (v ? { ...v, summary: nextSummary } : v));
+                      setForm((v) => (v ? { ...v, summary: e.target.value } : v));
                     }}
                   />
                 </label>
