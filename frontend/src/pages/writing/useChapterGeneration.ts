@@ -122,11 +122,18 @@ export function useChapterGeneration(args: {
     memory_injection_enabled: loadMemoryInjectionEnabled(projectId),
   }));
 
+  const lastProjectIdRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
+    if (lastProjectIdRef.current === projectId) return;
+    lastProjectIdRef.current = projectId;
     const enabled = loadMemoryInjectionEnabled(projectId);
-    setGenForm((prev) =>
-      prev.memory_injection_enabled === enabled ? prev : { ...prev, memory_injection_enabled: enabled },
-    );
+    setGenForm((prev) => ({
+      ...prev,
+      memory_injection_enabled: enabled,
+      memory_query_text: "",
+      memory_modules: { ...DEFAULT_GEN_FORM.memory_modules },
+    }));
   }, [projectId]);
 
   useEffect(() => {
