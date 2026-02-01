@@ -137,3 +137,129 @@ class TestGraphAutoUpdateService(unittest.TestCase):
         self.assertEqual(res.get("chapter_id"), "c1")
         self.assertIn("change_set", res)
         self.assertEqual(len(res.get("items") or []), 3)
+
+    def test_graph_auto_update_v1_rejects_evidence_source_id_mismatch(self) -> None:
+        model_out = _compact_json_dumps(
+            {
+                "title": "Graph Auto Update",
+                "summary_md": "auto",
+                "ops": [
+                    {
+                        "op": "upsert",
+                        "target_table": "evidence",
+                        "target_id": "00000000-0000-0000-0000-0000000000e1",
+                        "after": {"source_type": "chapter", "source_id": "c2", "quote_md": "bad"},
+                        "evidence_ids": [],
+                    }
+                ],
+            }
+        )
+
+        with patch("app.services.graph_auto_update_service.SessionLocal", self.SessionLocal), patch(
+            "app.services.graph_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
+        ), patch(
+            "app.services.graph_auto_update_service.call_llm_and_record",
+            return_value=RecordedLlmResult(
+                text=model_out,
+                finish_reason=None,
+                latency_ms=1,
+                dropped_params=[],
+                run_id="run-test",
+            ),
+        ):
+            res = graph_auto_update_v1(
+                project_id="p1",
+                actor_user_id="u1",
+                request_id="rid-test",
+                chapter_id="c1",
+                change_set_idempotency_key="graphupd-12345678",
+                focus=None,
+            )
+
+        self.assertFalse(bool(res.get("ok")))
+        self.assertEqual(res.get("reason"), "evidence_source_id_mismatch")
+        self.assertEqual(res.get("source_id"), "c2")
+
+    def test_graph_auto_update_v1_filters_attributes_keys(self) -> None:
+        ev1 = "00000000-0000-0000-0000-0000000000e1"
+        e2 = "00000000-0000-0000-0000-000000000002"
+        model_out = _compact_json_dumps(
+            {
+                "title": "Graph Auto Update",
+                "summary_md": "auto",
+                "ops": [
+                    {
+                        "op": "upsert",
+                        "target_table": "evidence",
+                        "target_id": ev1,
+                        "after": {"source_type": "chapter", "source_id": "c1", "quote_md": "Alice meets Bob."},
+                        "evidence_ids": [],
+                    },
+                    {
+                        "op": "upsert",
+                        "target_table": "entities",
+                        "target_id": e2,
+                        "after": {
+                            "entity_type": "character",
+                            "name": "Bob",
+                            "attributes": {"aliases": ["B"], "unknown_key": "x"},
+                        },
+                        "evidence_ids": [ev1],
+                    },
+                    {
+                        "op": "upsert",
+                        "target_table": "relations",
+                        "target_id": None,
+                        "after": {
+                            "from_entity_id": "e1",
+                            "to_entity_id": e2,
+                            "relation_type": "friend",
+                            "description_md": "Alice and Bob are friends.",
+                            "attributes": {"strength": 0.7, "status": "active", "unknown_key": "x"},
+                        },
+                        "evidence_ids": [ev1],
+                    },
+                ],
+            }
+        )
+
+        with patch("app.services.graph_auto_update_service.SessionLocal", self.SessionLocal), patch(
+            "app.services.graph_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
+        ), patch(
+            "app.services.graph_auto_update_service.call_llm_and_record",
+            return_value=RecordedLlmResult(
+                text=model_out,
+                finish_reason=None,
+                latency_ms=1,
+                dropped_params=[],
+                run_id="run-test",
+            ),
+        ):
+            res = graph_auto_update_v1(
+                project_id="p1",
+                actor_user_id="u1",
+                request_id="rid-test",
+                chapter_id="c1",
+                change_set_idempotency_key="graphupd-12345678",
+                focus=None,
+            )
+
+        self.assertTrue(bool(res.get("ok")))
+        warnings = list(res.get("warnings") or [])
+        self.assertTrue(any("dropped_entity_attributes_keys" in str(w) for w in warnings))
+        self.assertTrue(any("dropped_relation_attributes_keys" in str(w) for w in warnings))
+
+        items = list(res.get("items") or [])
+        entity_item = next(i for i in items if i.get("target_table") == "entities")
+        entity_after = json.loads(str(entity_item.get("after_json") or "{}"))
+        self.assertEqual(entity_after.get("name"), "Bob")
+        entity_attrs = entity_after.get("attributes") or {}
+        self.assertIn("aliases", entity_attrs)
+        self.assertNotIn("unknown_key", entity_attrs)
+
+        relation_item = next(i for i in items if i.get("target_table") == "relations")
+        relation_after = json.loads(str(relation_item.get("after_json") or "{}"))
+        relation_attrs = relation_after.get("attributes") or {}
+        self.assertIn("strength", relation_attrs)
+        self.assertIn("status", relation_attrs)
+        self.assertNotIn("unknown_key", relation_attrs)

@@ -34,6 +34,16 @@ RECOMMENDED_RELATION_TYPES: tuple[str, ...] = (
     "protects",
 )
 
+# Suggested schema keys for entities.attributes_json (NOT enforced).
+# Keep keys stable; add new keys by versioning in docs when needed.
+ENTITY_ATTRIBUTES_SCHEMA_V1: dict[str, dict[str, object]] = {
+    "aliases": {"type": "array[string]", "description": "别名/昵称（用于消歧与搜索）"},
+    "tags": {"type": "array[string]", "description": "自定义标签"},
+    "role": {"type": "string", "description": "角色/身份（如 主角/反派/导师/线人 等）"},
+    "faction": {"type": "string", "description": "阵营/组织（如有）"},
+    "confidence": {"type": "number", "description": "AI 抽取置信度（用于 UI 提示/排序）"},
+}
+
 # Suggested schema keys for relations.attributes_json (NOT enforced).
 # Keep keys stable; add new keys by versioning in docs when needed.
 RELATION_ATTRIBUTES_SCHEMA_V1: dict[str, dict[str, object]] = {
@@ -45,6 +55,23 @@ RELATION_ATTRIBUTES_SCHEMA_V1: dict[str, dict[str, object]] = {
     "tags": {"type": "array[string]", "description": "自定义标签"},
     "confidence": {"type": "number", "description": "AI 抽取置信度（用于 UI 提示/排序）"},
     "is_symmetric": {"type": "boolean", "description": "是否应在 UI 以无向方式展示"},
+}
+
+# Optional direction/semantics hints for prompting/UX (NOT enforced).
+RELATION_TYPE_HINTS_V1: dict[str, dict[str, object]] = {
+    "related_to": {"description": "泛关系（信息不足时兜底）", "direction": "variable"},
+    "family": {"description": "亲属/家族关系（尽量用更具体类型；方向不固定）", "direction": "variable"},
+    "romance": {"description": "恋爱/暧昧/伴侣", "direction": "symmetric"},
+    "friend": {"description": "朋友/交情", "direction": "symmetric"},
+    "ally": {"description": "盟友/合作关系", "direction": "symmetric"},
+    "enemy": {"description": "敌对/仇恨关系", "direction": "symmetric"},
+    "mentor": {"description": "导师/师父", "direction": "mentor -> student"},
+    "student": {"description": "学生/徒弟", "direction": "student -> mentor"},
+    "leader_of": {"description": "领导/统领", "direction": "leader -> organization"},
+    "member_of": {"description": "成员/隶属", "direction": "member -> organization"},
+    "owes": {"description": "欠债/欠人情", "direction": "debtor -> creditor"},
+    "betrayed": {"description": "背叛/出卖（通常有具体事件证据）", "direction": "betrayer -> betrayed"},
+    "protects": {"description": "保护/守护", "direction": "protector -> protected"},
 }
 
 

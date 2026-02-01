@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -15,7 +16,13 @@ from app.models.chapter import Chapter
 from app.models.llm_preset import LLMPreset
 from app.models.project import Project
 from app.models.project_task import ProjectTask
-from app.models.structured_memory import MemoryEntity, RECOMMENDED_RELATION_TYPES, RELATION_ATTRIBUTES_SCHEMA_V1
+from app.models.structured_memory import (
+    ENTITY_ATTRIBUTES_SCHEMA_V1,
+    MemoryEntity,
+    RECOMMENDED_RELATION_TYPES,
+    RELATION_ATTRIBUTES_SCHEMA_V1,
+    RELATION_TYPE_HINTS_V1,
+)
 from app.schemas.memory_update import MAX_OPS_V1, MemoryUpdateV1Request
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.llm_key_resolver import resolve_api_key_for_project
@@ -30,6 +37,8 @@ GRAPH_AUTO_UPDATE_KIND = "graph_auto_update"
 _MAX_EXISTING_ENTITIES_IN_PROMPT = 200
 _MAX_CHAPTER_CHARS = 40000
 _ID_POOL_SIZE = 24
+
+_SNAKE_CASE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 def _compact_json_dumps(value: Any) -> str:
@@ -96,6 +105,10 @@ def build_graph_auto_update_prompt_v1(
         "\n"
         "关系类型规范：\n"
         "- relation_type 优先使用推荐集合（见 user 输入）；若确需自定义，使用 snake_case 且语义清晰。\n"
+        "- 对有方向性的关系（如 owes/leader_of 等），请遵循 user 输入中的 direction hints。\n"
+        "\n"
+        "属性字段规范：\n"
+        "- entities.after.attributes / relations.after.attributes 只使用 user 输入中 schema_v1 列出的 keys（其余不要输出）。\n"
         "\n"
         "证据与引用：\n"
         "- 对每条关键关系，尽量提供 evidence：新增 evidence(op=upsert,target_table=evidence) 并在对应实体/关系 op 的 evidence_ids 引用。\n"
@@ -117,6 +130,10 @@ def build_graph_auto_update_prompt_v1(
         f"{focus_text}\n\n"
         "=== relation_type_recommended ===\n"
         f"{_compact_json_dumps(list(RECOMMENDED_RELATION_TYPES))}\n\n"
+        "=== relation_type_hints_v1 (direction guidance; optional) ===\n"
+        f"{_compact_json_dumps(RELATION_TYPE_HINTS_V1)}\n\n"
+        "=== entity_attributes_schema_v1 (suggested keys; not enforced) ===\n"
+        f"{_compact_json_dumps(ENTITY_ATTRIBUTES_SCHEMA_V1)}\n\n"
         "=== relation_attributes_schema_v1 (suggested keys; not enforced) ===\n"
         f"{_compact_json_dumps(RELATION_ATTRIBUTES_SCHEMA_V1)}\n\n"
         "=== existing_entities (id + name) ===\n"
@@ -132,6 +149,26 @@ def build_graph_auto_update_prompt_v1(
     )
 
     return system, user
+
+
+def _filter_attributes(
+    attributes: object,
+    *,
+    allowed_keys: set[str],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    if not isinstance(attributes, dict):
+        return None, []
+    kept: dict[str, Any] = {}
+    dropped: list[str] = []
+    for k, v in attributes.items():
+        key = str(k or "").strip()
+        if not key:
+            continue
+        if key in allowed_keys:
+            kept[key] = v
+        else:
+            dropped.append(key)
+    return (kept if kept else None), dropped
 
 
 def graph_auto_update_v1(
@@ -279,6 +316,7 @@ def graph_auto_update_v1(
         }
 
     ops = list(parsed.data.get("ops") or [])
+    warnings_extra: list[str] = []
     allowed_tables = {"entities", "relations", "evidence"}
     for op in ops:
         if not isinstance(op, dict):
@@ -293,6 +331,63 @@ def graph_auto_update_v1(
                 "run_id": recorded.run_id,
                 "target_table": target_table,
             }
+
+        after = op.get("after")
+        if not isinstance(after, dict):
+            continue
+
+        if target_table == "evidence":
+            st = str(after.get("source_type") or "").strip()
+            if st and st != "chapter":
+                return {
+                    "ok": False,
+                    "project_id": pid,
+                    "chapter_id": cid,
+                    "reason": "evidence_source_type_mismatch",
+                    "run_id": recorded.run_id,
+                    "source_type": st,
+                }
+            if not st:
+                after["source_type"] = "chapter"
+
+            sid = str(after.get("source_id") or "").strip()
+            if sid and sid != cid:
+                return {
+                    "ok": False,
+                    "project_id": pid,
+                    "chapter_id": cid,
+                    "reason": "evidence_source_id_mismatch",
+                    "run_id": recorded.run_id,
+                    "source_id": sid,
+                }
+            if not sid:
+                after["source_id"] = cid
+
+        if target_table == "entities":
+            attrs, dropped = _filter_attributes(after.get("attributes"), allowed_keys=set(ENTITY_ATTRIBUTES_SCHEMA_V1.keys()))
+            if dropped:
+                warnings_extra.append(f"graph_auto_update:dropped_entity_attributes_keys:{sorted(set(dropped))}")
+            after["attributes"] = attrs
+
+        if target_table == "relations":
+            rtype = str(after.get("relation_type") or "related_to").strip() or "related_to"
+            if rtype not in RECOMMENDED_RELATION_TYPES and not _SNAKE_CASE_RE.match(rtype):
+                return {
+                    "ok": False,
+                    "project_id": pid,
+                    "chapter_id": cid,
+                    "reason": "invalid_relation_type",
+                    "run_id": recorded.run_id,
+                    "relation_type": rtype,
+                }
+
+            attrs, dropped = _filter_attributes(
+                after.get("attributes"),
+                allowed_keys=set(RELATION_ATTRIBUTES_SCHEMA_V1.keys()),
+            )
+            if dropped:
+                warnings_extra.append(f"graph_auto_update:dropped_relation_attributes_keys:{sorted(set(dropped))}")
+            after["attributes"] = attrs
 
     payload = MemoryUpdateV1Request(
         schema_version="memory_update_v1",
@@ -332,7 +427,7 @@ def graph_auto_update_v1(
         "chapter_id": cid,
         "run_id": recorded.run_id,
         "finish_reason": recorded.finish_reason,
-        "warnings": parsed.warnings,
+        "warnings": [*list(parsed.warnings or []), *warnings_extra],
         **(proposed if isinstance(proposed, dict) else {"proposed": proposed}),
     }
 
@@ -443,4 +538,3 @@ def schedule_graph_auto_update_task(
     finally:
         if owns_session:
             db.close()
-
