@@ -6,14 +6,15 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from app.api.deps import UserIdDep, require_project_editor, require_project_owner, require_project_viewer
-from app.core.config import settings
 from app.core.errors import AppError, ok_payload
+from app.core.secrets import redact_api_keys
 from app.db.session import SessionLocal
 from app.db.utils import utc_now
 from app.models.knowledge_base import KnowledgeBase
 from app.models.project_settings import ProjectSettings
 from app.services.memory_query_service import normalize_query_text, parse_query_preprocessing_config
 from app.services.vector_embedding_overrides import vector_embedding_overrides
+from app.services.vector_rerank_overrides import vector_rerank_overrides
 from app.services.vector_kb_service import create_kb as create_vector_kb
 from app.services.vector_kb_service import delete_kb as delete_vector_kb
 from app.services.vector_kb_service import ensure_default_kb as ensure_default_vector_kb
@@ -54,17 +55,7 @@ def _index_state(row: ProjectSettings | None) -> dict[str, object]:
     }
 
 def _vector_rerank_config(row: ProjectSettings | None) -> dict[str, object]:
-    override_enabled = row.vector_rerank_enabled if row is not None else None
-    enabled = override_enabled if override_enabled is not None else bool(getattr(settings, "vector_rerank_enabled", False))
-
-    override_method_raw = str(row.vector_rerank_method or "").strip() if row is not None else ""
-    method = override_method_raw or "auto"
-
-    override_top_k = row.vector_rerank_top_k if row is not None else None
-    top_k = int(override_top_k) if override_top_k is not None else int(getattr(settings, "vector_max_candidates", 20) or 20)
-    top_k = max(1, min(int(top_k), 1000))
-
-    return {"enabled": bool(enabled), "method": method, "top_k": int(top_k)}
+    return vector_rerank_overrides(row)
 
 
 def _kb_public(row: KnowledgeBase) -> dict[str, object]:
@@ -140,7 +131,7 @@ def get_vector_status(request: Request, user_id: UserIdDep, project_id: str, bod
 
     result = vector_rag_status(project_id=project_id, sources=body.sources, embedding=embedding, rerank=rerank)
     result["index"] = index_state
-    return ok_payload(request_id=request_id, data={"result": result})
+    return ok_payload(request_id=request_id, data=redact_api_keys({"result": result}))
 
 
 @router.post("/projects/{project_id}/vector/ingest")
@@ -326,12 +317,14 @@ def query_vector_index(request: Request, user_id: UserIdDep, project_id: str, bo
     )
     return ok_payload(
         request_id=request_id,
-        data={
-            "result": result,
-            "raw_query_text": body.query_text,
-            "normalized_query_text": normalized,
-            "preprocess_obs": preprocess_obs,
-        },
+        data=redact_api_keys(
+            {
+                "result": result,
+                "raw_query_text": body.query_text,
+                "normalized_query_text": normalized,
+                "preprocess_obs": preprocess_obs,
+            }
+        ),
     )
 
 
