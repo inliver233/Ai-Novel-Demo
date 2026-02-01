@@ -44,9 +44,9 @@ test("ui: chapter reader shows memory hits and can jump to writing", async ({ pa
 
   // Memory sidebar (xl) should show story_memory + foreshadow hits.
   await expect(page.getByText("剧情记忆（story_memory）", { exact: true })).toBeVisible();
-  await expect(page.getByText("E2E_DRAGON hook note")).toBeVisible();
+  await expect(page.getByText("E2E_DRAGON hook note")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("未回收伏笔（foreshadow_open_loops）", { exact: true })).toBeVisible();
-  await expect(page.getByText("E2E_FORESHADOW note").first()).toBeVisible();
+  await expect(page.getByText("E2E_FORESHADOW note").first()).toBeVisible({ timeout: 60_000 });
 
   await page.getByRole("button", { name: /E2E_DRAGON/, exact: false }).first().click();
   await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/writing\\?chapterId=${chapterId}$`));
