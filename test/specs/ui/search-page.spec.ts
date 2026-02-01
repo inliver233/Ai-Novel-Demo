@@ -205,6 +205,10 @@ test("ui: global search hits multi-sources and can jump", async ({ page, request
     await expect(chapterSource).toHaveClass(/\bcheckbox\b/);
     await expect(chapterSource).toHaveAttribute("name", "search_source_chapter");
 
+    const outlineSource = page.getByLabel("search_source_outline", { exact: true });
+    await expect(outlineSource).toHaveClass(/\bcheckbox\b/);
+    await expect(outlineSource).toHaveAttribute("name", "search_source_outline");
+
     await expect(page.getByLabel("search_source_source_document", { exact: true })).toHaveClass(/\bcheckbox\b/);
     await expect(page.getByLabel("search_source_project_table_row", { exact: true })).toHaveClass(/\bcheckbox\b/);
     await expect(page.getByLabel("search_source_memory_entity", { exact: true })).toHaveClass(/\bcheckbox\b/);
