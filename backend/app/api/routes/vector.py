@@ -26,6 +26,11 @@ from app.services.vector_kb_service import resolve_query_kbs as resolve_vector_q
 from app.services.vector_kb_service import reorder_kbs as reorder_vector_kbs
 from app.services.vector_kb_service import update_kb as update_vector_kb
 from app.services.vector_rag_service import (
+    _rerank_candidates as rerank_candidates,
+    _resolve_rerank_config as resolve_rerank_config,
+    _resolve_rerank_external_config as resolve_rerank_external_config,
+)
+from app.services.vector_rag_service import (
     VectorSource,
     build_project_chunks,
     ingest_chunks,
@@ -97,6 +102,14 @@ class VectorStatusRequest(BaseModel):
 
 class VectorEmbeddingDryRunRequest(BaseModel):
     text: str = Field(default="hello", max_length=8000)
+
+
+class VectorRerankDryRunRequest(BaseModel):
+    query_text: str = Field(default="", max_length=8000)
+    documents: list[str] = Field(default_factory=list, max_length=50)
+    method: str | None = Field(default=None, max_length=64)
+    top_k: int | None = Field(default=None, ge=1, le=1000)
+    hybrid_alpha: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class VectorKbCreateRequest(BaseModel):
@@ -180,6 +193,98 @@ def dry_run_vector_embeddings(request: Request, user_id: UserIdDep, project_id: 
         "timings_ms": {"total": int(elapsed_ms)},
         "error": error,
         "embedding": cfg.model_dump(),
+    }
+    return ok_payload(request_id=request_id, data=redact_api_keys({"result": result}))
+
+
+@router.post("/projects/{project_id}/vector/rerank/dry-run")
+def dry_run_vector_rerank(request: Request, user_id: UserIdDep, project_id: str, body: VectorRerankDryRunRequest) -> dict:
+    request_id = request.state.request_id
+    query_text = str(body.query_text or "").strip()
+    if not query_text:
+        raise AppError.validation("query_text 不能为空")
+
+    raw_docs = body.documents or []
+    docs: list[str] = []
+    for raw in raw_docs:
+        doc = str(raw or "").strip()
+        if not doc:
+            raise AppError.validation("documents 不能包含空文本")
+        docs.append(doc)
+    if not docs:
+        raise AppError.validation("documents 不能为空")
+
+    db = SessionLocal()
+    rerank: dict[str, object] = {}
+    try:
+        require_project_editor(db, project_id=project_id, user_id=user_id)
+        settings_row = db.get(ProjectSettings, project_id)
+        rerank = _vector_rerank_config(settings_row)
+    finally:
+        db.close()
+
+    rerank_runtime: dict[str, Any] = dict(rerank or {})
+    if body.method is not None:
+        rerank_runtime["method"] = str(body.method or "").strip() or "auto"
+    if body.top_k is not None:
+        rerank_runtime["top_k"] = int(body.top_k)
+    if body.hybrid_alpha is not None:
+        rerank_runtime["hybrid_alpha"] = float(body.hybrid_alpha)
+
+    start = time.perf_counter()
+    rerank_enabled, rerank_method, rerank_top_k, rerank_hybrid_alpha = resolve_rerank_config(rerank_runtime)
+    rerank_external = resolve_rerank_external_config(rerank_runtime)
+
+    before_ids = [str(i) for i in range(len(docs))]
+    obs: dict[str, Any] = {
+        "enabled": bool(rerank_enabled),
+        "applied": False,
+        "requested_method": rerank_method,
+        "method": None,
+        "provider": None,
+        "model": None,
+        "top_k": int(rerank_top_k),
+        "hybrid_alpha": float(rerank_hybrid_alpha),
+        "hybrid_applied": False,
+        "after_rerank": list(before_ids),
+        "reason": "disabled",
+        "error_type": None,
+        "before": list(before_ids),
+        "after": list(before_ids),
+        "timing_ms": 0,
+        "errors": [],
+    }
+    after_ids = list(before_ids)
+    if rerank_enabled:
+        candidates = [{"id": str(i), "text": doc, "metadata": {}} for i, doc in enumerate(docs)]
+        reranked, obs = rerank_candidates(
+            query_text=query_text,
+            candidates=candidates,
+            method=rerank_method,
+            top_k=rerank_top_k,
+            hybrid_alpha=rerank_hybrid_alpha,
+            external=rerank_external,
+        )
+        after_ids = [str(c.get("id") or "") for c in reranked if isinstance(c, dict)]
+
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    order: list[int] = []
+    for cid in after_ids:
+        try:
+            order.append(int(cid))
+        except Exception:
+            continue
+
+    result = {
+        "enabled": bool(rerank_enabled),
+        "documents_count": int(len(docs)),
+        "method": rerank_method,
+        "top_k": int(rerank_top_k),
+        "hybrid_alpha": float(rerank_hybrid_alpha),
+        "order": order,
+        "obs": obs,
+        "timings_ms": {"total": int(elapsed_ms)},
+        "rerank": rerank_runtime,
     }
     return ok_payload(request_id=request_id, data=redact_api_keys({"result": result}))
 
