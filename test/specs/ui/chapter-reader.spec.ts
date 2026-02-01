@@ -8,7 +8,8 @@ test("ui: chapter reader shows memory hits and can jump to writing", async ({ pa
   const { projectId } = await bootstrapProject(request);
 
   const create = await request.post(`${state.backendUrl}/api/projects/${projectId}/chapters`, {
-    data: { number: 1, title: "E2E Reader Chapter", plan: "E2E plan", status: "done" },
+    // Avoid auto plot_auto_update (runs async in inline queue and can overwrite manual analysis/apply expectations).
+    data: { number: 1, title: "E2E Reader Chapter", plan: "E2E plan", status: "drafting" },
   });
   expect(create.ok()).toBeTruthy();
   const createJson = (await create.json()) as { ok: boolean; data: { chapter: { id: string } } };
@@ -16,7 +17,7 @@ test("ui: chapter reader shows memory hits and can jump to writing", async ({ pa
 
   const contentMd = `# E2E Chapter 1\n\nE2E_DRAGON appears here.\n\nE2E_FORESHADOW appears here.`;
   const put = await request.put(`${state.backendUrl}/api/chapters/${chapterId}`, {
-    data: { content_md: contentMd, status: "done" },
+    data: { content_md: contentMd, status: "drafting" },
   });
   expect(put.ok()).toBeTruthy();
 
