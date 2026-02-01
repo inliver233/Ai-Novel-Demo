@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -16,8 +16,11 @@ from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.project_task import ProjectTask
 from app.models.outline import Outline
+from app.models.project_source_document import ProjectSourceDocument
+from app.models.project_table import ProjectTable, ProjectTableRow
 from app.models.search_index import SearchDocument
 from app.models.story_memory import StoryMemory
+from app.models.structured_memory import MemoryEntity, MemoryEvidence, MemoryRelation
 from app.models.worldbook_entry import WorldBookEntry
 
 logger = logging.getLogger("ainovel")
@@ -47,6 +50,45 @@ def _truncate(s: str, *, limit: int) -> str:
     if limit <= 0:
         return text
     return text[:limit]
+
+
+def _has_table(db: Session, *, name: str) -> bool:
+    try:
+        return bool(inspect(db.get_bind()).has_table(name))
+    except Exception:
+        return False
+
+
+def _render_table_row_text(data_json: str | None) -> str:
+    raw = _trim(data_json)
+    if not raw:
+        return ""
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        return raw
+
+    if isinstance(obj, dict):
+        parts: list[str] = []
+        for k in sorted(obj.keys(), key=lambda x: str(x)):
+            v = obj.get(k)
+            if v is None:
+                continue
+            v_s = _trim(str(v))
+            if not v_s:
+                continue
+            parts.append(f"{k}: {v_s}")
+        return "\n".join(parts).strip()
+
+    if isinstance(obj, list):
+        parts = [_trim(str(x)) for x in obj if _trim(str(x))]
+        if parts:
+            return "\n".join(parts[:50]).strip()
+
+    try:
+        return json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        return raw
 
 
 def _sqlite_table_exists(db: Session, *, name: str) -> bool:
@@ -197,8 +239,8 @@ def build_project_search_docs(*, db: Session, project_id: str) -> list[SearchDoc
                 source_id=str(c.id),
                 title=header,
                 content=content,
-                url_path=None,
-                locator_json=None,
+                url_path=f"/projects/{pid}/writing?chapterId={str(c.id)}",
+                locator_json=json.dumps({"chapter_id": str(c.id)}, ensure_ascii=False),
             )
         )
 
@@ -218,6 +260,8 @@ def build_project_search_docs(*, db: Session, project_id: str) -> list[SearchDoc
                 source_id=str(w.id),
                 title=title or "世界书条目",
                 content=(title + "\n\n" + content).strip(),
+                url_path=f"/projects/{pid}/worldbook",
+                locator_json=json.dumps({"worldbook_entry_id": str(w.id)}, ensure_ascii=False),
             )
         )
 
@@ -238,6 +282,8 @@ def build_project_search_docs(*, db: Session, project_id: str) -> list[SearchDoc
                 source_id=str(ch.id),
                 title=name or "角色卡",
                 content=(name + "\n\n" + body).strip(),
+                url_path=f"/projects/{pid}/characters",
+                locator_json=json.dumps({"character_id": str(ch.id)}, ensure_ascii=False),
             )
         )
 
@@ -258,6 +304,13 @@ def build_project_search_docs(*, db: Session, project_id: str) -> list[SearchDoc
                 source_id=str(m.id),
                 title=title,
                 content=(title + "\n\n" + content).strip(),
+                url_path=f"/projects/{pid}/chapter-analysis?chapterId={str(getattr(m, 'chapter_id', '') or '').strip()}"
+                if _trim(getattr(m, 'chapter_id', '') or '')
+                else f"/projects/{pid}/chapter-analysis",
+                locator_json=json.dumps(
+                    {"story_memory_id": str(m.id), "chapter_id": str(getattr(m, "chapter_id", "") or "").strip() or None},
+                    ensure_ascii=False,
+                ),
             )
         )
 
@@ -277,8 +330,187 @@ def build_project_search_docs(*, db: Session, project_id: str) -> list[SearchDoc
                 source_id=str(o.id),
                 title=title or "大纲",
                 content=(title + "\n\n" + content).strip(),
+                url_path=f"/projects/{pid}/outline",
+                locator_json=json.dumps({"outline_id": str(o.id)}, ensure_ascii=False),
             )
         )
+
+    if _has_table(db, name="project_source_documents"):
+        source_docs = (
+            db.execute(
+                select(ProjectSourceDocument)
+                .where(ProjectSourceDocument.project_id == pid)
+                .order_by(ProjectSourceDocument.updated_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        for d in source_docs:
+            filename = _trim(getattr(d, "filename", ""))
+            content = _trim(getattr(d, "content_text", ""))
+            content_type = _trim(getattr(d, "content_type", ""))
+            if not (filename or content):
+                continue
+            title = filename or "导入文档"
+            body = "\n\n".join([x for x in [filename, content_type, content] if x]).strip()
+            out.append(
+                SearchDocInput(
+                    source_type="source_document",
+                    source_id=str(d.id),
+                    title=title,
+                    content=body,
+                    url_path=f"/projects/{pid}/import?docId={str(d.id)}",
+                    locator_json=json.dumps({"document_id": str(d.id)}, ensure_ascii=False),
+                )
+            )
+
+    if _has_table(db, name="project_tables") and _has_table(db, name="project_table_rows"):
+        tables = (
+            db.execute(select(ProjectTable).where(ProjectTable.project_id == pid).order_by(ProjectTable.updated_at.desc()))
+            .scalars()
+            .all()
+        )
+        table_by_id: dict[str, ProjectTable] = {str(t.id): t for t in tables}
+
+        rows = (
+            db.execute(
+                select(ProjectTableRow)
+                .where(ProjectTableRow.project_id == pid)
+                .order_by(ProjectTableRow.updated_at.desc(), ProjectTableRow.id.desc())
+            )
+            .scalars()
+            .all()
+        )
+        for r in rows:
+            table = table_by_id.get(str(r.table_id))
+            table_name = _trim(getattr(table, "name", "")) if table else ""
+            table_key = _trim(getattr(table, "table_key", "")) if table else ""
+            row_text = _render_table_row_text(getattr(r, "data_json", None))
+            title = f"{table_name or '表格'} · 行 {int(getattr(r, 'row_index', 0)) + 1}"
+            body = "\n\n".join([x for x in [table_name, table_key, row_text] if x]).strip()
+            if not body:
+                continue
+            out.append(
+                SearchDocInput(
+                    source_type="project_table_row",
+                    source_id=str(r.id),
+                    title=title,
+                    content=body,
+                    url_path=f"/projects/{pid}/numeric-tables",
+                    locator_json=json.dumps(
+                        {
+                            "table_id": str(getattr(r, "table_id", "") or "").strip(),
+                            "table_key": table_key or None,
+                            "row_id": str(r.id),
+                            "row_index": int(getattr(r, "row_index", 0) or 0),
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            )
+
+    entity_name_by_id: dict[str, str] = {}
+    if _has_table(db, name="entities"):
+        entities = (
+            db.execute(
+                select(MemoryEntity)
+                .where(MemoryEntity.project_id == pid, MemoryEntity.deleted_at.is_(None))
+                .order_by(MemoryEntity.updated_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        for e in entities:
+            name = _trim(getattr(e, "name", "")) or str(e.id)
+            entity_name_by_id[str(e.id)] = name
+            entity_type = _trim(getattr(e, "entity_type", "")) or "entity"
+            summary = _trim(getattr(e, "summary_md", ""))
+            attrs = _trim(getattr(e, "attributes_json", ""))
+            body = "\n\n".join([x for x in [name, summary, attrs] if x]).strip()
+            out.append(
+                SearchDocInput(
+                    source_type="memory_entity",
+                    source_id=str(e.id),
+                    title=f"[{entity_type}] {name}".strip(),
+                    content=body or name,
+                    url_path=f"/projects/{pid}/structured-memory",
+                    locator_json=json.dumps({"table": "entities", "entity_id": str(e.id)}, ensure_ascii=False),
+                )
+            )
+
+    if _has_table(db, name="relations"):
+        relations = (
+            db.execute(
+                select(MemoryRelation)
+                .where(MemoryRelation.project_id == pid, MemoryRelation.deleted_at.is_(None))
+                .order_by(MemoryRelation.updated_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        for rel in relations:
+            from_id = str(getattr(rel, "from_entity_id", "") or "").strip()
+            to_id = str(getattr(rel, "to_entity_id", "") or "").strip()
+            from_name = entity_name_by_id.get(from_id, from_id or "unknown")
+            to_name = entity_name_by_id.get(to_id, to_id or "unknown")
+            rel_type = _trim(getattr(rel, "relation_type", "")) or "related_to"
+            title = f"{from_name} --({rel_type})→ {to_name}"
+            desc = _trim(getattr(rel, "description_md", ""))
+            attrs = _trim(getattr(rel, "attributes_json", ""))
+            body = "\n\n".join([x for x in [title, desc, attrs] if x]).strip()
+            out.append(
+                SearchDocInput(
+                    source_type="memory_relation",
+                    source_id=str(rel.id),
+                    title=title,
+                    content=body or title,
+                    url_path=f"/projects/{pid}/structured-memory?view=character-relations&relationId={str(rel.id)}",
+                    locator_json=json.dumps(
+                        {
+                            "relation_id": str(rel.id),
+                            "from_entity_id": from_id or None,
+                            "to_entity_id": to_id or None,
+                            "relation_type": rel_type,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            )
+
+    if _has_table(db, name="evidence"):
+        evidence_rows = (
+            db.execute(
+                select(MemoryEvidence)
+                .where(MemoryEvidence.project_id == pid, MemoryEvidence.deleted_at.is_(None))
+                .order_by(MemoryEvidence.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        for ev in evidence_rows:
+            src_type = _trim(getattr(ev, "source_type", "")) or "unknown"
+            src_id = _trim(getattr(ev, "source_id", ""))
+            title = f"证据：{src_type}{(':' + src_id) if src_id else ''}"
+            quote = _trim(getattr(ev, "quote_md", ""))
+            attrs = _trim(getattr(ev, "attributes_json", ""))
+            body = "\n\n".join([x for x in [title, quote, attrs] if x]).strip()
+            out.append(
+                SearchDocInput(
+                    source_type="memory_evidence",
+                    source_id=str(ev.id),
+                    title=title,
+                    content=body or title,
+                    url_path=f"/projects/{pid}/structured-memory",
+                    locator_json=json.dumps(
+                        {
+                            "evidence_id": str(ev.id),
+                            "source_type": src_type,
+                            "source_id": src_id or None,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            )
 
     return out
 
@@ -453,6 +685,7 @@ def query_project_search(
             "SELECT d.source_type,d.source_id,COALESCE(d.title,'') AS title,"
             "snippet(search_index,1,'[',']','...',12) AS snippet,"
             "d.url_path AS jump_url,"
+            "d.locator_json AS locator_json,"
             "bm25(search_index,5.0,1.0) AS rank "
             "FROM search_index JOIN search_documents d ON d.id = search_index.rowid "
             f"WHERE {where} "
@@ -467,6 +700,7 @@ def query_project_search(
                 "title": str(r[2] or ""),
                 "snippet": str(r[3] or ""),
                 "jump_url": (str(r[4] or "").strip() or None),
+                "locator_json": (str(r[5] or "").strip() or None),
             }
             for r in rows
         ]
@@ -488,7 +722,7 @@ def query_project_search(
     rows2 = (
         db.execute(
             text(
-                "SELECT source_type,source_id,COALESCE(title,'') AS title,content, url_path "
+                "SELECT source_type,source_id,COALESCE(title,'') AS title,content, url_path, locator_json "
                 "FROM search_documents "
                 f"WHERE {where} "
                 "ORDER BY updated_at DESC, id DESC "
@@ -505,6 +739,7 @@ def query_project_search(
             "title": str(r[2] or ""),
             "snippet": _like_snippet(content=str(r[3] or ""), q=q_raw),
             "jump_url": (str(r[4] or "").strip() or None),
+            "locator_json": (str(r[5] or "").strip() or None),
         }
         for r in rows2
     ]
