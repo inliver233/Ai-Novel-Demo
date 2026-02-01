@@ -1292,19 +1292,26 @@ export function WorldBookPage() {
                 {previewRequestId ? <span className="ml-2">request_id: {previewRequestId}</span> : null}
               </div>
             </div>
-            <button
-              className="btn btn-secondary"
-              disabled={previewLoading || drawerOpen}
-              title={drawerOpen ? UI_COPY.worldbook.previewUseInDrawerHint : undefined}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                void runPreview();
-              }}
-              type="button"
-            >
-              {UI_COPY.worldbook.previewRun}
-            </button>
+            <div className="grid justify-items-end gap-1">
+              <button
+                className="btn btn-secondary"
+                disabled={previewLoading || drawerOpen}
+                title={drawerOpen ? UI_COPY.worldbook.previewUseInDrawerHint : undefined}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void runPreview();
+                }}
+                type="button"
+              >
+                {UI_COPY.worldbook.previewRun}
+              </button>
+              {drawerOpen ? (
+                <Badge className="max-w-[320px] whitespace-normal" tone="warning">
+                  {UI_COPY.worldbook.previewUseInDrawerHint}
+                </Badge>
+              ) : null}
+            </div>
           </div>
 
           <div className="mt-4 grid gap-3">
