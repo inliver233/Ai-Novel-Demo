@@ -1456,6 +1456,8 @@ export function SettingsPage() {
                   <span className="text-xs text-subtext">重排算法（rerank method）</span>
                   <select
                     className="select"
+                    id="settings_vector_rerank_method"
+                    name="vector_rerank_method"
                     aria-label="settings_vector_rerank_method"
                     value={settingsForm.vector_rerank_method}
                     onChange={(e) => setSettingsForm((v) => ({ ...v, vector_rerank_method: e.target.value }))}
@@ -1469,6 +1471,8 @@ export function SettingsPage() {
                   <span className="text-xs text-subtext">候选数量（top_k）</span>
                   <input
                     className="input"
+                    id="settings_vector_rerank_top_k"
+                    name="vector_rerank_top_k"
                     aria-label="settings_vector_rerank_top_k"
                     type="number"
                     min={1}
@@ -1567,6 +1571,8 @@ export function SettingsPage() {
                       <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankTimeoutLabel}</span>
                       <input
                         className="input"
+                        id="settings_vector_rerank_timeout_seconds"
+                        name="vector_rerank_timeout_seconds"
                         aria-label="settings_vector_rerank_timeout_seconds"
                         type="number"
                         min={1}
@@ -1603,6 +1609,8 @@ export function SettingsPage() {
                       <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankHybridAlphaLabel}</span>
                       <input
                         className="input"
+                        id="settings_vector_rerank_hybrid_alpha"
+                        name="vector_rerank_hybrid_alpha"
                         aria-label="settings_vector_rerank_hybrid_alpha"
                         type="number"
                         min={0}
@@ -2229,6 +2237,8 @@ export function SettingsPage() {
             <label className="flex items-center gap-2 text-sm text-ink">
               <input
                 className="checkbox"
+                id="settings_writing_memory_injection_default"
+                name="writing_memory_injection_default"
                 checked={writingMemoryInjectionEnabled}
                 onChange={(e) => saveWritingMemoryInjectionEnabled(e.target.checked)}
                 aria-label="settings_writing_memory_injection_default"

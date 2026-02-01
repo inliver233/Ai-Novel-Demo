@@ -265,6 +265,8 @@ export function SearchPage() {
         <div className="grid gap-2">
           <input
             className="input w-full"
+            id="search_query"
+            name="search_query"
             aria-label="search_query"
             placeholder={UI_COPY.search.queryPlaceholder}
             value={query}
