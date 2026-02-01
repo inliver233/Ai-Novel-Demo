@@ -60,6 +60,42 @@ type QpPreviewState = { normalized: string; obs: unknown; requestId: string };
 const qpPreviewCache = new Map<string, QpPreviewState>();
 const qpPreviewQueryTextCache = new Map<string, string>();
 
+type VectorEmbeddingDryRunResult = {
+  enabled: boolean;
+  disabled_reason?: string | null;
+  provider?: string | null;
+  dims?: number | null;
+  timings_ms?: { total?: number | null } | null;
+  error?: string | null;
+  embedding?: {
+    provider?: string | null;
+    base_url?: string | null;
+    model?: string | null;
+    has_api_key?: boolean;
+    masked_api_key?: string;
+  };
+};
+
+type VectorRerankDryRunResult = {
+  enabled: boolean;
+  documents_count?: number;
+  method?: string | null;
+  top_k?: number | null;
+  hybrid_alpha?: number | null;
+  order?: number[];
+  timings_ms?: { total?: number | null } | null;
+  obs?: unknown;
+  rerank?: {
+    provider?: string | null;
+    base_url?: string | null;
+    model?: string | null;
+    timeout_seconds?: number | null;
+    hybrid_alpha?: number | null;
+    has_api_key?: boolean;
+    masked_api_key?: string;
+  };
+};
+
 export function SettingsPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -113,6 +149,25 @@ export function SettingsPage() {
   const [rerankApiKeyClearRequested, setRerankApiKeyClearRequested] = useState(false);
   const [vectorApiKeyDraft, setVectorApiKeyDraft] = useState("");
   const [vectorApiKeyClearRequested, setVectorApiKeyClearRequested] = useState(false);
+  const [embeddingDryRunLoading, setEmbeddingDryRunLoading] = useState(false);
+  const [embeddingDryRun, setEmbeddingDryRun] = useState<null | {
+    requestId: string;
+    result: VectorEmbeddingDryRunResult;
+  }>(null);
+  const [embeddingDryRunError, setEmbeddingDryRunError] = useState<null | {
+    message: string;
+    code: string;
+    requestId?: string;
+  }>(null);
+  const [rerankDryRunLoading, setRerankDryRunLoading] = useState(false);
+  const [rerankDryRun, setRerankDryRun] = useState<null | { requestId: string; result: VectorRerankDryRunResult }>(
+    null,
+  );
+  const [rerankDryRunError, setRerankDryRunError] = useState<null | {
+    message: string;
+    code: string;
+    requestId?: string;
+  }>(null);
   const [writingMemoryInjectionEnabled, setWritingMemoryInjectionEnabled] = useState(true);
 
   useEffect(() => {
@@ -762,6 +817,70 @@ export function SettingsPage() {
 
   const vectorApiKeyDirty = vectorApiKeyClearRequested || vectorApiKeyDraft.trim().length > 0;
   const rerankApiKeyDirty = rerankApiKeyClearRequested || rerankApiKeyDraft.trim().length > 0;
+
+  const runEmbeddingDryRun = useCallback(async () => {
+    if (!projectId) return;
+    if (saving || embeddingDryRunLoading || rerankDryRunLoading) return;
+
+    if (dirty) {
+      toast.toastError("请先保存设置后再测试（测试使用已保存配置）");
+      return;
+    }
+
+    setEmbeddingDryRunLoading(true);
+    setEmbeddingDryRunError(null);
+    try {
+      const res = await apiJson<{ result: VectorEmbeddingDryRunResult }>(
+        `/api/projects/${projectId}/vector/embeddings/dry-run`,
+        {
+          method: "POST",
+          body: JSON.stringify({ text: "hello world" }),
+        },
+      );
+      setEmbeddingDryRun({ requestId: res.request_id, result: res.data.result });
+      toast.toastSuccess("Embedding 测试已完成", res.request_id);
+    } catch (e) {
+      const err = e as ApiError;
+      setEmbeddingDryRunError({ message: err.message, code: err.code, requestId: err.requestId });
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setEmbeddingDryRunLoading(false);
+    }
+  }, [dirty, embeddingDryRunLoading, projectId, rerankDryRunLoading, saving, toast]);
+
+  const runRerankDryRun = useCallback(async () => {
+    if (!projectId) return;
+    if (saving || embeddingDryRunLoading || rerankDryRunLoading) return;
+
+    if (dirty) {
+      toast.toastError("请先保存设置后再测试（测试使用已保存配置）");
+      return;
+    }
+
+    setRerankDryRunLoading(true);
+    setRerankDryRunError(null);
+    try {
+      const res = await apiJson<{ result: VectorRerankDryRunResult }>(
+        `/api/projects/${projectId}/vector/rerank/dry-run`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            query_text: "dragon castle",
+            documents: ["apple banana", "dragon castle"],
+          }),
+        },
+      );
+      setRerankDryRun({ requestId: res.request_id, result: res.data.result });
+      toast.toastSuccess("Rerank 测试已完成", res.request_id);
+    } catch (e) {
+      const err = e as ApiError;
+      setRerankDryRunError({ message: err.message, code: err.code, requestId: err.requestId });
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setRerankDryRunLoading(false);
+    }
+  }, [dirty, embeddingDryRunLoading, projectId, rerankDryRunLoading, saving, toast]);
+
   useAutoSave({
     enabled: Boolean(projectId && baselineProject && baselineSettings && !vectorApiKeyDirty && !rerankApiKeyDirty),
     dirty,
@@ -1064,6 +1183,97 @@ export function SettingsPage() {
                 ；来源: {baselineSettings.vector_rerank_effective_source}；配置:{" "}
                 {baselineSettings.vector_rerank_effective_config_source}）
               </div>
+            </div>
+
+            <div className="rounded-atelier border border-border bg-canvas p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-ink">测试配置（dry-run）</div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={
+                      saving ||
+                      dirty ||
+                      embeddingDryRunLoading ||
+                      rerankDryRunLoading ||
+                      vectorApiKeyDirty ||
+                      rerankApiKeyDirty
+                    }
+                    onClick={() => void runEmbeddingDryRun()}
+                    type="button"
+                  >
+                    {embeddingDryRunLoading ? "测试 embedding…" : "测试 embedding"}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={
+                      saving ||
+                      dirty ||
+                      embeddingDryRunLoading ||
+                      rerankDryRunLoading ||
+                      vectorApiKeyDirty ||
+                      rerankApiKeyDirty
+                    }
+                    onClick={() => void runRerankDryRun()}
+                    type="button"
+                  >
+                    {rerankDryRunLoading ? "测试 rerank…" : "测试 rerank"}
+                  </button>
+                </div>
+              </div>
+              {dirty || vectorApiKeyDirty || rerankApiKeyDirty ? (
+                <div className="mt-1 text-[11px] text-subtext">提示：测试使用已保存配置；请先保存当前设置。</div>
+              ) : null}
+
+              {embeddingDryRunError ? (
+                <div className="mt-3 rounded-atelier border border-border bg-surface p-3">
+                  <div className="text-xs text-red-600 dark:text-red-300">
+                    Embedding 测试失败：{embeddingDryRunError.message} ({embeddingDryRunError.code})
+                  </div>
+                  <RequestIdBadge requestId={embeddingDryRunError.requestId} className="mt-2" />
+                  <div className="mt-1 text-[11px] text-subtext">
+                    排障：检查 embedding base_url/model/api_key；打开后端日志并搜索 request_id。
+                  </div>
+                </div>
+              ) : null}
+
+              {embeddingDryRun ? (
+                <div className="mt-3 rounded-atelier border border-border bg-surface p-3">
+                  <div className="text-xs text-subtext">
+                    Embedding：{embeddingDryRun.result.enabled ? "enabled" : "disabled"}；dims:
+                    {embeddingDryRun.result.dims ?? "（未知）"}；耗时:
+                    {embeddingDryRun.result.timings_ms?.total ?? "（未知）"}ms
+                    {embeddingDryRun.result.error ? `；error: ${embeddingDryRun.result.error}` : ""}
+                  </div>
+                  <RequestIdBadge requestId={embeddingDryRun.requestId} className="mt-2" />
+                </div>
+              ) : null}
+
+              {rerankDryRunError ? (
+                <div className="mt-3 rounded-atelier border border-border bg-surface p-3">
+                  <div className="text-xs text-red-600 dark:text-red-300">
+                    Rerank 测试失败：{rerankDryRunError.message} ({rerankDryRunError.code})
+                  </div>
+                  <RequestIdBadge requestId={rerankDryRunError.requestId} className="mt-2" />
+                  <div className="mt-1 text-[11px] text-subtext">
+                    排障：检查 rerank base_url/model/api_key；若使用 external_rerank_api，确认 /v1/rerank 可访问。
+                  </div>
+                </div>
+              ) : null}
+
+              {rerankDryRun ? (
+                <div className="mt-3 rounded-atelier border border-border bg-surface p-3">
+                  <div className="text-xs text-subtext">
+                    Rerank：{rerankDryRun.result.enabled ? "enabled" : "disabled"}；method:
+                    {rerankDryRun.result.method ?? "（未知）"}
+                    ；provider:
+                    {(rerankDryRun.result.rerank as { provider?: string } | undefined)?.provider ?? "（未知）"}
+                    ；耗时:{rerankDryRun.result.timings_ms?.total ?? "（未知）"}ms；order:
+                    {(rerankDryRun.result.order ?? []).join(" → ") || "（空）"}
+                  </div>
+                  <RequestIdBadge requestId={rerankDryRun.requestId} className="mt-2" />
+                </div>
+              ) : null}
             </div>
 
             <div className="grid gap-2">

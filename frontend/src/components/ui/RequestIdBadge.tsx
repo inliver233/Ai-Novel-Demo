@@ -1,5 +1,6 @@
 import clsx from "clsx";
 
+import { copyText } from "../../lib/copyText";
 import { UI_COPY } from "../../lib/uiCopy";
 
 export function RequestIdBadge(props: { requestId?: string | null; className?: string }) {
@@ -22,11 +23,7 @@ export function RequestIdBadge(props: { requestId?: string | null; className?: s
         type="button"
         aria-label="copy_request_id"
         onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(requestId);
-          } catch {
-            // ignore
-          }
+          await copyText(requestId);
         }}
       >
         {UI_COPY.common.copy}
