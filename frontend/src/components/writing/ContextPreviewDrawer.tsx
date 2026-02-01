@@ -25,6 +25,7 @@ type Props = {
     semantic_history?: boolean;
     foreshadow_open_loops?: boolean;
     structured: boolean;
+    tables?: boolean;
     vector_rag: boolean;
     graph: boolean;
     fractal: boolean;
@@ -44,6 +45,7 @@ type MemorySectionEnabled = {
   semantic_history: boolean;
   foreshadow_open_loops: boolean;
   structured: boolean;
+  tables: boolean;
   vector_rag: boolean;
   graph: boolean;
   fractal: boolean;
@@ -77,6 +79,7 @@ const DEFAULT_PREVIEW_SECTIONS: MemorySectionEnabled = {
   semantic_history: false,
   foreshadow_open_loops: false,
   structured: true,
+  tables: true,
   vector_rag: true,
   graph: true,
   fractal: true,
@@ -88,6 +91,7 @@ const DEFAULT_BUDGET_INPUTS: Record<string, string> = {
   semantic_history: "",
   foreshadow_open_loops: "",
   structured: "",
+  tables: "",
   vector_rag: "",
   graph: "",
   fractal: "",
@@ -99,106 +103,12 @@ const EMPTY_PACK: MemoryContextPack = {
   semantic_history: {},
   foreshadow_open_loops: {},
   structured: {},
+  tables: {},
   vector_rag: {},
   graph: {},
   fractal: {},
   logs: [],
 };
-
-type ProjectTablePreview = {
-  id: string;
-  table_key: string;
-  name: string;
-  schema?: unknown;
-  row_count?: number;
-};
-
-type ProjectTableRowPreview = {
-  id: string;
-  row_index: number;
-  data: Record<string, unknown>;
-};
-
-type TablesInjectionPreview = {
-  text_md: string;
-  truncated: boolean;
-  char_limit: number;
-  original_chars: number;
-  tables: number;
-  rows: number;
-};
-
-const TABLES_PREVIEW_TAG = "ProjectTables";
-const TABLES_PREVIEW_DEFAULT_CHAR_LIMIT = 6000;
-const TABLES_PREVIEW_TRUNCATION_MARK = "\n…(truncated)\n";
-const TABLES_PREVIEW_MAX_CHAR_LIMIT = 50000;
-
-function clampTablesCharLimit(raw: string, fallback: number): number {
-  const trimmed = String(raw ?? "").trim();
-  if (!trimmed) return fallback;
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
-  return Math.max(0, Math.min(TABLES_PREVIEW_MAX_CHAR_LIMIT, Math.floor(parsed)));
-}
-
-function wrapTaggedBlockWithLimit(
-  tag: string,
-  inner: string,
-  charLimit: number,
-): { textMd: string; truncated: boolean; originalChars: number } {
-  const prefix = `<${tag}>\n`;
-  const suffix = `\n</${tag}>`;
-  const body = (inner || "").trim();
-  if (!body) return { textMd: "", truncated: false, originalChars: 0 };
-
-  const raw = `${prefix}${body}${suffix}`;
-  const originalChars = raw.length;
-  if (charLimit <= 0 || originalChars <= charLimit) return { textMd: raw, truncated: false, originalChars };
-
-  const budget = Math.max(0, charLimit - prefix.length - suffix.length);
-  if (budget <= 0) return { textMd: "", truncated: true, originalChars };
-
-  const marker = TABLES_PREVIEW_TRUNCATION_MARK;
-  let clippedInner: string;
-  if (budget <= marker.length) clippedInner = marker.slice(0, budget);
-  else clippedInner = `${body.slice(0, Math.max(0, budget - marker.length)).trimEnd()}${marker}`;
-
-  let clipped = `${prefix}${clippedInner}${suffix}`;
-  if (clipped.length > charLimit) clipped = clipped.slice(0, charLimit);
-  return { textMd: clipped, truncated: true, originalChars };
-}
-
-function normalizeTableColumns(schema: unknown): { key: string; type: string; required: boolean }[] {
-  if (!schema || typeof schema !== "object") return [];
-  const o = schema as Record<string, unknown>;
-  const cols = Array.isArray(o.columns) ? o.columns : [];
-  const out: { key: string; type: string; required: boolean }[] = [];
-  for (const c of cols) {
-    if (!c || typeof c !== "object") continue;
-    const it = c as Record<string, unknown>;
-    const key = typeof it.key === "string" ? it.key.trim() : "";
-    if (!key) continue;
-    const type = typeof it.type === "string" ? it.type.trim() : "string";
-    out.push({ key, type, required: Boolean(it.required) });
-  }
-  return out;
-}
-
-function isKeyValueColumns(cols: { key: string; required: boolean }[]): boolean {
-  if (cols.length !== 2) return false;
-  const keys = cols.map((c) => c.key).sort();
-  if (keys[0] !== "key" || keys[1] !== "value") return false;
-  const keyCol = cols.find((c) => c.key === "key");
-  return Boolean(keyCol?.required);
-}
-
-function safeCompactJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 0) ?? "";
-  } catch {
-    return String(value ?? "");
-  }
-}
 
 function hasOwn<K extends string>(obj: unknown, key: K): obj is Record<K, unknown> {
   return typeof obj === "object" && obj !== null && Object.prototype.hasOwnProperty.call(obj, key);
@@ -353,26 +263,6 @@ export function ContextPreviewDrawer(props: Props) {
   const [budgetOverrideInputs, setBudgetOverrideInputs] = useState<Record<string, string>>(DEFAULT_BUDGET_INPUTS);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
 
-  const [tablesCharLimitInput, setTablesCharLimitInput] = useState("");
-  const tablesCharLimit = useMemo(
-    () => clampTablesCharLimit(tablesCharLimitInput, TABLES_PREVIEW_DEFAULT_CHAR_LIMIT),
-    [tablesCharLimitInput],
-  );
-  const [tablesPreviewLoading, setTablesPreviewLoading] = useState(false);
-  const [tablesPreviewError, setTablesPreviewError] = useState<{
-    code: string;
-    message: string;
-    requestId?: string;
-  } | null>(null);
-  const [tablesPreview, setTablesPreview] = useState<TablesInjectionPreview>({
-    text_md: "",
-    truncated: false,
-    char_limit: TABLES_PREVIEW_DEFAULT_CHAR_LIMIT,
-    original_chars: 0,
-    tables: 0,
-    rows: 0,
-  });
-
   const vector = useVectorRagQuery({ open, projectId, toast });
 
   const effectivePack = useMemo(() => (memoryInjectionEnabled ? pack : EMPTY_PACK), [memoryInjectionEnabled, pack]);
@@ -385,6 +275,7 @@ export function ContextPreviewDrawer(props: Props) {
       "semantic_history",
       "foreshadow_open_loops",
       "structured",
+      "tables",
       "vector_rag",
       "graph",
       "fractal",
@@ -397,101 +288,6 @@ export function ContextPreviewDrawer(props: Props) {
     }
     return out;
   }, [budgetOverrideInputs]);
-
-  const fetchTablesPreview = useCallback(async () => {
-    if (!projectId) {
-      setTablesPreviewError({ code: "NO_PROJECT", message: UI_COPY.writing.contextPreviewMissingProjectId });
-      return;
-    }
-    setTablesPreviewLoading(true);
-    setTablesPreviewError(null);
-    try {
-      const res = await apiJson<{ tables: ProjectTablePreview[] }>(
-        `/api/projects/${projectId}/tables?include_schema=true`,
-      );
-      const rawList = Array.isArray(res.data?.tables) ? res.data.tables : [];
-      const list: ProjectTablePreview[] = rawList
-        .map((t) => ({
-          id: String(t?.id ?? ""),
-          table_key: String(t?.table_key ?? ""),
-          name: String(t?.name ?? ""),
-          schema: t?.schema,
-          row_count: typeof t?.row_count === "number" ? t.row_count : undefined,
-        }))
-        .filter((t) => t.id && t.name);
-
-      const lines: string[] = [];
-      let rowsTotal = 0;
-      for (const t of list) {
-        lines.push(`### ${t.name} (${t.table_key || t.id})`);
-        const cols = normalizeTableColumns(t.schema);
-        const keyValue = isKeyValueColumns(cols);
-
-        if ((t.row_count ?? 0) <= 0) {
-          lines.push("- (empty)");
-          lines.push("");
-          continue;
-        }
-
-        try {
-          const rowsRes = await apiJson<{ rows: ProjectTableRowPreview[] }>(
-            `/api/projects/${projectId}/tables/${t.id}/rows?limit=50`,
-          );
-          const rows = Array.isArray(rowsRes.data?.rows) ? rowsRes.data.rows : [];
-          rowsTotal += rows.length;
-          if (!rows.length) {
-            lines.push("- (empty)");
-            lines.push("");
-            continue;
-          }
-
-          for (const r of rows) {
-            const data = (r?.data ?? {}) as Record<string, unknown>;
-            if (keyValue) {
-              const k = String(data.key ?? "").trim();
-              const v = String(data.value ?? "").trim();
-              lines.push(`- ${k || `#${r.row_index}`}: ${v}`);
-              continue;
-            }
-            lines.push(`- #${r.row_index}: ${safeCompactJson(data)}`);
-          }
-          lines.push("");
-        } catch (e) {
-          const meta =
-            e instanceof ApiError ? `${e.code}${e.requestId ? ` request_id:${e.requestId}` : ""}` : "UNKNOWN";
-          lines.push(`- (rows load failed: ${meta})`);
-          lines.push("");
-        }
-      }
-
-      const inner = lines.join("\n").trim();
-      const wrapped = wrapTaggedBlockWithLimit(TABLES_PREVIEW_TAG, inner, tablesCharLimit);
-      setTablesPreview({
-        text_md: wrapped.textMd,
-        truncated: wrapped.truncated,
-        char_limit: tablesCharLimit,
-        original_chars: wrapped.originalChars,
-        tables: list.length,
-        rows: rowsTotal,
-      });
-    } catch (e) {
-      if (e instanceof ApiError) {
-        setTablesPreviewError({ code: e.code, message: e.message, requestId: e.requestId });
-      } else {
-        setTablesPreviewError({ code: "UNKNOWN", message: "加载失败" });
-      }
-      setTablesPreview({
-        text_md: "",
-        truncated: false,
-        char_limit: tablesCharLimit,
-        original_chars: 0,
-        tables: 0,
-        rows: 0,
-      });
-    } finally {
-      setTablesPreviewLoading(false);
-    }
-  }, [projectId, tablesCharLimit]);
 
   const downloadPreviewBundle = useCallback(() => {
     if (!projectId) {
@@ -582,6 +378,7 @@ export function ContextPreviewDrawer(props: Props) {
       !getTextMd(effectivePack.semantic_history) &&
       !getTextMd(effectivePack.foreshadow_open_loops) &&
       !getTextMd(effectivePack.structured) &&
+      !getTextMd(effectivePack.tables) &&
       !getTextMd(effectivePack.vector_rag) &&
       !getTextMd(effectivePack.graph) &&
       !getTextMd(effectivePack.fractal)
@@ -721,19 +518,16 @@ export function ContextPreviewDrawer(props: Props) {
     setPreviewSections(sections);
     setBudgetOverrideInputs(DEFAULT_BUDGET_INPUTS);
     setSyncedAt(new Date().toISOString().replace("T", " ").slice(0, 19));
-    await Promise.all([fetchPreview({ queryText, sections, budgets: {} }), fetchTablesPreview()]);
-  }, [computeEffectiveQueryTextFromGenerate, fetchPreview, fetchTablesPreview, genMemoryModules]);
+    await fetchPreview({ queryText, sections, budgets: {} });
+  }, [computeEffectiveQueryTextFromGenerate, fetchPreview, genMemoryModules]);
 
   const load = useCallback(async () => {
     if (!projectId) {
       setError({ code: "NO_PROJECT", message: UI_COPY.writing.contextPreviewMissingProjectId });
       return;
     }
-    await Promise.all([
-      fetchPreview({ queryText: previewQueryText, sections: previewSections, budgets: parsedBudgetOverrides }),
-      fetchTablesPreview(),
-    ]);
-  }, [fetchPreview, fetchTablesPreview, parsedBudgetOverrides, previewQueryText, previewSections, projectId]);
+    await fetchPreview({ queryText: previewQueryText, sections: previewSections, budgets: parsedBudgetOverrides });
+  }, [fetchPreview, parsedBudgetOverrides, previewQueryText, previewSections, projectId]);
 
   useEffect(() => {
     if (!open) return;
@@ -777,16 +571,6 @@ export function ContextPreviewDrawer(props: Props) {
     setError(null);
     setPack(EMPTY_PACK);
     setRequestId(null);
-    setTablesPreviewLoading(false);
-    setTablesPreviewError(null);
-    setTablesPreview({
-      text_md: "",
-      truncated: false,
-      char_limit: TABLES_PREVIEW_DEFAULT_CHAR_LIMIT,
-      original_chars: 0,
-      tables: 0,
-      rows: 0,
-    });
   }, [memoryInjectionEnabled, open]);
 
   useEffect(() => {
@@ -836,7 +620,7 @@ export function ContextPreviewDrawer(props: Props) {
           </button>
           <button
             className="btn btn-secondary"
-            disabled={loading || tablesPreviewLoading || !memoryInjectionEnabled}
+            disabled={loading || !memoryInjectionEnabled || !projectId}
             onClick={() => void load()}
             type="button"
           >
@@ -926,6 +710,7 @@ export function ContextPreviewDrawer(props: Props) {
                     ["semantic_history", "语义历史（semantic_history）"],
                     ["foreshadow_open_loops", "未回收伏笔（foreshadow_open_loops）"],
                     ["structured", "结构化记忆（structured）"],
+                    ["tables", "表格系统（tables）"],
                     ["vector_rag", "向量 RAG（vector_rag）"],
                     ["graph", "关系图（graph）"],
                     ["fractal", "Fractal（fractal）"],
@@ -955,6 +740,7 @@ export function ContextPreviewDrawer(props: Props) {
                       ["semantic_history", "semantic_history char_limit"],
                       ["foreshadow_open_loops", "foreshadow_open_loops char_limit"],
                       ["structured", "structured char_limit"],
+                      ["tables", "tables char_limit"],
                       ["vector_rag", "vector_rag char_limit"],
                       ["graph", "graph char_limit"],
                       ["fractal", "fractal char_limit"],
@@ -1260,74 +1046,58 @@ export function ContextPreviewDrawer(props: Props) {
 
         {memoryInjectionEnabled ? (
           <div className="panel p-4">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div className="text-sm text-ink">Tables（project_tables）</div>
-              <button
-                className="btn btn-secondary"
-                disabled={!projectId || tablesPreviewLoading}
-                onClick={() => void fetchTablesPreview()}
-                type="button"
-              >
-                刷新 Tables
-              </button>
-            </div>
+            {(() => {
+              const raw = (effectivePack.tables ?? {}) as Record<string, unknown>;
+              const enabled = Boolean(raw.enabled);
+              const disabledReason = typeof raw.disabled_reason === "string" ? raw.disabled_reason : null;
+              const truncated = Boolean(raw.truncated);
+              const textMd = typeof raw.text_md === "string" ? raw.text_md : "";
+              const errorCode = typeof raw.error === "string" ? raw.error : null;
+              const counts = raw.counts && typeof raw.counts === "object" ? (raw.counts as Record<string, unknown>) : {};
+              const rawTables = typeof counts.tables === "number" ? counts.tables : Number(counts.tables ?? 0);
+              const rawRows = typeof counts.rows === "number" ? counts.rows : Number(counts.rows ?? 0);
+              const tablesCount = Number.isFinite(rawTables) ? rawTables : 0;
+              const rowsCount = Number.isFinite(rawRows) ? rawRows : 0;
 
-            <div className="mt-3 grid gap-2">
-              <label className="grid gap-1 text-xs text-subtext">
-                <span>tables char_limit（仅影响预览）</span>
-                <input
-                  className="input"
-                  aria-label="tables_char_limit"
-                  inputMode="numeric"
-                  placeholder={`留空=${TABLES_PREVIEW_DEFAULT_CHAR_LIMIT}`}
-                  value={tablesCharLimitInput}
-                  onChange={(e) => setTablesCharLimitInput(e.currentTarget.value.replace(/[^\d]/g, ""))}
-                />
-              </label>
-              <div className="text-[11px] text-subtext">
-                tables:{tablesPreview.tables} · rows:{tablesPreview.rows} · original_chars:
-                {tablesPreview.original_chars} · char_limit:{tablesPreview.char_limit} · truncated:
-                {tablesPreview.truncated ? "true" : "false"}
-              </div>
-
-              {tablesPreviewError ? (
-                <div className="text-xs text-danger">
-                  {tablesPreviewError.message} ({tablesPreviewError.code})
-                  {tablesPreviewError.requestId ? (
-                    <span className="ml-2">request_id: {tablesPreviewError.requestId}</span>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {tablesPreviewLoading ? <div className="text-sm text-subtext">{UI_COPY.common.loading}</div> : null}
-
-              <details className="mt-2">
-                <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
-                  tables 注入文本
-                </summary>
-                <div className="mt-2 flex justify-end">
-                  <button
-                    className="btn btn-ghost px-2 py-1 text-xs"
-                    onClick={() => {
-                      void (async () => {
-                        try {
-                          await writeClipboardText(tablesPreview.text_md || "");
-                          toast.toastSuccess("已复制 tables text_md");
-                        } catch {
-                          toast.toastError("复制失败");
-                        }
-                      })();
-                    }}
-                    type="button"
-                  >
-                    复制
-                  </button>
-                </div>
-                <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
-                  {tablesPreview.text_md || "（空）"}
-                </pre>
-              </details>
-            </div>
+              return (
+                <>
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div className="text-sm text-ink">Tables（sys.memory.tables）</div>
+                    <div className="text-[11px] text-subtext">
+                      {enabled ? "enabled" : `disabled: ${disabledReason ?? "unknown"}`} · tables:{tablesCount} · rows:
+                      {rowsCount} · truncated:{truncated ? "true" : "false"}
+                    </div>
+                  </div>
+                  {errorCode ? <div className="mt-2 text-xs text-danger">error: {errorCode}</div> : null}
+                  <details className="mt-3">
+                    <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                      tables.text_md（最终注入文本）
+                    </summary>
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        className="btn btn-ghost px-2 py-1 text-xs"
+                        onClick={() => {
+                          void (async () => {
+                            try {
+                              await writeClipboardText(textMd || "");
+                              toast.toastSuccess("已复制 tables text_md");
+                            } catch {
+                              toast.toastError("复制失败");
+                            }
+                          })();
+                        }}
+                        type="button"
+                      >
+                        复制
+                      </button>
+                    </div>
+                    <pre className="mt-2 max-h-64 overflow-auto rounded-atelier border border-border bg-surface p-3 text-xs text-ink">
+                      {textMd || "（空）"}
+                    </pre>
+                  </details>
+                </>
+              );
+            })()}
           </div>
         ) : null}
 

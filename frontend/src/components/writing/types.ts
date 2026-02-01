@@ -57,6 +57,7 @@ export type MemoryContextPack = {
   semantic_history: Record<string, unknown>;
   foreshadow_open_loops: Record<string, unknown>;
   structured: Record<string, unknown>;
+  tables: Record<string, unknown>;
   vector_rag: Record<string, unknown>;
   graph: Record<string, unknown>;
   fractal: Record<string, unknown>;
