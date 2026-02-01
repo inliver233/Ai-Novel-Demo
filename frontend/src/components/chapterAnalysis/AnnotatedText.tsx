@@ -61,7 +61,10 @@ export function AnnotatedText(props: {
 
   return (
     <div
-      className={clsx("whitespace-pre-wrap break-words font-content text-sm leading-relaxed text-ink", props.className)}
+      className={clsx(
+        "min-w-0 max-w-full whitespace-pre-wrap break-words font-content text-sm leading-relaxed text-ink",
+        props.className,
+      )}
     >
       {segments.map((segment, idx) => {
         if (segment.kind === "text") {

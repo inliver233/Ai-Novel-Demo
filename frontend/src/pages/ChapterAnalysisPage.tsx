@@ -107,7 +107,7 @@ export function ChapterAnalysisPage() {
   );
 
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 gap-4 overflow-x-hidden">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="font-content text-2xl text-ink">章节标注回溯</div>
@@ -117,7 +117,7 @@ export function ChapterAnalysisPage() {
                 第 {chapter.number} 章 · {(chapter.title ?? "").trim() || "（无标题）"}
               </>
             ) : chapterId ? (
-              <span className="font-mono">{chapterId}</span>
+              <span className="font-mono break-all">{chapterId}</span>
             ) : (
               "请从写作页进入（需要 chapterId）"
             )}
@@ -176,7 +176,7 @@ export function ChapterAnalysisPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
         <section className="min-h-0 min-w-0 rounded-atelier border border-border bg-surface p-3">
           {loading ? (
             <div className="rounded-atelier border border-border bg-canvas p-4" aria-busy="true" aria-live="polite">
@@ -210,38 +210,40 @@ export function ChapterAnalysisPage() {
           )}
         </section>
 
-        {loading ? (
-          <aside className="min-w-0 grid gap-3" aria-busy="true" aria-live="polite">
-            <span className="sr-only">{UI_COPY.common.loading}</span>
-            <div className="rounded-atelier border border-border bg-surface p-3">
-              <div className="skeleton h-4 w-24" />
-              <div className="mt-3 flex flex-wrap gap-2">
-                <div className="skeleton h-7 w-20" />
-                <div className="skeleton h-7 w-24" />
-                <div className="skeleton h-7 w-16" />
+        <div className="min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-12rem)] lg:overflow-auto">
+          {loading ? (
+            <aside className="min-w-0 grid gap-3" aria-busy="true" aria-live="polite">
+              <span className="sr-only">{UI_COPY.common.loading}</span>
+              <div className="rounded-atelier border border-border bg-surface p-3">
+                <div className="skeleton h-4 w-24" />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="skeleton h-7 w-20" />
+                  <div className="skeleton h-7 w-24" />
+                  <div className="skeleton h-7 w-16" />
+                </div>
               </div>
-            </div>
-            <div className="rounded-atelier border border-border bg-surface p-2">
-              <div className="grid gap-2 p-3">
-                <div className="skeleton h-4 w-32" />
-                <div className="skeleton h-12 w-full" />
-                <div className="skeleton h-12 w-full" />
-                <div className="skeleton h-12 w-full" />
+              <div className="rounded-atelier border border-border bg-surface p-2">
+                <div className="grid gap-2 p-3">
+                  <div className="skeleton h-4 w-32" />
+                  <div className="skeleton h-12 w-full" />
+                  <div className="skeleton h-12 w-full" />
+                  <div className="skeleton h-12 w-full" />
+                </div>
               </div>
-            </div>
-          </aside>
-        ) : (
-          <MemorySidebar
-            projectId={projectId}
-            chapterId={chapterId}
-            annotations={annotations}
-            validIds={validIds}
-            activeAnnotationId={activeAnnotationId}
-            onSelect={(a) => selectAnnotation(a, { scroll: true })}
-            onRefresh={refresh}
-            onSetActiveAnnotationId={setActiveAnnotationId}
-          />
-        )}
+            </aside>
+          ) : (
+            <MemorySidebar
+              projectId={projectId}
+              chapterId={chapterId}
+              annotations={annotations}
+              validIds={validIds}
+              activeAnnotationId={activeAnnotationId}
+              onSelect={(a) => selectAnnotation(a, { scroll: true })}
+              onRefresh={refresh}
+              onSetActiveAnnotationId={setActiveAnnotationId}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
