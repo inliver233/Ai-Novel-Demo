@@ -333,6 +333,7 @@ export function TaskCenterPage() {
       `idempotency_key=${pt.idempotency_key || "-"}`,
       `error_type=${pt.error_type || "-"}`,
       `error_message=${pt.error_message || "-"}`,
+      `error=${safeJsonStringify(pt.error ?? null)}`,
     ];
     await copyText(lines.join("\n"), { title: "复制失败：请手动复制 Debug 信息" });
   }, [selected]);
@@ -889,6 +890,26 @@ export function TaskCenterPage() {
                 ) : null}
               </div>
               {projectTaskDetailLoading ? <div className="mt-2 text-xs text-subtext">加载中...</div> : null}
+            </section>
+
+            <section className="rounded-atelier border border-border bg-surface p-3" aria-label="projecttask_error">
+              <div className="text-sm text-ink">Error</div>
+              {selected.item.status === "failed" ? (
+                <div className="mt-2 grid gap-2 text-xs text-subtext">
+                  <div className="text-danger">
+                    {selected.item.error_type || "ERROR"}: {selected.item.error_message || "未知错误"}
+                  </div>
+                  {extractHowToFix(selected.item.error).length > 0 ? (
+                    <ul className="list-disc pl-5 text-[11px] text-subtext">
+                      {extractHowToFix(selected.item.error).map((it, idx) => (
+                        <li key={idx}>{it}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="mt-2 text-xs text-subtext">无错误信息</div>
+              )}
             </section>
 
             {selected.item.kind === "table_ai_update" ? (

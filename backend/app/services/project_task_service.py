@@ -657,7 +657,18 @@ def run_project_task(*, task_id: str) -> str:
             request_id2 = str(params_dict.get("request_id") or "").strip() or None
             actor_user_id = str(getattr(task, "actor_user_id", "") or "").strip()
             if not actor_user_id:
-                raise ValueError("Missing ProjectTask.actor_user_id for worldbook_auto_update")
+                raise AppError(
+                    code="PROJECT_TASK_CONFIG_ERROR",
+                    message="worldbook_auto_update 缺少 actor_user_id（无法解析 API Key）",
+                    status_code=500,
+                    details={
+                        "task_kind": "worldbook_auto_update",
+                        "how_to_fix": [
+                            "通过 UI 触发任务时，确保已登录且具备 editor 权限",
+                            "如果是系统触发（无 user），请改为传入明确的 actor_user_id 或配置项目级 API Key",
+                        ],
+                    },
+                )
 
             from app.services.worldbook_auto_update_service import worldbook_auto_update_v1
 
@@ -669,9 +680,46 @@ def run_project_task(*, task_id: str) -> str:
             )
             if not bool(res.get("ok")):
                 reason = str(res.get("reason") or "unknown").strip() or "unknown"
-                run_id = str(res.get("run_id") or "").strip()
-                suffix = f" run_id={run_id}" if run_id else ""
-                raise RuntimeError(f"worldbook_auto_update failed: {reason}{suffix}")
+                run_id = str(res.get("run_id") or "").strip() or None
+                error_type2 = str(res.get("error_type") or "").strip() or None
+                error_message2 = str(res.get("error_message") or "").strip() or None
+                parse_error = str(res.get("parse_error") or "").strip() or None
+                warnings = res.get("warnings") if isinstance(res.get("warnings"), list) else None
+
+                how_to_fix: list[str] = []
+                if reason == "api_key_missing":
+                    how_to_fix = [
+                        "在「模型配置/项目设置」中配置可用的 API Key（或检查请求头 X-LLM-API-Key）",
+                        "确认当前项目已绑定 LLM Profile / Preset（用于 worldbook_auto_update）",
+                    ]
+                elif reason == "llm_preset_missing":
+                    how_to_fix = ["先在项目中选择/绑定可用的 LLM Profile，并刷新页面后重试任务"]
+                elif reason == "llm_call_failed":
+                    how_to_fix = ["检查 base_url / 网络连通性（可用「模型配置 → 测试连接」验证）", "确认模型与参数兼容；必要时切换 provider/model 后重试"]
+                elif reason == "parse_error":
+                    how_to_fix = ["模型输出未满足 JSON 合同：可在任务详情中查看 run_id 并定位输出", "尝试更换模型/降低温度后重试"]
+                elif reason == "apply_failed":
+                    how_to_fix = ["数据库写入失败：请查看 error.details 或 backend.log；修复后重试任务"]
+
+                details: dict[str, Any] = {
+                    "task_kind": "worldbook_auto_update",
+                    "reason": reason,
+                    "run_id": run_id,
+                    "error_type": error_type2,
+                    "error_message": error_message2,
+                    "parse_error": parse_error,
+                    "warnings": warnings,
+                }
+                if how_to_fix:
+                    details["how_to_fix"] = how_to_fix
+
+                msg = f"worldbook_auto_update 失败：{reason}"
+                if run_id:
+                    msg += f" (run_id={run_id})"
+                if error_message2:
+                    msg += f" - {error_message2[:160]}"
+
+                raise AppError(code="WORLDBOOK_AUTO_UPDATE_FAILED", message=msg, status_code=500, details=details)
             result = res
         elif kind == "vector_rebuild":
             from app.models.project_settings import ProjectSettings

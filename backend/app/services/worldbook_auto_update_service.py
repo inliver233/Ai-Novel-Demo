@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.logging import exception_log_fields, log_event
+from app.core.logging import exception_log_fields, log_event, redact_secrets_text
 from app.db.session import SessionLocal
 from app.db.utils import new_id
 from app.models.chapter import Chapter
@@ -499,7 +499,16 @@ def worldbook_auto_update_v1(
         finally:
             db_key.close()
     except Exception as exc:
-        return {"ok": False, "project_id": pid, "reason": "api_key_missing", "error_type": type(exc).__name__}
+        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+        if not safe_message:
+            safe_message = type(exc).__name__
+        return {
+            "ok": False,
+            "project_id": pid,
+            "reason": "api_key_missing",
+            "error_type": type(exc).__name__,
+            "error_message": safe_message[:400],
+        }
 
     llm_call = prepare_llm_call(preset)
 
@@ -529,18 +538,29 @@ def worldbook_auto_update_v1(
             request_id=request_id,
             **exception_log_fields(exc),
         )
-        return {"ok": False, "project_id": pid, "reason": "llm_call_failed", "error_type": type(exc).__name__}
+        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+        if not safe_message:
+            safe_message = type(exc).__name__
+        return {
+            "ok": False,
+            "project_id": pid,
+            "reason": "llm_call_failed",
+            "error_type": type(exc).__name__,
+            "error_message": safe_message[:400],
+        }
 
     contract = contract_for_task(WORLDBOOK_AUTO_UPDATE_TASK)
     parsed = contract.parse(recorded.text or "", finish_reason=recorded.finish_reason)
     if parsed.parse_error is not None:
+        parse_error = str(parsed.parse_error or "").strip()
         return {
             "ok": False,
             "project_id": pid,
             "reason": "parse_error",
             "run_id": recorded.run_id,
             "warnings": parsed.warnings,
-            "parse_error": parsed.parse_error,
+            "parse_error": parse_error,
+            "error_message": parse_error[:400] if parse_error else None,
         }
 
     db_write = SessionLocal()
@@ -561,7 +581,17 @@ def worldbook_auto_update_v1(
             request_id=request_id,
             **exception_log_fields(exc),
         )
-        return {"ok": False, "project_id": pid, "reason": "apply_failed", "error_type": type(exc).__name__, "run_id": recorded.run_id}
+        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+        if not safe_message:
+            safe_message = type(exc).__name__
+        return {
+            "ok": False,
+            "project_id": pid,
+            "reason": "apply_failed",
+            "error_type": type(exc).__name__,
+            "error_message": safe_message[:400],
+            "run_id": recorded.run_id,
+        }
     finally:
         db_write.close()
 
