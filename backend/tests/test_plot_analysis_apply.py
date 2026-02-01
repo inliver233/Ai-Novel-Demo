@@ -79,6 +79,22 @@ class TestPlotAnalysisApply(unittest.TestCase):
         self.assertEqual(hook["text_position"], -1)
         self.assertEqual(hook["text_length"], 0)
 
+    def test_extract_story_memory_seeds_filters_worldbook_style_plot_points(self) -> None:
+        seeds = extract_story_memory_seeds(
+            chapter_number=1,
+            analysis={
+                "chapter_summary": "摘要",
+                "plot_points": [
+                    {"beat": "地点：青云峰（描述：……）", "excerpt": ""},
+                    {"beat": "主角抵达青云峰并发现异常线索", "excerpt": ""},
+                ],
+            },
+            content_md="主角抵达青云峰并发现异常线索。",
+        )
+        plot_points = [s for s in seeds if s.get("memory_type") == "plot_point"]
+        self.assertEqual(len(plot_points), 1)
+        self.assertIn("主角抵达青云峰", str(plot_points[0].get("content") or ""))
+
     def test_apply_is_idempotent_and_does_not_duplicate(self) -> None:
         SessionLocal = self._make_db()
         analysis = {

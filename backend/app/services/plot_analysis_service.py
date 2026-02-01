@@ -136,6 +136,30 @@ def _importance_from_item(item: dict[str, Any], default: float) -> float:
     return _clamp01(default)
 
 
+_WORLDBOOK_STYLE_PREFIXES = (
+    "地点",
+    "物品",
+    "设定",
+    "世界观",
+    "势力",
+    "组织",
+    "条目",
+    "世界书",
+)
+
+
+def _looks_like_worldbook_entry(text: str) -> bool:
+    t = (text or "").strip()
+    if not t:
+        return False
+    for prefix in _WORLDBOOK_STYLE_PREFIXES:
+        if t.startswith(prefix) and t[len(prefix) :].startswith(("：", ":")):
+            return True
+        if t.startswith(f"【{prefix}") and "】" in t[:8]:
+            return True
+    return False
+
+
 def _find_position(content_md: str, needle: str) -> tuple[int, int]:
     text = (content_md or "")
     target = (needle or "").strip()
@@ -231,6 +255,10 @@ def extract_story_memory_seeds(
                 continue
             beat = str(item.get("beat") or "").strip()
             excerpt = str(item.get("excerpt") or "").strip()
+            if beat and _looks_like_worldbook_entry(beat):
+                if not excerpt:
+                    continue
+                beat = ""
             content = beat or excerpt
             if not content:
                 continue
