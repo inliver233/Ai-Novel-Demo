@@ -149,6 +149,38 @@ async function handleEmbeddings(req, res) {
   });
 }
 
+function makeRerankScore(query, doc, idx) {
+  const q = String(query ?? "");
+  const d = String(doc ?? "");
+  const seed = `${q}\n---\n${d}\n#${idx}`;
+  const hash = crypto.createHash("sha256").update(seed).digest();
+  const u = hash.readUInt32BE(0);
+  return u / 0xffffffff;
+}
+
+async function handleRerank(req, res) {
+  const body = await readJson(req);
+  const query = body?.query;
+  const docs = body?.documents;
+  if (typeof query !== "string" || !Array.isArray(docs)) {
+    writeJson(res, 400, { error: "bad_request" });
+    return;
+  }
+
+  const results = docs
+    .map((d, idx) => ({
+      index: idx,
+      score: makeRerankScore(query, d, idx),
+    }))
+    .sort((a, b) => (b.score !== a.score ? b.score - a.score : a.index - b.index));
+
+  writeJson(res, 200, {
+    object: "list",
+    model: body?.model ?? "rerank-mock",
+    results,
+  });
+}
+
 async function streamOpenAICompat(res, fullText) {
   writeSseHeaders(res);
 
@@ -266,6 +298,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/v1/embeddings") {
       await handleEmbeddings(req, res);
+      return;
+    }
+    if (req.method === "POST" && (url.pathname === "/v1/rerank" || url.pathname === "/rerank")) {
+      await handleRerank(req, res);
       return;
     }
     if (req.method === "POST" && url.pathname === "/v1/chat/completions") {
