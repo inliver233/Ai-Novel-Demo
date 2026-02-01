@@ -450,6 +450,7 @@ def schedule_chapter_done_tasks(
     - ProjectTask(kind=worldbook_auto_update)
     - ProjectTask(kind=characters_auto_update)
     - ProjectTask(kind=plot_auto_update)
+    - ProjectTask(kind=table_ai_update)
     - ProjectTask(kind=graph_auto_update)
     - ProjectTask(kind=fractal_rebuild)
 
@@ -467,6 +468,7 @@ def schedule_chapter_done_tasks(
         "worldbook_auto_update": None,
         "characters_auto_update": None,
         "plot_auto_update": None,
+        "table_ai_update": None,
         "graph_auto_update": None,
         "fractal_rebuild": None,
     }
@@ -484,6 +486,7 @@ def schedule_chapter_done_tasks(
     auto_vector = bool(getattr(settings_row, "auto_update_vector_enabled", True)) if settings_row is not None else True
     auto_search = bool(getattr(settings_row, "auto_update_search_enabled", True)) if settings_row is not None else True
     auto_fractal = bool(getattr(settings_row, "auto_update_fractal_enabled", True)) if settings_row is not None else True
+    auto_tables = bool(getattr(settings_row, "auto_update_tables_enabled", True)) if settings_row is not None else True
 
     try:
         from app.services.vector_rag_service import schedule_vector_rebuild_task
@@ -600,6 +603,63 @@ def schedule_chapter_done_tasks(
                 project_id=pid,
                 chapter_id=cid,
                 kind="plot_auto_update",
+                error_type=type(exc).__name__,
+                **exception_log_fields(exc),
+            )
+
+    if auto_tables:
+        try:
+            from app.models.project_table import ProjectTable
+            from app.services.table_ai_update_service import schedule_table_ai_update_task
+
+            table_rows = (
+                db.execute(
+                    select(ProjectTable.id, ProjectTable.schema_json)
+                    .where(ProjectTable.project_id == pid)
+                    .order_by(ProjectTable.updated_at.desc(), ProjectTable.id.desc())
+                    .limit(12)
+                )
+                .all()
+            )
+            if not isinstance(table_rows, list):
+                table_rows = []
+
+            created: list[str] = []
+            for table_id, schema_json in table_rows:
+                schema_obj = _compact_json_loads(schema_json)
+                if not isinstance(schema_obj, dict):
+                    continue
+                cols = schema_obj.get("columns") if isinstance(schema_obj.get("columns"), list) else []
+                has_number = any(
+                    isinstance(c, dict) and str(c.get("type") or "").strip().lower() == "number"
+                    for c in cols
+                )
+                if not has_number:
+                    continue
+
+                task_id = schedule_table_ai_update_task(
+                    db=db,
+                    project_id=pid,
+                    actor_user_id=actor_user_id,
+                    request_id=request_id,
+                    table_id=str(table_id),
+                    chapter_id=cid,
+                    chapter_token=token_norm,
+                    focus=None,
+                    reason=reason_norm,
+                )
+                if task_id:
+                    created.append(str(task_id))
+
+            out["table_ai_update"] = created[0] if created else None
+        except Exception as exc:
+            log_event(
+                logger,
+                "warning",
+                event="CHAPTER_DONE_TASK_SCHEDULE_ERROR",
+                project_id=pid,
+                chapter_id=cid,
+                kind="table_ai_update",
                 error_type=type(exc).__name__,
                 **exception_log_fields(exc),
             )
