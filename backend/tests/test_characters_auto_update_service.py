@@ -129,7 +129,7 @@ class TestCharactersAutoUpdateService(unittest.TestCase):
             "app.services.search_index_service.schedule_search_rebuild_task", return_value="t-search"
         ), patch("app.services.project_task_service.schedule_worldbook_auto_update_task", return_value="t-worldbook"), patch(
             "app.services.characters_auto_update_service.schedule_characters_auto_update_task", return_value="t-characters"
-        ), patch(
+        ), patch("app.services.plot_analysis_service.schedule_plot_auto_update_task", return_value="t-plot"), patch(
             "app.services.graph_auto_update_service.schedule_graph_auto_update_task", return_value="t-graph"
         ), patch("app.services.project_task_service.schedule_fractal_rebuild_task", return_value="t-fractal"):
             out = schedule_chapter_done_tasks(

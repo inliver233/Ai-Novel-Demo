@@ -2,19 +2,40 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.logging import exception_log_fields, log_event, redact_secrets_text
+from app.db.session import SessionLocal
 from app.db.utils import new_id, utc_now
+from app.models.chapter import Chapter
 from app.models.generation_run import GenerationRun
+from app.models.llm_preset import LLMPreset
 from app.models.plot_analysis import PlotAnalysis
+from app.models.project import Project
 from app.models.project_settings import ProjectSettings
+from app.models.project_task import ProjectTask
 from app.models.story_memory import StoryMemory
+from app.schemas.chapter_analysis import ChapterAnalyzeRequest
+from app.services.chapter_context_service import build_chapter_analyze_render_values
+from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.output_contracts import contract_for_task
+from app.services.prompt_presets import ensure_default_chapter_analyze_preset, render_preset_for_task
+from app.services.search_index_service import schedule_search_rebuild_task
+from app.services.task_queue import get_task_queue
+from app.services.vector_rag_service import schedule_vector_rebuild_task
 
 _MANAGED_MEMORY_TYPES = {"chapter_summary", "hook", "plot_point", "foreshadow", "character_state"}
+
+logger = logging.getLogger("ainovel")
+
+PLOT_AUTO_UPDATE_KIND = "plot_auto_update"
 
 _ANALYSIS_SCHEMA_V1_TOP_LEVEL_KEYS = {
     "schema_version",
@@ -519,3 +540,341 @@ def _story_memory_out(row: StoryMemory) -> dict[str, Any]:
         "metadata": _safe_json(row.metadata_json, {}),
         "created_at": row.created_at.isoformat(),
     }
+
+
+def schedule_plot_auto_update_task(
+    *,
+    db: Session | None = None,
+    project_id: str,
+    actor_user_id: str | None,
+    request_id: str | None,
+    chapter_id: str,
+    chapter_token: str | None,
+    reason: str,
+) -> str | None:
+    """
+    Fail-soft scheduler: ensure/enqueue a ProjectTask(kind=plot_auto_update).
+    """
+
+    pid = str(project_id or "").strip()
+    cid = str(chapter_id or "").strip()
+    if not pid or not cid:
+        return None
+
+    token_norm = str(chapter_token or "").strip() or utc_now().isoformat().replace("+00:00", "Z")
+    reason_norm = str(reason or "").strip() or "dirty"
+    idempotency_key = f"plot:chapter:{cid}:since:{token_norm}:v1"
+
+    owns_session = db is None
+    if db is None:
+        db = SessionLocal()
+    try:
+        task = (
+            db.execute(
+                select(ProjectTask).where(
+                    ProjectTask.project_id == pid,
+                    ProjectTask.idempotency_key == idempotency_key,
+                )
+            )
+            .scalars()
+            .first()
+        )
+
+        if task is None:
+            task = ProjectTask(
+                id=new_id(),
+                project_id=pid,
+                actor_user_id=str(actor_user_id or "").strip() or None,
+                kind=PLOT_AUTO_UPDATE_KIND,
+                status="queued",
+                idempotency_key=idempotency_key,
+                params_json=json.dumps(
+                    {
+                        "reason": reason_norm,
+                        "request_id": (str(request_id or "").strip() or None),
+                        "chapter_id": cid,
+                        "chapter_token": token_norm,
+                        "triggered_at": utc_now().isoformat().replace("+00:00", "Z"),
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                result_json=None,
+                error_json=None,
+            )
+            db.add(task)
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                task = (
+                    db.execute(
+                        select(ProjectTask).where(
+                            ProjectTask.project_id == pid,
+                            ProjectTask.idempotency_key == idempotency_key,
+                        )
+                    )
+                    .scalars()
+                    .first()
+                )
+
+        if task is None:
+            return None
+
+        queue = get_task_queue()
+        try:
+            queue.enqueue(kind="project_task", task_id=str(task.id))
+        except Exception as exc:
+            fields = exception_log_fields(exc)
+            msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:200]
+            task.status = "failed"
+            task.finished_at = utc_now()
+            task.error_json = json.dumps({"error_type": type(exc).__name__, "message": msg}, ensure_ascii=False, separators=(",", ":"))
+            db.commit()
+            log_event(
+                logger,
+                "warning",
+                event="PROJECT_TASK_ENQUEUE_ERROR",
+                task_id=str(task.id),
+                project_id=str(task.project_id),
+                kind=str(task.kind),
+                error_type=type(exc).__name__,
+                **fields,
+            )
+
+        return str(task.id)
+    finally:
+        if owns_session:
+            db.close()
+
+
+def plot_auto_update_v1(
+    *,
+    project_id: str,
+    actor_user_id: str,
+    request_id: str,
+    chapter_id: str,
+) -> dict[str, Any]:
+    """
+    Auto-run chapter_analyze -> apply_plot_analysis -> schedule vector/search rebuild.
+    Designed for ProjectTask(kind=plot_auto_update).
+    """
+
+    pid = str(project_id or "").strip()
+    cid = str(chapter_id or "").strip()
+    actor = str(actor_user_id or "").strip()
+    req = str(request_id or "").strip() or "plot_auto_update"
+    if not pid or not cid:
+        return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "invalid_args"}
+
+    db_read = SessionLocal()
+    project: Project | None = None
+    preset: LLMPreset | None = None
+    chapter_number = 0
+    chapter_content_md = ""
+    prompt_system = ""
+    prompt_user = ""
+    prompt_messages = None
+    prompt_render_log_json: str | None = None
+    llm_call = None
+    try:
+        chapter = db_read.get(Chapter, cid)
+        if chapter is None:
+            return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "chapter_not_found"}
+        if str(getattr(chapter, "project_id", "")) != pid:
+            return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "chapter_not_found"}
+
+        status = str(getattr(chapter, "status", "") or "").strip().lower()
+        if status != "done":
+            return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "chapter_not_done"}
+
+        project = db_read.get(Project, pid)
+        if project is None:
+            return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "project_not_found"}
+
+        preset = db_read.get(LLMPreset, pid)
+        if preset is None:
+            return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "llm_preset_missing"}
+
+        chapter_number = int(getattr(chapter, "number", 0) or 0)
+        chapter_content_md = str(getattr(chapter, "content_md", "") or "")
+
+        ensure_default_chapter_analyze_preset(db_read, project_id=pid, activate=True)
+        values = build_chapter_analyze_render_values(db_read, project=project, chapter=chapter, body=ChapterAnalyzeRequest())
+        prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
+            db_read,
+            project_id=pid,
+            task="chapter_analyze",
+            values=values,  # type: ignore[arg-type]
+            macro_seed=f"{req}:plot_auto_update",
+            provider=preset.provider,
+        )
+        prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
+        llm_call = prepare_llm_call(preset)
+        llm_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 2048})
+    finally:
+        db_read.close()
+
+    if project is None or preset is None or llm_call is None:
+        return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "llm_preset_missing"}
+
+    try:
+        db_key = SessionLocal()
+        try:
+            api_key = resolve_api_key_for_project(db_key, project=project, user_id=actor, header_api_key=None)
+        finally:
+            db_key.close()
+    except Exception as exc:
+        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+        if not safe_message:
+            safe_message = type(exc).__name__
+        return {
+            "ok": False,
+            "project_id": pid,
+            "chapter_id": cid,
+            "reason": "api_key_missing",
+            "error_type": type(exc).__name__,
+            "error_message": safe_message[:400],
+        }
+
+    try:
+        llm_result = call_llm_and_record(
+            logger=logger,
+            request_id=req,
+            actor_user_id=actor,
+            project_id=pid,
+            chapter_id=cid,
+            run_type="plot_auto_update",
+            api_key=str(api_key),
+            prompt_system=prompt_system,
+            prompt_user=prompt_user,
+            prompt_messages=prompt_messages,
+            prompt_render_log_json=prompt_render_log_json,
+            llm_call=llm_call,
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            "warning",
+            event="PLOT_AUTO_UPDATE_LLM_ERROR",
+            project_id=pid,
+            chapter_id=cid,
+            error_type=type(exc).__name__,
+            request_id=req,
+            **exception_log_fields(exc),
+        )
+        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+        if not safe_message:
+            safe_message = type(exc).__name__
+        return {
+            "ok": False,
+            "project_id": pid,
+            "chapter_id": cid,
+            "reason": "llm_call_failed",
+            "error_type": type(exc).__name__,
+            "error_message": safe_message[:400],
+        }
+
+    contract = contract_for_task("chapter_analyze")
+    parsed = contract.parse(llm_result.text, finish_reason=llm_result.finish_reason)
+    if parsed.parse_error is not None:
+        return {
+            "ok": False,
+            "project_id": pid,
+            "chapter_id": cid,
+            "reason": "parse_error",
+            "run_id": llm_result.run_id,
+            "finish_reason": llm_result.finish_reason,
+            "parse_error": parsed.parse_error,
+            "warnings": parsed.warnings,
+        }
+
+    analysis = parsed.data.get("analysis") if isinstance(parsed.data, dict) else None
+    if not isinstance(analysis, dict):
+        return {
+            "ok": False,
+            "project_id": pid,
+            "chapter_id": cid,
+            "reason": "parse_error",
+            "run_id": llm_result.run_id,
+            "finish_reason": llm_result.finish_reason,
+            "parse_error": {"code": "ANALYSIS_PARSE_ERROR", "message": "analysis 缺失或无效"},
+        }
+
+    db_apply = SessionLocal()
+    try:
+        out = apply_chapter_analysis(
+            db=db_apply,
+            request_id=req,
+            actor_user_id=actor,
+            project_id=pid,
+            chapter_id=cid,
+            chapter_number=chapter_number,
+            analysis=analysis,
+            draft_content_md=chapter_content_md,
+        )
+
+        try:
+            schedule_vector_rebuild_task(
+                db=db_apply,
+                project_id=pid,
+                actor_user_id=actor,
+                request_id=req,
+                reason="plot_auto_update",
+            )
+        except Exception as exc:
+            log_event(
+                logger,
+                "warning",
+                event="PLOT_AUTO_UPDATE_POST_TASK_ERROR",
+                project_id=pid,
+                chapter_id=cid,
+                kind="vector_rebuild",
+                error_type=type(exc).__name__,
+                **exception_log_fields(exc),
+            )
+
+        try:
+            schedule_search_rebuild_task(
+                db=db_apply,
+                project_id=pid,
+                actor_user_id=actor,
+                request_id=req,
+                reason="plot_auto_update",
+            )
+        except Exception as exc:
+            log_event(
+                logger,
+                "warning",
+                event="PLOT_AUTO_UPDATE_POST_TASK_ERROR",
+                project_id=pid,
+                chapter_id=cid,
+                kind="search_rebuild",
+                error_type=type(exc).__name__,
+                **exception_log_fields(exc),
+            )
+
+        return {
+            "ok": True,
+            "project_id": pid,
+            "chapter_id": cid,
+            "run_id": llm_result.run_id,
+            "finish_reason": llm_result.finish_reason,
+            "warnings": parsed.warnings,
+            "applied": out,
+        }
+    except Exception as exc:
+        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+        if not safe_message:
+            safe_message = type(exc).__name__
+        return {
+            "ok": False,
+            "project_id": pid,
+            "chapter_id": cid,
+            "reason": "apply_failed",
+            "run_id": llm_result.run_id,
+            "error_type": type(exc).__name__,
+            "error_message": safe_message[:400],
+        }
+    finally:
+        db_apply.close()
