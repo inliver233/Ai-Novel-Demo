@@ -384,10 +384,34 @@ export function AppShell() {
                           to={`/projects/${projectId}/worldbook`}
                           onClick={closeMobileNav}
                         />
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<Share2 size={18} />}
+                          label={UI_COPY.nav.graph}
+                          ariaLabel="图谱/关系 (nav_graph)"
+                          to={`/projects/${projectId}/graph`}
+                          onClick={closeMobileNav}
+                        />
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<Table2 size={18} />}
+                          label={UI_COPY.nav.numericTables}
+                          ariaLabel="结构化记忆（数值表格） (nav_numeric_tables)"
+                          to={`/projects/${projectId}/numeric-tables`}
+                          onClick={closeMobileNav}
+                        />
 
                         <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">
                           {UI_COPY.nav.groupView}
                         </div>
+                        <SidebarLink
+                          collapsed={false}
+                          icon={<BookText size={18} />}
+                          label={UI_COPY.nav.chapterAnalysis}
+                          ariaLabel="剧情记忆 (nav_chapter_analysis)"
+                          to={`/projects/${projectId}/chapter-analysis`}
+                          onClick={closeMobileNav}
+                        />
                         <SidebarLink
                           collapsed={false}
                           icon={<BookOpen size={18} />}
@@ -494,14 +518,6 @@ export function AppShell() {
                               />
                               <SidebarLink
                                 collapsed={false}
-                                icon={<Share2 size={18} />}
-                                label={UI_COPY.nav.graph}
-                                ariaLabel="图谱 (nav_graph)"
-                                to={`/projects/${projectId}/graph`}
-                                onClick={closeMobileNav}
-                              />
-                              <SidebarLink
-                                collapsed={false}
                                 icon={<Snowflake size={18} />}
                                 label={UI_COPY.nav.fractal}
                                 ariaLabel="分形（Fractal） (nav_fractal)"
@@ -512,16 +528,8 @@ export function AppShell() {
                                 collapsed={false}
                                 icon={<Table2 size={18} />}
                                 label={UI_COPY.nav.structuredMemory}
-                                ariaLabel="结构化记忆 (nav_structured_memory)"
+                                ariaLabel="图谱底座数据 (nav_structured_memory)"
                                 to={`/projects/${projectId}/structured-memory`}
-                                onClick={closeMobileNav}
-                              />
-                              <SidebarLink
-                                collapsed={false}
-                                icon={<Table2 size={18} />}
-                                label={UI_COPY.nav.numericTables}
-                                ariaLabel="数值表格 (nav_numeric_tables)"
-                                to={`/projects/${projectId}/numeric-tables`}
                                 onClick={closeMobileNav}
                               />
                               <SidebarLink
@@ -634,10 +642,31 @@ export function AppShell() {
                     ariaLabel="世界书 (nav_worldbook)"
                     to={`/projects/${projectId}/worldbook`}
                   />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Share2 size={18} />}
+                    label={UI_COPY.nav.graph}
+                    ariaLabel="图谱/关系 (nav_graph)"
+                    to={`/projects/${projectId}/graph`}
+                  />
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<Table2 size={18} />}
+                    label={UI_COPY.nav.numericTables}
+                    ariaLabel="结构化记忆（数值表格） (nav_numeric_tables)"
+                    to={`/projects/${projectId}/numeric-tables`}
+                  />
 
                   {collapsed ? null : (
                     <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupView}</div>
                   )}
+                  <SidebarLink
+                    collapsed={collapsed}
+                    icon={<BookText size={18} />}
+                    label={UI_COPY.nav.chapterAnalysis}
+                    ariaLabel="剧情记忆 (nav_chapter_analysis)"
+                    to={`/projects/${projectId}/chapter-analysis`}
+                  />
                   <SidebarLink
                     collapsed={collapsed}
                     icon={<BookOpen size={18} />}
@@ -730,13 +759,6 @@ export function AppShell() {
                         />
                         <SidebarLink
                           collapsed={collapsed}
-                          icon={<Share2 size={18} />}
-                          label={UI_COPY.nav.graph}
-                          ariaLabel="图谱 (nav_graph)"
-                          to={`/projects/${projectId}/graph`}
-                        />
-                        <SidebarLink
-                          collapsed={collapsed}
                           icon={<Snowflake size={18} />}
                           label={UI_COPY.nav.fractal}
                           ariaLabel="分形（Fractal） (nav_fractal)"
@@ -746,15 +768,8 @@ export function AppShell() {
                           collapsed={collapsed}
                           icon={<Table2 size={18} />}
                           label={UI_COPY.nav.structuredMemory}
-                          ariaLabel="结构化记忆 (nav_structured_memory)"
+                          ariaLabel="图谱底座数据 (nav_structured_memory)"
                           to={`/projects/${projectId}/structured-memory`}
-                        />
-                        <SidebarLink
-                          collapsed={collapsed}
-                          icon={<Table2 size={18} />}
-                          label={UI_COPY.nav.numericTables}
-                          ariaLabel="数值表格 (nav_numeric_tables)"
-                          to={`/projects/${projectId}/numeric-tables`}
                         />
                         <SidebarLink
                           collapsed={collapsed}
@@ -792,13 +807,6 @@ export function AppShell() {
                           />
                           <SidebarLink
                             collapsed={collapsed}
-                            icon={<Share2 size={18} />}
-                            label={UI_COPY.nav.graph}
-                            ariaLabel="图谱 (nav_graph)"
-                            to={`/projects/${projectId}/graph`}
-                          />
-                          <SidebarLink
-                            collapsed={collapsed}
                             icon={<Snowflake size={18} />}
                             label={UI_COPY.nav.fractal}
                             ariaLabel="分形（Fractal） (nav_fractal)"
@@ -808,15 +816,8 @@ export function AppShell() {
                             collapsed={collapsed}
                             icon={<Table2 size={18} />}
                             label={UI_COPY.nav.structuredMemory}
-                            ariaLabel="结构化记忆 (nav_structured_memory)"
+                            ariaLabel="图谱底座数据 (nav_structured_memory)"
                             to={`/projects/${projectId}/structured-memory`}
-                          />
-                          <SidebarLink
-                            collapsed={collapsed}
-                            icon={<Table2 size={18} />}
-                            label={UI_COPY.nav.numericTables}
-                            ariaLabel="数值表格 (nav_numeric_tables)"
-                            to={`/projects/${projectId}/numeric-tables`}
                           />
                           <SidebarLink
                             collapsed={collapsed}
