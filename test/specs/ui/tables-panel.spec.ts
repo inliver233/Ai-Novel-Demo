@@ -43,12 +43,12 @@ test("ui: writing tables panel + context preview tables injection", async ({ pag
   await expect(preview).toBeVisible();
 
   await preview.getByRole("checkbox", { name: "世界书注入", exact: true }).check();
-  const tablesPanel = preview.locator("div.panel", { hasText: "Tables（project_tables）" });
+  const tablesPanel = preview.locator("div.panel", { hasText: "Tables（sys.memory.tables）" });
   await expect(tablesPanel).toBeVisible({ timeout: 60_000 });
 
-  const textSummary = tablesPanel.locator("summary", { hasText: "tables 注入文本" });
+  const textSummary = tablesPanel.locator("summary", { hasText: /^tables\.text_md（最终注入文本）$/ });
   await textSummary.click();
-  await expect(tablesPanel).toContainText("<ProjectTables>", { timeout: 60_000 });
+  await expect(tablesPanel).toContainText("<TABLES>", { timeout: 60_000 });
   await expect(tablesPanel).toContainText("E2E inventory");
   await expect(tablesPanel).toContainText("item_1");
 });

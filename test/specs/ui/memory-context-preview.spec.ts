@@ -82,7 +82,7 @@ test("ui: writing ContextPreviewDrawer supports worldbook injection toggle", asy
   await expect(dialog.getByText("keyword:dragon | priority:important", { exact: true })).toBeVisible();
   await expect(dialog.getByText("constant | priority:important", { exact: true })).toBeVisible();
 
-  const textSummary = dialog.locator("summary", { hasText: "text_md（最终注入文本）" });
+  const textSummary = dialog.locator("summary", { hasText: /^text_md（最终注入文本）$/ });
   await textSummary.click();
   const textDetails = textSummary.locator("..");
   await expect(textDetails).toHaveAttribute("open", "");
