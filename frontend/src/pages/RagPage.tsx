@@ -35,7 +35,7 @@ export function RagPage() {
 
   const [superSortMode, setSuperSortMode] = useState<"disabled" | "order" | "weights">("disabled");
   const [superSortOrderText, setSuperSortOrderText] = useState("worldbook,outline,chapter,story_memory");
-  const [superSortWeights, setSuperSortWeights] = useState({ worldbook: 1, outline: 1, chapter: 1, story_memory: 1 });
+  const [superSortWeights, setSuperSortWeights] = useState({ worldbook: 1, outline: 1, chapter: 1 });
 
   const [kbLoading, setKbLoading] = useState(false);
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
@@ -120,7 +120,9 @@ export function RagPage() {
 
   const sortedSources = useMemo(
     () =>
-      (["worldbook", "outline", "chapter", "story_memory"] as const).filter((s) => sources.includes(s)) as VectorSource[],
+      (["worldbook", "outline", "chapter", "story_memory"] as const).filter((s) =>
+        sources.includes(s),
+      ) as VectorSource[],
     [sources],
   );
 

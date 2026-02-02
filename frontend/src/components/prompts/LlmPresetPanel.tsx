@@ -131,7 +131,7 @@ export function LlmPresetPanel(props: Props) {
               保存
             </button>
           </div>
-          {testDisabledReason ? <div className="text-[11px] text-subtext">{testDisabledReason}</div> : null}
+          {testDisabledReason ? <div className="text-[11px] text-warning">{testDisabledReason}</div> : null}
           {extraErrorText ? <div className="text-[11px] text-warning">{extraErrorText}</div> : null}
         </div>
       </div>
