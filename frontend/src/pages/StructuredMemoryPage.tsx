@@ -669,7 +669,7 @@ function CharacterRelationsView(props: {
                     </div>
                     <div className="mt-1 text-[11px] text-subtext">{relId}</div>
                     {r.deleted_at ? (
-                      <div className="mt-1 text-[11px] text-red-600 dark:text-red-300">deleted_at: {r.deleted_at}</div>
+                      <div className="mt-1 text-[11px] text-danger">deleted_at: {r.deleted_at}</div>
                     ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1177,7 +1177,7 @@ export function StructuredMemoryPage() {
                           </td>
                           <td className="p-2">
                             {deletedAt ? (
-                              <span className="inline-flex rounded bg-red-50 px-2 py-0.5 text-[11px] text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                              <span className="inline-flex rounded bg-danger/10 px-2 py-0.5 text-[11px] text-danger">
                                 已删除
                               </span>
                             ) : (
