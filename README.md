@@ -156,6 +156,7 @@ cd backend
 ## E2E 默认账号 & dev_fallback（DEV only）
 
 - Playwright E2E（`pwsh test/run-all.ps1`）会以 `AUTH_ADMIN_USER_ID=admin` / `AUTH_ADMIN_PASSWORD=admin-pass` 启动后端并用于 UI 测试登录。
+- 仓库自带 `backend/.env` 默认也使用 `AUTH_ADMIN_PASSWORD=admin-pass`（长度 ≥ 8），按本文档启动后端即可直接登录。
 - 如在 `backend/.env` 配置 `AUTH_ADMIN_PASSWORD`，需至少 8 位；开发环境下若配置过短会跳过 admin bootstrap 并输出 warning（避免启动失败）。
 - 前端 E2E 会设置 `VITE_DEV_FALLBACK_ENABLED=true` 以覆盖 dev_fallback 路径；生产环境务必保持禁用并确保 `APP_ENV=prod`（避免鉴权绕过风险）。
 
