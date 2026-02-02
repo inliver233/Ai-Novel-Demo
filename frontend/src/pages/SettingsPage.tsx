@@ -1939,7 +1939,7 @@ export function SettingsPage() {
                     />
                     <div className="text-[11px] text-subtext">最大 50 条；每条最多 64 字符。</div>
                     {queryPreprocessErr && queryPreprocessErrField === "tags" ? (
-                      <div className="text-xs text-amber-600 dark:text-amber-400">{queryPreprocessErr}</div>
+                      <div className="text-xs text-warning">{queryPreprocessErr}</div>
                     ) : null}
                   </label>
 
@@ -1957,7 +1957,7 @@ export function SettingsPage() {
                     />
                     <div className="text-[11px] text-subtext">最大 50 条；每条最多 256 字符。</div>
                     {queryPreprocessErr && queryPreprocessErrField === "exclusion_rules" ? (
-                      <div className="text-xs text-amber-600 dark:text-amber-400">{queryPreprocessErr}</div>
+                      <div className="text-xs text-warning">{queryPreprocessErr}</div>
                     ) : null}
                   </label>
                 </div>
@@ -2016,7 +2016,7 @@ export function SettingsPage() {
                   </div>
 
                   {qpPreviewError ? (
-                    <div className="mt-3 text-xs text-amber-600 dark:text-amber-400">{qpPreviewError}</div>
+                    <div className="mt-3 text-xs text-warning">{qpPreviewError}</div>
                   ) : null}
 
                   {qpPreview ? (
