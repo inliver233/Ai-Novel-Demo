@@ -212,7 +212,7 @@ export function GraphPage() {
         <div className="grid gap-2 text-xs text-subtext">
           <div>{UI_COPY.graph.usageHint}</div>
           <div>{UI_COPY.graph.exampleHint}</div>
-          <div className="text-amber-700 dark:text-amber-300">{UI_COPY.graph.riskHint}</div>
+          <div className="text-warning">{UI_COPY.graph.riskHint}</div>
         </div>
       </DebugDetails>
 
