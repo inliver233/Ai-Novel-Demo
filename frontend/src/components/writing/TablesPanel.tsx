@@ -486,7 +486,7 @@ function TablesPanelContent(props: TablesPanelContentProps) {
               </div>
             </div>
 
-            {tablesError ? <div className="mt-3 text-sm text-warning">{tablesError}</div> : null}
+            {tablesError ? <div className="mt-3 text-sm text-danger">{tablesError}</div> : null}
             {tablesLoading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
           </div>
 
@@ -582,7 +582,7 @@ function TablesPanelContent(props: TablesPanelContentProps) {
                 </div>
               </div>
 
-              {rowsError ? <div className="mt-3 text-sm text-warning">{rowsError}</div> : null}
+              {rowsError ? <div className="mt-3 text-sm text-danger">{rowsError}</div> : null}
               {rowsLoading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
 
               {selectedColumns.length ? (
@@ -596,7 +596,7 @@ function TablesPanelContent(props: TablesPanelContentProps) {
                             className="sticky top-0 border-b border-border bg-canvas px-2 py-1 text-left text-xs font-medium text-subtext"
                           >
                             {c.label || c.key}
-                            {c.required ? <span className="ml-1 text-warning">*</span> : null}
+                            {c.required ? <span className="ml-1 text-danger">*</span> : null}
                             <span className="ml-1 font-mono text-[10px] text-subtext/70">({c.type})</span>
                           </th>
                         ))}
