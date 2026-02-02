@@ -89,6 +89,14 @@ class ChapterPostEditAdoption(BaseModel):
     choice: Literal["raw", "post_edit"]
 
 
+class ChapterTriggerAutoUpdates(BaseModel):
+    generation_run_id: str | None = Field(
+        default=None,
+        max_length=36,
+        description="用于幂等的 token（优先使用 generation_run_id；不提供则回退 chapter.updated_at）",
+    )
+
+
 def _resolve_macro_seed(*, request_id: str, body: object) -> str:
     seed = str(getattr(body, "macro_seed", "") or "").strip()
     if not seed:
@@ -554,6 +562,39 @@ def update_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: 
             db=db, project_id=str(row.project_id), actor_user_id=user_id, request_id=request_id, reason="chapter_update"
         )
     return ok_payload(request_id=request_id, data={"chapter": ChapterOut.model_validate(row).model_dump()})
+
+
+@router.post("/chapters/{chapter_id}/trigger_auto_updates")
+def trigger_chapter_auto_updates(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    chapter_id: str,
+    body: ChapterTriggerAutoUpdates,
+) -> dict:
+    request_id = request.state.request_id
+    chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
+
+    token: str | None = None
+    run_id = str(body.generation_run_id or "").strip()
+    if run_id:
+        token = run_id
+    else:
+        updated_at = getattr(chapter, "updated_at", None)
+        if updated_at is not None:
+            token = updated_at.isoformat().replace("+00:00", "Z")
+
+    tasks = schedule_chapter_done_tasks(
+        db=db,
+        project_id=str(chapter.project_id),
+        actor_user_id=user_id,
+        request_id=request_id,
+        chapter_id=str(chapter.id),
+        chapter_token=token,
+        reason="chapter_auto_updates",
+    )
+
+    return ok_payload(request_id=request_id, data={"tasks": tasks, "chapter_token": token})
 
 
 @router.post("/chapters/{chapter_id}/post_edit_adoption")
