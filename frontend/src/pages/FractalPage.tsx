@@ -171,7 +171,7 @@ export function FractalPage() {
       <DebugDetails title={UI_COPY.help.title}>
         <div className="grid gap-2 text-xs text-subtext">
           <div>{UI_COPY.fractal.usageHint}</div>
-          <div className="text-amber-700 dark:text-amber-300">{UI_COPY.fractal.riskHint}</div>
+          <div className="text-warning">{UI_COPY.fractal.riskHint}</div>
         </div>
       </DebugDetails>
 
