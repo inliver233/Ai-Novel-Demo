@@ -14,10 +14,18 @@ from app.models.generation_run import GenerationRun
 from app.models.llm_preset import LLMPreset
 from app.models.outline import Outline
 from app.models.project import Project
-from app.models.structured_memory import MemoryChangeSet, MemoryChangeSetItem, MemoryEntity, MemoryEvidence, MemoryRelation
+from app.models.structured_memory import (
+    MemoryChangeSet,
+    MemoryChangeSetItem,
+    MemoryEntity,
+    MemoryEvidence,
+    MemoryEvent,
+    MemoryRelation,
+)
 from app.models.user import User
 from app.services.generation_service import RecordedLlmResult
 from app.services.graph_auto_update_service import graph_auto_update_v1
+from app.services.memory_update_service import apply_memory_change_set
 
 
 def _compact_json_dumps(value: object) -> str:
@@ -44,6 +52,7 @@ class TestGraphAutoUpdateService(unittest.TestCase):
                 GenerationRun.__table__,
                 MemoryEntity.__table__,
                 MemoryRelation.__table__,
+                MemoryEvent.__table__,
                 MemoryEvidence.__table__,
                 MemoryChangeSet.__table__,
                 MemoryChangeSetItem.__table__,
@@ -263,3 +272,70 @@ class TestGraphAutoUpdateService(unittest.TestCase):
         self.assertIn("strength", relation_attrs)
         self.assertIn("status", relation_attrs)
         self.assertNotIn("unknown_key", relation_attrs)
+
+    def test_graph_auto_update_v1_allows_events_and_apply_inserts_event(self) -> None:
+        ev1 = "00000000-0000-0000-0000-0000000000e1"
+        event_id = "00000000-0000-0000-0000-0000000000f1"
+        model_out = _compact_json_dumps(
+            {
+                "title": "Graph Auto Update",
+                "summary_md": "auto",
+                "ops": [
+                    {
+                        "op": "upsert",
+                        "target_table": "evidence",
+                        "target_id": ev1,
+                        "after": {"source_type": "chapter", "source_id": "c1", "quote_md": "Alice meets Bob."},
+                        "evidence_ids": [],
+                    },
+                    {
+                        "op": "upsert",
+                        "target_table": "events",
+                        "target_id": event_id,
+                        "after": {
+                            "event_type": "encounter",
+                            "title": "Alice meets Bob",
+                            "content_md": "Alice meets Bob.",
+                        },
+                        "evidence_ids": [ev1],
+                    },
+                ],
+            }
+        )
+
+        with patch("app.services.graph_auto_update_service.SessionLocal", self.SessionLocal), patch(
+            "app.services.graph_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
+        ), patch(
+            "app.services.graph_auto_update_service.call_llm_and_record",
+            return_value=RecordedLlmResult(
+                text=model_out,
+                finish_reason=None,
+                latency_ms=1,
+                dropped_params=[],
+                run_id="run-test",
+            ),
+        ):
+            res = graph_auto_update_v1(
+                project_id="p1",
+                actor_user_id="u1",
+                request_id="rid-test",
+                chapter_id="c1",
+                change_set_idempotency_key="graphupd-12345678",
+                focus=None,
+            )
+
+        self.assertTrue(bool(res.get("ok")))
+        items = list(res.get("items") or [])
+        self.assertTrue(any(i.get("target_table") == "events" for i in items))
+
+        change_set_id = str((res.get("change_set") or {}).get("id") or "")
+        self.assertTrue(change_set_id)
+
+        with self.SessionLocal() as db:
+            change_set = db.get(MemoryChangeSet, change_set_id)
+            self.assertIsNotNone(change_set)
+            apply_memory_change_set(db=db, request_id="rid-test", actor_user_id="u1", change_set=change_set)  # type: ignore[arg-type]
+            row = db.get(MemoryEvent, event_id)
+
+        self.assertIsNotNone(row)
+        self.assertEqual(str(getattr(row, "chapter_id", "") or ""), "c1")
