@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Any
 
@@ -39,11 +40,43 @@ _MAX_EXISTING_TITLES_IN_PROMPT = 200
 
 _ALIAS_SPLIT_RE = re.compile(r"[\s,|;]+")
 
+_CHAPTER_SUMMARY_MAX_CHARS_ENV = "WORLDBOOK_AUTO_UPDATE_CHAPTER_SUMMARY_MAX_CHARS"
+_CHAPTER_CONTENT_MAX_CHARS_ENV = "WORLDBOOK_AUTO_UPDATE_CHAPTER_CONTENT_MAX_CHARS"
+_DEFAULT_CHAPTER_SUMMARY_MAX_CHARS = 4000
+_DEFAULT_CHAPTER_CONTENT_MAX_CHARS = 40000
+
+
+def _env_int(name: str, *, default: int) -> int:
+    raw = str(os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except Exception:
+        return default
+    return value if value > 0 else default
+
+
+def _chapter_summary_max_chars() -> int:
+    return _env_int(_CHAPTER_SUMMARY_MAX_CHARS_ENV, default=_DEFAULT_CHAPTER_SUMMARY_MAX_CHARS)
+
+
+def _chapter_content_max_chars() -> int:
+    return _env_int(_CHAPTER_CONTENT_MAX_CHARS_ENV, default=_DEFAULT_CHAPTER_CONTENT_MAX_CHARS)
+
+
+def _truncate(text: str | None, *, limit: int) -> str:
+    raw = str(text or "")
+    if len(raw) <= limit:
+        return raw
+    return raw[:limit]
+
 
 def build_worldbook_auto_update_prompt_v1(
     *,
     project_id: str,
     world_setting: str | None,
+    chapter_summary_md: str | None,
     chapter_content_md: str,
     outline_md: str | None,
     existing_worldbook_titles: list[str],
@@ -67,7 +100,8 @@ def build_worldbook_auto_update_prompt_v1(
     pid = str(project_id or "").strip()
     world_setting_text = (world_setting or "").strip()
     outline_text = (outline_md or "").strip()
-    chapter_text = (chapter_content_md or "").strip()
+    chapter_summary_text = _truncate((chapter_summary_md or "").strip(), limit=_chapter_summary_max_chars()).strip()
+    chapter_content_text = _truncate((chapter_content_md or "").strip(), limit=_chapter_content_max_chars()).strip()
 
     existing_titles = [str(t or "").strip() for t in (existing_worldbook_titles or []) if str(t or "").strip()][
         :_MAX_EXISTING_TITLES_IN_PROMPT
@@ -98,8 +132,10 @@ def build_worldbook_auto_update_prompt_v1(
         f"{json.dumps(existing_titles, ensure_ascii=False)}\n\n"
         "=== outline_md ===\n"
         f"{outline_text}\n\n"
+        "=== chapter_summary ===\n"
+        f"{chapter_summary_text}\n\n"
         "=== chapter_content_md ===\n"
-        f"{chapter_text}\n"
+        f"{chapter_content_text}\n"
     )
     return system, user
 
@@ -449,7 +485,8 @@ def worldbook_auto_update_v1(
     if not pid:
         return {"ok": False, "reason": "project_id_empty"}
 
-    chapter_text = ""
+    chapter_summary = ""
+    chapter_content = ""
     outline_text = ""
     world_setting = ""
     existing_titles: list[str] = []
@@ -472,7 +509,8 @@ def worldbook_auto_update_v1(
         if chapter_id:
             c = db_read.get(Chapter, str(chapter_id))
             if c is not None and str(getattr(c, "project_id", "")) == pid:
-                chapter_text = (str(getattr(c, "summary", "") or "").strip() or str(getattr(c, "content_md", "") or "").strip())
+                chapter_summary = str(getattr(c, "summary", "") or "").strip()
+                chapter_content = str(getattr(c, "content_md", "") or "").strip()
 
         outline_id = getattr(project, "active_outline_id", None) if project is not None else None
         outline_row = db_read.get(Outline, str(outline_id)) if outline_id else None
@@ -500,7 +538,8 @@ def worldbook_auto_update_v1(
     system, user = build_worldbook_auto_update_prompt_v1(
         project_id=pid,
         world_setting=world_setting,
-        chapter_content_md=chapter_text,
+        chapter_summary_md=chapter_summary,
+        chapter_content_md=chapter_content,
         outline_md=outline_text,
         existing_worldbook_titles=existing_titles,
     )
