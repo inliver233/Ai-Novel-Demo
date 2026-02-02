@@ -35,10 +35,7 @@ function highlightText(text: string, tokens: string[]): ReactNode {
     if (bestIdx > cursor) out.push(raw.slice(cursor, bestIdx));
     const seg = raw.slice(bestIdx, bestIdx + bestToken.length);
     out.push(
-      <mark
-        key={`${bestIdx}:${bestToken}:${cursor}`}
-        className="rounded bg-amber-200/60 px-0.5 text-ink dark:bg-amber-300/20"
-      >
+      <mark key={`${bestIdx}:${bestToken}:${cursor}`} className="rounded bg-warning/20 px-0.5 text-ink">
         {seg}
       </mark>,
     );
