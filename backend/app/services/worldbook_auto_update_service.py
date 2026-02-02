@@ -72,6 +72,49 @@ def _truncate(text: str | None, *, limit: int) -> str:
     return raw[:limit]
 
 
+_EXISTING_ENTRIES_PREVIEW_LIMIT_ENV = "WORLDBOOK_AUTO_UPDATE_EXISTING_ENTRIES_PREVIEW_LIMIT"
+_EXISTING_ENTRY_KEYWORDS_LIMIT_ENV = "WORLDBOOK_AUTO_UPDATE_EXISTING_ENTRY_KEYWORDS_LIMIT"
+_EXISTING_ENTRY_CONTENT_PREVIEW_CHARS_ENV = "WORLDBOOK_AUTO_UPDATE_EXISTING_ENTRY_CONTENT_PREVIEW_CHARS"
+_DEFAULT_EXISTING_ENTRIES_PREVIEW_LIMIT = 60
+_DEFAULT_EXISTING_ENTRY_KEYWORDS_LIMIT = 20
+_DEFAULT_EXISTING_ENTRY_CONTENT_PREVIEW_CHARS = 400
+
+
+def _existing_entries_preview_limit() -> int:
+    return _env_int(_EXISTING_ENTRIES_PREVIEW_LIMIT_ENV, default=_DEFAULT_EXISTING_ENTRIES_PREVIEW_LIMIT)
+
+
+def _existing_entry_keywords_limit() -> int:
+    return _env_int(_EXISTING_ENTRY_KEYWORDS_LIMIT_ENV, default=_DEFAULT_EXISTING_ENTRY_KEYWORDS_LIMIT)
+
+
+def _existing_entry_content_preview_chars() -> int:
+    return _env_int(_EXISTING_ENTRY_CONTENT_PREVIEW_CHARS_ENV, default=_DEFAULT_EXISTING_ENTRY_CONTENT_PREVIEW_CHARS)
+
+
+def _build_existing_worldbook_entries_preview_for_prompt(
+    rows: list[tuple[object, object, object]] | None,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    limit = _existing_entries_preview_limit()
+    kw_limit = _existing_entry_keywords_limit()
+    content_limit = _existing_entry_content_preview_chars()
+    if limit <= 0:
+        return out
+
+    for title, keywords_json, content_md in rows or []:
+        title_text = str(title or "").strip()
+        if not title_text:
+            continue
+        keywords = _dedupe_strings(_parse_json_list(str(keywords_json) if keywords_json is not None else None), limit=kw_limit)
+        preview_raw = redact_secrets_text(str(content_md or "")).replace("\n", " ").strip()
+        preview = _truncate(preview_raw, limit=content_limit).strip()
+        out.append({"title": title_text, "keywords": keywords, "content_preview": preview})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def build_worldbook_auto_update_prompt_v1(
     *,
     project_id: str,
@@ -80,6 +123,7 @@ def build_worldbook_auto_update_prompt_v1(
     chapter_content_md: str,
     outline_md: str | None,
     existing_worldbook_titles: list[str],
+    existing_worldbook_entries_preview: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str]:
     """
     Prompt contract (v1):
@@ -106,6 +150,8 @@ def build_worldbook_auto_update_prompt_v1(
     existing_titles = [str(t or "").strip() for t in (existing_worldbook_titles or []) if str(t or "").strip()][
         :_MAX_EXISTING_TITLES_IN_PROMPT
     ]
+    existing_entries_preview = existing_worldbook_entries_preview or []
+    existing_entries_preview = existing_entries_preview[: _existing_entries_preview_limit()]
 
     system = (
         "你是小说写作助手，负责把最新章节/大纲中的关键设定抽取为「世界书条目」自动更新提议。\n"
@@ -129,7 +175,9 @@ def build_worldbook_auto_update_prompt_v1(
         "=== world_setting ===\n"
         f"{world_setting_text}\n\n"
         "=== existing_worldbook_titles ===\n"
-        f"{json.dumps(existing_titles, ensure_ascii=False)}\n\n"
+        f"{json.dumps(existing_titles, ensure_ascii=False, separators=(',', ':'))}\n\n"
+        "=== existing_worldbook_entries_preview ===\n"
+        f"{json.dumps(existing_entries_preview, ensure_ascii=False, separators=(',', ':'))}\n\n"
         "=== outline_md ===\n"
         f"{outline_text}\n\n"
         "=== chapter_summary ===\n"
@@ -490,6 +538,7 @@ def worldbook_auto_update_v1(
     outline_text = ""
     world_setting = ""
     existing_titles: list[str] = []
+    existing_entries_preview: list[dict[str, Any]] = []
     preset: LLMPreset | None = None
     project: Project | None = None
 
@@ -524,11 +573,27 @@ def worldbook_auto_update_v1(
             outline_text = str(getattr(outline_row, "content_md", "") or "").strip()
 
         rows = (
-            db_read.execute(select(WorldBookEntry.title).where(WorldBookEntry.project_id == pid).order_by(WorldBookEntry.updated_at.desc()))
+            db_read.execute(
+                select(WorldBookEntry.title)
+                .where(WorldBookEntry.project_id == pid)
+                .order_by(WorldBookEntry.updated_at.desc())
+                .limit(_MAX_EXISTING_TITLES_IN_PROMPT)
+            )
             .scalars()
             .all()
         )
         existing_titles = [str(t or "").strip() for t in rows if str(t or "").strip()]
+
+        preview_rows = (
+            db_read.execute(
+                select(WorldBookEntry.title, WorldBookEntry.keywords_json, WorldBookEntry.content_md)
+                .where(WorldBookEntry.project_id == pid)
+                .order_by(WorldBookEntry.updated_at.desc())
+                .limit(_existing_entries_preview_limit())
+            )
+            .all()
+        )
+        existing_entries_preview = _build_existing_worldbook_entries_preview_for_prompt(preview_rows)
     finally:
         db_read.close()
 
@@ -542,6 +607,7 @@ def worldbook_auto_update_v1(
         chapter_content_md=chapter_content,
         outline_md=outline_text,
         existing_worldbook_titles=existing_titles,
+        existing_worldbook_entries_preview=existing_entries_preview,
     )
 
     try:
