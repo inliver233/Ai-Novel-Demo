@@ -1,4 +1,4 @@
-export type VectorSource = "worldbook" | "outline" | "chapter";
+export type VectorSource = "worldbook" | "outline" | "chapter" | "story_memory";
 
 export type VectorIndexState = {
   dirty: boolean;

@@ -30,12 +30,12 @@ export function RagPage() {
   const [rerankHybridAlpha, setRerankHybridAlpha] = useState(0);
   const [rerankSaving, setRerankSaving] = useState(false);
 
-  const [sources, setSources] = useState<VectorSource[]>(["worldbook", "outline", "chapter"]);
+  const [sources, setSources] = useState<VectorSource[]>(["worldbook", "outline", "chapter", "story_memory"]);
   const [queryText, setQueryText] = useState("");
 
   const [superSortMode, setSuperSortMode] = useState<"disabled" | "order" | "weights">("disabled");
-  const [superSortOrderText, setSuperSortOrderText] = useState("worldbook,outline,chapter");
-  const [superSortWeights, setSuperSortWeights] = useState({ worldbook: 1, outline: 1, chapter: 1 });
+  const [superSortOrderText, setSuperSortOrderText] = useState("worldbook,outline,chapter,story_memory");
+  const [superSortWeights, setSuperSortWeights] = useState({ worldbook: 1, outline: 1, chapter: 1, story_memory: 1 });
 
   const [kbLoading, setKbLoading] = useState(false);
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
@@ -119,7 +119,8 @@ export function RagPage() {
   }, []);
 
   const sortedSources = useMemo(
-    () => ["worldbook", "outline", "chapter"].filter((s) => sources.includes(s as VectorSource)) as VectorSource[],
+    () =>
+      (["worldbook", "outline", "chapter", "story_memory"] as const).filter((s) => sources.includes(s)) as VectorSource[],
     [sources],
   );
 
@@ -438,7 +439,10 @@ export function RagPage() {
               source_order: superSortOrderText
                 .split(/[\\s,|;]+/g)
                 .map((s) => s.trim())
-                .filter((s): s is VectorSource => s === "worldbook" || s === "outline" || s === "chapter"),
+                .filter(
+                  (s): s is VectorSource =>
+                    s === "worldbook" || s === "outline" || s === "chapter" || s === "story_memory",
+                ),
             }
           : superSortMode === "weights"
             ? { enabled: true, source_weights: superSortWeights }

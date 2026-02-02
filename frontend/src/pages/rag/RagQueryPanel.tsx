@@ -19,6 +19,7 @@ const SOURCE_LABEL: Record<VectorSource, string> = {
   worldbook: "世界书（worldbook）",
   outline: "大纲（outline）",
   chapter: "章节（chapter）",
+  story_memory: "故事记忆（story_memory）",
 };
 
 export function RagQueryPanel(props: {
@@ -181,7 +182,7 @@ export function RagQueryPanel(props: {
       <div className="mt-6 rounded-atelier border border-border bg-surface p-4">
         <div className="text-sm font-medium text-ink">{UI_COPY.rag.sourcesTitle}</div>
         <div className="mt-3 flex flex-wrap gap-3">
-          {(["worldbook", "outline", "chapter"] as const).map((s) => (
+          {(["worldbook", "outline", "chapter", "story_memory"] as const).map((s) => (
             <label key={s} className="flex items-center gap-2 text-sm text-ink">
               <input
                 className="checkbox"
