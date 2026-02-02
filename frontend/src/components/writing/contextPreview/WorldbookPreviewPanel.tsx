@@ -55,9 +55,11 @@ export function WorldbookPreviewPanel(props: {
         </span>
         <span className="flex flex-wrap items-center gap-2">
           {enabled ? (
-            <span className="text-success">enabled</span>
+            <span className="inline-flex rounded-atelier bg-success/10 px-2 py-0.5 text-success">enabled</span>
           ) : (
-            <span className="text-warning">disabled: {disabledReason ?? "unknown"}</span>
+            <span className="inline-flex rounded-atelier bg-warning/10 px-2 py-0.5 text-warning">
+              disabled: {disabledReason ?? "unknown"}
+            </span>
           )}
           {log?.budget_char_limit != null ? (
             <span>
@@ -67,7 +69,9 @@ export function WorldbookPreviewPanel(props: {
           ) : null}
           {log?.token_estimate != null ? <span>tokens≈{log.token_estimate}</span> : null}
           {worldbookPreview.truncated ? (
-            <span className="text-warning">{UI_COPY.worldbook.previewTruncated}</span>
+            <span className="inline-flex rounded-atelier bg-warning/10 px-2 py-0.5 text-warning">
+              {UI_COPY.worldbook.previewTruncated}
+            </span>
           ) : null}
         </span>
       </div>

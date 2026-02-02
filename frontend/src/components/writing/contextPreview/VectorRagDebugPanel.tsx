@@ -37,9 +37,9 @@ export function VectorRagDebugPanel(props: {
           <div className="mt-1 text-[11px] text-subtext">
             {vectorResult ? (
               vectorResult.enabled ? (
-                <span className="text-success">enabled</span>
+                <span className="inline-flex rounded-atelier bg-success/10 px-2 py-0.5 text-success">enabled</span>
               ) : (
-                <span className="text-warning">
+                <span className="inline-flex rounded-atelier bg-warning/10 px-2 py-0.5 text-warning">
                   disabled: {vectorResult.disabled_reason ?? "unknown"}
                   {vectorResult.error ? ` | error:${vectorResult.error}` : ""}
                 </span>
