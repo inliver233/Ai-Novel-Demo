@@ -319,12 +319,12 @@ export function AdminUsersPage() {
         <div className="mt-1 text-xs text-subtext">
           安全提示：一次性密码仅用于首次登录/找回；建议用户首次登录后尽快修改。为降低泄露风险，本页默认不显示明文，一键复制后会自动隐藏。
         </div>
-        <div className="mt-3 grid gap-3 md:hidden">
+        <div className="mt-3 grid gap-3 md:hidden" aria-label="admin_users_cards">
           {visibleUsers.map((u) => (
             <div key={u.id} className="rounded-atelier border border-border bg-canvas p-3">
               <div className="min-w-0">
                 <div className="text-sm font-medium text-ink">{u.display_name ?? "-"}</div>
-                <div className="mt-1 font-mono text-xs text-subtext">{u.id}</div>
+                <div className="mt-1 break-all font-mono text-xs text-subtext">{u.id}</div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-subtext">
                   <span>管理员：{humanizeYesNo(u.is_admin)}</span>
                   <span>已禁用：{humanizeYesNo(u.disabled)}</span>
@@ -366,7 +366,7 @@ export function AdminUsersPage() {
         </div>
 
         <div className="mt-3 hidden overflow-auto md:block">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full text-left text-sm">
             <thead className="text-xs text-subtext">
               <tr>
                 <th className="py-2 pr-3" scope="col">
@@ -392,7 +392,7 @@ export function AdminUsersPage() {
             <tbody>
               {visibleUsers.map((u) => (
                 <tr key={u.id} className="border-t border-border">
-                  <td className="py-2 pr-3 font-mono text-xs">{u.id}</td>
+                  <td className="py-2 pr-3 break-all font-mono text-xs">{u.id}</td>
                   <td className="py-2 pr-3">{u.display_name ?? "-"}</td>
                   <td className="py-2 pr-3">{humanizeYesNo(u.is_admin)}</td>
                   <td className="py-2 pr-3">{humanizeYesNo(u.disabled)}</td>

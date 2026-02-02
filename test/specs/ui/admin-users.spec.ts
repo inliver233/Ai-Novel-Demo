@@ -30,4 +30,17 @@ test("ui: admin users page copy-once password flow is safe", async ({
   await expect(
     row.getByRole("button", { name: "复制并隐藏", exact: true }),
   ).toBeVisible();
+
+  // Responsive guard: mobile should not force horizontal scrolling.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(row).not.toBeVisible();
+  const cards = page.getByLabel("admin_users_cards", { exact: true });
+  const card = cards.locator("div.rounded-atelier", { hasText: userId });
+  await expect(card).toBeVisible();
+
+  const overflow = await page.evaluate(() => {
+    const el = document.documentElement;
+    return { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth };
+  });
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
 });
