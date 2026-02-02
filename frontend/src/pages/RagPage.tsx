@@ -570,7 +570,7 @@ export function RagPage() {
               上传 txt/md 并应用提案（WorldBook / story_memory）。
             </div>
           ) : null}
-          <div className="text-amber-700 dark:text-amber-300">{UI_COPY.rag.riskHint}</div>
+          <div className="text-warning">{UI_COPY.rag.riskHint}</div>
         </div>
       </DebugDetails>
 
