@@ -290,7 +290,7 @@ export function GlossaryPage() {
       description={
         <div className="grid gap-1">
           <div>维护“术语 → 别名”映射，供 worldbook/graph/rag 进行可选增强（默认关闭）。</div>
-          <div className="text-amber-700 dark:text-amber-300">风险：自动抽取可能产生误召回；建议先重建再人工筛选。</div>
+          <div className="callout-warning">风险：自动抽取可能产生误召回；建议先重建再人工筛选。</div>
         </div>
       }
       actions={
