@@ -48,7 +48,7 @@ export function Overlay(props: {
   }, []);
 
   useEffect(() => {
-    if (!props.open) return;
+    if (!props.open || !props.onBackdropClick) return;
     const handler = () => closeRef.current?.();
     const stack = _escStack();
     stack.push(handler);

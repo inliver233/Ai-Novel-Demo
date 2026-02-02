@@ -11,6 +11,20 @@ async function clickDialogButton(dialog: Locator, name: string): Promise<void> {
   await expect(dialog).toBeHidden({ timeout: 60_000 });
 }
 
+test("ui: Drawer closes on Escape", async ({ page, request }) => {
+  const { projectId } = await bootstrapProject(request);
+
+  await page.goto(`/projects/${projectId}/worldbook`);
+  await expect(page.getByText("条目列表", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "导入 JSON", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: "世界书导入", exact: true });
+  await expect(drawer).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+});
+
 test("ui: worldbook CRUD + preview_trigger", async ({ page, request }) => {
   const { projectId } = await bootstrapProject(request);
   await page.setViewportSize({ width: 1280, height: 1600 });
