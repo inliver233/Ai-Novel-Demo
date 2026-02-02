@@ -382,9 +382,7 @@ export function ImportPage() {
             <li>向量 KB（vector_kb / kb）：用于 RAG 语义检索（可在「RAG」页管理）。</li>
             <li>Chunk（chunk）：系统切分后的文本片段（用于检索与溯源）。</li>
           </ul>
-          <div className="text-amber-700 dark:text-amber-300">
-            提示：导入后请先预览，再选择性应用（默认不会自动写入长期记忆）。
-          </div>
+          <div className="callout-warning">提示：导入后请先预览，再选择性应用（默认不会自动写入长期记忆）。</div>
         </div>
       }
       actions={
