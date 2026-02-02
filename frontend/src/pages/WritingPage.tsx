@@ -25,7 +25,7 @@ import { usePersistentOutletIsActive } from "../hooks/usePersistentOutlet";
 import { useProjectData } from "../hooks/useProjectData";
 import { useWizardProgress } from "../hooks/useWizardProgress";
 import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
-import { apiJson } from "../services/apiClient";
+import { ApiError, apiJson } from "../services/apiClient";
 import { getWizardProjectChangedAt } from "../services/wizard";
 import { useApplyGenerationRun } from "./writing/useApplyGenerationRun";
 import { useBatchGeneration } from "./writing/useBatchGeneration";
@@ -41,6 +41,19 @@ import type { ChapterStatus, Character, LLMPreset, Outline, OutlineListItem } fr
 type WritingLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LLMPreset; characters: Character[] };
 
 const CHAPTER_LIST_SIDEBAR_WIDTH_CLASS = "w-[260px]" as const;
+
+type ChapterAutoUpdatesTriggerResult = {
+  tasks: Record<string, string | null>;
+  chapter_token: string | null;
+};
+
+function pickFirstProjectTaskId(tasks: Record<string, string | null> | null | undefined): string | null {
+  if (!tasks) return null;
+  for (const v of Object.values(tasks)) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
 
 export function WritingPage() {
   const { projectId } = useParams();
@@ -136,6 +149,7 @@ export function WritingPage() {
   const [contextPreviewOpen, setContextPreviewOpen] = useState(false);
   const [memoryUpdateOpen, setMemoryUpdateOpen] = useState(false);
   const [foreshadowOpen, setForeshadowOpen] = useState(false);
+  const [autoUpdatesTriggering, setAutoUpdatesTriggering] = useState(false);
   const autoGenerateNextRef = useRef<{ chapterId: string; mode: "replace" | "append" } | null>(null);
   const isDoneReadonly = Boolean(baseline && form && baseline.status === "done" && form.status === "done");
 
@@ -260,6 +274,45 @@ export function WritingPage() {
     },
     [contentTextareaRef, form, setContentEditorTab, toast],
   );
+
+  const saveAndTriggerAutoUpdates = useCallback(async () => {
+    if (!projectId || !activeChapter) return;
+    if (autoUpdatesTriggering) return;
+    if (!dirty) return;
+
+    setAutoUpdatesTriggering(true);
+    try {
+      const ok = await saveChapter({ silent: true });
+      if (!ok) return;
+
+      const res = await apiJson<ChapterAutoUpdatesTriggerResult>(
+        `/api/chapters/${activeChapter.id}/trigger_auto_updates`,
+        {
+          method: "POST",
+          body: JSON.stringify({}),
+        },
+      );
+      const taskId = pickFirstProjectTaskId(res.data.tasks);
+      toast.toastSuccess(
+        "已保存并创建无感更新任务",
+        res.request_id,
+        taskId
+          ? {
+              label: "打开 TaskCenter",
+              onClick: () => navigate(`/projects/${projectId}/tasks?project_task_id=${encodeURIComponent(taskId)}`),
+            }
+          : undefined,
+      );
+    } catch (e) {
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setAutoUpdatesTriggering(false);
+    }
+  }, [activeChapter, autoUpdatesTriggering, dirty, projectId, saveChapter, toast, navigate]);
 
   const saveAndGenerateNext = useCallback(async () => {
     if (!activeChapter) return;
@@ -416,6 +469,14 @@ export function WritingPage() {
                     type="button"
                   >
                     删除
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={!dirty || saving || loadingChapter || generating || autoUpdatesTriggering}
+                    onClick={() => void saveAndTriggerAutoUpdates()}
+                    type="button"
+                  >
+                    {autoUpdatesTriggering ? "保存并触发中..." : "一键保存并触发更新"}
                   </button>
                   <button
                     className="btn btn-primary"
