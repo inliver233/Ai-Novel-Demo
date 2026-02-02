@@ -1053,7 +1053,8 @@ export function ContextPreviewDrawer(props: Props) {
               const truncated = Boolean(raw.truncated);
               const textMd = typeof raw.text_md === "string" ? raw.text_md : "";
               const errorCode = typeof raw.error === "string" ? raw.error : null;
-              const counts = raw.counts && typeof raw.counts === "object" ? (raw.counts as Record<string, unknown>) : {};
+              const counts =
+                raw.counts && typeof raw.counts === "object" ? (raw.counts as Record<string, unknown>) : {};
               const rawTables = typeof counts.tables === "number" ? counts.tables : Number(counts.tables ?? 0);
               const rawRows = typeof counts.rows === "number" ? counts.rows : Number(counts.rows ?? 0);
               const tablesCount = Number.isFinite(rawTables) ? rawTables : 0;

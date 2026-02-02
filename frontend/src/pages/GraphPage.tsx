@@ -69,6 +69,10 @@ export function GraphPage() {
   const [error, setError] = useState<ApiError | null>(null);
   const [result, setResult] = useState<GraphQueryResult | null>(null);
 
+  const [autoUpdateFocus, setAutoUpdateFocus] = useState("");
+  const [autoUpdateLoading, setAutoUpdateLoading] = useState(false);
+  const [lastAutoUpdateTaskId, setLastAutoUpdateTaskId] = useState<string | null>(null);
+
   const injectionPreviewText = useMemo(
     () => (result?.prompt_block?.text_md ?? "").trim(),
     [result?.prompt_block?.text_md],
@@ -97,6 +101,44 @@ export function GraphPage() {
     if (chapterId) params.set("chapterId", chapterId);
     return `/projects/${projectId}/structured-memory?${params.toString()}`;
   }, [chapterId, projectId]);
+
+  const taskCenterHref = useMemo(() => {
+    if (!projectId) return "";
+    if (!lastAutoUpdateTaskId) return `/projects/${projectId}/tasks`;
+    const params = new URLSearchParams();
+    params.set("project_task_id", lastAutoUpdateTaskId);
+    return `/projects/${projectId}/tasks?${params.toString()}`;
+  }, [lastAutoUpdateTaskId, projectId]);
+
+  const triggerGraphAutoUpdate = useCallback(async () => {
+    if (!projectId) return;
+    if (!chapterId) {
+      toast.toastError(UI_COPY.graph.autoUpdateMissingChapterId);
+      return;
+    }
+
+    setAutoUpdateLoading(true);
+    try {
+      const res = await apiJson<{ task_id: string }>(`/api/projects/${projectId}/graph/auto_update`, {
+        method: "POST",
+        body: JSON.stringify({
+          chapter_id: chapterId,
+          focus: autoUpdateFocus.trim() ? autoUpdateFocus.trim() : null,
+        }),
+      });
+      const taskId = String(res.data?.task_id ?? "").trim();
+      if (taskId) setLastAutoUpdateTaskId(taskId);
+      toast.toastSuccess(UI_COPY.graph.autoUpdateCreatedToast, res.request_id);
+    } catch (e) {
+      const err =
+        e instanceof ApiError
+          ? e
+          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setAutoUpdateLoading(false);
+    }
+  }, [autoUpdateFocus, chapterId, projectId, toast]);
 
   const runQuery = useCallback(async () => {
     if (!projectId) return;
@@ -192,6 +234,61 @@ export function GraphPage() {
         <button className="btn btn-ghost px-2 py-1 text-xs" onClick={() => setQueryText("Bob")} type="button">
           Bob
         </button>
+      </div>
+
+      <div className="rounded-atelier border border-border bg-surface p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm text-ink">{UI_COPY.graph.autoUpdateTitle}</div>
+          <button
+            className="btn btn-secondary"
+            disabled={autoUpdateLoading || !projectId || !chapterId}
+            onClick={() => void triggerGraphAutoUpdate()}
+            type="button"
+          >
+            {autoUpdateLoading ? "创建中..." : UI_COPY.graph.autoUpdateCreateButton}
+          </button>
+        </div>
+        <div className="mt-1 text-xs text-subtext">
+          chapter_id: {chapterId ?? "（缺少）"}
+          {!chapterId ? <span className="ml-2 text-warning">{UI_COPY.graph.autoUpdateMissingChapterId}</span> : null}
+        </div>
+        <label className="mt-3 grid gap-1">
+          <span className="text-xs text-subtext">{UI_COPY.graph.autoUpdateFocusLabel}</span>
+          <input
+            className="input"
+            value={autoUpdateFocus}
+            disabled={autoUpdateLoading}
+            onChange={(e) => setAutoUpdateFocus(e.target.value)}
+            placeholder={UI_COPY.graph.autoUpdateFocusPlaceholder}
+            aria-label="graph_auto_update_focus"
+          />
+        </label>
+        {lastAutoUpdateTaskId ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="min-w-0 text-subtext">
+              {UI_COPY.graph.autoUpdateLastTaskIdLabel}:{" "}
+              <span className="font-mono text-ink">{lastAutoUpdateTaskId}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link className="btn btn-secondary" to={taskCenterHref} aria-label="graph_open_task_center">
+                {UI_COPY.graph.autoUpdateOpenTaskCenter}
+              </Link>
+              <button
+                className="btn btn-secondary"
+                onClick={() =>
+                  void copyPreviewBlock(lastAutoUpdateTaskId, {
+                    emptyMessage: "没有可复制的 task_id",
+                    successMessage: "已复制 task_id",
+                    dialogTitle: "复制失败：请手动复制 task_id",
+                  })
+                }
+                type="button"
+              >
+                {UI_COPY.graph.autoUpdateCopyTaskId}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {error ? (

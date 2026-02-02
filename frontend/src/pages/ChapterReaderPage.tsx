@@ -21,6 +21,7 @@ const EMPTY_PACK: MemoryContextPack = {
   semantic_history: {},
   foreshadow_open_loops: {},
   structured: {},
+  tables: {},
   vector_rag: {},
   graph: {},
   fractal: {},

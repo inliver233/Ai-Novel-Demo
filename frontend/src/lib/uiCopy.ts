@@ -387,6 +387,16 @@ export const UI_COPY = {
     queryTextPlaceholder: "输入章节文本或关键片段（命中实体名/别名）",
     queryRun: "查询",
 
+    autoUpdateTitle: "自动更新任务（graph_auto_update）",
+    autoUpdateFocusLabel: "focus（可选）",
+    autoUpdateFocusPlaceholder: "可选：本次希望聚焦的实体/关系/片段",
+    autoUpdateCreateButton: "创建自动更新任务",
+    autoUpdateCreatedToast: "已创建自动更新任务",
+    autoUpdateMissingChapterId: "缺少 chapterId：请从写作页跳转或在 URL 添加 ?chapterId=<...>",
+    autoUpdateLastTaskIdLabel: "last_task_id",
+    autoUpdateOpenTaskCenter: "打开任务中心",
+    autoUpdateCopyTaskId: "复制 task_id",
+
     overviewTitle: "结论摘要",
     injectionPreviewTitle: "注入预览（prompt_block.text_md）",
     nodesTitle: "节点",
