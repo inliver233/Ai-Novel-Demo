@@ -560,7 +560,9 @@ function CharacterRelationsView(props: {
           <label className="grid gap-1">
             <span className="text-xs text-subtext">From</span>
             <select
-              className="input"
+              className="select"
+              id="structured_character_relations_create_from"
+              name="structured_character_relations_create_from"
               value={createFromId}
               onChange={(e) => setCreateFromId(e.target.value)}
               aria-label="structured_character_relations_create_from"
@@ -590,7 +592,9 @@ function CharacterRelationsView(props: {
           <label className="grid gap-1">
             <span className="text-xs text-subtext">To</span>
             <select
-              className="input"
+              className="select"
+              id="structured_character_relations_create_to"
+              name="structured_character_relations_create_to"
               value={createToId}
               onChange={(e) => setCreateToId(e.target.value)}
               aria-label="structured_character_relations_create_to"
@@ -713,7 +717,9 @@ function CharacterRelationsView(props: {
                       <label className="grid gap-1">
                         <span className="text-xs text-subtext">From</span>
                         <select
-                          className="input"
+                          className="select"
+                          id="structured_character_relations_edit_from"
+                          name="structured_character_relations_edit_from"
                           value={editFromId}
                           onChange={(e) => setEditFromId(e.target.value)}
                           aria-label="structured_character_relations_edit_from"
@@ -741,7 +747,9 @@ function CharacterRelationsView(props: {
                       <label className="grid gap-1">
                         <span className="text-xs text-subtext">To</span>
                         <select
-                          className="input"
+                          className="select"
+                          id="structured_character_relations_edit_to"
+                          name="structured_character_relations_edit_to"
                           value={editToId}
                           onChange={(e) => setEditToId(e.target.value)}
                           aria-label="structured_character_relations_edit_to"
