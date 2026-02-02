@@ -692,7 +692,7 @@ export function PromptStudioPage() {
             <div className="grid gap-2 text-xs text-subtext">
               <div>{UI_COPY.promptStudio.recommendedFlow}</div>
               <div>{UI_COPY.promptStudio.quickStart}</div>
-              <div className="text-amber-700 dark:text-amber-300">{UI_COPY.promptStudio.advancedHint}</div>
+              <div className="text-warning">{UI_COPY.promptStudio.advancedHint}</div>
             </div>
           </DebugDetails>
           <DebugDetails title={UI_COPY.promptStudio.conceptTitle}>
