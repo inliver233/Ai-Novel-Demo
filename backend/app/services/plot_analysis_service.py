@@ -700,7 +700,17 @@ def plot_auto_update_v1(
         chapter_content_md = str(getattr(chapter, "content_md", "") or "")
 
         ensure_default_chapter_analyze_preset(db_read, project_id=pid, activate=True)
-        values = build_chapter_analyze_render_values(db_read, project=project, chapter=chapter, body=ChapterAnalyzeRequest())
+        body = ChapterAnalyzeRequest(
+            instruction=(
+                "仅提取剧情记忆：章节摘要/情节点/钩子/伏笔/人物状态变化。\n"
+                "不要生成世界书/设定条目（人物/地点/物品/设定），不要用“地点：/物品：/设定：”百科条目格式。\n"
+                "输出必须基于本章内容与剧情走向，不要扩写世界观。"
+            )
+        )
+        body.context.include_world_setting = False
+        body.context.include_style_guide = False
+        body.context.include_constraints = False
+        values = build_chapter_analyze_render_values(db_read, project=project, chapter=chapter, body=body)
         prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
             db_read,
             project_id=pid,
