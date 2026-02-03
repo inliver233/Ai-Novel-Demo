@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from pydantic import ValidationError
+
 from app.services.output_parsers import (
     extract_json_value,
     build_outline_fix_json_prompt,
@@ -31,6 +33,27 @@ class OutputContract:
     type: OutputContractType
     tag: str | None = None
     output_key: str | None = None
+
+    @staticmethod
+    def _safe_pydantic_errors(exc: Exception) -> list[dict[str, Any]] | None:
+        if not isinstance(exc, ValidationError):
+            return None
+        out: list[dict[str, Any]] = []
+        for e in exc.errors(include_url=False):
+            if not isinstance(e, dict):
+                continue
+            e2: dict[str, Any] = {k: e.get(k) for k in ("loc", "msg", "type", "ctx") if k in e}
+            ctx = e2.get("ctx")
+            if isinstance(ctx, dict):
+                ctx2: dict[str, Any] = {}
+                for ck, cv in ctx.items():
+                    if isinstance(cv, str) and len(cv) > 200:
+                        ctx2[ck] = cv[:200]
+                    else:
+                        ctx2[ck] = cv
+                e2["ctx"] = ctx2
+            out.append(e2)
+        return out
 
     def parse(self, text: str, *, finish_reason: str | None = None) -> OutputParseResult:
         if self.type == "markers":
@@ -97,18 +120,23 @@ class OutputContract:
                     return OutputParseResult(
                         data={"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text},
                         warnings=warnings,
-                        parse_error={"code": "MEMORY_UPDATE_PARSE_ERROR", "message": f"ops[{idx}] 必须是 object"},
+                        parse_error={"code": "MEMORY_UPDATE_PARSE_ERROR", "message": f"ops[{idx}] 必须是 object", "idx": idx},
                     )
                 try:
                     op = MemoryUpdateOpV1.model_validate(item)
                 except Exception as exc:
+                    pydantic_errors = self._safe_pydantic_errors(exc)
+                    parse_error: dict[str, Any] = {
+                        "code": "MEMORY_UPDATE_PARSE_ERROR",
+                        "message": f"ops[{idx}] schema invalid:{type(exc).__name__}",
+                        "idx": idx,
+                    }
+                    if pydantic_errors is not None:
+                        parse_error["errors"] = pydantic_errors
                     return OutputParseResult(
                         data={"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text},
                         warnings=warnings,
-                        parse_error={
-                            "code": "MEMORY_UPDATE_PARSE_ERROR",
-                            "message": f"ops[{idx}] schema invalid:{type(exc).__name__}",
-                        },
+                        parse_error=parse_error,
                     )
                 ops_out.append(dict(op.model_dump()))
 
