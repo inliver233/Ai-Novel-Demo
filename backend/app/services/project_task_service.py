@@ -1258,9 +1258,54 @@ def run_project_task(*, task_id: str) -> str:
             )
             if not bool(res.get("ok")):
                 reason = str(res.get("reason") or "unknown").strip() or "unknown"
-                run_id = str(res.get("run_id") or "").strip()
-                suffix = f" run_id={run_id}" if run_id else ""
-                raise RuntimeError(f"table_ai_update failed: {reason}{suffix}")
+                run_id = str(res.get("run_id") or "").strip() or None
+                finish_reason = str(res.get("finish_reason") or "").strip() or None
+                error_type2 = str(res.get("error_type") or "").strip() or None
+                error_message2 = str(res.get("error_message") or "").strip() or None
+                parse_error = res.get("parse_error") if isinstance(res.get("parse_error"), dict) else None
+                warnings = res.get("warnings") if isinstance(res.get("warnings"), list) else None
+                error_obj = res.get("error") if isinstance(res.get("error"), dict) else None
+
+                how_to_fix: list[str] = []
+                if reason in {"project_not_found", "table_not_found", "chapter_not_found"}:
+                    how_to_fix = ["确认项目/表格/章节仍存在且属于当前项目", "刷新页面后重试任务"]
+                elif reason == "llm_preset_missing":
+                    how_to_fix = ["先在项目中选择/绑定可用的 LLM Profile，并刷新页面后重试任务"]
+                elif reason in {"llm_call_prepare_failed", "prompt_empty"}:
+                    how_to_fix = ["确认项目 Prompt/Preset 配置正确；必要时刷新页面后重试", "确认章节内容非空且已定稿（done）"]
+                elif reason == "llm_call_failed":
+                    how_to_fix = [
+                        "检查 base_url / 网络连通性（可用「模型配置 → 测试连接」验证）",
+                        "确认模型与参数兼容；必要时切换 provider/model 后重试",
+                    ]
+                elif reason == "parse_failed":
+                    how_to_fix = ["模型输出未满足 table_update_v1 JSON 合同：可在任务详情中查看 run_id 并定位输出", "尝试更换模型/降低温度后重试"]
+                elif reason == "propose_failed":
+                    how_to_fix = ["变更集提议失败：请查看 error.details 或后端日志；修复后重试任务"]
+
+                details: dict[str, Any] = {
+                    "task_kind": "table_ai_update",
+                    "reason": reason,
+                    "run_id": run_id,
+                    "table_id": table_id,
+                    "chapter_id": chapter_id,
+                    "finish_reason": finish_reason,
+                    "warnings": warnings,
+                    "parse_error": parse_error,
+                    "error": error_obj,
+                    "error_type": error_type2,
+                    "error_message": error_message2,
+                }
+                if how_to_fix:
+                    details["how_to_fix"] = how_to_fix
+
+                msg = f"table_ai_update 失败：{reason}"
+                if run_id:
+                    msg += f" (run_id={run_id})"
+                if error_message2:
+                    msg += f" - {error_message2[:160]}"
+
+                raise AppError(code="TABLE_AI_UPDATE_FAILED", message=msg, status_code=500, details=details)
             result = res
         elif kind == "graph_auto_update":
             params = _compact_json_loads(task.params_json) if task.params_json else None

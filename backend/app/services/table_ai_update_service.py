@@ -9,10 +9,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.core.logging import exception_log_fields, log_event
+from app.core.logging import exception_log_fields, log_event, redact_secrets_text
 from app.db.session import SessionLocal
 from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
+from app.models.generation_run import GenerationRun
 from app.models.llm_preset import LLMPreset
 from app.models.project import Project
 from app.models.project_table import ProjectTable, ProjectTableRow
@@ -50,6 +51,35 @@ def _truncate(text: str | None, *, limit: int) -> str:
     if len(raw) <= limit:
         return raw
     return raw[:limit]
+
+
+def _find_latest_run_id_for_request(*, project_id: str, request_id: str, run_type: str) -> str | None:
+    """
+    Best-effort: resolve the run_id written by call_llm_and_record when it raises.
+    """
+    pid = str(project_id or "").strip()
+    rid = str(request_id or "").strip()
+    rtype = str(run_type or "").strip()
+    if not pid or not rid or not rtype:
+        return None
+
+    db = SessionLocal()
+    try:
+        q = (
+            select(GenerationRun.id)
+            .where(
+                GenerationRun.project_id == pid,
+                GenerationRun.request_id == rid,
+                GenerationRun.type == rtype,
+            )
+            .order_by(GenerationRun.created_at.desc(), GenerationRun.id.desc())
+            .limit(1)
+        )
+        return db.execute(q).scalars().first()
+    except Exception:
+        return None
+    finally:
+        db.close()
 
 
 def _coerce_rows_for_prompt(rows: list[ProjectTableRow]) -> list[dict[str, Any]]:
@@ -374,16 +404,29 @@ def table_ai_update_v1(
             },
         )
     except Exception as exc:
+        run_id = _find_latest_run_id_for_request(project_id=pid, request_id=req, run_type="table_ai_update_auto_propose")
         log_event(
             logger,
             "warning",
             event="TABLE_AI_UPDATE_LLM_ERROR",
             project_id=pid,
             table_id=tid,
+            run_id=run_id,
             error_type=type(exc).__name__,
             **exception_log_fields(exc),
         )
-        return {"ok": False, "project_id": pid, "table_id": tid, "reason": "llm_call_failed", "error_type": type(exc).__name__}
+        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+        if not safe_message:
+            safe_message = type(exc).__name__
+        return {
+            "ok": False,
+            "project_id": pid,
+            "table_id": tid,
+            "reason": "llm_call_failed",
+            "run_id": run_id,
+            "error_type": type(exc).__name__,
+            "error_message": safe_message[:400],
+        }
 
     parsed, warnings, parse_error = parse_table_update_output_v1(
         recorded.text, expected_table_id=tid, finish_reason=recorded.finish_reason
