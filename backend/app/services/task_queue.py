@@ -238,6 +238,7 @@ def get_queue_status_for_health() -> dict[str, Any]:
     if backend == "inline":
         return {
             "queue_backend": "inline",
+            "effective_backend": "inline",
             "redis_ok": None,
             "worker_hint": "inline 模式使用进程内单线程 worker 执行任务（无需 Redis；适合 dev/test；生产请用 rq+worker）",
         }
@@ -246,21 +247,13 @@ def get_queue_status_for_health() -> dict[str, Any]:
         redis_url: str = str(getattr(settings, "redis_url", "redis://localhost:6379/0") or "").strip()
         queue_name: str = str(getattr(settings, "rq_queue_name", "default") or "default").strip() or "default"
 
-        redis_ok = False
-        redis_error_type: str | None = None
-        try:
-            from redis import Redis
-
-            conn = Redis.from_url(
-                redis_url,
-                socket_connect_timeout=0.5,
-                socket_timeout=0.5,
-                retry_on_timeout=False,
-            )
-            conn.ping()
-            redis_ok = True
-        except Exception as exc:
-            redis_error_type = type(exc).__name__
+        redis_ok, redis_error_type = _redis_ping_cached(redis_url, timeout_seconds=0.2)
+        effective_backend: TaskQueueBackend = "rq"
+        if not redis_ok:
+            app_env = str(getattr(settings, "app_env", "dev") or "dev").strip().lower()
+            explicit_backend = str(os.environ.get("TASK_QUEUE_BACKEND") or "").strip().lower()
+            if app_env != "prod" and explicit_backend not in {"rq"}:
+                effective_backend = "inline"
 
         hint = f"rq 模式需要 Redis + worker（单 worker）。队列名={queue_name}。"
         if not redis_ok:
@@ -268,16 +261,22 @@ def get_queue_status_for_health() -> dict[str, Any]:
                 f" 当前 redis_ok=false（{redis_error_type or 'unknown'}）。"
                 " 可临时切换 TASK_QUEUE_BACKEND=inline（dev/test；不需要 Redis；进程内单线程 worker）。"
             )
-            app_env = str(getattr(settings, "app_env", "dev") or "dev").strip().lower()
-            explicit_backend = str(os.environ.get("TASK_QUEUE_BACKEND") or "").strip().lower()
-            if app_env != "prod" and explicit_backend not in {"rq"}:
-                hint += " 当前 dev 环境将自动回落到 inline 以保证任务可执行。"
+            if effective_backend == "inline":
+                hint += " 当前 dev 环境将自动回落到 inline 以保证任务可执行（进程内单线程，任务会排队串行处理）。"
+            else:
+                hint += " 当前 effective_backend=rq（不回落）。如需执行任务请确保 Redis 可用并启动 worker。"
         return {
             "queue_backend": "rq",
+            "effective_backend": effective_backend,
             "rq_queue_name": queue_name,
             "redis_ok": redis_ok,
             "redis_error_type": redis_error_type,
             "worker_hint": hint,
         }
 
-    return {"queue_backend": backend, "redis_ok": None, "worker_hint": "unknown task queue backend"}
+    return {
+        "queue_backend": backend,
+        "effective_backend": backend,
+        "redis_ok": None,
+        "worker_hint": "unknown task queue backend",
+    }

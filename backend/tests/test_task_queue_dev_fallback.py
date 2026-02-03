@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from app.core.config import settings
-from app.services.task_queue import InlineTaskQueue, RqTaskQueue, get_task_queue
+from app.services.task_queue import InlineTaskQueue, RqTaskQueue, get_queue_status_for_health, get_task_queue
 
 
 class TestTaskQueueDevFallback(unittest.TestCase):
@@ -67,3 +67,38 @@ class TestTaskQueueDevFallback(unittest.TestCase):
 
         self.assertIsInstance(tq, RqTaskQueue)
 
+    def test_health_reports_effective_backend_inline_on_dev_fallback(self) -> None:
+        settings.app_env = "dev"
+        settings.task_queue_backend = "rq"
+        settings.redis_url = "redis://localhost:6379/0"
+        settings.rq_queue_name = "default"
+
+        from app.services import task_queue as mod
+
+        mod._REDIS_PING_CACHE.clear()
+        with patch.dict(os.environ, {"TASK_QUEUE_BACKEND": ""}, clear=False), patch(
+            "app.services.task_queue._redis_ping", return_value=(False, "TimeoutError")
+        ):
+            status = get_queue_status_for_health()
+
+        self.assertEqual(status.get("queue_backend"), "rq")
+        self.assertEqual(status.get("effective_backend"), "inline")
+        self.assertEqual(status.get("redis_ok"), False)
+
+    def test_health_reports_effective_backend_rq_when_explicit(self) -> None:
+        settings.app_env = "dev"
+        settings.task_queue_backend = "rq"
+        settings.redis_url = "redis://localhost:6379/0"
+        settings.rq_queue_name = "default"
+
+        from app.services import task_queue as mod
+
+        mod._REDIS_PING_CACHE.clear()
+        with patch.dict(os.environ, {"TASK_QUEUE_BACKEND": "rq"}, clear=False), patch(
+            "app.services.task_queue._redis_ping", return_value=(False, "TimeoutError")
+        ):
+            status = get_queue_status_for_health()
+
+        self.assertEqual(status.get("queue_backend"), "rq")
+        self.assertEqual(status.get("effective_backend"), "rq")
+        self.assertEqual(status.get("redis_ok"), False)
