@@ -1,0 +1,124 @@
+```json
+{
+  "title": "森林里的金属客与次元裂缝",
+  "summary_md": "本章记录了光头强在伐木时意外切开次元裂缝，导致狗熊岭与青青草原发生重叠。灰太狼坠落至狗熊岭并与光头强发生冲突，随后羊村防御系统在森林中异常生成。",
+  "ops": [
+    {
+      "op": "upsert",
+      "target_table": "entities",
+      "after": {
+        "entity_id": "ca4e3e50-6cb7-4983-af1a-94775a7b676d",
+        "name": "光头强",
+        "type": "person",
+        "attributes": {
+          "aliases": ["强哥", "伐木冠军"],
+          "role": "主角",
+          "faction": "狗熊岭",
+          "tags": ["伐木工", "人类"],
+          "confidence": 1
+        }
+      }
+    },
+    {
+      "op": "upsert",
+      "target_table": "entities",
+      "after": {
+        "entity_id": "2371bd4d-7ba4-460b-aca9-652b233455b1",
+        "name": "灰太狼",
+        "type": "person",
+        "attributes": {
+          "aliases": ["本大王"],
+          "role": "主角",
+          "faction": "狼堡",
+          "tags": ["狼", "发明家"],
+          "confidence": 1
+        }
+      }
+    },
+    {
+      "op": "upsert",
+      "target_table": "entities",
+      "after": {
+        "entity_id": "71165d0b-2981-400a-9ca4-fc1e779e6f52",
+        "name": "狗熊岭",
+        "type": "location",
+        "attributes": {
+          "tags": ["森林", "光头强领地"],
+          "confidence": 1
+        }
+      }
+    },
+    {
+      "op": "upsert",
+      "target_table": "entities",
+      "after": {
+        "entity_id": "83ddba6e-e463-44d7-b9bf-48087d57b085",
+        "name": "羊村防御系统",
+        "type": "organization",
+        "attributes": {
+          "tags": ["防御设施", "自动武器"],
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "op": "upsert",
+      "target_table": "evidence",
+      "after": {
+        "target_id": "37cff265-adbc-460b-86f4-1891c7cfb750",
+        "source_type": "chapter",
+        "source_id": "a2f2c4c2-18b3-48c3-b6d1-e3c50d639c50",
+        "quote_md": "光头强和灰太狼对视一眼，发现自己已经被这些拔地而起的钢铁围墙，死死地困在了角落里。"
+      }
+    },
+    {
+      "op": "upsert",
+      "target_table": "relations",
+      "after": {
+        "relation_id": "a117cd8f-c657-4207-927b-a84c031a2714",
+        "from_id": "ca4e3e50-6cb7-4983-af1a-94775a7b676d",
+        "to_id": "2371bd4d-7ba4-460b-aca9-652b233455b1",
+        "relation_type": "enemy",
+        "attributes": {
+          "strength": 40,
+          "status": "active",
+          "confidence": 0.9,
+          "tags": ["误解", "初次见面冲突"]
+        },
+        "evidence_ids": ["37cff265-adbc-460b-86f4-1891c7cfb750"]
+      }
+    },
+    {
+      "op": "upsert",
+      "target_table": "relations",
+      "after": {
+        "relation_id": "56cdadba-d304-472b-aa1e-716167c3911c",
+        "from_id": "83ddba6e-e463-44d7-b9bf-48087d57b085",
+        "to_id": "2371bd4d-7ba4-460b-aca9-652b233455b1",
+        "relation_type": "enemy",
+        "attributes": {
+          "strength": 90,
+          "status": "active",
+          "confidence": 1,
+          "tags": ["自动识别入侵者"]
+        },
+        "evidence_ids": ["37cff265-adbc-460b-86f4-1891c7cfb750"]
+      }
+    },
+    {
+      "op": "upsert",
+      "target_table": "relations",
+      "after": {
+        "relation_id": "0c8901e6-bd0e-4643-b8b6-6dc3080ac8d3",
+        "from_id": "ca4e3e50-6cb7-4983-af1a-94775a7b676d",
+        "to_id": "71165d0b-2981-400a-9ca4-fc1e779e6f52",
+        "relation_type": "member_of",
+        "attributes": {
+          "status": "active",
+          "confidence": 1
+        }
+      }
+    }
+  ]
+}
+```

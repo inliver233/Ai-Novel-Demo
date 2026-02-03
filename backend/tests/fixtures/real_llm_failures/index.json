@@ -1,0 +1,32 @@
+[
+  {
+    "run_id": "b497cd7a-ed94-4171-8392-8e7f28773e48",
+    "type": "characters_auto_update",
+    "kind": "output_text",
+    "file": "b497cd7a-ed94-4171-8392-8e7f28773e48.characters_auto_update.output.txt"
+  },
+  {
+    "run_id": "d8024a18-3416-47df-8656-9da9c669853f",
+    "type": "worldbook_auto_update",
+    "kind": "output_text",
+    "file": "d8024a18-3416-47df-8656-9da9c669853f.worldbook_auto_update.output.txt"
+  },
+  {
+    "run_id": "ea1ca685-7989-49cb-8767-f3d883a7ea05",
+    "type": "graph_auto_update_auto_propose",
+    "kind": "output_text",
+    "file": "ea1ca685-7989-49cb-8767-f3d883a7ea05.graph_auto_update.output.txt"
+  },
+  {
+    "run_id": "938e0135-960c-4c7a-9337-126fc2026d38",
+    "type": "table_ai_update_auto_propose",
+    "kind": "error_json",
+    "file": "938e0135-960c-4c7a-9337-126fc2026d38.table_ai_update.error.json"
+  },
+  {
+    "run_id": "7d9b53d8-f7df-4ccd-900f-a53c6b5151a5",
+    "type": "table_ai_update_auto_propose",
+    "kind": "error_json",
+    "file": "7d9b53d8-f7df-4ccd-900f-a53c6b5151a5.table_ai_update.error.json"
+  }
+]
