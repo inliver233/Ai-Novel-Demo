@@ -124,6 +124,48 @@ class TestCharactersAutoUpdateService(unittest.TestCase):
             self.assertEqual(bob.role, "sidekick")
             self.assertEqual(bob.profile, "Bob profile")
 
+    def test_characters_auto_update_v1_repairs_invalid_json_once(self) -> None:
+        repaired = {
+            "schema_version": "characters_auto_update_v1",
+            "title": "Characters Auto Update",
+            "summary_md": "auto",
+            "ops": [
+                {
+                    "op": "upsert",
+                    "name": "Bob",
+                    "patch": {"role": "sidekick", "profile": "Bob profile", "notes": ""},
+                    "reason": "Bob appears in chapter",
+                }
+            ],
+        }
+
+        with patch("app.services.characters_auto_update_service.SessionLocal", self.SessionLocal), patch(
+            "app.services.characters_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
+        ), patch(
+            "app.services.characters_auto_update_service.call_llm_and_record",
+            return_value=RecordedLlmResult(
+                text="not json",
+                finish_reason=None,
+                latency_ms=1,
+                dropped_params=[],
+                run_id="run-orig",
+            ),
+        ), patch(
+            "app.services.characters_auto_update_service.repair_json_once",
+            return_value={"ok": True, "repair_run_id": "run-repair", "value": repaired, "raw_json": _compact_json_dumps(repaired)},
+        ), patch("app.services.characters_auto_update_service.schedule_search_rebuild_task", return_value=None):
+            res = characters_auto_update_v1(project_id="p1", actor_user_id="u1", request_id="rid-test", chapter_id="c1")
+
+        self.assertTrue(bool(res.get("ok")))
+        self.assertEqual(res.get("run_id"), "run-orig")
+        self.assertEqual(res.get("repair_run_id"), "run-repair")
+
+        with self.SessionLocal() as db:
+            rows = (
+                db.execute(select(Character).where(Character.project_id == "p1").order_by(Character.name.asc())).scalars().all()
+            )
+            self.assertEqual([r.name for r in rows], ["Alice", "Bob"])
+
     def test_schedule_chapter_done_tasks_includes_characters_auto_update(self) -> None:
         with patch("app.services.vector_rag_service.schedule_vector_rebuild_task", return_value="t-vector"), patch(
             "app.services.search_index_service.schedule_search_rebuild_task", return_value="t-search"

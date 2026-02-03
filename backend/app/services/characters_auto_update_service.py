@@ -24,6 +24,7 @@ from app.schemas.characters_auto_update import (
     CharacterPatchV1,
 )
 from app.services.generation_service import call_llm_and_record, prepare_llm_call
+from app.services.json_repair_service import repair_json_once
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.output_parsers import extract_json_value, likely_truncated_json
 from app.services.search_index_service import schedule_search_rebuild_task
@@ -380,6 +381,30 @@ def characters_auto_update_v1(
         }
 
     value, raw_json = extract_json_value(recorded.text)
+
+    repair_schema = (
+        "{\n"
+        '  "schema_version": "characters_auto_update_v1",\n'
+        '  "title": string | null,\n'
+        '  "summary_md": string | null,\n'
+        '  "ops": [\n'
+        '    {\n'
+        '      "op": "upsert" | "dedupe",\n'
+        '      "name": string,\n'
+        '      "patch": {"role": string | null, "profile": string | null, "notes": string | null},\n'
+        '      "merge_mode_profile": "append_missing" | "append" | "replace" | null,\n'
+        '      "merge_mode_notes": "append_missing" | "append" | "replace" | null,\n'
+        '      "canonical_name": string,\n'
+        '      "duplicate_names": [string],\n'
+        '      "reason": string | null\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+    )
+
+    repair_run_id: str | None = None
+    repaired = False
+
     if not isinstance(value, dict):
         parse_error: dict[str, Any] = {
             "code": "CHARACTERS_AUTO_UPDATE_PARSE_ERROR",
@@ -387,14 +412,47 @@ def characters_auto_update_v1(
         }
         if likely_truncated_json(recorded.text):
             parse_error["hint"] = "输出疑似被截断（JSON 未闭合），可尝试增大 max_tokens 或减少输出长度"
-        return {
-            "ok": False,
-            "project_id": pid,
-            "chapter_id": cid,
-            "reason": "parse_error",
-            "run_id": recorded.run_id,
-            "parse_error": parse_error,
-        }
+
+        repair_req = f"{req}:repair"
+        if len(repair_req) > 64:
+            repair_req = repair_req[:64]
+        repair = repair_json_once(
+            request_id=repair_req,
+            actor_user_id=actor,
+            project_id=pid,
+            chapter_id=cid,
+            api_key=api_key,
+            llm_call=llm_call,
+            raw_output=recorded.text,
+            schema=repair_schema,
+            expected_root="object",
+            origin_run_id=recorded.run_id,
+            origin_task=CHARACTERS_AUTO_UPDATE_KIND,
+        )
+        if bool(repair.get("ok")) and isinstance(repair.get("value"), dict):
+            repaired = True
+            repair_run_id = str(repair.get("repair_run_id") or "").strip() or None
+            value = repair.get("value")
+            raw_json = str(repair.get("raw_json") or "").strip() or raw_json
+        else:
+            repair_run_id = str(repair.get("repair_run_id") or "").strip() or None
+            if repair_run_id:
+                parse_error["repair_run_id"] = repair_run_id
+            if repair.get("reason"):
+                parse_error["repair_reason"] = repair.get("reason")
+            if repair.get("parse_error"):
+                parse_error["repair_parse_error"] = repair.get("parse_error")
+            if repair.get("error_message"):
+                parse_error["repair_error_message"] = repair.get("error_message")
+            return {
+                "ok": False,
+                "project_id": pid,
+                "chapter_id": cid,
+                "reason": "parse_error",
+                "run_id": recorded.run_id,
+                "repair_run_id": repair_run_id,
+                "parse_error": parse_error,
+            }
 
     try:
         parsed = CharactersAutoUpdateV1Request.model_validate(value)
@@ -405,12 +463,79 @@ def characters_auto_update_v1(
         }
         if raw_json:
             parse_error["raw_json"] = raw_json
+
+        if not repaired:
+            repair_req = f"{req}:repair"
+            if len(repair_req) > 64:
+                repair_req = repair_req[:64]
+            repair = repair_json_once(
+                request_id=repair_req,
+                actor_user_id=actor,
+                project_id=pid,
+                chapter_id=cid,
+                api_key=api_key,
+                llm_call=llm_call,
+                raw_output=str(raw_json or recorded.text),
+                schema=repair_schema,
+                expected_root="object",
+                origin_run_id=recorded.run_id,
+                origin_task=CHARACTERS_AUTO_UPDATE_KIND,
+            )
+            if bool(repair.get("ok")) and isinstance(repair.get("value"), dict):
+                repair_run_id = str(repair.get("repair_run_id") or "").strip() or None
+                value2 = repair.get("value")
+                raw_json2 = str(repair.get("raw_json") or "").strip() or raw_json
+                try:
+                    parsed = CharactersAutoUpdateV1Request.model_validate(value2)
+                    raw_json = raw_json2
+                    repaired = True
+                except Exception as exc2:
+                    parse_error2: dict[str, Any] = {
+                        "code": "CHARACTERS_AUTO_UPDATE_PARSE_ERROR",
+                        "message": f"schema invalid after repair:{type(exc2).__name__}",
+                    }
+                    if raw_json2:
+                        parse_error2["raw_json"] = raw_json2
+                    if repair_run_id:
+                        parse_error2["repair_run_id"] = repair_run_id
+                    return {
+                        "ok": False,
+                        "project_id": pid,
+                        "chapter_id": cid,
+                        "reason": "parse_error",
+                        "run_id": recorded.run_id,
+                        "repair_run_id": repair_run_id,
+                        "parse_error": parse_error2,
+                    }
+            else:
+                repair_run_id = str(repair.get("repair_run_id") or "").strip() or None
+                if repair_run_id:
+                    parse_error["repair_run_id"] = repair_run_id
+                if repair.get("reason"):
+                    parse_error["repair_reason"] = repair.get("reason")
+                if repair.get("parse_error"):
+                    parse_error["repair_parse_error"] = repair.get("parse_error")
+                if repair.get("error_message"):
+                    parse_error["repair_error_message"] = repair.get("error_message")
+                return {
+                    "ok": False,
+                    "project_id": pid,
+                    "chapter_id": cid,
+                    "reason": "parse_error",
+                    "run_id": recorded.run_id,
+                    "repair_run_id": repair_run_id,
+                    "parse_error": parse_error,
+                }
+
+        if repair_run_id:
+            parse_error["repair_run_id"] = repair_run_id
         return {
             "ok": False,
             "project_id": pid,
             "chapter_id": cid,
             "reason": "parse_error",
             "run_id": recorded.run_id,
+            "repair_run_id": repair_run_id,
             "parse_error": parse_error,
         }
 
@@ -420,7 +545,14 @@ def characters_auto_update_v1(
     try:
         out = apply_characters_auto_update_ops(db=db_apply, project_id=pid, ops=ops_out)
         if not bool(out.get("ok")):
-            return {"ok": False, "project_id": pid, "chapter_id": cid, "run_id": recorded.run_id, "reason": out.get("reason") or "apply_failed"}
+            return {
+                "ok": False,
+                "project_id": pid,
+                "chapter_id": cid,
+                "run_id": recorded.run_id,
+                "repair_run_id": repair_run_id,
+                "reason": out.get("reason") or "apply_failed",
+            }
 
         db_apply.commit()
 
@@ -449,6 +581,7 @@ def characters_auto_update_v1(
             "project_id": pid,
             "chapter_id": cid,
             "run_id": recorded.run_id,
+            "repair_run_id": repair_run_id,
             "finish_reason": recorded.finish_reason,
             "applied": out,
         }
@@ -472,6 +605,7 @@ def characters_auto_update_v1(
             "chapter_id": cid,
             "reason": "apply_failed",
             "run_id": recorded.run_id,
+            "repair_run_id": repair_run_id,
             "error_type": type(exc).__name__,
             "error_message": safe_message[:400],
         }
@@ -583,4 +717,3 @@ def schedule_characters_auto_update_task(
     finally:
         if owns_session:
             db.close()
-
