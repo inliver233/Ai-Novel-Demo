@@ -45,8 +45,10 @@ class TestRealLlmFailureFixtures(unittest.TestCase):
         self.assertIsInstance(value.get("ops"), list)
         self.assertIn("character", value["ops"][0])
 
-        with self.assertRaises(Exception):
-            CharactersAutoUpdateV1Request.model_validate(value)
+        parsed = CharactersAutoUpdateV1Request.model_validate(value)
+        self.assertEqual(parsed.ops[0].op, "upsert")
+        self.assertEqual(parsed.ops[0].name, "光头强")
+        self.assertIsInstance(parsed.ops[0].patch, dict)
 
     def test_worldbook_auto_update_fixture_reproduces_schema_drift(self) -> None:
         p = FIX_DIR / "d8024a18-3416-47df-8656-9da9c669853f.worldbook_auto_update.output.txt"

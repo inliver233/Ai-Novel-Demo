@@ -38,6 +38,59 @@ class CharactersAutoUpdateOpV1(BaseModel):
 
     reason: str | None = Field(default=None, max_length=400)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_character_shape(cls, data: Any) -> Any:
+        """
+        Compatibility: some models output {"character": {...}} for upsert ops.
+        Normalize to name + patch and drop unknown fields.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        obj = dict(data)
+        character = obj.get("character")
+        if isinstance(character, dict):
+            # name
+            name = obj.get("name")
+            if not (isinstance(name, str) and name.strip()):
+                cname = character.get("name")
+                if isinstance(cname, str) and cname.strip():
+                    obj["name"] = cname.strip()
+
+            # patch
+            patch_in = obj.get("patch") if isinstance(obj.get("patch"), dict) else {}
+            patch_out: dict[str, Any] = dict(patch_in)
+            for key in ("role", "profile", "notes"):
+                if key in patch_out and isinstance(patch_out.get(key), str) and patch_out.get(key).strip():
+                    continue
+                v = character.get(key)
+                if isinstance(v, str) and v.strip():
+                    patch_out[key] = v
+            if patch_out:
+                obj["patch"] = patch_out
+
+            obj.pop("character", None)
+
+        # Drop any unexpected fields to reduce parse failures.
+        allowed = {
+            "op",
+            "name",
+            "patch",
+            "merge_mode_profile",
+            "merge_mode_notes",
+            "canonical_name",
+            "duplicate_names",
+            "reason",
+        }
+        obj = {k: v for k, v in obj.items() if k in allowed}
+
+        patch2 = obj.get("patch")
+        if isinstance(patch2, dict):
+            obj["patch"] = {k: patch2.get(k) for k in ("role", "profile", "notes") if k in patch2}
+
+        return obj
+
     @model_validator(mode="after")
     def _validate_op(self) -> "CharactersAutoUpdateOpV1":
         if self.op == "dedupe":
@@ -65,4 +118,3 @@ class CharactersAutoUpdateV1Request(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     summary_md: str | None = Field(default=None, max_length=MAX_MD_CHARS_V1)
     ops: list[CharactersAutoUpdateOpV1] = Field(min_length=1, max_length=MAX_OPS_V1)
-
