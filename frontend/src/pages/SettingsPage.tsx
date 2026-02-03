@@ -1331,6 +1331,24 @@ export function SettingsPage() {
             ) : null}
 
             <div className="rounded-atelier border border-border bg-canvas p-4 text-xs text-subtext">
+              <div className="font-medium text-ink">配置说明（Embedding vs Rerank）</div>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                <li>
+                  <span className="font-mono">Embedding</span> 用于向量化（索引/召回）；<span className="font-mono">Rerank</span>{" "}
+                  用于对候选片段做二次排序。两者可分别配置（provider/base_url/model/api_key 可不同）。
+                </li>
+                <li>
+                  保存后可用上方 “测试 embedding / 测试 rerank” 做 <span className="font-mono">dry-run</span>{" "}
+                  自检（会返回 request_id，便于看后端日志排障）。
+                </li>
+                <li>
+                  验证是否生效：到项目内「RAG」页运行 Query；结果面板会显示 <span className="font-mono">rerank:</span> 概要，并可展开{" "}
+                  <span className="font-mono">rerank_obs</span> 查看详情。
+                </li>
+              </ul>
+            </div>
+
+            <div className="rounded-atelier border border-border bg-canvas p-4 text-xs text-subtext">
               <div>
                 当前生效：Embedding 提供方（provider）=
                 {baselineSettings.vector_embedding_effective_provider || "openai_compatible"}

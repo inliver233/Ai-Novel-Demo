@@ -110,7 +110,7 @@ docker compose logs -f rq_worker
 - 开关：生成章节时会把 `memory_injection_enabled` 随请求发送到后端；后端会在生成前将 pack 注入到 `render_values.memory`。
 - Prompt 注入：推荐使用内置章节预设 `chapter_generate_v4`（包含 `sys.memory.*` blocks，marker_key=`memory.<section>.text_md`）；旧的 `chapter_generate_v3` 不包含 memory blocks。
 - 回放/定位：`generation_runs.params_json` 会记录 `memory_injection_enabled` 与 `memory_retrieval_log_json`。
-- 向量检索：embedding 配置可通过「项目设置」写入 DB（API Key 加密，仅返回 `has_api_key/masked_api_key`），或通过后端 env fallback（见 `backend/.env.example`）。
+- 向量检索：Embedding/Rerank 配置可通过「项目设置」写入 DB（API Key 加密，仅返回 `has_api_key/masked_api_key`），或通过后端 env fallback（见 `backend/.env.example`）；配置与自检步骤见 `docs/rag-embedding-rerank.md`。
 
 ## 工程卫生（必须）
 

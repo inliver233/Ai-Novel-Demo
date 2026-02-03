@@ -552,6 +552,10 @@ export function RagPage() {
             快速开始：创建/启用 KB → 点击“{UI_COPY.rag.ingest}”导入 → “{UI_COPY.rag.rebuild}”构建索引 → 在下方 Query
             预览命中。
           </div>
+          <div>
+            验证 rerank 是否生效：启用后在下方 Query 执行查询，结果面板会显示 <span className="font-mono">rerank:</span>{" "}
+            概要，并可展开 <span className="font-mono">rerank_obs</span> 查看观测信息（用于排障）。
+          </div>
           {projectId ? (
             <div>
               配置入口：到{" "}
