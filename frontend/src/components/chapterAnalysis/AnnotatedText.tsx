@@ -90,7 +90,7 @@ export function AnnotatedText(props: {
               }
             }}
             className={clsx(
-              "ui-focus-ring ui-transition-fast cursor-pointer rounded-sm border-b-2 px-0.5 py-0.5",
+              "ui-focus-ring ui-transition-fast cursor-pointer break-words rounded-sm border-b-2 px-0.5 py-0.5",
               colors.border,
               colors.hoverBg,
               isActive ? colors.activeBg : "bg-transparent",

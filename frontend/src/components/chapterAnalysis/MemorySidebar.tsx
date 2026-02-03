@@ -447,7 +447,7 @@ export function MemorySidebar(props: {
                                 <span className="rounded bg-success/20 px-1.5 py-0.5 text-[11px] text-ink">已完成</span>
                               ) : null}
                             </div>
-                            <div className="mt-1 line-clamp-2 text-xs text-subtext">
+                            <div className="mt-1 line-clamp-2 break-words text-xs text-subtext">
                               {(a.content ?? "").trim().slice(0, 140)}
                             </div>
                           </div>
@@ -731,7 +731,7 @@ export function MemorySidebar(props: {
                       <div className="truncate text-sm text-ink">{normalizeTitle(a)}</div>
                       <div className="text-xs text-subtext">{labelForAnnotationType(a.type)}</div>
                     </div>
-                    <div className="mt-1 line-clamp-2 text-xs text-subtext">
+                    <div className="mt-1 line-clamp-2 break-words text-xs text-subtext">
                       {(a.content ?? "").trim().slice(0, 160)}
                     </div>
                   </div>

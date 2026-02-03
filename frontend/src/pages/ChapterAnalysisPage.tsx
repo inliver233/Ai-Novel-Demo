@@ -177,7 +177,7 @@ export function ChapterAnalysisPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start 2xl:grid-cols-[minmax(0,1fr)_300px]">
         <section className="min-h-0 min-w-0 rounded-atelier border border-border bg-surface p-3">
           {loading ? (
             <div className="rounded-atelier border border-border bg-canvas p-4" aria-busy="true" aria-live="polite">
