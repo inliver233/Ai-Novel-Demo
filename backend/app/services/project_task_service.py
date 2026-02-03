@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,7 @@ from app.models.project_task import ProjectTask
 logger = logging.getLogger("ainovel")
 
 
-_ALLOWED_TASK_STATUSES_QUERY = {"queued", "running", "failed", "done", "succeeded"}
+_ALLOWED_TASK_STATUSES_QUERY = {"queued", "running", "failed", "done", "succeeded", "canceled"}
 _TASK_DONE_ALIASES = {"succeeded", "done"}
 
 
@@ -781,6 +781,29 @@ def retry_project_task(*, db: Session, task: ProjectTask) -> ProjectTask:
     return task
 
 
+def cancel_project_task(*, db: Session, task: ProjectTask) -> ProjectTask:
+    """
+    Cancel a queued ProjectTask.
+
+    Contract:
+    - Only queued tasks are cancelable (idempotent no-op otherwise).
+    - Worker must skip execution when task.status == "canceled".
+    """
+
+    status_norm = str(getattr(task, "status", "") or "").strip().lower()
+    if status_norm != "queued":
+        return task
+
+    task.status = "canceled"
+    task.started_at = None
+    task.finished_at = utc_now()
+    task.updated_at = utc_now()
+    task.result_json = _compact_json_dumps({"canceled": True})
+    task.error_json = None
+    db.commit()
+    return task
+
+
 def run_project_task(*, task_id: str) -> str:
     """
     RQ worker entrypoint. Consumes ProjectTask and records result to DB.
@@ -793,12 +816,30 @@ def run_project_task(*, task_id: str) -> str:
             log_event(logger, "warning", event="PROJECT_TASK_MISSING", task_id=task_id)
             return task_id
 
-        if str(task.status) in {"succeeded", "failed", "running"}:
+        status_norm = str(getattr(task, "status", "") or "").strip().lower()
+        if status_norm in {"succeeded", "done", "failed", "running"}:
+            return task_id
+        if status_norm == "canceled":
+            if task.finished_at is None:
+                task.finished_at = utc_now()
+                task.updated_at = utc_now()
+                db.commit()
             return task_id
 
-        task.status = "running"
-        task.started_at = utc_now()
+        if status_norm != "queued":
+            return task_id
+
+        started_at = utc_now()
+        res = db.execute(
+            update(ProjectTask)
+            .where(ProjectTask.id == task_id, ProjectTask.status == "queued")
+            .values(status="running", started_at=started_at, updated_at=started_at)
+        )
         db.commit()
+        if not getattr(res, "rowcount", 0):
+            return task_id
+        task.status = "running"
+        task.started_at = started_at
 
         kind = str(task.kind)
         project_id = str(task.project_id)

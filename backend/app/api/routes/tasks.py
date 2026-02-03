@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query, Request
 from app.api.deps import DbDep, UserIdDep, require_project_editor, require_project_viewer
 from app.core.errors import AppError, ok_payload
 from app.models.project_task import ProjectTask
-from app.services.project_task_service import list_project_tasks, project_task_to_dict, retry_project_task
+from app.services.project_task_service import cancel_project_task, list_project_tasks, project_task_to_dict, retry_project_task
 
 router = APIRouter()
 
@@ -57,3 +57,18 @@ def retry_project_task_endpoint(
     retry_project_task(db=db, task=task)
     return ok_payload(request_id=request_id, data=project_task_to_dict(task=task, include_payloads=True))
 
+
+@router.post("/tasks/{task_id}/cancel")
+def cancel_project_task_endpoint(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    task_id: str,
+) -> dict:
+    request_id = request.state.request_id
+    task = db.get(ProjectTask, task_id)
+    if task is None:
+        raise AppError.not_found()
+    require_project_editor(db, project_id=str(task.project_id), user_id=user_id)
+    cancel_project_task(db=db, task=task)
+    return ok_payload(request_id=request_id, data=project_task_to_dict(task=task, include_payloads=True))

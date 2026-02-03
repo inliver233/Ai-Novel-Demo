@@ -206,3 +206,24 @@ class TestProjectTasksEndpoints(unittest.TestCase):
         err = data.get("error") or {}
         self.assertEqual(err.get("code"), "QUEUE_UNAVAILABLE")
         self.assertTrue(str(err.get("message") or "").strip())
+
+    def test_cancel_queued_task_sets_canceled(self) -> None:
+        client = TestClient(self.app)
+
+        resp = client.post("/api/tasks/pt1/cancel", headers={"X-Test-User": "u_owner"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json().get("data") or {}
+        self.assertEqual(data.get("status"), "canceled")
+        self.assertIsNone(data.get("error"))
+
+        result = data.get("result") or {}
+        self.assertEqual(result.get("canceled"), True)
+        timings = data.get("timings") or {}
+        self.assertTrue(str(timings.get("finished_at") or "").strip())
+
+        with self.SessionLocal() as db:
+            row = db.get(ProjectTask, "pt1")
+            self.assertIsNotNone(row)
+            assert row is not None
+            self.assertEqual(row.status, "canceled")
+            self.assertIsNotNone(row.finished_at)
