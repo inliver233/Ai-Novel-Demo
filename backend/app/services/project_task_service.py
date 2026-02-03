@@ -1292,9 +1292,50 @@ def run_project_task(*, task_id: str) -> str:
             )
             if not bool(res.get("ok")):
                 reason = str(res.get("reason") or "unknown").strip() or "unknown"
-                run_id = str(res.get("run_id") or "").strip()
-                suffix = f" run_id={run_id}" if run_id else ""
-                raise RuntimeError(f"graph_auto_update failed: {reason}{suffix}")
+                run_id = str(res.get("run_id") or "").strip() or None
+                error_type2 = str(res.get("error_type") or "").strip() or None
+                error_message2 = str(res.get("error_message") or "").strip() or None
+                parse_error = res.get("parse_error") if isinstance(res.get("parse_error"), dict) else None
+                warnings = res.get("warnings") if isinstance(res.get("warnings"), list) else None
+
+                how_to_fix: list[str] = []
+                if reason == "prepare_failed":
+                    how_to_fix = [
+                        "确认项目已绑定可用的 LLM Profile / Preset（用于 graph_auto_update）",
+                        "确认已登录且具备 editor 权限（用于解析 API Key）",
+                        "检查章节状态为 done 且章节存在于当前项目",
+                    ]
+                elif reason in {"llm_call_prepare_failed", "prompt_empty"}:
+                    how_to_fix = ["确认项目 Prompt/Preset 配置正确；必要时刷新页面后重试", "确认章节内容非空且已定稿（done）"]
+                elif reason == "llm_call_failed":
+                    how_to_fix = [
+                        "检查 base_url / 网络连通性（可用「模型配置 → 测试连接」验证）",
+                        "确认模型与参数兼容；必要时切换 provider/model 后重试",
+                    ]
+                elif reason == "parse_failed":
+                    how_to_fix = ["模型输出未满足 memory_update_v1 JSON 合同：可在任务详情中查看 run_id 并定位输出", "尝试更换模型/降低温度后重试"]
+                elif reason in {"unsupported_target_table", "evidence_source_id_mismatch"}:
+                    how_to_fix = ["模型输出与合同不一致：可在任务详情中查看 run_id 并定位输出", "尝试更换模型/降低温度后重试"]
+
+                details: dict[str, Any] = {
+                    "task_kind": "graph_auto_update",
+                    "reason": reason,
+                    "run_id": run_id,
+                    "error_type": error_type2,
+                    "error_message": error_message2,
+                    "parse_error": parse_error,
+                    "warnings": warnings,
+                }
+                if how_to_fix:
+                    details["how_to_fix"] = how_to_fix
+
+                msg = f"graph_auto_update 失败：{reason}"
+                if run_id:
+                    msg += f" (run_id={run_id})"
+                if error_message2:
+                    msg += f" - {error_message2[:160]}"
+
+                raise AppError(code="GRAPH_AUTO_UPDATE_FAILED", message=msg, status_code=500, details=details)
             result = res
         elif kind == "fractal_rebuild":
             params = _compact_json_loads(task.params_json) if task.params_json else None
