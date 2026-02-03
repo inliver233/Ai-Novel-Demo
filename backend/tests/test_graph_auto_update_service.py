@@ -147,6 +147,71 @@ class TestGraphAutoUpdateService(unittest.TestCase):
         self.assertIn("change_set", res)
         self.assertEqual(len(res.get("items") or []), 3)
 
+    def test_graph_auto_update_v1_repairs_parse_failed_once(self) -> None:
+        invalid = _compact_json_dumps(
+            {
+                "title": "Graph Auto Update",
+                "summary_md": "auto",
+                "ops": [
+                    {
+                        "op": "upsert",
+                        "target_table": "entities",
+                        "entity_id": "00000000-0000-0000-0000-000000000002",
+                        "after": {"entity_type": "character", "name": "Bob"},
+                        "evidence_ids": [],
+                    }
+                ],
+            }
+        )
+        repaired_value = {
+            "title": "Graph Auto Update",
+            "summary_md": "auto",
+            "ops": [
+                {
+                    "op": "upsert",
+                    "target_table": "entities",
+                    "target_id": "00000000-0000-0000-0000-000000000002",
+                    "after": {"entity_type": "character", "name": "Bob"},
+                    "evidence_ids": [],
+                }
+            ],
+        }
+
+        with patch("app.services.graph_auto_update_service.SessionLocal", self.SessionLocal), patch(
+            "app.services.graph_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
+        ), patch(
+            "app.services.graph_auto_update_service.call_llm_and_record",
+            return_value=RecordedLlmResult(
+                text=invalid,
+                finish_reason=None,
+                latency_ms=1,
+                dropped_params=[],
+                run_id="run-orig",
+            ),
+        ), patch(
+            "app.services.graph_auto_update_service.repair_json_once",
+            return_value={
+                "ok": True,
+                "repair_run_id": "run-repair",
+                "value": repaired_value,
+                "raw_json": _compact_json_dumps(repaired_value),
+                "finish_reason": "stop",
+                "warnings": [],
+            },
+        ):
+            res = graph_auto_update_v1(
+                project_id="p1",
+                actor_user_id="u1",
+                request_id="rid-test",
+                chapter_id="c1",
+                change_set_idempotency_key="graphupd-12345678",
+                focus=None,
+            )
+
+        self.assertTrue(bool(res.get("ok")))
+        self.assertEqual(res.get("run_id"), "run-orig")
+        self.assertEqual(res.get("repair_run_id"), "run-repair")
+
     def test_graph_auto_update_v1_rejects_evidence_source_id_mismatch(self) -> None:
         model_out = _compact_json_dumps(
             {

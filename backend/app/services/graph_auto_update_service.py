@@ -25,6 +25,7 @@ from app.models.structured_memory import (
 )
 from app.schemas.memory_update import MAX_OPS_V1, MemoryUpdateV1Request
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.json_repair_service import repair_json_once
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.memory_update_service import propose_chapter_memory_change_set
 from app.services.output_contracts import contract_for_task
@@ -303,17 +304,90 @@ def graph_auto_update_v1(
 
     contract = contract_for_task("memory_update")
     parsed = contract.parse(recorded.text, finish_reason=recorded.finish_reason)
+    repair_run_id: str | None = None
+    warnings = list(parsed.warnings or [])
     if parsed.parse_error is not None:
-        return {
-            "ok": False,
-            "project_id": pid,
-            "chapter_id": cid,
-            "reason": "parse_failed",
-            "run_id": recorded.run_id,
-            "finish_reason": recorded.finish_reason,
-            "warnings": parsed.warnings,
-            "parse_error": parsed.parse_error,
-        }
+        repair_schema = (
+            "{\n"
+            '  "title": string | null,\n'
+            '  "summary_md": string | null,\n'
+            '  "ops": [\n'
+            "    {\n"
+            '      "op": "upsert" | "delete",\n'
+            '      "target_table": "entities" | "relations" | "events" | "evidence",\n'
+            '      "target_id": string | null,\n'
+            '      "after": object | null,\n'
+            '      "evidence_ids": [string]\n'
+            "    }\n"
+            "  ]\n"
+            "}\n"
+        )
+
+        repair_req = f"{req}:repair"
+        if len(repair_req) > 64:
+            repair_req = repair_req[:64]
+        repair = repair_json_once(
+            request_id=repair_req,
+            actor_user_id=actor,
+            project_id=pid,
+            chapter_id=cid,
+            api_key=str(resolved_api_key),
+            llm_call=llm_call2,
+            raw_output=recorded.text,
+            schema=repair_schema,
+            expected_root="object",
+            origin_run_id=recorded.run_id,
+            origin_task=GRAPH_AUTO_UPDATE_KIND,
+        )
+        repair_run_id = str(repair.get("repair_run_id") or "").strip() or None
+        warnings.extend(list(repair.get("warnings") or []))
+
+        if bool(repair.get("ok")) and isinstance(repair.get("value"), dict):
+            repaired_text = str(repair.get("raw_json") or "").strip()
+            parsed2 = contract.parse(repaired_text, finish_reason=str(repair.get("finish_reason") or "").strip() or None)
+            if parsed2.parse_error is None:
+                parsed = parsed2
+            else:
+                parse_error = parsed2.parse_error if isinstance(parsed2.parse_error, dict) else {"message": str(parsed2.parse_error or "")}
+                if isinstance(parse_error, dict):
+                    parse_error = dict(parse_error)
+                    if repair_run_id:
+                        parse_error["repair_run_id"] = repair_run_id
+                    parse_error["original_parse_error"] = parsed.parse_error
+                return {
+                    "ok": False,
+                    "project_id": pid,
+                    "chapter_id": cid,
+                    "reason": "parse_failed",
+                    "run_id": recorded.run_id,
+                    "repair_run_id": repair_run_id,
+                    "finish_reason": recorded.finish_reason,
+                    "warnings": warnings,
+                    "parse_error": parse_error,
+                }
+        else:
+            parse_error = parsed.parse_error if isinstance(parsed.parse_error, dict) else {"message": str(parsed.parse_error or "")}
+            if isinstance(parse_error, dict):
+                parse_error = dict(parse_error)
+                if repair_run_id:
+                    parse_error["repair_run_id"] = repair_run_id
+                if repair.get("reason"):
+                    parse_error["repair_reason"] = repair.get("reason")
+                if repair.get("parse_error"):
+                    parse_error["repair_parse_error"] = repair.get("parse_error")
+                if repair.get("error_message"):
+                    parse_error["repair_error_message"] = repair.get("error_message")
+            return {
+                "ok": False,
+                "project_id": pid,
+                "chapter_id": cid,
+                "reason": "parse_failed",
+                "run_id": recorded.run_id,
+                "repair_run_id": repair_run_id,
+                "finish_reason": recorded.finish_reason,
+                "warnings": warnings,
+                "parse_error": parse_error,
+            }
 
     ops = list(parsed.data.get("ops") or [])
     warnings_extra: list[str] = []
@@ -416,6 +490,7 @@ def graph_auto_update_v1(
             "chapter_id": cid,
             "reason": "propose_failed",
             "run_id": recorded.run_id,
+            "repair_run_id": repair_run_id,
             "error_type": type(exc).__name__,
         }
     finally:
@@ -426,8 +501,9 @@ def graph_auto_update_v1(
         "project_id": pid,
         "chapter_id": cid,
         "run_id": recorded.run_id,
+        "repair_run_id": repair_run_id,
         "finish_reason": recorded.finish_reason,
-        "warnings": [*list(parsed.warnings or []), *warnings_extra],
+        "warnings": [*warnings, *warnings_extra],
         **(proposed if isinstance(proposed, dict) else {"proposed": proposed}),
     }
 
