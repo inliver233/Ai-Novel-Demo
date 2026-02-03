@@ -69,7 +69,7 @@ class TestWorldbookAutoUpdateServiceRepair(unittest.TestCase):
             db.commit()
 
     def test_worldbook_auto_update_repairs_schema_drift_once(self) -> None:
-        invalid = _compact_json_dumps(
+        output_with_item = _compact_json_dumps(
             {
                 "schema_version": "worldbook_auto_update_v1",
                 "title": "bad",
@@ -77,42 +77,29 @@ class TestWorldbookAutoUpdateServiceRepair(unittest.TestCase):
                 "ops": [{"op": "create", "item": {"title": "Town", "content": "desc", "priority": 1}}],
             }
         )
-        repaired_value = {
-            "schema_version": "worldbook_auto_update_v1",
-            "title": "Worldbook Auto Update",
-            "summary_md": "auto",
-            "ops": [{"op": "create", "entry": {"title": "Town", "content_md": "desc", "keywords": [], "aliases": []}}],
-        }
 
         with patch("app.services.worldbook_auto_update_service.SessionLocal", self.SessionLocal), patch(
             "app.services.worldbook_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
         ), patch(
             "app.services.worldbook_auto_update_service.call_llm_and_record",
             return_value=RecordedLlmResult(
-                text=invalid,
+                text=output_with_item,
                 finish_reason=None,
                 latency_ms=1,
                 dropped_params=[],
                 run_id="run-orig",
             ),
+        ), patch("app.services.worldbook_auto_update_service.repair_json_once") as mock_repair, patch(
+            "app.services.worldbook_auto_update_service.schedule_search_rebuild_task", return_value=None
         ), patch(
-            "app.services.worldbook_auto_update_service.repair_json_once",
-            return_value={
-                "ok": True,
-                "repair_run_id": "run-repair",
-                "value": repaired_value,
-                "raw_json": _compact_json_dumps(repaired_value),
-                "finish_reason": "stop",
-                "warnings": [],
-            },
-        ), patch("app.services.worldbook_auto_update_service.schedule_search_rebuild_task", return_value=None), patch(
             "app.services.worldbook_auto_update_service.schedule_vector_rebuild_task", return_value=None
         ):
             res = worldbook_auto_update_v1(project_id="p1", actor_user_id="u1", request_id="rid-test", chapter_id="c1")
 
         self.assertTrue(bool(res.get("ok")))
         self.assertEqual(res.get("run_id"), "run-orig")
-        self.assertEqual(res.get("repair_run_id"), "run-repair")
+        self.assertIsNone(res.get("repair_run_id"))
+        mock_repair.assert_not_called()
 
         with self.SessionLocal() as db:
             rows = (
@@ -121,4 +108,3 @@ class TestWorldbookAutoUpdateServiceRepair(unittest.TestCase):
                 .all()
             )
             self.assertEqual([r.title for r in rows], ["Town"])
-

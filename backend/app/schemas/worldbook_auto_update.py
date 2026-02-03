@@ -67,6 +67,120 @@ class WorldbookAutoUpdateOpV1(BaseModel):
 
     reason: str | None = Field(default=None, max_length=400)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_item_shape(cls, data: Any) -> Any:
+        """
+        Compatibility: some models output {"item": {...}} with {"content": "...", "priority": 10}.
+        Normalize to {"entry": {"content_md": "...", "priority": "must"}} and drop unknown fields.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        def _priority_to_string(value: Any) -> str | None:
+            if value is None:
+                return None
+            if isinstance(value, str):
+                v = value.strip().lower()
+                if v in {"drop_first", "optional", "important", "must"}:
+                    return v
+                try:
+                    n = float(v)
+                except Exception:
+                    return None
+                value = n
+            if isinstance(value, (int, float)):
+                n = float(value)
+                if n <= 0:
+                    return "drop_first"
+                if n < 2:
+                    return "optional"
+                if n < 6:
+                    return "important"
+                return "must"
+            return None
+
+        obj = dict(data)
+
+        item = obj.get("item")
+        if isinstance(item, dict) and obj.get("entry") is None:
+            entry: dict[str, Any] = {}
+
+            title = item.get("title")
+            if isinstance(title, str) and title.strip():
+                entry["title"] = title.strip()
+
+            content_md: str | None = None
+            if isinstance(item.get("content_md"), str) and str(item.get("content_md") or "").strip():
+                content_md = str(item.get("content_md") or "").strip()
+            elif isinstance(item.get("content"), str) and str(item.get("content") or "").strip():
+                content_md = str(item.get("content") or "").strip()
+            elif isinstance(item.get("description"), str) and str(item.get("description") or "").strip():
+                content_md = str(item.get("description") or "").strip()
+            if content_md is not None:
+                entry["content_md"] = content_md
+
+            keywords = item.get("keywords")
+            if isinstance(keywords, list):
+                entry["keywords"] = [str(s).strip() for s in keywords if isinstance(s, str) and s.strip()]
+
+            aliases = item.get("aliases")
+            if isinstance(aliases, list):
+                entry["aliases"] = [str(s).strip() for s in aliases if isinstance(s, str) and s.strip()]
+
+            for k in ("enabled", "constant", "exclude_recursion", "prevent_recursion"):
+                v = item.get(k)
+                if isinstance(v, bool):
+                    entry[k] = v
+
+            char_limit = item.get("char_limit")
+            if isinstance(char_limit, int):
+                entry["char_limit"] = int(char_limit)
+
+            priority = _priority_to_string(item.get("priority"))
+            if priority is not None:
+                entry["priority"] = priority
+
+            obj["entry"] = entry
+            obj.pop("item", None)
+
+        entry2 = obj.get("entry")
+        if isinstance(entry2, dict):
+            entry_copy = dict(entry2)
+            if "content_md" not in entry_copy and isinstance(entry_copy.get("content"), str):
+                entry_copy["content_md"] = str(entry_copy.get("content") or "").strip()
+                entry_copy.pop("content", None)
+
+            priority2 = _priority_to_string(entry_copy.get("priority"))
+            if priority2 is not None:
+                entry_copy["priority"] = priority2
+
+            allowed_entry_keys = {
+                "title",
+                "content_md",
+                "keywords",
+                "aliases",
+                "enabled",
+                "constant",
+                "exclude_recursion",
+                "prevent_recursion",
+                "char_limit",
+                "priority",
+            }
+            obj["entry"] = {k: v for k, v in entry_copy.items() if k in allowed_entry_keys}
+
+        allowed_op_keys = {
+            "op",
+            "match_title",
+            "entry",
+            "merge_mode",
+            "canonical_title",
+            "duplicate_titles",
+            "reason",
+        }
+        obj = {k: v for k, v in obj.items() if k in allowed_op_keys}
+        return obj
+
     @model_validator(mode="after")
     def _validate_op(self) -> "WorldbookAutoUpdateOpV1":
         if self.op == "dedupe":

@@ -60,8 +60,12 @@ class TestRealLlmFailureFixtures(unittest.TestCase):
         self.assertIsInstance(value.get("ops"), list)
         self.assertIn("item", value["ops"][0])
 
-        with self.assertRaises(Exception):
-            WorldbookAutoUpdateV1Request.model_validate(value)
+        parsed = WorldbookAutoUpdateV1Request.model_validate(value)
+        self.assertEqual(parsed.ops[0].op, "create")
+        entry0 = parsed.ops[0].entry or {}
+        self.assertIn("content_md", entry0)
+        self.assertNotIn("content", entry0)
+        self.assertIn(str(entry0.get("priority") or ""), {"drop_first", "optional", "important", "must"})
 
     def test_graph_auto_update_fixture_missing_memory_update_envelope(self) -> None:
         p = FIX_DIR / "ea1ca685-7989-49cb-8767-f3d883a7ea05.graph_auto_update.output.txt"
