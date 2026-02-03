@@ -389,6 +389,32 @@ export function TaskCenterPage() {
     [refreshProjectTasks, toast],
   );
 
+  const cancelProjectTask = useCallback(
+    async (id: string) => {
+      const taskId = String(id || "").trim();
+      if (!taskId) return;
+      if (!window.confirm("确认取消该排队中的任务？取消后将不会执行。")) return;
+      try {
+        const res = await apiJson<ProjectTaskSummary>(`/api/tasks/${encodeURIComponent(taskId)}/cancel`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        toast.toastSuccess("已取消任务", res.request_id);
+        await refreshProjectTasks();
+        setSelected((prev) =>
+          prev?.kind === "project_task" && prev.item.id === taskId ? { kind: "project_task", item: res.data } : prev,
+        );
+      } catch (e) {
+        const err =
+          e instanceof ApiError
+            ? e
+            : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+      }
+    },
+    [refreshProjectTasks, toast],
+  );
+
   const applyChangeSet = useCallback(
     async (id: string) => {
       const changeSetId = String(id || "").trim();
@@ -820,6 +846,19 @@ export function TaskCenterPage() {
                         重试
                       </button>
                     ) : null}
+                    {t.status === "queued" ? (
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        aria-label="取消项目任务 (taskcenter_projecttask_cancel)"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void cancelProjectTask(t.id);
+                        }}
+                        type="button"
+                      >
+                        取消
+                      </button>
+                    ) : null}
                     <StatusBadge status={t.status} kind="task" />
                   </div>
                 </div>
@@ -919,6 +958,16 @@ export function TaskCenterPage() {
                     type="button"
                   >
                     重试
+                  </button>
+                ) : null}
+                {selected.item.status === "queued" ? (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    aria-label="取消项目任务 (taskcenter_projecttask_cancel_detail)"
+                    onClick={() => void cancelProjectTask(selected.item.id)}
+                    type="button"
+                  >
+                    取消
                   </button>
                 ) : null}
               </div>
