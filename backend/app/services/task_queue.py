@@ -21,6 +21,24 @@ logger = logging.getLogger("ainovel")
 
 _REDIS_PING_CACHE: dict[str, tuple[float, bool, str | None]] = {}
 _REDIS_PING_TTL_SECONDS = 2.0
+_INLINE_WORKER_MAX_CONCURRENCY = 8
+
+
+def _get_inline_worker_concurrency() -> int:
+    raw = str(os.environ.get("INLINE_WORKER_CONCURRENCY") or "").strip()
+    if raw:
+        try:
+            n = int(raw)
+        except Exception:
+            n = 1
+    else:
+        app_env = str(getattr(settings, "app_env", "dev") or "dev").strip().lower()
+        n = 2 if app_env != "prod" else 1
+    if n < 1:
+        n = 1
+    if n > _INLINE_WORKER_MAX_CONCURRENCY:
+        n = _INLINE_WORKER_MAX_CONCURRENCY
+    return n
 
 
 def _redis_ping(redis_url: str, *, timeout_seconds: float) -> tuple[bool, str | None]:
@@ -57,8 +75,12 @@ class _InlineWorker:
         self._queue: queue_mod.Queue[tuple[TaskKind, str]] = queue_mod.Queue()
         self._metrics_lock = threading.Lock()
         self._last_processed_at: float | None = None
-        self._thread = threading.Thread(target=self._run, name="ainovel-inline-worker", daemon=True)
-        self._thread.start()
+        self._concurrency = _get_inline_worker_concurrency()
+        self._threads: list[threading.Thread] = []
+        for i in range(self._concurrency):
+            t = threading.Thread(target=self._run, name=f"ainovel-inline-worker-{i+1}", daemon=True)
+            t.start()
+            self._threads.append(t)
 
     def enqueue(self, *, kind: TaskKind, task_id: str) -> None:
         self._queue.put((kind, task_id))
@@ -71,6 +93,7 @@ class _InlineWorker:
             "inline_last_processed_at": (
                 datetime.fromtimestamp(last_processed_at, tz=timezone.utc).isoformat() if last_processed_at else None
             ),
+            "inline_concurrency": int(self._concurrency),
         }
 
     def _run(self) -> None:
