@@ -198,18 +198,27 @@ class OutputContract:
                     return OutputParseResult(
                         data={"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text},
                         warnings=warnings,
-                        parse_error={"code": "WORLDBOOK_AUTO_UPDATE_PARSE_ERROR", "message": f"ops[{idx}] 必须是 object"},
+                        parse_error={
+                            "code": "WORLDBOOK_AUTO_UPDATE_PARSE_ERROR",
+                            "message": f"ops[{idx}] 必须是 object",
+                            "idx": idx,
+                        },
                     )
                 try:
                     op = WorldbookAutoUpdateOpV1.model_validate(item)
                 except Exception as exc:
+                    pydantic_errors = self._safe_pydantic_errors(exc)
+                    parse_error: dict[str, Any] = {
+                        "code": "WORLDBOOK_AUTO_UPDATE_PARSE_ERROR",
+                        "message": f"ops[{idx}] schema invalid:{type(exc).__name__}",
+                        "idx": idx,
+                    }
+                    if pydantic_errors is not None:
+                        parse_error["errors"] = pydantic_errors
                     return OutputParseResult(
                         data={"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text},
                         warnings=warnings,
-                        parse_error={
-                            "code": "WORLDBOOK_AUTO_UPDATE_PARSE_ERROR",
-                            "message": f"ops[{idx}] schema invalid:{type(exc).__name__}",
-                        },
+                        parse_error=parse_error,
                     )
                 ops_out.append(dict(op.model_dump()))
 
