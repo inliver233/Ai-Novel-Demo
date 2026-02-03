@@ -13,6 +13,21 @@ test("ui: download debug bundle (history + context preview)", async ({ page, req
   const state = loadState();
   const { projectId } = await bootstrapProject(request);
 
+  const createWorldbookEntry = await request.post(`${state.backendUrl}/api/projects/${projectId}/worldbook_entries`, {
+    data: {
+      title: "E2E WB Constant",
+      content_md: "dragon",
+      enabled: true,
+      constant: true,
+      keywords: [],
+      exclude_recursion: false,
+      prevent_recursion: false,
+      char_limit: 12000,
+      priority: "important",
+    },
+  });
+  expect(createWorldbookEntry.ok()).toBeTruthy();
+
   const create = await request.post(`${state.backendUrl}/api/projects/${projectId}/chapters`, {
     data: { number: 1, title: "E2E 第一章", plan: "" },
   });
@@ -90,9 +105,13 @@ test("ui: download debug bundle (history + context preview)", async ({ page, req
   await expect(preview).toBeVisible();
 
   const toggle = preview.getByRole("checkbox", { name: "世界书注入", exact: true });
-  if (!(await toggle.isChecked())) await toggle.check();
+  await expect(toggle).toBeChecked();
 
   await expect(preview).toContainText("request_id:", { timeout: 60_000 });
+
+  await preview.getByText("触发条目", { exact: true }).click();
+  await expect(preview.getByText("E2E WB Constant", { exact: true })).toBeVisible();
+  await expect(preview.getByText("source:constant")).toBeVisible();
 
   const [previewDownload] = await Promise.all([
     page.waitForEvent("download"),

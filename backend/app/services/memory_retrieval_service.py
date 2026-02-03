@@ -305,6 +305,23 @@ def retrieve_memory_context_pack(
         worldbook = {**worldbook_preview.model_dump(), "enabled": True, "disabled_reason": None}
         if not isinstance(worldbook.get("text_md"), str):
             worldbook["text_md"] = str(worldbook_preview.text_md or "")
+        triggered = worldbook.get("triggered")
+        if isinstance(triggered, list):
+            for t in triggered:
+                if not isinstance(t, dict):
+                    continue
+                reason = str(t.get("reason") or "").strip()
+                if reason == "constant":
+                    t["match_source"] = "constant"
+                    t["match_value"] = None
+                    continue
+                if ":" in reason:
+                    src, value = reason.split(":", 1)
+                    src = src.strip()
+                    value = value.strip()
+                    if src:
+                        t["match_source"] = src
+                        t["match_value"] = value or None
     else:
         worldbook = {"enabled": False, "disabled_reason": "disabled", "triggered": [], "text_md": "", "truncated": False}
 
