@@ -52,6 +52,7 @@ RELATION_ATTRIBUTES_SCHEMA_V1: dict[str, dict[str, object]] = {
     "since_chapter_id": {"type": "string", "description": "关系起始章节（可用于回放/时间线）"},
     "until_chapter_id": {"type": "string", "description": "关系结束章节（若已结束）"},
     "last_seen_at_chapter_id": {"type": "string", "description": "最后一次被证据支持的章节"},
+    "context_md": {"type": "string", "description": "关键事件/语境摘要（Markdown；尽量短）"},
     "tags": {"type": "array[string]", "description": "自定义标签"},
     "confidence": {"type": "number", "description": "AI 抽取置信度（用于 UI 提示/排序）"},
     "is_symmetric": {"type": "boolean", "description": "是否应在 UI 以无向方式展示"},

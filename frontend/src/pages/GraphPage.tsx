@@ -12,6 +12,8 @@ type GraphNode = {
   id: string;
   entity_type: string;
   name: string;
+  summary_md?: string | null;
+  attributes?: Record<string, unknown>;
   matched?: boolean;
 };
 
@@ -23,6 +25,7 @@ type GraphEdge = {
   to_name?: string;
   relation_type: string;
   description_md?: string | null;
+  attributes?: Record<string, unknown>;
 };
 
 type GraphEvidence = {
@@ -30,6 +33,7 @@ type GraphEvidence = {
   source_type: string;
   source_id?: string | null;
   quote_md: string;
+  attributes?: Record<string, unknown>;
   created_at?: string;
 };
 
@@ -388,6 +392,9 @@ export function GraphPage() {
                   {e.from_name || e.from_entity_id} --({e.relation_type})→ {e.to_name || e.to_entity_id}
                 </div>
                 {e.description_md ? <div className="mt-1 text-subtext">{e.description_md}</div> : null}
+                {typeof e.attributes?.context_md === "string" && e.attributes.context_md.trim() ? (
+                  <div className="mt-1 whitespace-pre-wrap text-subtext">语境：{e.attributes.context_md}</div>
+                ) : null}
                 <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
                   <div className="text-[11px] text-subtext">id: {e.id}</div>
                   {projectId ? (

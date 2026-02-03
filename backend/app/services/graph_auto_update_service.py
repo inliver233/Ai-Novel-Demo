@@ -110,6 +110,7 @@ def build_graph_auto_update_prompt_v1(
         "\n"
         "属性字段规范：\n"
         "- entities.after.attributes / relations.after.attributes 只使用 user 输入中 schema_v1 列出的 keys（其余不要输出）。\n"
+        "- 若关系涉及明确的具体事件（如 betrayed/owes/protects），可在 relations.after.attributes.context_md 写入 1~3 句语境摘要（配合 evidence 回放）。\n"
         "\n"
         "证据与引用：\n"
         "- 对每条关键关系，尽量提供 evidence：新增 evidence(op=upsert,target_table=evidence) 并在对应实体/关系 op 的 evidence_ids 引用。\n"
@@ -135,7 +136,7 @@ def build_graph_auto_update_prompt_v1(
         '  \"after\": {\n'
         '    \"from_entity_id\": \"<use existing_entities[].id or new_entity_id_pool>\",\n'
         '    \"to_entity_id\": \"<use existing_entities[].id or new_entity_id_pool>\",\n'
-        '    \"relation_type\": \"friend_of\",\n'
+        '    \"relation_type\": \"friend\",\n'
         '    \"description_md\": \"...\",\n'
         '    \"attributes\": {}\n'
         "  },\n"
@@ -204,7 +205,7 @@ def graph_auto_update_v1(
 ) -> dict[str, Any]:
     """
     Fail-soft AI propose:
-    - Calls LLM to generate a MemoryUpdateV1Request (entities/relations/evidence only)
+    - Calls LLM to generate a MemoryUpdateV1Request (entities/relations/events/evidence)
     - Proposes a MemoryChangeSet for the chapter (apply/rollback supported)
     """
 
