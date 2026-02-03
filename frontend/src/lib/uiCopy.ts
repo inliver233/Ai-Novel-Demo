@@ -74,7 +74,7 @@ export const UI_COPY = {
   },
   search: {
     title: "搜索引擎",
-    subtitle: "VSCode 式全项目搜索（多源聚合，可筛选与跳转）",
+    subtitle: "VSCode 式全项目搜索（多源聚合，可筛选与跳转；替代旧“术语表/术语映射”入口）",
     queryPlaceholder: "输入关键词…",
     search: "搜索",
     clear: "清空",
