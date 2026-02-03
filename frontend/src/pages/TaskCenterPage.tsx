@@ -63,6 +63,7 @@ type HealthData = {
   status: string;
   version?: string;
   queue_backend?: string | null;
+  effective_backend?: string | null;
   redis_ok?: boolean | null;
   rq_queue_name?: string | null;
   redis_error_type?: string | null;
@@ -131,7 +132,7 @@ export function TaskCenterPage() {
   const toast = useToast();
   const [searchParams] = useSearchParams();
 
-  const [health, setHealth] = useState<HealthData | null>(null);
+  const [health, setHealth] = useState<{ data: HealthData; requestId: string } | null>(null);
 
   const [changeSetStatus, setChangeSetStatus] = useState<string>("all");
   const [taskStatus, setTaskStatus] = useState<string>("all");
@@ -143,7 +144,7 @@ export function TaskCenterPage() {
     apiJson<HealthData>("/api/health")
       .then((res) => {
         if (cancelled) return;
-        setHealth(res.data);
+        setHealth({ data: res.data, requestId: res.request_id });
       })
       .catch(() => {
         if (cancelled) return;
@@ -492,6 +493,58 @@ export function TaskCenterPage() {
         </button>
       }
     >
+      {health?.data.queue_backend ? (
+        <section
+          className="rounded-atelier border border-border bg-surface p-3 text-[11px] text-subtext"
+          aria-label="队列状态 (taskcenter_queue_status)"
+        >
+          <div>
+            配置后端（queue_backend）：<span className="font-mono text-ink">{health.data.queue_backend}</span>
+            {health.data.effective_backend ? (
+              <>
+                {" "}
+                | 实际后端（effective_backend）：{" "}
+                <span className="font-mono text-ink">{health.data.effective_backend}</span>
+              </>
+            ) : null}
+            {health.data.queue_backend === "rq" ? (
+              <>
+                {" "}
+                | redis_ok：<span className="font-mono text-ink">{String(health.data.redis_ok ?? "-")}</span>
+                {health.data.rq_queue_name ? (
+                  <>
+                    {" "}
+                    | queue：<span className="font-mono text-ink">{health.data.rq_queue_name}</span>
+                  </>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+          {health.data.effective_backend === "inline" ? (
+            <div className="mt-1 text-warning">
+              提示：inline 为进程内单线程 worker，任务会排队串行执行；如需并发请启动 rq+worker。
+            </div>
+          ) : null}
+          {health.data.worker_hint ? <div className="mt-1">{health.data.worker_hint}</div> : null}
+          {health.requestId ? (
+            <div className="mt-1 flex items-center gap-2">
+              <span className="truncate">
+                health {UI_COPY.common.requestIdLabel}: <span className="font-mono">{health.requestId}</span>
+              </span>
+              <button
+                className="btn btn-ghost px-2 py-1 text-[11px]"
+                onClick={async () => {
+                  await copyText(health.requestId, { title: "复制失败：请手动复制请求 ID（request_id）" });
+                }}
+                type="button"
+              >
+                复制 health 请求 ID（request_id）
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       <DebugDetails title={UI_COPY.help.title}>
         <div className="grid gap-2 text-xs text-subtext">
           <div>{UI_COPY.taskCenter.usageHint}</div>
@@ -509,26 +562,6 @@ export function TaskCenterPage() {
             </div>
           ) : null}
           <div className="text-warning">{UI_COPY.taskCenter.riskHint}</div>
-          {health?.queue_backend ? (
-            <div className="rounded-atelier border border-border bg-surface p-2 text-[11px] text-subtext">
-              <div>
-                队列后端：<span className="font-mono text-ink">{health.queue_backend}</span>
-                {health.queue_backend === "rq" ? (
-                  <>
-                    {" "}
-                    | redis_ok：<span className="font-mono text-ink">{String(health.redis_ok ?? "-")}</span>
-                    {health.rq_queue_name ? (
-                      <>
-                        {" "}
-                        | queue：<span className="font-mono text-ink">{health.rq_queue_name}</span>
-                      </>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-              {health.worker_hint ? <div className="mt-1">{health.worker_hint}</div> : null}
-            </div>
-          ) : null}
         </div>
       </DebugDetails>
 
