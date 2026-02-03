@@ -19,6 +19,7 @@ from app.models.project import Project
 from app.models.project_table import ProjectTable, ProjectTableRow
 from app.models.project_task import ProjectTask
 from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.json_repair_service import repair_json_once
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.memory_update_service import propose_project_table_change_set
 from app.services.output_parsers import extract_json_value, likely_truncated_json
@@ -434,20 +435,114 @@ def table_ai_update_v1(
             "error_message": safe_message[:400],
         }
 
+    repair_run_id: str | None = None
     parsed, warnings, parse_error = parse_table_update_output_v1(
         recorded.text, expected_table_id=tid, finish_reason=recorded.finish_reason
     )
     if parse_error is not None:
-        return {
-            "ok": False,
-            "project_id": pid,
-            "table_id": tid,
-            "reason": "parse_failed",
-            "run_id": recorded.run_id,
-            "finish_reason": recorded.finish_reason,
-            "warnings": warnings,
-            "parse_error": parse_error,
-        }
+        repair_schema = (
+            "{\n"
+            '  "title": string | null,\n'
+            '  "summary_md": string | null,\n'
+            '  "ops": [\n'
+            "    {\n"
+            '      "op": "upsert" | "delete",\n'
+            '      "table_id": string,\n'
+            '      "row_id": string | null,\n'
+            '      "row_index": int | null,\n'
+            '      "data": object | null\n'
+            "    }\n"
+            "  ]\n"
+            "}\n"
+        )
+        repair_req = f"{req}:repair"
+        if len(repair_req) > 64:
+            repair_req = repair_req[:64]
+        repair = repair_json_once(
+            request_id=repair_req,
+            actor_user_id=actor,
+            project_id=pid,
+            chapter_id=chapter_id_effective,
+            api_key=str(resolved_api_key),
+            llm_call=llm_call2,
+            raw_output=recorded.text,
+            schema=repair_schema,
+            expected_root="object",
+            origin_run_id=recorded.run_id,
+            origin_task=TABLE_AI_UPDATE_KIND,
+        )
+        repair_run_id = str(repair.get("repair_run_id") or "").strip() or None
+        warnings2 = [*list(warnings or []), *list(repair.get("warnings") or [])]
+
+        if bool(repair.get("ok")):
+            repaired_text = str(repair.get("raw_json") or "").strip()
+            parsed2, warnings3, parse_error2 = parse_table_update_output_v1(
+                repaired_text,
+                expected_table_id=tid,
+                finish_reason=str(repair.get("finish_reason") or "").strip() or None,
+            )
+            warnings2.extend(list(warnings3 or []))
+            if parse_error2 is None:
+                parsed = parsed2
+                warnings = warnings2
+                parse_error = None
+            else:
+                payload = parse_error2 if isinstance(parse_error2, dict) else {"message": str(parse_error2 or "")}
+                if isinstance(payload, dict):
+                    payload = dict(payload)
+                    payload["original_parse_error"] = parse_error
+                    if repair_run_id:
+                        payload["repair_run_id"] = repair_run_id
+                return {
+                    "ok": False,
+                    "project_id": pid,
+                    "table_id": tid,
+                    "reason": "parse_failed",
+                    "run_id": recorded.run_id,
+                    "repair_run_id": repair_run_id,
+                    "finish_reason": recorded.finish_reason,
+                    "warnings": warnings2,
+                    "parse_error": payload,
+                }
+        else:
+            payload = parse_error if isinstance(parse_error, dict) else {"message": str(parse_error or "")}
+            if isinstance(payload, dict):
+                payload = dict(payload)
+                if repair_run_id:
+                    payload["repair_run_id"] = repair_run_id
+                if repair.get("reason"):
+                    payload["repair_reason"] = repair.get("reason")
+                if repair.get("parse_error"):
+                    payload["repair_parse_error"] = repair.get("parse_error")
+                if repair.get("error_message"):
+                    payload["repair_error_message"] = repair.get("error_message")
+            return {
+                "ok": False,
+                "project_id": pid,
+                "table_id": tid,
+                "reason": "parse_failed",
+                "run_id": recorded.run_id,
+                "repair_run_id": repair_run_id,
+                "finish_reason": recorded.finish_reason,
+                "warnings": warnings2,
+                "parse_error": payload,
+            }
+
+        if parse_error is not None:
+            payload = dict(parse_error) if isinstance(parse_error, dict) else {"message": str(parse_error or "")}
+            if repair_run_id:
+                payload["repair_run_id"] = repair_run_id
+            return {
+                "ok": False,
+                "project_id": pid,
+                "table_id": tid,
+                "reason": "parse_failed",
+                "run_id": recorded.run_id,
+                "repair_run_id": repair_run_id,
+                "finish_reason": recorded.finish_reason,
+                "warnings": warnings2,
+                "parse_error": payload,
+            }
 
     payload = TableUpdateV1Request(
         schema_version="table_update_v1",
@@ -474,6 +569,7 @@ def table_ai_update_v1(
                 "table_id": tid,
                 "reason": "propose_failed",
                 "run_id": recorded.run_id,
+                "repair_run_id": repair_run_id,
                 "error": {"code": exc.code, "message": exc.message, "details": exc.details},
             }
         return {
@@ -482,6 +578,7 @@ def table_ai_update_v1(
             "table_id": tid,
             "reason": "propose_failed",
             "run_id": recorded.run_id,
+            "repair_run_id": repair_run_id,
             "error_type": type(exc).__name__,
         }
     finally:
@@ -493,6 +590,7 @@ def table_ai_update_v1(
         "table_id": tid,
         "chapter_id": chapter_id_effective,
         "run_id": recorded.run_id,
+        "repair_run_id": repair_run_id,
         "finish_reason": recorded.finish_reason,
         "warnings": warnings,
         **(proposed if isinstance(proposed, dict) else {"proposed": proposed}),
