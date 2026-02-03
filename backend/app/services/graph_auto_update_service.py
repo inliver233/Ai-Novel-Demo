@@ -117,9 +117,30 @@ def build_graph_auto_update_prompt_v1(
         "- evidence.after.quote_md 放入本章原文的关键片段（Markdown 允许）。\n"
         "\n"
         "ID 规则（非常重要）：\n"
-        "- 你只能使用 existing_entities 列表中的 entity_id，或使用 new_entity_id_pool 里的新 entity_id。\n"
-        "- 你只能使用 new_evidence_id_pool 里的 evidence_id（用于 evidence 的 target_id，并被 evidence_ids 引用）。\n"
+        "- existing_entities 的字段名是 id（不是 entity_id）。你只能使用 existing_entities[].id 或 new_entity_id_pool 里的新 id。\n"
+        "- 你只能使用 new_evidence_id_pool 里的 id（用于 evidence 的 target_id，并被 evidence_ids 引用）。\n"
         "- 不要自行编造任何 id（避免与既有数据冲突）。\n"
+        "\n"
+        "字段名示例（非常重要；不要输出 from_id/to_id/entity_id 等错误字段）：\n"
+        "- entities.after: {entity_type,name,summary_md,attributes}\n"
+        "- relations.after: {from_entity_id,to_entity_id,relation_type,description_md,attributes}\n"
+        "- events.after: {chapter_id,event_type,title,content_md,attributes}\n"
+        "- evidence.after: {source_type:'chapter',source_id:chapter_id,quote_md,attributes}\n"
+        "\n"
+        "示例（relation upsert）：\n"
+        "{\n"
+        '  \"op\": \"upsert\",\n'
+        '  \"target_table\": \"relations\",\n'
+        '  \"target_id\": null,\n'
+        '  \"after\": {\n'
+        '    \"from_entity_id\": \"<use existing_entities[].id or new_entity_id_pool>\",\n'
+        '    \"to_entity_id\": \"<use existing_entities[].id or new_entity_id_pool>\",\n'
+        '    \"relation_type\": \"friend_of\",\n'
+        '    \"description_md\": \"...\",\n'
+        '    \"attributes\": {}\n'
+        "  },\n"
+        '  \"evidence_ids\": [\"<use new_evidence_id_pool>\"]\n'
+        "}\n"
     )
 
     user = (
