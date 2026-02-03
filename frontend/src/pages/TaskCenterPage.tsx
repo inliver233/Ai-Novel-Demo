@@ -127,6 +127,20 @@ function extractHowToFix(error: unknown): string[] {
   return how.filter((it) => typeof it === "string" && it.trim()).map((it) => it.trim());
 }
 
+function extractRunIdFromProjectTaskError(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const details = (error as Record<string, unknown>).details;
+  if (!details || typeof details !== "object") return null;
+  const runId = (details as Record<string, unknown>).run_id;
+  return typeof runId === "string" && runId.trim() ? runId.trim() : null;
+}
+
+function extractRunIdFromProjectTaskResult(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null;
+  const runId = (result as Record<string, unknown>).run_id;
+  return typeof runId === "string" && runId.trim() ? runId.trim() : null;
+}
+
 export function TaskCenterPage() {
   const { projectId } = useParams();
   const toast = useToast();
@@ -498,6 +512,11 @@ export function TaskCenterPage() {
   const selectedProjectTaskChangeSetStatus = useMemo(() => {
     if (selected?.kind !== "project_task") return null;
     return extractChangeSetStatusFromProjectTaskResult(selected.item.result);
+  }, [selected]);
+
+  const selectedProjectTaskRunId = useMemo(() => {
+    if (selected?.kind !== "project_task") return null;
+    return extractRunIdFromProjectTaskError(selected.item.error) || extractRunIdFromProjectTaskResult(selected.item.result);
   }, [selected]);
 
   const liveChangeSetStatus = useMemo(() => {
@@ -973,6 +992,37 @@ export function TaskCenterPage() {
               </div>
               {projectTaskDetailLoading ? <div className="mt-2 text-xs text-subtext">加载中...</div> : null}
             </section>
+
+            {selectedProjectTaskRunId ? (
+              <section
+                className="rounded-atelier border border-border bg-surface p-3"
+                aria-label="projecttask_generation_run"
+              >
+                <div className="text-sm text-ink">GenerationRun</div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-subtext">
+                  <span>
+                    run_id：<span className="font-mono text-ink">{selectedProjectTaskRunId}</span>
+                  </span>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    aria-label="复制 run_id (taskcenter_projecttask_copy_run_id)"
+                    onClick={() => void copyText(selectedProjectTaskRunId, { title: "复制失败：请手动复制 run_id" })}
+                    type="button"
+                  >
+                    复制 run_id
+                  </button>
+                  <a
+                    className="btn btn-secondary btn-sm"
+                    href={`/api/generation_runs/${encodeURIComponent(selectedProjectTaskRunId)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="打开运行记录 (taskcenter_projecttask_open_generation_run)"
+                  >
+                    打开运行记录
+                  </a>
+                </div>
+              </section>
+            ) : null}
 
             <section className="rounded-atelier border border-border bg-surface p-3" aria-label="projecttask_error">
               <div className="text-sm text-ink">Error</div>
