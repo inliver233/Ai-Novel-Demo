@@ -106,6 +106,7 @@ def ensure_default_numeric_tables(db: Session, *, project_id: str) -> dict[str, 
             project_id=project_id,
             table_key=table_key,
             name=str(t.get("name") or table_key)[:255],
+            auto_update_enabled=bool(t.get("auto_update_enabled", True)),
             schema_version=1,
             schema_json=schema_json,
         )
@@ -139,4 +140,3 @@ def ensure_default_numeric_tables(db: Session, *, project_id: str) -> dict[str, 
             raise
 
     return {"created": created, "skipped": skipped}
-

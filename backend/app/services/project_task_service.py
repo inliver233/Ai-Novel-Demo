@@ -708,7 +708,7 @@ def schedule_chapter_done_tasks(
 
             table_rows = (
                 db.execute(
-                    select(ProjectTable.id, ProjectTable.schema_json)
+                    select(ProjectTable.id, ProjectTable.schema_json, ProjectTable.auto_update_enabled)
                     .where(ProjectTable.project_id == pid)
                     .order_by(ProjectTable.updated_at.desc(), ProjectTable.id.desc())
                     .limit(12)
@@ -719,7 +719,9 @@ def schedule_chapter_done_tasks(
                 table_rows = []
 
             created: list[str] = []
-            for table_id, schema_json in table_rows:
+            for table_id, schema_json, auto_update_enabled in table_rows:
+                if not bool(auto_update_enabled):
+                    continue
                 schema_obj = _compact_json_loads(schema_json)
                 if not isinstance(schema_obj, dict):
                     continue

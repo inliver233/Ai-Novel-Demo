@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -17,6 +17,8 @@ class ProjectTable(Base):
 
     table_key: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    auto_update_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     schema_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
@@ -46,4 +48,3 @@ Index("ix_project_tables_project_id_table_key", ProjectTable.project_id, Project
 Index("ix_project_table_rows_project_id", ProjectTableRow.project_id)
 Index("ix_project_table_rows_table_id", ProjectTableRow.table_id)
 Index("ix_project_table_rows_table_id_row_index", ProjectTableRow.table_id, ProjectTableRow.row_index)
-

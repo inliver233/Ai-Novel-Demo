@@ -13,6 +13,7 @@ type ProjectTable = {
   project_id: string;
   table_key: string;
   name: string;
+  auto_update_enabled?: boolean;
   schema_version: number;
   schema?: TableSchema;
   row_count?: number;
@@ -145,6 +146,7 @@ function TablesPanelContent(props: TablesPanelContentProps) {
 
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
+  const [autoUpdateSaving, setAutoUpdateSaving] = useState(false);
 
   const loadTables = useCallback(async () => {
     const projectId = props.projectId;
@@ -282,6 +284,31 @@ function TablesPanelContent(props: TablesPanelContentProps) {
       setRenaming(false);
     }
   }, [loadTables, props.projectId, renameValue, selectedTable, toast]);
+
+  const updateTableAutoUpdateEnabled = useCallback(
+    async (enabled: boolean) => {
+      const projectId = props.projectId;
+      if (!projectId) return;
+      if (!selectedTable) return;
+      if (autoUpdateSaving) return;
+
+      setAutoUpdateSaving(true);
+      try {
+        await apiJson<{ table: ProjectTable }>(`/api/projects/${projectId}/tables/${selectedTable.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ auto_update_enabled: enabled }),
+        });
+        toast.toastSuccess("已更新自动更新设置");
+        await loadTables();
+      } catch (e) {
+        if (e instanceof ApiError) toast.toastError(`${e.message} (${e.code})`);
+        else toast.toastError("更新失败");
+      } finally {
+        setAutoUpdateSaving(false);
+      }
+    },
+    [autoUpdateSaving, loadTables, props.projectId, selectedTable, toast],
+  );
 
   const deleteTable = useCallback(async () => {
     const projectId = props.projectId;
@@ -555,6 +582,19 @@ function TablesPanelContent(props: TablesPanelContentProps) {
                   onChange={(e) => setRenameValue(e.target.value)}
                 />
               </label>
+              <label className="mt-3 flex items-center justify-between gap-3 text-sm text-ink">
+                <span>章节定稿自动更新（table_ai_update）</span>
+                <input
+                  className="checkbox"
+                  type="checkbox"
+                  checked={Boolean(selectedTable.auto_update_enabled ?? true)}
+                  disabled={autoUpdateSaving}
+                  onChange={(e) => void updateTableAutoUpdateEnabled(e.target.checked)}
+                />
+              </label>
+              <div className="mt-1 text-[11px] text-subtext">
+                启用后：章节定稿（done）会按项目设置自动排队更新该表；关闭可减少任务数量。
+              </div>
             </div>
           ) : null}
 

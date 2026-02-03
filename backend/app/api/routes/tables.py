@@ -156,6 +156,7 @@ def _table_public(row: ProjectTable, *, include_schema: bool, row_count: int | N
         "project_id": row.project_id,
         "table_key": row.table_key,
         "name": row.name,
+        "auto_update_enabled": bool(getattr(row, "auto_update_enabled", True)),
         "schema_version": int(row.schema_version or 1),
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -185,11 +186,13 @@ def _row_public(row: ProjectTableRow, *, include_data: bool = True) -> dict[str,
 class TableCreateRequest(BaseModel):
     table_key: str | None = Field(default=None, max_length=64)
     name: str = Field(min_length=1, max_length=255)
+    auto_update_enabled: bool | None = Field(default=None)
     schema: dict[str, Any] = Field(default_factory=dict)
 
 
 class TableUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
+    auto_update_enabled: bool | None = Field(default=None)
     schema: dict[str, Any] | None = Field(default=None)
 
 
@@ -293,6 +296,7 @@ def create_project_table(
         project_id=project_id,
         table_key=table_key,
         name=name,
+        auto_update_enabled=bool(body.auto_update_enabled) if body.auto_update_enabled is not None else True,
         schema_version=1,
         schema_json=schema_json,
     )
@@ -348,6 +352,9 @@ def update_project_table(
         if not name:
             raise AppError.validation(message="name 不能为空")
         table.name = name
+
+    if body.auto_update_enabled is not None:
+        table.auto_update_enabled = bool(body.auto_update_enabled)
 
     if body.schema is not None:
         schema_norm = _normalize_schema(body.schema)

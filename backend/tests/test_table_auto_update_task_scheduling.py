@@ -25,10 +25,17 @@ class TestTableAutoUpdateTaskScheduling(unittest.TestCase):
             (
                 "t-num",
                 '{"version":1,"columns":[{"key":"key","type":"string","required":true},{"key":"value","type":"number","required":true}]}',
+                True,
+            ),
+            (
+                "t-num-disabled",
+                '{"version":1,"columns":[{"key":"key","type":"string","required":true},{"key":"value","type":"number","required":true}]}',
+                False,
             ),
             (
                 "t-str",
                 '{"version":1,"columns":[{"key":"key","type":"string","required":true},{"key":"value","type":"string","required":false}]}',
+                True,
             ),
         ]
 
@@ -45,4 +52,3 @@ class TestTableAutoUpdateTaskScheduling(unittest.TestCase):
 
         sched.assert_called_once()
         self.assertEqual(out.get("table_ai_update"), "task-num")
-
