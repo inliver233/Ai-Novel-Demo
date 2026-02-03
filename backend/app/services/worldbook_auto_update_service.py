@@ -25,6 +25,7 @@ from app.schemas.worldbook_auto_update import (
     WorldbookEntryPatchV1,
 )
 from app.services.generation_service import call_llm_and_record, prepare_llm_call
+from app.services.json_repair_service import repair_json_once
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.output_contracts import contract_for_task
 from app.services.search_index_service import schedule_search_rebuild_task
@@ -669,17 +670,95 @@ def worldbook_auto_update_v1(
 
     contract = contract_for_task(WORLDBOOK_AUTO_UPDATE_TASK)
     parsed = contract.parse(recorded.text or "", finish_reason=recorded.finish_reason)
+
+    repair_run_id: str | None = None
+    warnings = list(parsed.warnings or [])
+
     if parsed.parse_error is not None:
-        parse_error = str(parsed.parse_error or "").strip()
-        return {
-            "ok": False,
-            "project_id": pid,
-            "reason": "parse_error",
-            "run_id": recorded.run_id,
-            "warnings": parsed.warnings,
-            "parse_error": parse_error,
-            "error_message": parse_error[:400] if parse_error else None,
-        }
+        repair_schema = (
+            "{\n"
+            '  "schema_version": "worldbook_auto_update_v1",\n'
+            '  "title": string | null,\n'
+            '  "summary_md": string | null,\n'
+            '  "ops": [\n'
+            '    {\n'
+            '      "op": "create" | "update" | "merge" | "dedupe",\n'
+            '      "match_title": string,\n'
+            '      "entry": {\n'
+            '        "title": string,\n'
+            '        "content_md": string,\n'
+            '        "keywords": [string],\n'
+            '        "aliases": [string],\n'
+            '        "priority": string\n'
+            "      },\n"
+            '      "merge_mode": "append_missing" | "append" | "replace",\n'
+            '      "canonical_title": string,\n'
+            '      "duplicate_titles": [string],\n'
+            '      "reason": string | null\n'
+            "    }\n"
+            "  ]\n"
+            "}\n"
+        )
+
+        repair_req = f"{request_id}:repair"
+        if len(repair_req) > 64:
+            repair_req = repair_req[:64]
+        repair = repair_json_once(
+            request_id=repair_req,
+            actor_user_id=actor_user_id,
+            project_id=pid,
+            chapter_id=str(chapter_id) if chapter_id else None,
+            api_key=api_key,
+            llm_call=llm_call,
+            raw_output=recorded.text,
+            schema=repair_schema,
+            expected_root="object",
+            origin_run_id=recorded.run_id,
+            origin_task=WORLDBOOK_AUTO_UPDATE_TASK,
+        )
+        repair_run_id = str(repair.get("repair_run_id") or "").strip() or None
+        warnings.extend(list(repair.get("warnings") or []))
+
+        if bool(repair.get("ok")):
+            repaired_text = str(repair.get("raw_json") or "").strip()
+            parsed2 = contract.parse(repaired_text, finish_reason=str(repair.get("finish_reason") or "").strip() or None)
+            if parsed2.parse_error is None:
+                parsed = parsed2
+                warnings = list(parsed.warnings or []) + list(repair.get("warnings") or [])
+            else:
+                payload: dict[str, Any] = {
+                    "parse_error": parsed2.parse_error,
+                    "original_parse_error": parsed.parse_error,
+                    "repair_run_id": repair_run_id,
+                }
+                parse_error_text = json.dumps(payload, ensure_ascii=False)
+                return {
+                    "ok": False,
+                    "project_id": pid,
+                    "reason": "parse_error",
+                    "run_id": recorded.run_id,
+                    "warnings": warnings,
+                    "parse_error": parse_error_text,
+                    "error_message": parse_error_text[:400] if parse_error_text else None,
+                }
+        else:
+            payload = {
+                "original_parse_error": parsed.parse_error,
+                "repair_reason": repair.get("reason"),
+                "repair_parse_error": repair.get("parse_error"),
+                "repair_error_message": repair.get("error_message"),
+                "repair_run_id": repair_run_id,
+            }
+            parse_error_text = json.dumps(payload, ensure_ascii=False)
+            return {
+                "ok": False,
+                "project_id": pid,
+                "reason": "parse_error",
+                "run_id": recorded.run_id,
+                "warnings": warnings,
+                "parse_error": parse_error_text,
+                "error_message": parse_error_text[:400] if parse_error_text else None,
+            }
 
     db_write = SessionLocal()
     try:
@@ -707,10 +786,17 @@ def worldbook_auto_update_v1(
             "project_id": pid,
             "reason": "apply_failed",
             "error_type": type(exc).__name__,
-            "error_message": safe_message[:400],
+            "error_message": (f"{safe_message[:360]} (repair_run_id={repair_run_id})" if repair_run_id else safe_message[:400]),
             "run_id": recorded.run_id,
         }
     finally:
         db_write.close()
 
-    return {"ok": True, "project_id": pid, "run_id": recorded.run_id, "warnings": parsed.warnings, "applied": applied}
+    return {
+        "ok": True,
+        "project_id": pid,
+        "run_id": recorded.run_id,
+        "repair_run_id": repair_run_id,
+        "warnings": warnings,
+        "applied": applied,
+    }
