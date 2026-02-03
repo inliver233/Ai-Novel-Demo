@@ -396,7 +396,7 @@ export function AppShell() {
                           collapsed={false}
                           icon={<Table2 size={18} />}
                           label={UI_COPY.nav.numericTables}
-                          ariaLabel="结构化记忆（数值表格） (nav_numeric_tables)"
+                          ariaLabel="数值表格（NumericTables） (nav_numeric_tables)"
                           to={`/projects/${projectId}/numeric-tables`}
                           onClick={closeMobileNav}
                         />
@@ -653,7 +653,7 @@ export function AppShell() {
                     collapsed={collapsed}
                     icon={<Table2 size={18} />}
                     label={UI_COPY.nav.numericTables}
-                    ariaLabel="结构化记忆（数值表格） (nav_numeric_tables)"
+                    ariaLabel="数值表格（NumericTables） (nav_numeric_tables)"
                     to={`/projects/${projectId}/numeric-tables`}
                   />
 

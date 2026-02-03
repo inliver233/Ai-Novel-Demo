@@ -96,11 +96,11 @@ export function NumericTablesPage() {
   return (
     <DebugPageShell
       title={UI_COPY.nav.numericTables}
-      description="结构化记忆（数值表格）：用于管理可数字化的结构化状态（例如金钱/时间/等级/资源等）。"
+      description="数值表格（NumericTables）：用于记录可数字化状态（例如金钱/时间/等级/资源）；与图谱底座数据（StructuredMemory）不同。"
     >
       <DebugDetails title="说明">
         <div className="grid gap-1 text-xs text-subtext">
-          <div>本页为“结构化记忆（数值表格）”的 AdvancedDebug；与“图谱底座数据（StructuredMemory）”分离。</div>
+          <div>本页为「数值表格（NumericTables）」的 AdvancedDebug：用表格记录钱/时间/等级/资源；不是图谱底座数据。</div>
           <div>支持直接编辑表与行（project_tables / project_table_rows）。</div>
         </div>
       </DebugDetails>

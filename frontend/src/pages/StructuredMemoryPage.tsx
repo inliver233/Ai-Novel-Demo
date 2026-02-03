@@ -1016,6 +1016,15 @@ export function StructuredMemoryPage() {
         </>
       }
     >
+      {projectId ? (
+        <div className="callout-info text-sm">
+          提示：本页是图谱底座数据（实体/关系/事件/伏笔/证据）。金钱/时间/等级/资源等数值状态请到{" "}
+          <Link className="underline" to={`/projects/${projectId}/numeric-tables`}>
+            {UI_COPY.nav.numericTables}
+          </Link>
+          。
+        </div>
+      ) : null}
       <div className="rounded-atelier border border-border bg-canvas p-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">

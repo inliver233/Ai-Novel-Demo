@@ -23,7 +23,7 @@ export const UI_COPY = {
     writing: "写作",
     tasks: "任务中心",
     structuredMemory: "图谱底座数据",
-    numericTables: "结构化记忆（数值表格）",
+    numericTables: "数值表格（NumericTables）",
     chapterAnalysis: "剧情记忆",
     preview: "预览",
     reader: "阅读",
