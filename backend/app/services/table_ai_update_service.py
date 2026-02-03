@@ -30,8 +30,10 @@ logger = logging.getLogger("ainovel")
 
 TABLE_AI_UPDATE_KIND = "table_ai_update"
 
-_MAX_ROWS_IN_PROMPT = 200
-_MAX_CHAPTER_CHARS = 40000
+_MAX_ROWS_IN_PROMPT = 80
+_MAX_CHAPTER_CHARS = 16000
+_MAX_TOKENS_PRIMARY_V1 = 1024
+_MAX_OPS_AI_V1 = 25
 
 
 def _compact_json_dumps(value: Any) -> str:
@@ -151,7 +153,7 @@ def build_table_ai_update_prompt_v1(
         "}\n"
         "\n"
         "规则：\n"
-        f"- ops 必须是非空数组，且长度 <= {MAX_OPS_V1}\n"
+        f"- ops 必须是非空数组，且长度 <= {_MAX_OPS_AI_V1}（输出尽量短，避免超时；不要重复输出未变化的行）\n"
         "- 只能修改给定的 table_id（不要写其它 table_id）\n"
         '- op=upsert 时 data 必填；op=delete 时 row_id 必填且 data 必须为 null\n'
         "- data 必须严格符合 schema.columns（字段名与类型）\n"
@@ -383,7 +385,7 @@ def table_ai_update_v1(
         return {"ok": False, "project_id": pid, "reason": "prompt_empty"}
 
     try:
-        llm_call2 = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 2048})
+        llm_call2 = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": _MAX_TOKENS_PRIMARY_V1})
         recorded = call_llm_and_record(
             logger=logger,
             request_id=req,
