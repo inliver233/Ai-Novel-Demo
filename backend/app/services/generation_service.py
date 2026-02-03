@@ -221,7 +221,7 @@ def call_llm_and_record(
                 "error_code": exc.code,
             },
         )
-        write_generation_run(
+        run_id = write_generation_run(
             request_id=request_id,
             actor_user_id=actor_user_id,
             project_id=project_id,
@@ -236,6 +236,14 @@ def call_llm_and_record(
             output_text=None,
             error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),
         )
+        try:
+            details = exc.details if isinstance(getattr(exc, "details", None), dict) else {}
+            if details.get("run_id") != run_id:
+                patched = dict(details)
+                patched["run_id"] = run_id
+                exc.details = patched
+        except Exception:
+            pass
         raise
     except Exception as exc:
         prompt_chars = len(prompt_system) + len(prompt_user)
@@ -258,7 +266,7 @@ def call_llm_and_record(
                 **err_fields,
             },
         )
-        write_generation_run(
+        run_id = write_generation_run(
             request_id=request_id,
             actor_user_id=actor_user_id,
             project_id=project_id,
@@ -276,4 +284,8 @@ def call_llm_and_record(
                 ensure_ascii=False,
             ),
         )
+        try:
+            setattr(exc, "run_id", run_id)
+        except Exception:
+            pass
         raise

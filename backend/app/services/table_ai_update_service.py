@@ -404,7 +404,13 @@ def table_ai_update_v1(
             },
         )
     except Exception as exc:
-        run_id = _find_latest_run_id_for_request(project_id=pid, request_id=req, run_type="table_ai_update_auto_propose")
+        run_id: str | None = None
+        if isinstance(exc, AppError):
+            details = exc.details if isinstance(getattr(exc, "details", None), dict) else {}
+            run_id = str(details.get("run_id") or "").strip() or None
+        run_id = run_id or str(getattr(exc, "run_id", "") or "").strip() or None
+        if not run_id:
+            run_id = _find_latest_run_id_for_request(project_id=pid, request_id=req, run_type="table_ai_update_auto_propose")
         log_event(
             logger,
             "warning",
