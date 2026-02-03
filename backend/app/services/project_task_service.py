@@ -431,6 +431,94 @@ def schedule_fractal_rebuild_task(
             db.close()
 
 
+def _task_params_reason(params_json: str | None) -> str:
+    if not params_json:
+        return ""
+    try:
+        value = json.loads(params_json)
+    except Exception:
+        return ""
+    if not isinstance(value, dict):
+        return ""
+    return str(value.get("reason") or "").strip()
+
+
+def _since_prefix(idempotency_key: str) -> str | None:
+    key = str(idempotency_key or "").strip()
+    if not key:
+        return None
+    marker = ":since:"
+    if marker not in key:
+        return None
+    return key.split(marker, 1)[0] + marker
+
+
+def _dedupe_queued_chapter_tasks(*, db: Session, project_id: str, keep_task: ProjectTask) -> int:
+    """
+    Reduce task storms for chapter_done triggers:
+    keep the latest queued task for a given idempotency prefix (`...:since:`) and cancel older queued tasks.
+
+    Safety:
+    - only cancels queued tasks
+    - only cancels tasks whose params_json.reason starts with "chapter" (avoid canceling manual tasks)
+    """
+
+    pid = str(project_id or "").strip()
+    if not pid:
+        return 0
+
+    keep_key = str(getattr(keep_task, "idempotency_key", "") or "").strip()
+    prefix = _since_prefix(keep_key)
+    if not prefix:
+        return 0
+
+    rows = (
+        db.execute(
+            select(ProjectTask).where(
+                ProjectTask.project_id == pid,
+                ProjectTask.status == "queued",
+                ProjectTask.idempotency_key.like(f"{prefix}%"),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    now = utc_now()
+    canceled = 0
+    for t in rows:
+        if str(t.id) == str(getattr(keep_task, "id", "")):
+            continue
+        if str(getattr(t, "idempotency_key", "") or "").strip() == keep_key:
+            continue
+        reason = _task_params_reason(t.params_json).lower()
+        if not reason.startswith("chapter"):
+            continue
+        t.status = "canceled"
+        t.finished_at = now
+        t.updated_at = now
+        t.result_json = _compact_json_dumps({"canceled": True, "reason": "deduped_by_newer_trigger"})
+        t.error_json = None
+        canceled += 1
+
+    if canceled:
+        db.commit()
+    return canceled
+
+
+def _try_dedupe_queued_chapter_tasks(*, db: Session, project_id: str, keep_task_id: str | None) -> None:
+    if not keep_task_id:
+        return
+    try:
+        keep = db.get(ProjectTask, str(keep_task_id))
+        if keep is None:
+            return
+        _dedupe_queued_chapter_tasks(db=db, project_id=project_id, keep_task=keep)
+    except Exception:
+        # fail-soft
+        return
+
+
 def schedule_chapter_done_tasks(
     *,
     db: Session,
@@ -545,6 +633,8 @@ def schedule_chapter_done_tasks(
                 chapter_token=token_norm,
                 reason=reason_norm,
             )
+            if isinstance(db, Session):
+                _try_dedupe_queued_chapter_tasks(db=db, project_id=pid, keep_task_id=out.get("worldbook_auto_update"))
         except Exception as exc:
             log_event(
                 logger,
@@ -570,6 +660,8 @@ def schedule_chapter_done_tasks(
                 chapter_token=token_norm,
                 reason=reason_norm,
             )
+            if isinstance(db, Session):
+                _try_dedupe_queued_chapter_tasks(db=db, project_id=pid, keep_task_id=out.get("characters_auto_update"))
         except Exception as exc:
             log_event(
                 logger,
@@ -595,6 +687,8 @@ def schedule_chapter_done_tasks(
                 chapter_token=token_norm,
                 reason=reason_norm,
             )
+            if isinstance(db, Session):
+                _try_dedupe_queued_chapter_tasks(db=db, project_id=pid, keep_task_id=out.get("plot_auto_update"))
         except Exception as exc:
             log_event(
                 logger,
@@ -650,6 +744,8 @@ def schedule_chapter_done_tasks(
                 )
                 if task_id:
                     created.append(str(task_id))
+                    if isinstance(db, Session):
+                        _try_dedupe_queued_chapter_tasks(db=db, project_id=pid, keep_task_id=str(task_id))
 
             out["table_ai_update"] = created[0] if created else None
         except Exception as exc:
@@ -678,6 +774,8 @@ def schedule_chapter_done_tasks(
                 focus=None,
                 reason=reason_norm,
             )
+            if isinstance(db, Session):
+                _try_dedupe_queued_chapter_tasks(db=db, project_id=pid, keep_task_id=out.get("graph_auto_update"))
     except Exception as exc:
         log_event(
             logger,
@@ -701,6 +799,8 @@ def schedule_chapter_done_tasks(
                 chapter_token=token_norm,
                 reason=reason_norm,
             )
+            if isinstance(db, Session):
+                _try_dedupe_queued_chapter_tasks(db=db, project_id=pid, keep_task_id=out.get("fractal_rebuild"))
     except Exception as exc:
         log_event(
             logger,
