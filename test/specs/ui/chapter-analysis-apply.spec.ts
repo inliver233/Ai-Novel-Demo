@@ -3,7 +3,8 @@ import { test, expect } from "../../lib/ui-test";
 import { bootstrapProject } from "../../lib/bootstrap";
 import { loadState } from "../../lib/state";
 
-test("ui: chapter analyze -> apply -> ChapterAnalysisPage highlights + sidebar", async ({ page, request }) => {
+test("ui: chapter analyze -> apply -> ChapterAnalysisPage highlights + sidebar", async ({ page, request }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
   const state = loadState();
   const { projectId } = await bootstrapProject(request);
 
@@ -36,4 +37,32 @@ test("ui: chapter analyze -> apply -> ChapterAnalysisPage highlights + sidebar",
 
   const highlights = page.locator("[data-annotation-id]");
   await expect.poll(async () => await highlights.count(), { timeout: 60_000 }).toBeGreaterThan(0);
+
+  const overflow = await page.evaluate(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    return {
+      rootScrollWidth: root.scrollWidth,
+      rootClientWidth: root.clientWidth,
+      bodyScrollWidth: body?.scrollWidth ?? null,
+      bodyClientWidth: body?.clientWidth ?? null,
+    };
+  });
+  const scrollWidth = Math.max(overflow.rootScrollWidth, overflow.bodyScrollWidth ?? 0);
+  const clientWidth = Math.max(overflow.rootClientWidth, overflow.bodyClientWidth ?? 0);
+
+  if (scrollWidth > clientWidth) {
+    await testInfo.attach("horizontal-overflow", {
+      body: await page.screenshot({ fullPage: true }),
+      contentType: "image/png",
+    });
+    await testInfo.attach("horizontal-overflow-metrics", {
+      body: JSON.stringify({ ...overflow, scrollWidth, clientWidth }, null, 2),
+      contentType: "application/json",
+    });
+  }
+
+  expect(scrollWidth, `horizontal overflow: scrollWidth=${scrollWidth} clientWidth=${clientWidth}`).toBeLessThanOrEqual(
+    clientWidth,
+  );
 });
