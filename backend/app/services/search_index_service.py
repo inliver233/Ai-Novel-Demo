@@ -234,8 +234,11 @@ def build_project_search_docs(*, db: Session, project_id: str) -> list[SearchDoc
     for c in chapters:
         title = _trim(c.title)
         header = f"第 {int(c.number)} 章：{title}".strip("：")
-        content = _trim(c.summary) or _trim(c.content_md)
-        if not content:
+        plan = _trim(getattr(c, "plan", None))
+        summary = _trim(getattr(c, "summary", None))
+        content_md = _trim(getattr(c, "content_md", None))
+        content = "\n\n".join([x for x in [header, plan, summary, content_md] if x]).strip()
+        if not (summary or content_md):
             continue
         out.append(
             SearchDocInput(
@@ -256,14 +259,27 @@ def build_project_search_docs(*, db: Session, project_id: str) -> list[SearchDoc
     for w in worldbook:
         title = _trim(w.title)
         content = _trim(w.content_md)
-        if not (title or content):
+        kw_text = ""
+        kw_raw = _trim(getattr(w, "keywords_json", None))
+        if kw_raw:
+            try:
+                kw_obj = json.loads(kw_raw)
+            except Exception:
+                kw_obj = None
+            if isinstance(kw_obj, list):
+                kws = [_trim(str(x)) for x in kw_obj if _trim(str(x))]
+                kw_text = "\n".join(kws[:50]).strip()
+            else:
+                kw_text = kw_raw
+
+        if not (title or content or kw_text):
             continue
         out.append(
             SearchDocInput(
                 source_type="worldbook_entry",
                 source_id=str(w.id),
                 title=title or "世界书条目",
-                content=(title + "\n\n" + content).strip(),
+                content="\n\n".join([x for x in [title, content, kw_text] if x]).strip(),
                 url_path=f"/projects/{pid}/worldbook",
                 locator_json=json.dumps({"worldbook_entry_id": str(w.id)}, ensure_ascii=False),
             )
@@ -300,14 +316,15 @@ def build_project_search_docs(*, db: Session, project_id: str) -> list[SearchDoc
         mt = _trim(getattr(m, "memory_type", "story_memory"))
         title = _trim(m.title) or mt
         content = _trim(m.content)
-        if not content:
+        full_context = _trim(getattr(m, "full_context_md", None))
+        if not (content or full_context):
             continue
         out.append(
             SearchDocInput(
                 source_type="story_memory",
                 source_id=str(m.id),
                 title=title,
-                content=(title + "\n\n" + content).strip(),
+                content="\n\n".join([x for x in [title, content, full_context] if x]).strip(),
                 url_path=f"/projects/{pid}/chapter-analysis?chapterId={str(getattr(m, 'chapter_id', '') or '').strip()}"
                 if _trim(getattr(m, 'chapter_id', '') or '')
                 else f"/projects/{pid}/chapter-analysis",
