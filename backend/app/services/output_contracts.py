@@ -21,6 +21,73 @@ from app.schemas.worldbook_auto_update import WorldbookAutoUpdateOpV1
 OutputContractType = Literal["markers", "json", "tags", "analysis_json", "memory_update_json", "worldbook_auto_update_json"]
 
 
+def _normalize_memory_update_op_v1(item: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """
+    Compatibility normalizer for real-world LLM drift.
+
+    Supports shapes like:
+    - entities.after.entity_id -> op.target_id
+    - entities.after.type -> entities.after.entity_type
+    - relations.after.relation_id -> op.target_id
+    - relations.after.from_id/to_id -> from_entity_id/to_entity_id
+    - relations.after.evidence_ids -> op.evidence_ids
+    - evidence.after.target_id -> op.target_id
+    """
+    warnings: list[str] = []
+    obj = dict(item)
+    after = obj.get("after")
+    if not isinstance(after, dict):
+        return obj, warnings
+
+    after2 = dict(after)
+
+    # Some outputs nest evidence_ids inside after.
+    after_evidence_ids = after2.get("evidence_ids")
+    if isinstance(after_evidence_ids, list):
+        existing = obj.get("evidence_ids")
+        if isinstance(existing, list):
+            obj["evidence_ids"] = [*existing, *after_evidence_ids]
+        elif existing is None:
+            obj["evidence_ids"] = after_evidence_ids
+        warnings.append("memory_update:normalized_evidence_ids_from_after")
+    after2.pop("evidence_ids", None)
+
+    # Some outputs nest target_id inside after (e.g., evidence.after.target_id).
+    if not (obj.get("target_id") or "").strip() and isinstance(after2.get("target_id"), str) and str(after2.get("target_id") or "").strip():
+        obj["target_id"] = str(after2.get("target_id") or "").strip()
+        warnings.append("memory_update:normalized_after.target_id_to_op.target_id")
+
+    # Drift: entities.after.entity_id (preferred to op.target_id)
+    if not (obj.get("target_id") or "").strip() and isinstance(after2.get("entity_id"), str) and str(after2.get("entity_id") or "").strip():
+        obj["target_id"] = str(after2.get("entity_id") or "").strip()
+        warnings.append("memory_update:normalized_after.entity_id_to_op.target_id")
+
+    # Drift: relations.after.relation_id (preferred to op.target_id)
+    if not (obj.get("target_id") or "").strip() and isinstance(after2.get("relation_id"), str) and str(after2.get("relation_id") or "").strip():
+        obj["target_id"] = str(after2.get("relation_id") or "").strip()
+        warnings.append("memory_update:normalized_after.relation_id_to_op.target_id")
+
+    # Drift: entities.after.type -> entities.after.entity_type
+    if isinstance(after2.get("type"), str) and str(after2.get("type") or "").strip() and not str(after2.get("entity_type") or "").strip():
+        after2["entity_type"] = str(after2.get("type") or "").strip()
+        warnings.append("memory_update:normalized_after.type_to_entity_type")
+
+    # Drift: relations.after.from_id/to_id -> from_entity_id/to_entity_id
+    if isinstance(after2.get("from_id"), str) and str(after2.get("from_id") or "").strip() and not str(after2.get("from_entity_id") or "").strip():
+        after2["from_entity_id"] = str(after2.get("from_id") or "").strip()
+        warnings.append("memory_update:normalized_after.from_id_to_from_entity_id")
+    if isinstance(after2.get("to_id"), str) and str(after2.get("to_id") or "").strip() and not str(after2.get("to_entity_id") or "").strip():
+        after2["to_entity_id"] = str(after2.get("to_id") or "").strip()
+        warnings.append("memory_update:normalized_after.to_id_to_to_entity_id")
+
+    # Drop drift-only fields from after to satisfy strict schema.
+    for k in ("target_id", "entity_id", "relation_id", "from_id", "to_id", "type"):
+        after2.pop(k, None)
+
+    obj["after"] = after2
+    return obj, warnings
+
+
 @dataclass(frozen=True, slots=True)
 class OutputParseResult:
     data: dict[str, Any]
@@ -123,7 +190,9 @@ class OutputContract:
                         parse_error={"code": "MEMORY_UPDATE_PARSE_ERROR", "message": f"ops[{idx}] 必须是 object", "idx": idx},
                     )
                 try:
-                    op = MemoryUpdateOpV1.model_validate(item)
+                    normalized, w = _normalize_memory_update_op_v1(item)
+                    warnings.extend(w)
+                    op = MemoryUpdateOpV1.model_validate(normalized)
                 except Exception as exc:
                     pydantic_errors = self._safe_pydantic_errors(exc)
                     parse_error: dict[str, Any] = {

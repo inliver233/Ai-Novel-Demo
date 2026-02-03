@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 
 from app.schemas.characters_auto_update import CharactersAutoUpdateV1Request
-from app.schemas.memory_update import MemoryUpdateV1Request
 from app.schemas.worldbook_auto_update import WorldbookAutoUpdateV1Request
+from app.services.output_contracts import contract_for_task
 from app.services.output_parsers import extract_json_value
 
 
@@ -77,8 +77,16 @@ class TestRealLlmFailureFixtures(unittest.TestCase):
         self.assertNotIn("idempotency_key", value)
         self.assertIsInstance(value.get("ops"), list)
 
-        with self.assertRaises(Exception):
-            MemoryUpdateV1Request.model_validate(value)
+        contract = contract_for_task("memory_update")
+        parsed = contract.parse(text)
+        self.assertIsNone(parsed.parse_error, msg=str(parsed.parse_error))
+
+        ops = list((parsed.data or {}).get("ops") or [])
+        self.assertGreaterEqual(len(ops), 1)
+        self.assertEqual(ops[0].get("target_table"), "entities")
+        self.assertEqual(ops[0].get("target_id"), "ca4e3e50-6cb7-4983-af1a-94775a7b676d")
+        after0 = ops[0].get("after") or {}
+        self.assertEqual(after0.get("entity_type"), "person")
 
     def test_table_ai_update_timeout_fixtures(self) -> None:
         ids = [
