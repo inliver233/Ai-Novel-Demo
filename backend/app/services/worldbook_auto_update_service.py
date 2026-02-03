@@ -159,6 +159,37 @@ def build_worldbook_auto_update_prompt_v1(
         "你必须只输出一个 JSON（允许使用 ```json 代码块包裹）。不要输出任何其它文字。\n"
         f"schema_version 必须是 {json.dumps(WORLDBOOK_AUTO_UPDATE_SCHEMA_VERSION, ensure_ascii=False)}。\n"
         "ops 是一个数组，每个 op 必须是以下之一：create / update / merge / dedupe。\n"
+        "严禁使用错误字段名：不要输出 item；不要输出 content；不要输出 priority:number。\n"
+        "priority 必须是字符串枚举之一：drop_first / optional / important / must。\n"
+        "每个 op 的字段约定：\n"
+        "- create: {op:'create', entry:{title, content_md, keywords, aliases, enabled, constant, exclude_recursion, prevent_recursion, char_limit, priority}, reason?}\n"
+        "- update: {op:'update', match_title, entry:{...patch...}, reason?}  # entry 是 patch，可只给需要修改的字段\n"
+        "- merge:  {op:'merge',  match_title, merge_mode:'append_missing'|'append'|'replace', entry:{...patch...}, reason?}\n"
+        "- dedupe: {op:'dedupe', canonical_title, duplicate_titles:[...], reason?}\n"
+        "示例（create）：\n"
+        "{\n"
+        '  \"schema_version\": \"worldbook_auto_update_v1\",\n'
+        '  \"title\": null,\n'
+        '  \"summary_md\": null,\n'
+        '  \"ops\": [\n'
+        "    {\n"
+        '      \"op\": \"create\",\n'
+        '      \"entry\": {\n'
+        '        \"title\": \"某势力\",\n'
+        '        \"content_md\": \"...\",\n'
+        '        \"keywords\": [\"...\"],\n'
+        '        \"aliases\": [\"...\"],\n'
+        '        \"enabled\": true,\n'
+        '        \"constant\": false,\n'
+        '        \"exclude_recursion\": false,\n'
+        '        \"prevent_recursion\": false,\n'
+        '        \"char_limit\": 12000,\n'
+        '        \"priority\": \"important\"\n'
+        "      },\n"
+        '      \"reason\": \"...\"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
         "严格遵守：\n"
         "- 不要捏造不存在的设定；信息不足则宁可少写。\n"
         "- 避免重复条目：优先 update/merge，只有不存在才 create。\n"
