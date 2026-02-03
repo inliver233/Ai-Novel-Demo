@@ -121,6 +121,7 @@ export function SettingsPage() {
   const queuedSaveRef = useRef<null | { silent: boolean; snapshot?: SaveSnapshot }>(null);
   const wizardRefreshTimerRef = useRef<number | null>(null);
   const projectsRefreshTimerRef = useRef<number | null>(null);
+  const autoUpdateMasterRef = useRef<HTMLInputElement | null>(null);
   const [baselineProject, setBaselineProject] = useState<Project | null>(null);
   const [baselineSettings, setBaselineSettings] = useState<ProjectSettings | null>(null);
   const [loadError, setLoadError] = useState<null | { message: string; code: string; requestId?: string }>(null);
@@ -215,6 +216,52 @@ export function SettingsPage() {
     localStorage.removeItem(key);
     toast.toastSuccess(UI_COPY.featureDefaults.toastReset);
   }, [projectId, toast]);
+
+  const autoUpdateAllEnabled = useMemo(
+    () =>
+      settingsForm.auto_update_worldbook_enabled &&
+      settingsForm.auto_update_characters_enabled &&
+      settingsForm.auto_update_story_memory_enabled &&
+      settingsForm.auto_update_graph_enabled &&
+      settingsForm.auto_update_vector_enabled &&
+      settingsForm.auto_update_search_enabled &&
+      settingsForm.auto_update_fractal_enabled &&
+      settingsForm.auto_update_tables_enabled,
+    [settingsForm],
+  );
+
+  const autoUpdateAnyEnabled = useMemo(
+    () =>
+      settingsForm.auto_update_worldbook_enabled ||
+      settingsForm.auto_update_characters_enabled ||
+      settingsForm.auto_update_story_memory_enabled ||
+      settingsForm.auto_update_graph_enabled ||
+      settingsForm.auto_update_vector_enabled ||
+      settingsForm.auto_update_search_enabled ||
+      settingsForm.auto_update_fractal_enabled ||
+      settingsForm.auto_update_tables_enabled,
+    [settingsForm],
+  );
+
+  useEffect(() => {
+    const el = autoUpdateMasterRef.current;
+    if (!el) return;
+    el.indeterminate = autoUpdateAnyEnabled && !autoUpdateAllEnabled;
+  }, [autoUpdateAllEnabled, autoUpdateAnyEnabled]);
+
+  const setAllAutoUpdates = useCallback((enabled: boolean) => {
+    setSettingsForm((v) => ({
+      ...v,
+      auto_update_worldbook_enabled: enabled,
+      auto_update_characters_enabled: enabled,
+      auto_update_story_memory_enabled: enabled,
+      auto_update_graph_enabled: enabled,
+      auto_update_vector_enabled: enabled,
+      auto_update_search_enabled: enabled,
+      auto_update_fractal_enabled: enabled,
+      auto_update_tables_enabled: enabled,
+    }));
+  }, []);
 
   const settingsQuery = useProjectData<SettingsLoaded>(projectId, async (id) => {
     try {
@@ -1196,6 +1243,17 @@ export function SettingsPage() {
         <div className="mt-4 grid gap-2">
           <label className="flex items-center gap-2 text-sm text-ink">
             <input
+              ref={autoUpdateMasterRef}
+              className="checkbox"
+              checked={autoUpdateAllEnabled}
+              onChange={(e) => setAllAutoUpdates(e.target.checked)}
+              type="checkbox"
+            />
+            一键开关：自动更新（章节定稿后触发）
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
               className="checkbox"
               checked={settingsForm.auto_update_worldbook_enabled}
               onChange={(e) => setSettingsForm((v) => ({ ...v, auto_update_worldbook_enabled: e.target.checked }))}
@@ -1298,7 +1356,7 @@ export function SettingsPage() {
             }
             type="button"
           >
-            恢复推荐默认
+            全部开启（推荐）
           </button>
         </div>
       </section>
