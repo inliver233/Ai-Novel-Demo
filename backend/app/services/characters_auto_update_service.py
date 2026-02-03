@@ -91,6 +91,20 @@ def build_characters_auto_update_prompt_v1(
         "你必须只输出一个 JSON（允许使用 ```json 代码块包裹）。不要输出任何其它文字。\n"
         f"schema_version 必须是 {json.dumps(CHARACTERS_AUTO_UPDATE_SCHEMA_VERSION, ensure_ascii=False)}。\n"
         "ops 是一个数组，每个 op 必须是以下之一：upsert / dedupe。\n"
+        "字段名必须严格使用：name / patch / merge_mode_profile / merge_mode_notes / canonical_name / duplicate_names / reason。\n"
+        "严禁输出 character / characters 作为字段名；不要使用 character{...} 嵌套。\n"
+        "op schema 示例：\n"
+        '- upsert: {"op":"upsert","name":"Alice","patch":{"role":"...","profile":"...","notes":"..."},"merge_mode_profile":"append_missing","merge_mode_notes":"append_missing","reason":"..."}\n'
+        '- dedupe: {"op":"dedupe","canonical_name":"Alice","duplicate_names":["Alice ","ALICE"],"reason":"..."}\n'
+        "完整输出示例：\n"
+        "{\n"
+        '  "schema_version": "characters_auto_update_v1",\n'
+        '  "title": "Characters Auto Update",\n'
+        '  "summary_md": "可选：总结本次更新",\n'
+        '  "ops": [\n'
+        '    {"op":"upsert","name":"Alice","patch":{"role":"hero","profile":"...","notes":"..."},"merge_mode_profile":"append_missing","merge_mode_notes":"append_missing","reason":"..."}\n'
+        "  ]\n"
+        "}\n"
         "严格遵守：\n"
         "- 不要捏造不存在的角色；信息不足则宁可少写。\n"
         "- 避免重复：同一角色优先 upsert 到已有角色卡（按 name 匹配）。\n"
