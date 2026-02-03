@@ -100,7 +100,9 @@ export function NumericTablesPage() {
     >
       <DebugDetails title="说明">
         <div className="grid gap-1 text-xs text-subtext">
-          <div>本页为「数值表格（NumericTables）」的 AdvancedDebug：用表格记录钱/时间/等级/资源；不是图谱底座数据。</div>
+          <div>
+            本页为「数值表格（NumericTables）」的 AdvancedDebug：用表格记录钱/时间/等级/资源；不是图谱底座数据。
+          </div>
           <div>支持直接编辑表与行（project_tables / project_table_rows）。</div>
         </div>
       </DebugDetails>

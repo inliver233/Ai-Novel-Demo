@@ -111,7 +111,7 @@ test("ui: download debug bundle (history + context preview)", async ({ page, req
 
   await preview.getByText("触发条目", { exact: true }).click();
   await expect(preview.getByText("E2E WB Constant", { exact: true })).toBeVisible();
-  await expect(preview.getByText("source:constant")).toBeVisible();
+  await expect(preview.getByText("constant | priority:important", { exact: true })).toBeVisible();
 
   const [previewDownload] = await Promise.all([
     page.waitForEvent("download"),

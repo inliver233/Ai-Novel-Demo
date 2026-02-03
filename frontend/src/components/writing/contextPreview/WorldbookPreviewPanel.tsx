@@ -101,12 +101,14 @@ export function WorldbookPreviewPanel(props: {
               const matchValueRaw = o.match_value;
               const matchValue = typeof matchValueRaw === "string" ? matchValueRaw : "";
               const priority = String(o.priority ?? "");
+              const displayReason =
+                reason ||
+                (matchSource ? (matchValue ? `${matchSource}:${matchValue}` : matchSource) : "");
               return (
                 <div key={id || title} className="rounded-atelier border border-border bg-surface p-2 text-xs">
                   <div className="truncate text-ink">{title || id}</div>
                   <div className="mt-1 text-subtext">
-                    {matchSource ? `source:${matchSource}` : reason}
-                    {matchValue ? ` | match:${matchValue}` : ""}
+                    {displayReason}
                     {priority ? ` | priority:${priority}` : ""}
                   </div>
                 </div>

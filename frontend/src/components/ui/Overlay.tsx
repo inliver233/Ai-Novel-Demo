@@ -57,7 +57,7 @@ export function Overlay(props: {
       const idx = nextStack.lastIndexOf(handler);
       if (idx >= 0) nextStack.splice(idx, 1);
     };
-  }, [props.open]);
+  }, [props.open, props.onBackdropClick]);
 
   return (
     <AnimatePresence>

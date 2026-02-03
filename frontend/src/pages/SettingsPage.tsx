@@ -1392,7 +1392,8 @@ export function SettingsPage() {
               <div className="font-medium text-ink">配置说明（Embedding vs Rerank）</div>
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 <li>
-                  <span className="font-mono">Embedding</span> 用于向量化（索引/召回）；<span className="font-mono">Rerank</span>{" "}
+                  <span className="font-mono">Embedding</span> 用于向量化（索引/召回）；
+                  <span className="font-mono">Rerank</span>{" "}
                   用于对候选片段做二次排序。两者可分别配置（provider/base_url/model/api_key 可不同）。
                 </li>
                 <li>
@@ -1400,8 +1401,8 @@ export function SettingsPage() {
                   自检（会返回 request_id，便于看后端日志排障）。
                 </li>
                 <li>
-                  验证是否生效：到项目内「RAG」页运行 Query；结果面板会显示 <span className="font-mono">rerank:</span> 概要，并可展开{" "}
-                  <span className="font-mono">rerank_obs</span> 查看详情。
+                  验证是否生效：到项目内「RAG」页运行 Query；结果面板会显示 <span className="font-mono">rerank:</span>{" "}
+                  概要，并可展开 <span className="font-mono">rerank_obs</span> 查看详情。
                 </li>
               </ul>
             </div>
@@ -2091,9 +2092,7 @@ export function SettingsPage() {
                     </button>
                   </div>
 
-                  {qpPreviewError ? (
-                    <div className="mt-3 text-xs text-warning">{qpPreviewError}</div>
-                  ) : null}
+                  {qpPreviewError ? <div className="mt-3 text-xs text-warning">{qpPreviewError}</div> : null}
 
                   {qpPreview ? (
                     <div className="mt-3 grid gap-3">

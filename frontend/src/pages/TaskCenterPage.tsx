@@ -516,7 +516,9 @@ export function TaskCenterPage() {
 
   const selectedProjectTaskRunId = useMemo(() => {
     if (selected?.kind !== "project_task") return null;
-    return extractRunIdFromProjectTaskError(selected.item.error) || extractRunIdFromProjectTaskResult(selected.item.result);
+    return (
+      extractRunIdFromProjectTaskError(selected.item.error) || extractRunIdFromProjectTaskResult(selected.item.result)
+    );
   }, [selected]);
 
   const liveChangeSetStatus = useMemo(() => {

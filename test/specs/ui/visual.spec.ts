@@ -68,6 +68,7 @@ test("ui: visual smoke (update with --update-snapshots)", async ({ page, request
   await page.goto(`/projects/${projectId}/rag`);
   await stabilizeUi(page);
   await expect(page.getByText("Vector RAG 管理", { exact: true })).toBeVisible();
+  await hideUnstableBadges(page);
   await expect(page).toHaveScreenshot("rag.png");
 
   await page.goto(`/projects/${projectId}/graph`);

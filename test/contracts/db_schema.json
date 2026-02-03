@@ -3308,6 +3308,13 @@
       "checks": [],
       "columns": [
         {
+          "dflt_value": "1",
+          "name": "auto_update_enabled",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BOOLEAN"
+        },
+        {
           "dflt_value": null,
           "name": "created_at",
           "notnull": 1,
