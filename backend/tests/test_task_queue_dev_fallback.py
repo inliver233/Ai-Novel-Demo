@@ -84,6 +84,12 @@ class TestTaskQueueDevFallback(unittest.TestCase):
         self.assertEqual(status.get("queue_backend"), "rq")
         self.assertEqual(status.get("effective_backend"), "inline")
         self.assertEqual(status.get("redis_ok"), False)
+        self.assertIn("inline_queue_size", status)
+        self.assertIsInstance(status.get("inline_queue_size"), int)
+        self.assertIn("inline_last_processed_at", status)
+        self.assertTrue(
+            status.get("inline_last_processed_at") is None or isinstance(status.get("inline_last_processed_at"), str)
+        )
 
     def test_health_reports_effective_backend_rq_when_explicit(self) -> None:
         settings.app_env = "dev"
@@ -102,3 +108,5 @@ class TestTaskQueueDevFallback(unittest.TestCase):
         self.assertEqual(status.get("queue_backend"), "rq")
         self.assertEqual(status.get("effective_backend"), "rq")
         self.assertEqual(status.get("redis_ok"), False)
+        self.assertNotIn("inline_queue_size", status)
+        self.assertNotIn("inline_last_processed_at", status)

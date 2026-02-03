@@ -5,6 +5,7 @@ import os
 import queue as queue_mod
 import threading
 import time
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Literal, Protocol
 
@@ -54,11 +55,23 @@ def _redis_ping_cached(redis_url: str, *, timeout_seconds: float) -> tuple[bool,
 class _InlineWorker:
     def __init__(self) -> None:
         self._queue: queue_mod.Queue[tuple[TaskKind, str]] = queue_mod.Queue()
+        self._metrics_lock = threading.Lock()
+        self._last_processed_at: float | None = None
         self._thread = threading.Thread(target=self._run, name="ainovel-inline-worker", daemon=True)
         self._thread.start()
 
     def enqueue(self, *, kind: TaskKind, task_id: str) -> None:
         self._queue.put((kind, task_id))
+
+    def get_health_metrics(self) -> dict[str, Any]:
+        with self._metrics_lock:
+            last_processed_at = self._last_processed_at
+        return {
+            "inline_queue_size": int(self._queue.qsize()),
+            "inline_last_processed_at": (
+                datetime.fromtimestamp(last_processed_at, tz=timezone.utc).isoformat() if last_processed_at else None
+            ),
+        }
 
     def _run(self) -> None:
         while True:
@@ -95,6 +108,8 @@ class _InlineWorker:
                 except Exception:
                     pass
             finally:
+                with self._metrics_lock:
+                    self._last_processed_at = time.time()
                 try:
                     self._queue.task_done()
                 except Exception:
@@ -241,6 +256,7 @@ def get_queue_status_for_health() -> dict[str, Any]:
             "effective_backend": "inline",
             "redis_ok": None,
             "worker_hint": "inline 模式使用进程内单线程 worker 执行任务（无需 Redis；适合 dev/test；生产请用 rq+worker）",
+            **_get_inline_worker().get_health_metrics(),
         }
 
     if backend == "rq":
@@ -272,6 +288,7 @@ def get_queue_status_for_health() -> dict[str, Any]:
             "redis_ok": redis_ok,
             "redis_error_type": redis_error_type,
             "worker_hint": hint,
+            **(_get_inline_worker().get_health_metrics() if effective_backend == "inline" else {}),
         }
 
     return {
