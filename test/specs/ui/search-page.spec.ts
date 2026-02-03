@@ -235,6 +235,9 @@ test("ui: global search hits multi-sources and can jump", async ({ page, request
   await expect(chapterCard).toBeVisible();
   await expect(chapterCard.getByLabel("search_copy_id", { exact: true })).toHaveClass(/\bbtn\b/);
   await expect(chapterCard.getByLabel("search_copy_id", { exact: true })).toHaveClass(/\bbtn-secondary\b/);
+  await expect(chapterCard.getByLabel("search_copy_locator", { exact: true })).toHaveClass(/\bbtn\b/);
+  await expect(chapterCard.getByLabel("search_copy_locator", { exact: true })).toHaveClass(/\bbtn-secondary\b/);
+  await expect(chapterCard.getByLabel("search_copy_locator", { exact: true })).toBeEnabled();
   await expect(chapterCard.getByLabel("search_jump", { exact: true })).toHaveClass(/\bbtn\b/);
   await expect(chapterCard.getByLabel("search_jump", { exact: true })).toHaveClass(/\bbtn-primary\b/);
   await chapterCard.getByLabel("search_jump", { exact: true }).click();
@@ -259,7 +262,7 @@ test("ui: global search hits multi-sources and can jump", async ({ page, request
 
   // character -> characters list
   const results3 = await runSearch();
-  const characterCard = results3.locator(".panel").filter({ hasText: "character" }).first();
+  const characterCard = results3.locator(".panel").filter({ hasText: characterName }).first();
   await expect(characterCard).toBeVisible();
   await characterCard.getByLabel("search_jump", { exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/characters$`));

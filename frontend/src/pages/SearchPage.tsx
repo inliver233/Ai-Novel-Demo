@@ -222,24 +222,26 @@ export function SearchPage() {
     [toast],
   );
 
+  const copyLocator = useCallback(
+    async (it: SearchItem) => {
+      const raw = String(it.locator_json ?? "").trim();
+      if (!raw) {
+        toast.toastWarning("该结果没有 locator 信息");
+        return;
+      }
+      const ok = await copyText(raw, { title: UI_COPY.search.copyLocatorFailTitle });
+      if (ok) toast.toastSuccess(UI_COPY.search.copiedLocator);
+      else toast.toastWarning(UI_COPY.search.copyFailedToast);
+    },
+    [toast],
+  );
+
   return (
     <DebugPageShell
       title={UI_COPY.search.title}
       description={UI_COPY.search.subtitle}
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            aria-label="search_open_glossary"
-            disabled={!projectId}
-            onClick={() => {
-              if (!projectId) return;
-              navigate(`/projects/${projectId}/glossary`);
-            }}
-          >
-            术语映射
-          </button>
           <button
             type="button"
             className="btn btn-secondary"
@@ -303,12 +305,10 @@ export function SearchPage() {
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-ink">{it.title || it.source_id}</div>
-                    <div className="mt-0.5 text-xs text-subtext">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-subtext">
                       <span>{sourceLabel(it.source_type)}</span>
-                      <span className="mx-2">·</span>
                       <span className="font-mono">{it.source_type}</span>
-                      <span className="mx-2">·</span>
-                      <span className="font-mono">{it.source_id}</span>
+                      <span className="font-mono break-all">{it.source_id}</span>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -319,6 +319,15 @@ export function SearchPage() {
                       onClick={() => void copySourceId(it)}
                     >
                       {UI_COPY.search.copyId}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      aria-label="search_copy_locator"
+                      disabled={!String(it.locator_json ?? "").trim()}
+                      onClick={() => void copyLocator(it)}
+                    >
+                      {UI_COPY.search.copyLocator}
                     </button>
                     {canJump(it) ? (
                       <button
