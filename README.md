@@ -23,13 +23,15 @@ copy .env.example .env  # Windows 可用；或手动创建
 
 # SQLite 模式：必须单进程/单 worker
 # 建议直接用 venv python 启动（避免误用系统 python 导致依赖错位）
+# 注意：`--reload` 与多 worker 不兼容；请不要使用 `--reload --workers 10` 这类组合（不会按预期并发）。
+# 如需多 worker/高并发：请使用 Docker Compose（Postgres + Redis + rq_worker）部署形态。
 # Windows:
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --workers 1 --port 8000
 # macOS/Linux:
 ./.venv/bin/python -m uvicorn app.main:app --reload --workers 1 --port 8000
 
 # 后台任务队列（RAG/世界书/搜索/批量生成等）
-# - dev/test（推荐）：TASK_QUEUE_BACKEND=inline（不依赖 Redis；进程内单线程 worker）
+# - dev/test（推荐）：TASK_QUEUE_BACKEND=inline（不依赖 Redis；进程内线程 worker；可用 INLINE_WORKER_CONCURRENCY 调整并发）
 # - rq 模式（生产必须）：需要 Redis + worker
 # 1) 先启动 Redis（任选其一）：
 #   - Docker: docker run --name ainovel-redis -p 6379:6379 redis:7-alpine
@@ -37,6 +39,7 @@ copy .env.example .env  # Windows 可用；或手动创建
 # 2) 启动 worker（Windows / PowerShell）：
 .\.venv\Scripts\python.exe scripts\run_rq_worker.py
 # 或：.\.venv\Scripts\rq.exe worker --url $env:REDIS_URL default
+# 提示：如果 Redis 可用但没启动 worker，任务会一直排队；可用 `/api/health` 查看 `rq_worker_count/queue_size` 来排障。
 ```
 
 ### 2) 前端（Vite）

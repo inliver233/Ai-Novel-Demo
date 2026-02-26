@@ -30,8 +30,29 @@ class TestTaskQueueDevFallback(unittest.TestCase):
         from app.services import task_queue as mod
 
         mod._REDIS_PING_CACHE.clear()
+        mod._RQ_INSPECT_CACHE.clear()
         with patch.dict(os.environ, {"TASK_QUEUE_BACKEND": ""}, clear=False), patch(
             "app.services.task_queue._redis_ping", return_value=(False, "ConnectionError")
+        ):
+            tq = get_task_queue()
+
+        self.assertIsInstance(tq, InlineTaskQueue)
+
+    def test_dev_falls_back_to_inline_when_redis_ok_but_no_worker(self) -> None:
+        settings.app_env = "dev"
+        settings.task_queue_backend = "rq"
+        settings.redis_url = "redis://localhost:6379/0"
+        settings.rq_queue_name = "default"
+
+        from app.services import task_queue as mod
+
+        mod._REDIS_PING_CACHE.clear()
+        mod._RQ_INSPECT_CACHE.clear()
+        with patch.dict(os.environ, {"TASK_QUEUE_BACKEND": ""}, clear=False), patch(
+            "app.services.task_queue._redis_ping", return_value=(True, None)
+        ), patch(
+            "app.services.task_queue._rq_inspect",
+            return_value={"rq_inspect_ok": True, "rq_queue_size": 0, "rq_worker_count": 0},
         ):
             tq = get_task_queue()
 
@@ -46,6 +67,7 @@ class TestTaskQueueDevFallback(unittest.TestCase):
         from app.services import task_queue as mod
 
         mod._REDIS_PING_CACHE.clear()
+        mod._RQ_INSPECT_CACHE.clear()
         with patch.dict(os.environ, {"TASK_QUEUE_BACKEND": "rq"}, clear=False):
             tq = get_task_queue()
 
@@ -60,6 +82,7 @@ class TestTaskQueueDevFallback(unittest.TestCase):
         from app.services import task_queue as mod
 
         mod._REDIS_PING_CACHE.clear()
+        mod._RQ_INSPECT_CACHE.clear()
         with patch.dict(os.environ, {"TASK_QUEUE_BACKEND": ""}, clear=False), patch(
             "app.services.task_queue._redis_ping", return_value=(False, "ConnectionError")
         ):
@@ -76,6 +99,7 @@ class TestTaskQueueDevFallback(unittest.TestCase):
         from app.services import task_queue as mod
 
         mod._REDIS_PING_CACHE.clear()
+        mod._RQ_INSPECT_CACHE.clear()
         with patch.dict(os.environ, {"TASK_QUEUE_BACKEND": ""}, clear=False), patch(
             "app.services.task_queue._redis_ping", return_value=(False, "TimeoutError")
         ):
@@ -91,6 +115,30 @@ class TestTaskQueueDevFallback(unittest.TestCase):
             status.get("inline_last_processed_at") is None or isinstance(status.get("inline_last_processed_at"), str)
         )
 
+    def test_health_reports_effective_backend_inline_on_no_worker(self) -> None:
+        settings.app_env = "dev"
+        settings.task_queue_backend = "rq"
+        settings.redis_url = "redis://localhost:6379/0"
+        settings.rq_queue_name = "default"
+
+        from app.services import task_queue as mod
+
+        mod._REDIS_PING_CACHE.clear()
+        mod._RQ_INSPECT_CACHE.clear()
+        with patch.dict(os.environ, {"TASK_QUEUE_BACKEND": ""}, clear=False), patch(
+            "app.services.task_queue._redis_ping", return_value=(True, None)
+        ), patch(
+            "app.services.task_queue._rq_inspect",
+            return_value={"rq_inspect_ok": True, "rq_queue_size": 0, "rq_worker_count": 0},
+        ):
+            status = get_queue_status_for_health()
+
+        self.assertEqual(status.get("queue_backend"), "rq")
+        self.assertEqual(status.get("effective_backend"), "inline")
+        self.assertEqual(status.get("redis_ok"), True)
+        self.assertEqual(status.get("rq_worker_count"), 0)
+        self.assertIn("inline_queue_size", status)
+
     def test_health_reports_effective_backend_rq_when_explicit(self) -> None:
         settings.app_env = "dev"
         settings.task_queue_backend = "rq"
@@ -100,6 +148,7 @@ class TestTaskQueueDevFallback(unittest.TestCase):
         from app.services import task_queue as mod
 
         mod._REDIS_PING_CACHE.clear()
+        mod._RQ_INSPECT_CACHE.clear()
         with patch.dict(os.environ, {"TASK_QUEUE_BACKEND": "rq"}, clear=False), patch(
             "app.services.task_queue._redis_ping", return_value=(False, "TimeoutError")
         ):
