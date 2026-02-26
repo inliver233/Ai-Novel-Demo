@@ -23,8 +23,16 @@ from app.models.project_task import ProjectTask
 from app.models.story_memory import StoryMemory
 from app.schemas.chapter_analysis import ChapterAnalyzeRequest
 from app.services.chapter_context_service import build_chapter_analyze_render_values
-from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.generation_service import prepare_llm_call
 from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_retry import (
+    LlmRetryExhausted,
+    call_llm_and_record_with_retries,
+    task_llm_max_attempts,
+    task_llm_retry_base_seconds,
+    task_llm_retry_jitter,
+    task_llm_retry_max_seconds,
+)
 from app.services.output_contracts import contract_for_task
 from app.services.prompt_presets import ensure_default_chapter_analyze_preset, render_preset_for_task
 from app.services.search_index_service import schedule_search_rebuild_task
@@ -721,7 +729,6 @@ def plot_auto_update_v1(
         )
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
         llm_call = prepare_llm_call(preset)
-        llm_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 2048})
     finally:
         db_read.close()
 
@@ -747,8 +754,23 @@ def plot_auto_update_v1(
             "error_message": safe_message[:400],
         }
 
+    llm_attempts: list[dict[str, Any]] = []
     try:
-        llm_result = call_llm_and_record(
+        base_max_tokens = llm_call.params.get("max_tokens") if llm_call is not None else None
+
+        def _clamp_max_tokens(limit: int) -> int:
+            if isinstance(base_max_tokens, int) and base_max_tokens > 0:
+                return min(int(limit), int(base_max_tokens))
+            return int(limit)
+
+        retry_instruction = (
+            "【重试模式】上一轮调用失败/超时。请输出更短、更保守的 chapter_analyze JSON：\n"
+            "- 只输出裸 JSON（不要 Markdown，不要代码块）\n"
+            "- 只保留最关键的剧情记忆点，避免长段落\n"
+        )
+
+        max_attempts = task_llm_max_attempts(default=3)
+        llm_result, llm_attempts = call_llm_and_record_with_retries(
             logger=logger,
             request_id=req,
             actor_user_id=actor,
@@ -761,28 +783,42 @@ def plot_auto_update_v1(
             prompt_messages=prompt_messages,
             prompt_render_log_json=prompt_render_log_json,
             llm_call=llm_call,
+            max_attempts=max_attempts,
+            retry_messages_system_instruction=retry_instruction,
+            llm_call_overrides_by_attempt={
+                1: {"temperature": 0.2, "max_tokens": _clamp_max_tokens(2048)},
+                2: {"temperature": 0.1, "max_tokens": _clamp_max_tokens(1024)},
+                3: {"temperature": 0.0, "max_tokens": _clamp_max_tokens(512)},
+            },
+            backoff_base_seconds=task_llm_retry_base_seconds(),
+            backoff_max_seconds=task_llm_retry_max_seconds(),
+            jitter=task_llm_retry_jitter(),
         )
-    except Exception as exc:
+    except LlmRetryExhausted as exc:
         log_event(
             logger,
             "warning",
             event="PLOT_AUTO_UPDATE_LLM_ERROR",
             project_id=pid,
             chapter_id=cid,
-            error_type=type(exc).__name__,
+            run_id=exc.run_id,
+            error_type=str(exc.error_type),
             request_id=req,
-            **exception_log_fields(exc),
+            **exception_log_fields(exc.last_exception),
         )
-        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
-        if not safe_message:
-            safe_message = type(exc).__name__
         return {
             "ok": False,
             "project_id": pid,
             "chapter_id": cid,
             "reason": "llm_call_failed",
-            "error_type": type(exc).__name__,
-            "error_message": safe_message[:400],
+            "run_id": exc.run_id,
+            "error_type": exc.error_type,
+            "error_message": exc.error_message[:400],
+            "attempts": list(exc.attempts or []),
+            "error": {
+                "code": exc.error_code or "LLM_CALL_FAILED",
+                "details": {"attempts": list(exc.attempts or [])},
+            },
         }
 
     contract = contract_for_task("chapter_analyze")
@@ -796,7 +832,7 @@ def plot_auto_update_v1(
             "run_id": llm_result.run_id,
             "finish_reason": llm_result.finish_reason,
             "parse_error": parsed.parse_error,
-            "warnings": parsed.warnings,
+            "warnings": [*list(parsed.warnings or []), *([] if len(list(llm_attempts or [])) < 2 else ["llm_retry_used"])],
         }
 
     analysis = parsed.data.get("analysis") if isinstance(parsed.data, dict) else None
@@ -870,7 +906,7 @@ def plot_auto_update_v1(
             "chapter_id": cid,
             "run_id": llm_result.run_id,
             "finish_reason": llm_result.finish_reason,
-            "warnings": parsed.warnings,
+            "warnings": [*list(parsed.warnings or []), *([] if len(list(llm_attempts or [])) < 2 else ["llm_retry_used"])],
             "applied": out,
         }
     except Exception as exc:

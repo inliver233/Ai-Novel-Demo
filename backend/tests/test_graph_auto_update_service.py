@@ -123,13 +123,16 @@ class TestGraphAutoUpdateService(unittest.TestCase):
         with patch("app.services.graph_auto_update_service.SessionLocal", self.SessionLocal), patch(
             "app.services.graph_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
         ), patch(
-            "app.services.graph_auto_update_service.call_llm_and_record",
-            return_value=RecordedLlmResult(
-                text=model_out,
-                finish_reason=None,
-                latency_ms=1,
-                dropped_params=[],
-                run_id="run-test",
+            "app.services.graph_auto_update_service.call_llm_and_record_with_retries",
+            return_value=(
+                RecordedLlmResult(
+                    text=model_out,
+                    finish_reason=None,
+                    latency_ms=1,
+                    dropped_params=[],
+                    run_id="run-test",
+                ),
+                [{"attempt": 1, "request_id": "rid-test", "run_id": "run-test"}],
             ),
         ):
             res = graph_auto_update_v1(
@@ -180,13 +183,16 @@ class TestGraphAutoUpdateService(unittest.TestCase):
         with patch("app.services.graph_auto_update_service.SessionLocal", self.SessionLocal), patch(
             "app.services.graph_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
         ), patch(
-            "app.services.graph_auto_update_service.call_llm_and_record",
-            return_value=RecordedLlmResult(
-                text=invalid,
-                finish_reason=None,
-                latency_ms=1,
-                dropped_params=[],
-                run_id="run-orig",
+            "app.services.graph_auto_update_service.call_llm_and_record_with_retries",
+            return_value=(
+                RecordedLlmResult(
+                    text=invalid,
+                    finish_reason=None,
+                    latency_ms=1,
+                    dropped_params=[],
+                    run_id="run-orig",
+                ),
+                [{"attempt": 1, "request_id": "rid-test", "run_id": "run-orig"}],
             ),
         ), patch(
             "app.services.graph_auto_update_service.repair_json_once",
@@ -232,13 +238,16 @@ class TestGraphAutoUpdateService(unittest.TestCase):
         with patch("app.services.graph_auto_update_service.SessionLocal", self.SessionLocal), patch(
             "app.services.graph_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
         ), patch(
-            "app.services.graph_auto_update_service.call_llm_and_record",
-            return_value=RecordedLlmResult(
-                text=model_out,
-                finish_reason=None,
-                latency_ms=1,
-                dropped_params=[],
-                run_id="run-test",
+            "app.services.graph_auto_update_service.call_llm_and_record_with_retries",
+            return_value=(
+                RecordedLlmResult(
+                    text=model_out,
+                    finish_reason=None,
+                    latency_ms=1,
+                    dropped_params=[],
+                    run_id="run-test",
+                ),
+                [{"attempt": 1, "request_id": "rid-test", "run_id": "run-test"}],
             ),
         ):
             res = graph_auto_update_v1(
@@ -300,13 +309,16 @@ class TestGraphAutoUpdateService(unittest.TestCase):
         with patch("app.services.graph_auto_update_service.SessionLocal", self.SessionLocal), patch(
             "app.services.graph_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
         ), patch(
-            "app.services.graph_auto_update_service.call_llm_and_record",
-            return_value=RecordedLlmResult(
-                text=model_out,
-                finish_reason=None,
-                latency_ms=1,
-                dropped_params=[],
-                run_id="run-test",
+            "app.services.graph_auto_update_service.call_llm_and_record_with_retries",
+            return_value=(
+                RecordedLlmResult(
+                    text=model_out,
+                    finish_reason=None,
+                    latency_ms=1,
+                    dropped_params=[],
+                    run_id="run-test",
+                ),
+                [{"attempt": 1, "request_id": "rid-test", "run_id": "run-test"}],
             ),
         ):
             res = graph_auto_update_v1(
@@ -371,13 +383,16 @@ class TestGraphAutoUpdateService(unittest.TestCase):
         with patch("app.services.graph_auto_update_service.SessionLocal", self.SessionLocal), patch(
             "app.services.graph_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
         ), patch(
-            "app.services.graph_auto_update_service.call_llm_and_record",
-            return_value=RecordedLlmResult(
-                text=model_out,
-                finish_reason=None,
-                latency_ms=1,
-                dropped_params=[],
-                run_id="run-test",
+            "app.services.graph_auto_update_service.call_llm_and_record_with_retries",
+            return_value=(
+                RecordedLlmResult(
+                    text=model_out,
+                    finish_reason=None,
+                    latency_ms=1,
+                    dropped_params=[],
+                    run_id="run-test",
+                ),
+                [{"attempt": 1, "request_id": "rid-test", "run_id": "run-test"}],
             ),
         ):
             res = graph_auto_update_v1(

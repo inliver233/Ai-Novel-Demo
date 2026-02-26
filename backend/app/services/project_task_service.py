@@ -1144,6 +1144,8 @@ def run_project_task(*, task_id: str) -> str:
                 error_message2 = str(res.get("error_message") or "").strip() or None
                 parse_error = res.get("parse_error") if isinstance(res.get("parse_error"), dict) else None
                 warnings = res.get("warnings") if isinstance(res.get("warnings"), list) else None
+                attempts = res.get("attempts") if isinstance(res.get("attempts"), list) else None
+                error_obj = res.get("error") if isinstance(res.get("error"), dict) else None
 
                 how_to_fix: list[str] = []
                 if reason == "chapter_not_done":
@@ -1168,6 +1170,10 @@ def run_project_task(*, task_id: str) -> str:
                     "parse_error": parse_error,
                     "warnings": warnings,
                 }
+                if attempts is not None:
+                    details["attempts"] = attempts
+                if error_obj is not None:
+                    details["error"] = error_obj
                 if how_to_fix:
                     details["how_to_fix"] = how_to_fix
 
@@ -1356,6 +1362,8 @@ def run_project_task(*, task_id: str) -> str:
                 error_message2 = str(res.get("error_message") or "").strip() or None
                 parse_error = res.get("parse_error") if isinstance(res.get("parse_error"), dict) else None
                 warnings = res.get("warnings") if isinstance(res.get("warnings"), list) else None
+                attempts = res.get("attempts") if isinstance(res.get("attempts"), list) else None
+                error_obj = res.get("error") if isinstance(res.get("error"), dict) else None
 
                 how_to_fix: list[str] = []
                 if reason == "prepare_failed":
@@ -1385,6 +1393,10 @@ def run_project_task(*, task_id: str) -> str:
                     "parse_error": parse_error,
                     "warnings": warnings,
                 }
+                if attempts is not None:
+                    details["attempts"] = attempts
+                if error_obj is not None:
+                    details["error"] = error_obj
                 if how_to_fix:
                     details["how_to_fix"] = how_to_fix
 

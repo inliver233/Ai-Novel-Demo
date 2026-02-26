@@ -93,13 +93,16 @@ class TestPlotAutoUpdateService(unittest.TestCase):
         ), patch(
             "app.services.plot_analysis_service.resolve_api_key_for_project", return_value="masked_api_key"
         ), patch(
-            "app.services.plot_analysis_service.call_llm_and_record",
-            return_value=RecordedLlmResult(
-                text=model_out,
-                finish_reason=None,
-                latency_ms=1,
-                dropped_params=[],
-                run_id="run-test",
+            "app.services.plot_analysis_service.call_llm_and_record_with_retries",
+            return_value=(
+                RecordedLlmResult(
+                    text=model_out,
+                    finish_reason=None,
+                    latency_ms=1,
+                    dropped_params=[],
+                    run_id="run-test",
+                ),
+                [{"attempt": 1, "request_id": "rid-test", "run_id": "run-test"}],
             ),
         ), patch("app.services.plot_analysis_service.schedule_vector_rebuild_task", return_value=None), patch(
             "app.services.plot_analysis_service.schedule_search_rebuild_task", return_value=None
@@ -122,4 +125,3 @@ class TestPlotAutoUpdateService(unittest.TestCase):
             self.assertIn("hook", types)
             self.assertIn("plot_point", types)
             self.assertIn("foreshadow", types)
-

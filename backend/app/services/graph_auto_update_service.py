@@ -24,9 +24,17 @@ from app.models.structured_memory import (
     RELATION_TYPE_HINTS_V1,
 )
 from app.schemas.memory_update import MAX_OPS_V1, MemoryUpdateV1Request
-from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.generation_service import prepare_llm_call
 from app.services.json_repair_service import repair_json_once
 from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_retry import (
+    LlmRetryExhausted,
+    call_llm_and_record_with_retries,
+    task_llm_max_attempts,
+    task_llm_retry_base_seconds,
+    task_llm_retry_jitter,
+    task_llm_retry_max_seconds,
+)
 from app.services.memory_update_service import propose_chapter_memory_change_set
 from app.services.output_contracts import contract_for_task
 
@@ -293,9 +301,26 @@ def graph_auto_update_v1(
     if not prompt_system.strip() and not prompt_user.strip():
         return {"ok": False, "project_id": pid, "reason": "prompt_empty"}
 
+    llm_attempts: list[dict[str, Any]] = []
     try:
-        llm_call2 = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 2048})
-        recorded = call_llm_and_record(
+        base_max_tokens = llm_call.params.get("max_tokens")
+
+        def _clamp_max_tokens(limit: int) -> int:
+            if isinstance(base_max_tokens, int) and base_max_tokens > 0:
+                return min(int(limit), int(base_max_tokens))
+            return int(limit)
+
+        retry_system = (
+            prompt_system
+            + "\n"
+            + "【重试模式】上一轮调用失败/超时。请输出更短、更保守的图谱更新提议：\n"
+            + "- 只输出裸 JSON（不要 Markdown，不要代码块）\n"
+            + "- ops 数量 <= 32；只抽取最确定的实体/关系/证据，不要穷举\n"
+            + "- 严格遵守 memory_update_v1 字段名（target_table/target_id/after/evidence_ids 等）\n"
+        )
+
+        max_attempts = task_llm_max_attempts(default=3)
+        recorded, llm_attempts = call_llm_and_record_with_retries(
             logger=logger,
             request_id=req,
             actor_user_id=actor,
@@ -305,29 +330,55 @@ def graph_auto_update_v1(
             api_key=str(resolved_api_key),
             prompt_system=prompt_system,
             prompt_user=prompt_user,
-            llm_call=llm_call2,
+            llm_call=llm_call,
             run_params_extra_json={
                 "task": GRAPH_AUTO_UPDATE_KIND,
                 "schema_version": "memory_update_v1",
                 "chapter_id": cid,
             },
+            max_attempts=max_attempts,
+            retry_prompt_system=retry_system,
+            llm_call_overrides_by_attempt={
+                1: {"temperature": 0.2, "max_tokens": _clamp_max_tokens(2048)},
+                2: {"temperature": 0.1, "max_tokens": _clamp_max_tokens(1024)},
+                3: {"temperature": 0.0, "max_tokens": _clamp_max_tokens(512)},
+            },
+            backoff_base_seconds=task_llm_retry_base_seconds(),
+            backoff_max_seconds=task_llm_retry_max_seconds(),
+            jitter=task_llm_retry_jitter(),
         )
-    except Exception as exc:
+    except LlmRetryExhausted as exc:
         log_event(
             logger,
             "warning",
             event="GRAPH_AUTO_UPDATE_LLM_ERROR",
             project_id=pid,
             chapter_id=cid,
-            error_type=type(exc).__name__,
-            **exception_log_fields(exc),
+            run_id=exc.run_id,
+            error_type=str(exc.error_type),
+            **exception_log_fields(exc.last_exception),
         )
-        return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "llm_call_failed", "error_type": type(exc).__name__}
+        return {
+            "ok": False,
+            "project_id": pid,
+            "chapter_id": cid,
+            "reason": "llm_call_failed",
+            "run_id": exc.run_id,
+            "error_type": exc.error_type,
+            "error_message": exc.error_message[:400],
+            "attempts": list(exc.attempts or []),
+            "error": {
+                "code": exc.error_code or "LLM_CALL_FAILED",
+                "details": {"attempts": list(exc.attempts or [])},
+            },
+        }
 
     contract = contract_for_task("memory_update")
     parsed = contract.parse(recorded.text, finish_reason=recorded.finish_reason)
     repair_run_id: str | None = None
     warnings = list(parsed.warnings or [])
+    if len(list(llm_attempts or [])) >= 2:
+        warnings.append("llm_retry_used")
     if parsed.parse_error is not None:
         repair_schema = (
             "{\n"
@@ -354,7 +405,7 @@ def graph_auto_update_v1(
             project_id=pid,
             chapter_id=cid,
             api_key=str(resolved_api_key),
-            llm_call=llm_call2,
+            llm_call=llm_call,
             raw_output=recorded.text,
             schema=repair_schema,
             expected_root="object",
