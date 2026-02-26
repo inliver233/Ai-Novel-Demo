@@ -463,6 +463,19 @@ def graph_auto_update_v1(
             }
 
     ops = list(parsed.data.get("ops") or [])
+    if not ops:
+        warnings.append("graph_auto_update_noop")
+        return {
+            "ok": True,
+            "project_id": pid,
+            "chapter_id": cid,
+            "run_id": recorded.run_id,
+            "repair_run_id": repair_run_id,
+            "finish_reason": recorded.finish_reason,
+            "warnings": warnings,
+            "no_op": True,
+        }
+
     warnings_extra: list[str] = []
     allowed_tables = {"entities", "relations", "events", "evidence"}
     for op in ops:

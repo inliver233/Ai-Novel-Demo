@@ -218,6 +218,39 @@ class TestGraphAutoUpdateService(unittest.TestCase):
         self.assertEqual(res.get("run_id"), "run-orig")
         self.assertEqual(res.get("repair_run_id"), "run-repair")
 
+    def test_graph_auto_update_v1_ops_empty_is_noop(self) -> None:
+        model_out = _compact_json_dumps({"title": "Graph Auto Update", "summary_md": "auto", "ops": []})
+
+        with patch("app.services.graph_auto_update_service.SessionLocal", self.SessionLocal), patch(
+            "app.services.graph_auto_update_service.resolve_api_key_for_project", return_value="masked_api_key"
+        ), patch(
+            "app.services.graph_auto_update_service.call_llm_and_record_with_retries",
+            return_value=(
+                RecordedLlmResult(
+                    text=model_out,
+                    finish_reason=None,
+                    latency_ms=1,
+                    dropped_params=[],
+                    run_id="run-test-noop",
+                ),
+                [{"attempt": 1, "request_id": "rid-test", "run_id": "run-test-noop"}],
+            ),
+        ), patch("app.services.graph_auto_update_service.propose_chapter_memory_change_set") as mock_propose:
+            res = graph_auto_update_v1(
+                project_id="p1",
+                actor_user_id="u1",
+                request_id="rid-test",
+                chapter_id="c1",
+                change_set_idempotency_key="graphupd-12345678",
+                focus=None,
+            )
+
+        self.assertTrue(bool(res.get("ok")))
+        self.assertTrue(bool(res.get("no_op")))
+        self.assertEqual(res.get("run_id"), "run-test-noop")
+        self.assertIn("graph_auto_update_noop", res.get("warnings") or [])
+        mock_propose.assert_not_called()
+
     def test_graph_auto_update_v1_rejects_evidence_source_id_mismatch(self) -> None:
         model_out = _compact_json_dumps(
             {

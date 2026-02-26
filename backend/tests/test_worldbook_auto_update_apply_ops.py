@@ -221,3 +221,22 @@ class TestWorldbookAutoUpdateApplyOps(unittest.TestCase):
             titles = db.execute(select(WorldBookEntry.title)).scalars().all()
             self.assertEqual(sorted(titles), ["A"])
 
+    def test_noop_ops_does_not_schedule_rebuild_or_mark_dirty(self) -> None:
+        SessionLocal = self._make_db()
+
+        with SessionLocal() as db:
+            with patch("app.services.worldbook_auto_update_service.schedule_vector_rebuild_task") as mock_vector, patch(
+                "app.services.worldbook_auto_update_service.schedule_search_rebuild_task"
+            ) as mock_search:
+                out = apply_worldbook_auto_update_ops(db=db, project_id="project-1", ops=[])
+
+            self.assertTrue(out.get("ok"))
+            self.assertTrue(out.get("no_op"))
+            self.assertEqual(out.get("created"), 0)
+            self.assertEqual(out.get("updated"), 0)
+            self.assertEqual(out.get("deleted"), 0)
+            mock_vector.assert_not_called()
+            mock_search.assert_not_called()
+
+            settings = db.get(ProjectSettings, "project-1")
+            self.assertIsNone(settings)

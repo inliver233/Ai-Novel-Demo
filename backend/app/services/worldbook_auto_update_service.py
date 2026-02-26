@@ -528,6 +528,22 @@ def apply_worldbook_auto_update_ops(*, db: Session, project_id: str, ops: list[d
 
         skipped.append({"index": idx, "reason": "unsupported_op"})
 
+    changed = bool(created_ids or updated_ids or deleted_ids)
+    if not changed:
+        return {
+            "ok": True,
+            "project_id": pid,
+            "created_ids": created_ids,
+            "updated_ids": updated_ids,
+            "deleted_ids": deleted_ids,
+            "created": len(created_ids),
+            "updated": len(updated_ids),
+            "deleted": len(deleted_ids),
+            "skipped": len(skipped),
+            "skipped_items": skipped,
+            "no_op": True,
+        }
+
     settings_row = db.get(ProjectSettings, pid)
     if settings_row is None:
         settings_row = ProjectSettings(project_id=pid)
@@ -550,6 +566,7 @@ def apply_worldbook_auto_update_ops(*, db: Session, project_id: str, ops: list[d
         "deleted": len(deleted_ids),
         "skipped": len(skipped),
         "skipped_items": skipped,
+        "no_op": False,
     }
 
 
