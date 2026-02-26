@@ -171,15 +171,26 @@ class OutputContract:
             summary_out = summary_md.strip() if isinstance(summary_md, str) else ""
 
             ops_raw = value.get("ops")
-            if not isinstance(ops_raw, list) or not ops_raw:
+            if ops_raw is None:
+                warnings.append("ops_missing")
+                ops_raw = []
+            if not isinstance(ops_raw, list):
                 data = {"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text}
                 if raw_json:
                     data["raw_json"] = raw_json
                 return OutputParseResult(
                     data=data,
                     warnings=warnings,
-                    parse_error={"code": "MEMORY_UPDATE_PARSE_ERROR", "message": "ops 为空或缺失"},
+                    parse_error={"code": "MEMORY_UPDATE_PARSE_ERROR", "message": "ops 必须是数组"},
                 )
+            if not ops_raw:
+                warnings.append("ops_empty")
+                data = {"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text}
+                if raw_json:
+                    data["raw_json"] = raw_json
+                if finish_reason == "length":
+                    warnings.append("output_truncated")
+                return OutputParseResult(data=data, warnings=warnings, parse_error=None)
 
             ops_out: list[dict[str, Any]] = []
             for idx, item in enumerate(ops_raw):
@@ -251,15 +262,26 @@ class OutputContract:
             summary_out = summary_md.strip() if isinstance(summary_md, str) else ""
 
             ops_raw = value.get("ops")
-            if not isinstance(ops_raw, list) or not ops_raw:
+            if ops_raw is None:
+                warnings.append("ops_missing")
+                ops_raw = []
+            if not isinstance(ops_raw, list):
                 data = {"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text}
                 if raw_json:
                     data["raw_json"] = raw_json
                 return OutputParseResult(
                     data=data,
                     warnings=warnings,
-                    parse_error={"code": "WORLDBOOK_AUTO_UPDATE_PARSE_ERROR", "message": "ops 为空或缺失"},
+                    parse_error={"code": "WORLDBOOK_AUTO_UPDATE_PARSE_ERROR", "message": "ops 必须是数组"},
                 )
+            if not ops_raw:
+                warnings.append("ops_empty")
+                data = {"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text}
+                if raw_json:
+                    data["raw_json"] = raw_json
+                if finish_reason == "length":
+                    warnings.append("output_truncated")
+                return OutputParseResult(data=data, warnings=warnings, parse_error=None)
 
             ops_out: list[dict[str, Any]] = []
             for idx, item in enumerate(ops_raw):

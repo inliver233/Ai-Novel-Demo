@@ -65,9 +65,16 @@ class TestWorldbookAutoUpdateContract(unittest.TestCase):
     def test_parse_error_when_ops_empty(self) -> None:
         contract = contract_for_task("worldbook_auto_update")
         parsed = contract.parse('{"schema_version":"worldbook_auto_update_v1","ops":[]}')
-        self.assertIsNotNone(parsed.parse_error)
-        assert parsed.parse_error is not None
-        self.assertIn("ops", str(parsed.parse_error.get("message")))
+        self.assertIsNone(parsed.parse_error)
+        self.assertIn("ops_empty", parsed.warnings)
+        self.assertEqual(len(parsed.data.get("ops") or []), 0)
+
+    def test_ops_missing_is_allowed_as_noop(self) -> None:
+        contract = contract_for_task("worldbook_auto_update")
+        parsed = contract.parse('{"schema_version":"worldbook_auto_update_v1","title":"t"}')
+        self.assertIsNone(parsed.parse_error)
+        self.assertIn("ops_missing", parsed.warnings)
+        self.assertEqual(len(parsed.data.get("ops") or []), 0)
 
     def test_finish_reason_length_adds_warning(self) -> None:
         contract = contract_for_task("worldbook_auto_update")
@@ -77,4 +84,3 @@ class TestWorldbookAutoUpdateContract(unittest.TestCase):
         )
         self.assertIsNone(parsed.parse_error)
         self.assertIn("output_truncated", parsed.warnings)
-
