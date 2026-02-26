@@ -106,6 +106,7 @@ docker compose logs -f rq_worker
 - OpenAI Responses API：选择 provider `openai_responses`（或 `openai_responses_compatible`），结构化输出可通过 `extra.text` / `extra.text_format` 配置
 - Claude（Anthropic）思考预算：可在 `extra.thinking` 配置；如需 Beta 特性可在 `extra.anthropic_beta` 传 header 值
 - Gemini 思考预算：可在 `extra.thinkingConfig` 配置（透传到 `generationConfig.thinkingConfig`）
+- 如访问上游需要代理：默认后端 `httpx` 不读取系统代理环境变量（避免意外走代理）；可设置 `LLM_HTTP_TRUST_ENV=true` 启用 `HTTP_PROXY/HTTPS_PROXY`，或设置 `LLM_HTTP_PROXY=http://127.0.0.1:PORT` 显式指定代理。
 
 ## 长期记忆（LMEM）/记忆注入（memory injection）
 
