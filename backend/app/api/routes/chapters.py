@@ -25,7 +25,7 @@ from app.core.errors import AppError, ok_payload
 from app.core.logging import exception_log_fields, log_event
 from app.db.session import SessionLocal
 from app.db.utils import new_id
-from app.llm.client import call_llm_stream_messages
+from app.llm.client import call_llm_messages, call_llm_stream_messages
 from app.llm.messages import ChatMessage, coalesce_system, flatten_messages
 from app.llm.redaction import redact_text
 from app.models.chapter import Chapter
@@ -47,6 +47,14 @@ from app.services.generation_pipeline import (
     run_post_edit_step,
 )
 from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_retry import (
+    compute_backoff_seconds,
+    is_retryable_llm_error,
+    task_llm_max_attempts,
+    task_llm_retry_base_seconds,
+    task_llm_retry_jitter,
+    task_llm_retry_max_seconds,
+)
 from app.services.length_control import estimate_max_tokens
 from app.services.mcp.service import McpResearchConfig as McpResearchConfigSvc
 from app.services.mcp.service import McpToolCall as McpToolCallSvc
@@ -1746,47 +1754,172 @@ def generate_chapter_stream(
             yield sse_progress(message="调用模型...", progress=10)
             generation_started = True
 
-            stream_iter, state = call_llm_stream_messages(
-                provider=llm_call.provider,
-                base_url=llm_call.base_url,
-                model=llm_call.model,
-                api_key=str(resolved_api_key),
-                messages=prompt_messages,
-                params=llm_call.params,
-                timeout_seconds=llm_call.timeout_seconds,
-                extra=llm_call.extra,
-            )
-
-            last_progress = 10
-            last_progress_ts = 0.0
-            chunk_count = 0
             target = body.target_word_count or 0
-            try:
-                for delta in stream_iter:
-                    raw_output += delta
-                    yield sse_chunk(delta)
-                    chunk_count += 1
-                    if chunk_count % 12 == 0:
-                        yield sse_heartbeat()
-                    now = time.monotonic()
-                    if now - last_progress_ts >= 0.8:
-                        if target > 0:
-                            next_progress = 10 + int(min(1.0, len(raw_output) / float(target)) * 80)
-                        else:
-                            next_progress = 10 + int(min(1.0, len(raw_output) / 12000.0) * 80)
-                        next_progress = max(last_progress, min(90, next_progress))
-                        if next_progress != last_progress:
-                            last_progress = next_progress
-                            yield sse_progress(message="生成中...", progress=next_progress, char_count=len(raw_output))
-                        last_progress_ts = now
-            finally:
-                close = getattr(stream_iter, "close", None)
-                if callable(close):
-                    close()
 
-            finish_reason = state.finish_reason
-            dropped_params = state.dropped_params
-            latency_ms = state.latency_ms
+            def _chunk_text(text: str, *, chunk_size: int = 2048) -> list[str]:
+                raw = str(text or "")
+                if not raw:
+                    return []
+                return [raw[i : i + chunk_size] for i in range(0, len(raw), chunk_size)]
+
+            max_attempts = task_llm_max_attempts(default=2)
+            attempts: list[dict[str, object]] = []
+            used_stream_fallback = False
+            in_non_stream_fallback = False
+
+            for attempt in range(1, max_attempts + 1):
+                raw_output = ""
+                last_progress = 10
+                last_progress_ts = 0.0
+                chunk_count = 0
+
+                try:
+                    stream_iter, state = call_llm_stream_messages(
+                        provider=llm_call.provider,
+                        base_url=llm_call.base_url,
+                        model=llm_call.model,
+                        api_key=str(resolved_api_key),
+                        messages=prompt_messages,
+                        params=llm_call.params,
+                        timeout_seconds=llm_call.timeout_seconds,
+                        extra=llm_call.extra,
+                    )
+
+                    try:
+                        for delta in stream_iter:
+                            raw_output += delta
+                            yield sse_chunk(delta)
+                            chunk_count += 1
+                            if chunk_count % 12 == 0:
+                                yield sse_heartbeat()
+                            now = time.monotonic()
+                            if now - last_progress_ts >= 0.8:
+                                if target > 0:
+                                    next_progress = 10 + int(min(1.0, len(raw_output) / float(target)) * 80)
+                                else:
+                                    next_progress = 10 + int(min(1.0, len(raw_output) / 12000.0) * 80)
+                                next_progress = max(last_progress, min(90, next_progress))
+                                if next_progress != last_progress:
+                                    last_progress = next_progress
+                                    yield sse_progress(message="生成中...", progress=next_progress, char_count=len(raw_output))
+                                last_progress_ts = now
+                    finally:
+                        close = getattr(stream_iter, "close", None)
+                        if callable(close):
+                            close()
+
+                    finish_reason = state.finish_reason
+                    dropped_params = state.dropped_params
+                    latency_ms = state.latency_ms
+
+                    # Some OpenAI-compatible gateways do not support SSE and return a non-stream response.
+                    # If the upstream sends no stream deltas, fall back to a non-stream call and then emit chunks.
+                    if chunk_count == 0 and not raw_output.strip():
+                        used_stream_fallback = True
+                        in_non_stream_fallback = True
+                        yield sse_progress(message="未收到流式分片，回退非流式...", progress=12)
+
+                        non_stream_attempts = task_llm_max_attempts(default=2)
+                        for attempt2 in range(1, non_stream_attempts + 1):
+                            try:
+                                res2 = call_llm_messages(
+                                    provider=llm_call.provider,
+                                    base_url=llm_call.base_url,
+                                    model=llm_call.model,
+                                    api_key=str(resolved_api_key),
+                                    messages=prompt_messages,
+                                    params=llm_call.params,
+                                    timeout_seconds=llm_call.timeout_seconds,
+                                    extra=llm_call.extra,
+                                )
+                                raw_output = res2.text or ""
+                                finish_reason = res2.finish_reason
+                                dropped_params = res2.dropped_params
+                                latency_ms = res2.latency_ms
+
+                                parts = _chunk_text(raw_output)
+                                for i, part in enumerate(parts, start=1):
+                                    yield sse_chunk(part)
+                                    if i % 12 == 0:
+                                        yield sse_heartbeat()
+                                break
+                            except AppError as exc2:
+                                retryable2 = is_retryable_llm_error(exc2)
+                                attempts.append(
+                                    {
+                                        "attempt": int(attempt2),
+                                        "mode": "non_stream",
+                                        "error_code": str(exc2.code),
+                                        "status_code": int(exc2.status_code),
+                                        "retryable": bool(retryable2),
+                                    }
+                                )
+                                if attempt2 >= non_stream_attempts or not retryable2:
+                                    if attempts:
+                                        exc2.details = {
+                                            **(exc2.details or {}),
+                                            "attempts": attempts,
+                                            "attempt_max": int(non_stream_attempts),
+                                        }
+                                    raise
+
+                                delay2 = compute_backoff_seconds(
+                                    attempt=attempt2 + 1,
+                                    base_seconds=task_llm_retry_base_seconds(),
+                                    max_seconds=task_llm_retry_max_seconds(),
+                                    jitter=task_llm_retry_jitter(),
+                                    error_code=str(exc2.code),
+                                )
+                                attempts[-1]["sleep_seconds"] = float(delay2)
+                                yield sse_progress(
+                                    message=f"非流式重试中（{attempt2 + 1}/{non_stream_attempts}）...",
+                                    progress=12,
+                                )
+                                if delay2 > 0:
+                                    time.sleep(float(delay2))
+                        in_non_stream_fallback = False
+                        break
+
+                    break
+                except AppError as exc:
+                    if in_non_stream_fallback:
+                        if attempts:
+                            exc.details = {
+                                **(exc.details or {}),
+                                "attempts": attempts,
+                                "attempt_max": int(non_stream_attempts),
+                            }
+                        raise
+
+                    retryable = is_retryable_llm_error(exc)
+                    attempts.append(
+                        {
+                            "attempt": int(attempt),
+                            "mode": "stream",
+                            "error_code": str(exc.code),
+                            "status_code": int(exc.status_code),
+                            "retryable": bool(retryable),
+                        }
+                    )
+
+                    # If we already streamed output, we cannot safely retry without duplicating content.
+                    if chunk_count > 0 or attempt >= max_attempts or not retryable:
+                        if attempts:
+                            exc.details = {**(exc.details or {}), "attempts": attempts, "attempt_max": int(max_attempts)}
+                        raise
+
+                    delay = compute_backoff_seconds(
+                        attempt=attempt + 1,
+                        base_seconds=task_llm_retry_base_seconds(),
+                        max_seconds=task_llm_retry_max_seconds(),
+                        jitter=task_llm_retry_jitter(),
+                        error_code=str(exc.code),
+                    )
+                    attempts[-1]["sleep_seconds"] = float(delay)
+                    yield sse_progress(message=f"上游波动，重试中（{attempt + 1}/{max_attempts}）...", progress=10)
+                    if delay > 0:
+                        time.sleep(float(delay))
+                    continue
 
             log_event(
                 logger,
@@ -1802,6 +1935,18 @@ def generate_chapter_stream(
                     "stream": True,
                 },
             )
+
+            if used_stream_fallback or attempts:
+                run_params_extra_json = run_params_extra_json or {}
+                if used_stream_fallback:
+                    run_params_extra_json["stream_fallback"] = {"used": True}
+                if attempts:
+                    run_params_extra_json["llm_retry"] = {"attempts": attempts}
+                run_params_json = build_run_params_json(
+                    params_json=llm_call.params_json,
+                    memory_retrieval_log_json=None,
+                    extra_json=run_params_extra_json,
+                )
             generation_run_id = write_generation_run(
                 request_id=request_id,
                 actor_user_id=user_id,
