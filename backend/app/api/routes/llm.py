@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, Header, Request
 
 from app.api.deps import UserIdDep, require_owned_llm_profile, require_project_editor
@@ -8,6 +10,14 @@ from app.db.session import SessionLocal
 from app.llm.client import call_llm
 from app.schemas.llm_test import LLMTestRequest
 from app.services.llm_key_resolver import normalize_header_api_key, resolve_api_key
+from app.services.llm_retry import (
+    compute_backoff_seconds,
+    is_retryable_llm_error,
+    task_llm_max_attempts,
+    task_llm_retry_base_seconds,
+    task_llm_retry_jitter,
+    task_llm_retry_max_seconds,
+)
 
 router = APIRouter()
 
@@ -55,17 +65,51 @@ def llm_test(
     params.setdefault("max_tokens", 64)
     params.setdefault("temperature", 0)
 
-    result = call_llm(
-        provider=body.provider,
-        base_url=str(base_url),
-        model=body.model,
-        api_key=str(resolved_api_key),
-        system="You are a connection test.",
-        user="Reply with 'pong' only.",
-        params=params,
-        timeout_seconds=int(body.timeout_seconds or 90),
-        extra=dict(body.extra or {}),
-    )
+    max_attempts = task_llm_max_attempts(default=2)
+    attempts: list[dict] = []
+    result = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            result = call_llm(
+                provider=body.provider,
+                base_url=str(base_url),
+                model=body.model,
+                api_key=str(resolved_api_key),
+                system="You are a connection test.",
+                user="Reply with 'pong' only.",
+                params=params,
+                timeout_seconds=int(body.timeout_seconds or 90),
+                extra=dict(body.extra or {}),
+            )
+            break
+        except AppError as exc:
+            retryable = is_retryable_llm_error(exc)
+            attempts.append(
+                {
+                    "attempt": int(attempt),
+                    "error_code": str(exc.code),
+                    "status_code": int(exc.status_code),
+                    "retryable": bool(retryable),
+                }
+            )
+            if attempt >= max_attempts or not retryable:
+                if attempts:
+                    exc.details = {**(exc.details or {}), "attempts": attempts, "attempt_max": int(max_attempts)}
+                raise
+
+            delay = compute_backoff_seconds(
+                attempt=attempt + 1,
+                base_seconds=task_llm_retry_base_seconds(),
+                max_seconds=task_llm_retry_max_seconds(),
+                jitter=task_llm_retry_jitter(),
+                error_code=str(exc.code),
+            )
+            attempts[-1]["sleep_seconds"] = float(delay)
+            if delay > 0:
+                time.sleep(float(delay))
+
+    if result is None:
+        raise AppError(code="LLM_UPSTREAM_ERROR", message="模型服务异常，请稍后重试", status_code=502)
 
     text_preview = (result.text or "").strip()
     if len(text_preview) > 200:
