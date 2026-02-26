@@ -6,7 +6,15 @@ from typing import Any, Literal
 from app.core.errors import AppError
 from app.core.logging import redact_secrets_text
 from app.db.utils import new_id
-from app.services.generation_service import PreparedLlmCall, call_llm_and_record, with_param_overrides
+from app.services.generation_service import PreparedLlmCall, with_param_overrides
+from app.services.llm_retry import (
+    LlmRetryExhausted,
+    call_llm_and_record_with_retries,
+    task_llm_max_attempts,
+    task_llm_retry_base_seconds,
+    task_llm_retry_jitter,
+    task_llm_retry_max_seconds,
+)
 from app.services.output_parsers import extract_json_value, likely_truncated_json
 
 logger = logging.getLogger("ainovel")
@@ -81,7 +89,8 @@ def repair_json_once(
 
     try:
         llm_call2 = with_param_overrides(llm_call, {"temperature": 0, "max_tokens": 2048})
-        recorded = call_llm_and_record(
+        max_attempts = task_llm_max_attempts(default=3)
+        recorded, _attempts = call_llm_and_record_with_retries(
             logger=logger,
             request_id=rid,
             actor_user_id=actor,
@@ -92,23 +101,28 @@ def repair_json_once(
             prompt_system=system,
             prompt_user=user,
             llm_call=llm_call2,
+            max_attempts=max_attempts,
+            backoff_base_seconds=task_llm_retry_base_seconds(),
+            backoff_max_seconds=task_llm_retry_max_seconds(),
+            jitter=task_llm_retry_jitter(),
             run_params_extra_json={
                 "task": "json_repair",
                 "origin_task": (str(origin_task or "").strip() or None),
                 "origin_run_id": (str(origin_run_id or "").strip() or None),
             },
         )
-    except Exception as exc:
-        run_id = _run_id_from_exc(exc)
-        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
-        if not safe_message:
-            safe_message = type(exc).__name__
+    except LlmRetryExhausted as exc:
         return {
             "ok": False,
             "reason": "llm_call_failed",
-            "repair_run_id": run_id,
-            "error_type": type(exc).__name__,
-            "error_message": safe_message[:400],
+            "repair_run_id": exc.run_id,
+            "error_type": exc.error_type,
+            "error_message": exc.error_message[:400],
+            "attempts": list(exc.attempts or []),
+            "error": {
+                "code": exc.error_code or "LLM_CALL_FAILED",
+                "details": {"attempts": list(exc.attempts or [])},
+            },
         }
 
     value, raw_json = extract_json_value(recorded.text)
@@ -159,4 +173,3 @@ def repair_json_once(
         "value": value,
         "raw_json": raw_json,
     }
-

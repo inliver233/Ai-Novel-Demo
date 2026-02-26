@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from app.services.generation_service import PreparedLlmCall, RecordedLlmResult
 from app.services.json_repair_service import repair_json_once
+from app.services.llm_retry import LlmRetryExhausted
 
 
 class TestJsonRepairService(unittest.TestCase):
@@ -24,7 +25,10 @@ class TestJsonRepairService(unittest.TestCase):
             run_id="run-repair",
         )
 
-        with patch("app.services.json_repair_service.call_llm_and_record", return_value=recorded):
+        with patch(
+            "app.services.json_repair_service.call_llm_and_record_with_retries",
+            return_value=(recorded, [{"attempt": 1, "request_id": "rid", "run_id": "run-repair"}]),
+        ):
             res = repair_json_once(
                 request_id="rid",
                 actor_user_id="u1",
@@ -61,7 +65,10 @@ class TestJsonRepairService(unittest.TestCase):
             run_id="run-repair",
         )
 
-        with patch("app.services.json_repair_service.call_llm_and_record", return_value=recorded):
+        with patch(
+            "app.services.json_repair_service.call_llm_and_record_with_retries",
+            return_value=(recorded, [{"attempt": 1, "request_id": "rid", "run_id": "run-repair"}]),
+        ):
             res = repair_json_once(
                 request_id="rid",
                 actor_user_id="u1",
@@ -90,10 +97,20 @@ class TestJsonRepairService(unittest.TestCase):
             extra={},
         )
 
-        exc = ValueError("boom")
-        setattr(exc, "run_id", "run-failed")
+        last_exc = TimeoutError("boom")
 
-        with patch("app.services.json_repair_service.call_llm_and_record", side_effect=exc):
+        with patch(
+            "app.services.json_repair_service.call_llm_and_record_with_retries",
+            side_effect=LlmRetryExhausted(
+                error_type="TimeoutError",
+                error_message="boom",
+                error_code="LLM_TIMEOUT",
+                status_code=408,
+                run_id="run-failed",
+                attempts=[{"attempt": 1, "request_id": "rid", "run_id": "run-failed", "error_code": "LLM_TIMEOUT"}],
+                last_exception=last_exc,
+            ),
+        ):
             res = repair_json_once(
                 request_id="rid",
                 actor_user_id="u1",
@@ -113,4 +130,3 @@ class TestJsonRepairService(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
