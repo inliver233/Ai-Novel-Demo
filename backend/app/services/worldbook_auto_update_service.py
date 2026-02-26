@@ -24,9 +24,17 @@ from app.schemas.worldbook_auto_update import (
     WorldbookEntryCreateV1,
     WorldbookEntryPatchV1,
 )
-from app.services.generation_service import call_llm_and_record, prepare_llm_call
 from app.services.json_repair_service import repair_json_once
+from app.services.generation_service import prepare_llm_call
 from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_retry import (
+    LlmRetryExhausted,
+    call_llm_and_record_with_retries,
+    task_llm_max_attempts,
+    task_llm_retry_base_seconds,
+    task_llm_retry_jitter,
+    task_llm_retry_max_seconds,
+)
 from app.services.output_contracts import contract_for_task
 from app.services.search_index_service import schedule_search_rebuild_task
 from app.services.vector_rag_service import schedule_vector_rebuild_task
@@ -661,9 +669,27 @@ def worldbook_auto_update_v1(
         }
 
     llm_call = prepare_llm_call(preset)
+    llm_attempts: list[dict[str, Any]] = []
 
     try:
-        recorded = call_llm_and_record(
+        base_max_tokens = llm_call.params.get("max_tokens")
+
+        def _clamp_max_tokens(limit: int) -> int:
+            if isinstance(base_max_tokens, int) and base_max_tokens > 0:
+                return min(int(limit), int(base_max_tokens))
+            return int(limit)
+
+        retry_system = (
+            system
+            + "\n"
+            + "【重试模式】上一轮调用失败/超时。请输出更短、更保守的更新提议：\n"
+            + "- 只输出裸 JSON（不要 Markdown，不要代码块）\n"
+            + "- ops 数量 <= 8；只处理最确定的条目，不要穷举\n"
+            + "- 严格遵守字段名与 schema_version（尤其是 entry.content_md/keywords/aliases/priority 等）\n"
+        )
+
+        max_attempts = task_llm_max_attempts(default=3)
+        recorded, llm_attempts = call_llm_and_record_with_retries(
             logger=logger,
             request_id=request_id,
             actor_user_id=actor_user_id,
@@ -676,27 +702,41 @@ def worldbook_auto_update_v1(
             llm_call=llm_call,
             memory_retrieval_log_json=None,
             run_params_extra_json={"task": WORLDBOOK_AUTO_UPDATE_TASK, "schema_version": WORLDBOOK_AUTO_UPDATE_SCHEMA_VERSION},
+            max_attempts=max_attempts,
+            retry_prompt_system=retry_system,
+            llm_call_overrides_by_attempt={
+                1: {"temperature": 0.2, "max_tokens": _clamp_max_tokens(2048)},
+                2: {"temperature": 0.1, "max_tokens": _clamp_max_tokens(1024)},
+                3: {"temperature": 0.0, "max_tokens": _clamp_max_tokens(512)},
+            },
+            backoff_base_seconds=task_llm_retry_base_seconds(),
+            backoff_max_seconds=task_llm_retry_max_seconds(),
+            jitter=task_llm_retry_jitter(),
         )
-    except Exception as exc:
+    except LlmRetryExhausted as exc:
         log_event(
             logger,
             "warning",
             event="WORLDBOOK_AUTO_UPDATE_LLM_ERROR",
             project_id=pid,
             chapter_id=str(chapter_id or ""),
-            error_type=type(exc).__name__,
+            run_id=exc.run_id,
+            error_type=str(exc.error_type),
             request_id=request_id,
-            **exception_log_fields(exc),
+            **exception_log_fields(exc.last_exception),
         )
-        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
-        if not safe_message:
-            safe_message = type(exc).__name__
         return {
             "ok": False,
             "project_id": pid,
             "reason": "llm_call_failed",
-            "error_type": type(exc).__name__,
-            "error_message": safe_message[:400],
+            "run_id": exc.run_id,
+            "error_type": exc.error_type,
+            "error_message": exc.error_message[:400],
+            "attempts": list(exc.attempts or []),
+            "error": {
+                "code": exc.error_code or "LLM_CALL_FAILED",
+                "details": {"attempts": list(exc.attempts or [])},
+            },
         }
 
     contract = contract_for_task(WORLDBOOK_AUTO_UPDATE_TASK)
@@ -704,6 +744,8 @@ def worldbook_auto_update_v1(
 
     repair_run_id: str | None = None
     warnings = list(parsed.warnings or [])
+    if len(list(llm_attempts or [])) >= 2:
+        warnings.append("llm_retry_used")
 
     if parsed.parse_error is not None:
         repair_schema = (

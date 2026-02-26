@@ -46,6 +46,8 @@ class TestWorldbookAutoUpdateTaskErrorDetails(unittest.TestCase):
             "run_id": "run-1",
             "error_type": "HTTPStatusError",
             "error_message": "boom",
+            "attempts": [{"attempt": 1, "request_id": "rid-test", "run_id": "run-1", "error_code": "LLM_TIMEOUT"}],
+            "error": {"code": "LLM_TIMEOUT", "details": {"attempts": [{"attempt": 1, "request_id": "rid-test"}]}},
         }
 
         with patch.object(project_task_service, "SessionLocal", SessionLocal):
@@ -70,6 +72,8 @@ class TestWorldbookAutoUpdateTaskErrorDetails(unittest.TestCase):
             self.assertEqual(details.get("run_id"), "run-1")
             self.assertEqual(details.get("error_type"), "HTTPStatusError")
             self.assertEqual(details.get("error_message"), "boom")
+            self.assertIsInstance(details.get("attempts"), list)
+            self.assertGreaterEqual(len(details.get("attempts") or []), 1)
 
             how = details.get("how_to_fix") or []
             self.assertIsInstance(how, list)
@@ -116,4 +120,3 @@ class TestWorldbookAutoUpdateTaskErrorDetails(unittest.TestCase):
             self.assertEqual(err.get("code"), "PROJECT_TASK_CONFIG_ERROR")
             msg = str(err.get("message") or "")
             self.assertIn("actor_user_id", msg)
-
