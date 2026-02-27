@@ -49,6 +49,13 @@ class LocalLoginRequest(RequestModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class LocalRegisterRequest(RequestModel):
+    user_id: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
+    display_name: str | None = Field(default=None, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+
+
 class ChangePasswordRequest(RequestModel):
     old_password: str = Field(min_length=1, max_length=256)
     new_password: str = Field(min_length=1, max_length=256)
@@ -96,6 +103,49 @@ def local_login(request: Request, db: DbDep, body: LocalLoginRequest) -> JSONRes
         raise AppError.unauthorized("账号已禁用")
     if not verify_password(body.password, pwd.password_hash):
         raise AppError.unauthorized("用户名或密码错误")
+
+    session = build_session(user_id=user.id)
+    response = JSONResponse(
+        ok_payload(
+            request_id=request_id,
+            data={
+                "user": _user_public(user),
+                "session": {"expire_at": int(session.expires_at.astimezone(timezone.utc).timestamp())},
+            },
+        )
+    )
+    set_session_cookies(response, user_id=user.id, expires_at=session.expires_at)
+    return response
+
+
+@router.post("/auth/local/register")
+def local_register(request: Request, db: DbDep, body: LocalRegisterRequest) -> JSONResponse:
+    request_id = request.state.request_id
+
+    target_user_id = body.user_id.strip()
+    if not target_user_id:
+        raise AppError.validation("user_id 不能为空")
+
+    admin_user_id = (settings.auth_admin_user_id or "").strip()
+    if admin_user_id and target_user_id == admin_user_id:
+        raise AppError.forbidden("该用户名已被系统保留，请联系管理员分配/重置")
+
+    if db.get(User, target_user_id) is not None:
+        raise AppError.conflict("用户已存在")
+
+    email = (body.email or "").strip() or None
+    display_name = (body.display_name or "").strip() or target_user_id
+    user = User(id=target_user_id, email=email, display_name=display_name, is_admin=False)
+    db.add(user)
+
+    pwd = UserPassword(
+        user_id=target_user_id,
+        password_hash=hash_password(body.password),
+        password_updated_at=utc_now(),
+        disabled_at=None,
+    )
+    db.add(pwd)
+    db.commit()
 
     session = build_session(user_id=user.id)
     response = JSONResponse(

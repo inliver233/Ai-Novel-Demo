@@ -132,6 +132,38 @@ class TestAuthEndpoints(unittest.TestCase):
         resp = client.post("/api/auth/local/login", json={"user_id": "u1", "password": "password123"})
         self.assertEqual(resp.status_code, 401)
 
+    def test_register_then_auth_user(self) -> None:
+        client = TestClient(self.app)
+        resp = client.post("/api/auth/local/register", json={"user_id": "u2", "password": "password123"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNotNone(client.cookies.get(settings.auth_cookie_user_id_name))
+        self.assertIsNotNone(client.cookies.get(settings.auth_cookie_expire_at_name))
+
+        resp2 = client.get("/api/auth/user")
+        self.assertEqual(resp2.status_code, 200)
+        data = resp2.json()["data"]
+        self.assertEqual(data["user"]["id"], "u2")
+
+    def test_register_rejects_existing_user(self) -> None:
+        self._seed_user(user_id="u1", password="password123")
+        client = TestClient(self.app)
+        resp = client.post("/api/auth/local/register", json={"user_id": "u1", "password": "password123"})
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.json()["error"]["code"], "CONFLICT")
+
+    def test_register_rejects_reserved_admin_user_id(self) -> None:
+        admin_id = str(settings.auth_admin_user_id or "admin").strip() or "admin"
+        client = TestClient(self.app)
+        resp = client.post("/api/auth/local/register", json={"user_id": admin_id, "password": "password123"})
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.json()["error"]["code"], "FORBIDDEN")
+
+    def test_register_rejects_short_password(self) -> None:
+        client = TestClient(self.app)
+        resp = client.post("/api/auth/local/register", json={"user_id": "u2", "password": "short"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["error"]["code"], "VALIDATION_ERROR")
+
     def test_change_password(self) -> None:
         self._seed_user(user_id="u1", password="password123")
         client = TestClient(self.app)
