@@ -95,6 +95,37 @@ export function AuthProvider(props: { children: React.ReactNode }) {
     setState({ status: "authenticated", user, session: { expireAt: res.data.session?.expire_at ?? null } });
   }, []);
 
+  const register = useCallback(
+    async ({
+      userId,
+      password,
+      displayName,
+      email,
+    }: {
+      userId: string;
+      password: string;
+      displayName?: string;
+      email?: string;
+    }) => {
+      const res = await apiJson<{ user: AuthUserApi; session: { expire_at: number } | null }>(
+        "/api/auth/local/register",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            user_id: userId.trim(),
+            password,
+            display_name: displayName,
+            email,
+          }),
+        },
+      );
+      const user = mapUser(res.data.user);
+      setCurrentUserId(user.id);
+      setState({ status: "authenticated", user, session: { expireAt: res.data.session?.expire_at ?? null } });
+    },
+    [],
+  );
+
   const logout = useCallback(async () => {
     try {
       await apiJson<Record<string, never>>("/api/auth/logout", { method: "POST" });
@@ -150,9 +181,10 @@ export function AuthProvider(props: { children: React.ReactNode }) {
       ...state,
       refresh,
       login,
+      register,
       logout,
     }),
-    [login, logout, refresh, state],
+    [login, logout, refresh, register, state],
   );
 
   return <AuthContext.Provider value={value}>{props.children}</AuthContext.Provider>;

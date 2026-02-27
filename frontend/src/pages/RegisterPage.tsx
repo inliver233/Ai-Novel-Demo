@@ -3,9 +3,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../contexts/auth";
 import { UI_COPY } from "../lib/uiCopy";
-import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { ApiError } from "../services/apiClient";
-import { DEFAULT_USER_ID, getCurrentUserId } from "../services/currentUser";
 import { useToast } from "../components/ui/toast";
 
 function safeNextPath(value: string | null): string {
@@ -15,7 +13,7 @@ function safeNextPath(value: string | null): string {
   return value;
 }
 
-export function LoginPage() {
+export function RegisterPage() {
   const auth = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
@@ -23,10 +21,13 @@ export function LoginPage() {
   const nextPath = useMemo(() => safeNextPath(searchParams.get("next")), [searchParams]);
 
   const [form, setForm] = useState(() => ({
-    userId: getCurrentUserId() === DEFAULT_USER_ID ? "" : getCurrentUserId(),
+    userId: "",
     password: "",
+    confirmPassword: "",
   }));
   const [busy, setBusy] = useState(false);
+
+  const passwordMismatch = Boolean(form.password && form.confirmPassword && form.password !== form.confirmPassword);
 
   if (auth.status === "authenticated") {
     return <Navigate to={nextPath} replace />;
@@ -37,49 +38,19 @@ export function LoginPage() {
       <div className="mx-auto flex min-h-screen max-w-screen-sm items-center px-4 py-12">
         <div className="w-full">
           <div className="surface p-6 sm:p-8">
-            <div className="font-content text-2xl text-ink">{UI_COPY.auth.loginTitle}</div>
+            <div className="font-content text-2xl text-ink">{UI_COPY.auth.registerTitle}</div>
             <div className="mt-1 grid gap-1 text-sm text-subtext">
-              <div>{UI_COPY.auth.loginSubtitle}</div>
+              <div>{UI_COPY.auth.registerSubtitle}</div>
+              <div className="text-xs">{UI_COPY.auth.passwordHint}</div>
               {nextPath !== "/" ? (
                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span>登录后将返回：</span>
+                  <span>注册后将进入：</span>
                   <span className="max-w-full truncate rounded border border-border bg-surface px-2 py-0.5 font-mono text-[11px] text-ink">
                     {nextPath}
                   </span>
                 </div>
               ) : null}
             </div>
-
-            {auth.status === "dev_fallback" ? (
-              <div className="mt-4 grid gap-3">
-                <div className="rounded-atelier border border-border bg-canvas p-3">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="text-xs text-subtext">
-                      <div className="flex flex-wrap items-center gap-2 text-ink">
-                        <span>{UI_COPY.auth.devFallbackHint}</span>
-                        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-subtext">
-                          {UI_COPY.auth.devFallbackTag}
-                        </span>
-                      </div>
-                      <div className="mt-1">你可以先跳过登录直接进入体验；需要权限/协作/多用户时再回来登录即可。</div>
-                    </div>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => navigate("/", { replace: true })}
-                      type="button"
-                    >
-                      跳过登录，{UI_COPY.auth.continueInDevFallback}
-                    </button>
-                  </div>
-                </div>
-                <DebugDetails title="更多说明（可选）">
-                  <div className="grid gap-1 text-xs text-subtext">
-                    <div>{UI_COPY.auth.devFallbackRiskHint}</div>
-                    <div>{UI_COPY.auth.devFallbackNextStepHint}</div>
-                  </div>
-                </DebugDetails>
-              </div>
-            ) : null}
 
             <div className="mt-6 grid gap-3">
               <label className="grid gap-1">
@@ -101,17 +72,30 @@ export function LoginPage() {
                   type="password"
                   value={form.password}
                   onChange={(e) => setForm((v) => ({ ...v, password: e.target.value }))}
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   placeholder={UI_COPY.auth.passwordPlaceholder}
                 />
               </label>
+              <label className="grid gap-1">
+                <span className="text-xs text-subtext">{UI_COPY.auth.confirmPasswordLabel}</span>
+                <input
+                  className={`input ${passwordMismatch ? "border-danger" : ""}`}
+                  name="confirm_password"
+                  type="password"
+                  value={form.confirmPassword}
+                  onChange={(e) => setForm((v) => ({ ...v, confirmPassword: e.target.value }))}
+                  autoComplete="new-password"
+                  placeholder={UI_COPY.auth.confirmPasswordPlaceholder}
+                />
+              </label>
+              {passwordMismatch ? <div className="text-xs text-danger">两次输入的密码不一致</div> : null}
             </div>
 
             <div className="mt-6 flex items-center justify-end gap-2">
               <button
                 className="btn btn-secondary"
                 onClick={() => {
-                  setForm({ userId: "", password: "" });
+                  setForm({ userId: "", password: "", confirmPassword: "" });
                 }}
                 type="button"
               >
@@ -119,12 +103,12 @@ export function LoginPage() {
               </button>
               <button
                 className="btn btn-primary"
-                disabled={busy || !form.userId.trim() || !form.password}
+                disabled={busy || !form.userId.trim() || !form.password || passwordMismatch}
                 onClick={async () => {
                   setBusy(true);
                   try {
-                    await auth.login({ userId: form.userId.trim(), password: form.password });
-                    toast.toastSuccess(UI_COPY.auth.loginSuccess);
+                    await auth.register({ userId: form.userId.trim(), password: form.password });
+                    toast.toastSuccess(UI_COPY.auth.registerSuccess);
                     navigate(nextPath, { replace: true });
                   } catch (e) {
                     const err = e as ApiError;
@@ -135,22 +119,21 @@ export function LoginPage() {
                 }}
                 type="button"
               >
-                {busy ? UI_COPY.auth.loggingIn : UI_COPY.auth.login}
+                {busy ? UI_COPY.auth.registering : UI_COPY.auth.register}
               </button>
             </div>
           </div>
+
           <div className="mt-4 text-center text-xs text-subtext">
             <div className="flex flex-wrap items-center justify-center gap-1">
-              <span>{UI_COPY.auth.noAccountHint}</span>
+              <span>{UI_COPY.auth.haveAccountHint}</span>
               <Link
                 className="text-ink underline decoration-border hover:decoration-ink"
-                to={`/register?next=${encodeURIComponent(nextPath)}`}
+                to={`/login?next=${encodeURIComponent(nextPath)}`}
               >
-                {UI_COPY.auth.goRegister}
+                {UI_COPY.auth.goLogin}
               </Link>
             </div>
-            <div>{UI_COPY.auth.loginFooterHint}</div>
-            <div className="mt-1">忘记密码？当前版本请联系管理员重置（MVP 暂不支持自助找回）。</div>
           </div>
         </div>
       </div>

@@ -14,6 +14,11 @@ const LoginPage = lazy(async () => {
   return { default: mod.LoginPage };
 });
 
+const RegisterPage = lazy(async () => {
+  const mod = await import("./pages/RegisterPage");
+  return { default: mod.RegisterPage };
+});
+
 const DashboardPage = lazy(async () => {
   const mod = await import("./pages/DashboardPage");
   return { default: mod.DashboardPage };
@@ -148,6 +153,10 @@ const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />,
+  },
+  {
+    path: "/register",
+    element: <RegisterPage />,
   },
   {
     element: <AuthGuard />,
