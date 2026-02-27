@@ -157,5 +157,5 @@ class MemoryUpdateV1Request(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=64)
     title: str | None = Field(default=None, max_length=255)
     summary_md: str | None = Field(default=None, max_length=MAX_MD_CHARS)
-    ops: list[MemoryUpdateOpV1] = Field(min_length=1, max_length=MAX_OPS_V1)
-
+    # Fail-soft: allow empty ops for no-op updates (contract parser may return ops_empty/ops_missing warnings).
+    ops: list[MemoryUpdateOpV1] = Field(default_factory=list, max_length=MAX_OPS_V1)

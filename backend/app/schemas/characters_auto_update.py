@@ -117,4 +117,5 @@ class CharactersAutoUpdateV1Request(BaseModel):
     schema_version: CharactersAutoUpdateSchemaVersion = "characters_auto_update_v1"
     title: str | None = Field(default=None, max_length=255)
     summary_md: str | None = Field(default=None, max_length=MAX_MD_CHARS_V1)
-    ops: list[CharactersAutoUpdateOpV1] = Field(min_length=1, max_length=MAX_OPS_V1)
+    # Fail-soft: allow ops missing/empty as no-op.
+    ops: list[CharactersAutoUpdateOpV1] = Field(default_factory=list, max_length=MAX_OPS_V1)
