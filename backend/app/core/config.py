@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     app_env: AppEnv = "dev"
     log_level: LogLevel = "INFO"
     database_url: str = "sqlite:///./ainovel.db"
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_timeout_seconds: int = 30
+    db_pool_recycle_seconds: int = 1800
     cors_origins: str = "http://localhost:5173"
     app_version: str = "0.1.0"
     secret_encryption_key: str | None = None
@@ -156,6 +160,50 @@ class Settings(BaseSettings):
 
         abs_path = (_backend_dir() / db).resolve()
         return str(url.set(database=abs_path.as_posix()))
+
+    @field_validator("db_pool_size", mode="before")
+    @classmethod
+    def _normalize_db_pool_size(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 5
+        return min(raw, 50)
+
+    @field_validator("db_max_overflow", mode="before")
+    @classmethod
+    def _normalize_db_max_overflow(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw < 0:
+            return 0
+        return min(raw, 200)
+
+    @field_validator("db_pool_timeout_seconds", mode="before")
+    @classmethod
+    def _normalize_db_pool_timeout_seconds(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 30
+        return min(raw, 120)
+
+    @field_validator("db_pool_recycle_seconds", mode="before")
+    @classmethod
+    def _normalize_db_pool_recycle_seconds(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 1800
+        return min(raw, 24 * 60 * 60)
 
     @field_validator("secret_encryption_key", mode="before")
     @classmethod

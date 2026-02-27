@@ -42,4 +42,23 @@ from app.db.migrations import ensure_db_schema
 ensure_db_schema()
 PY
 
-exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers 1
+HOST="${HOST:-0.0.0.0}"
+PORT="${PORT:-8000}"
+WORKERS="${WEB_CONCURRENCY:-1}"
+
+case "$WORKERS" in
+  ''|*[!0-9]*)
+    WORKERS=1
+    ;;
+esac
+
+case "${DATABASE_URL:-}" in
+  sqlite*)
+    if [ "${WORKERS:-1}" -gt 1 ] 2>/dev/null; then
+      echo "SQLite 模式仅支持单 worker；已强制 WEB_CONCURRENCY=1" >&2
+    fi
+    WORKERS=1
+    ;;
+esac
+
+exec uvicorn app.main:app --host "$HOST" --port "$PORT" --workers "$WORKERS"

@@ -72,6 +72,12 @@ copy .env.docker.example .env.docker  # Windows
 - `SECRET_ENCRYPTION_KEY`：Fernet key（容器内是 Linux，dev 模式也需要；必填）
   - 生成方式：`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 
+可选并发/性能参数（按宿主机资源与 Postgres `max_connections` 调整）：
+- `WEB_CONCURRENCY`：后端 web worker 数量（Docker 默认 `2`；SQLite 仅支持 `1`）
+- `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` / `DB_POOL_TIMEOUT_SECONDS` / `DB_POOL_RECYCLE_SECONDS`：SQLAlchemy 连接池
+- `RQ_WORKER_PROCESSES`：单个 `rq_worker` 容器内启动的 worker 进程数（默认 `1`）
+  - 也可用 `docker compose up --scale rq_worker=4` 水平扩展多个 worker 容器
+
 ### 2) 启动
 
 ```bash

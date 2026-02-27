@@ -19,6 +19,16 @@ engine: Engine = create_engine(
     DATABASE_URL,
     connect_args=connect_args,
     pool_pre_ping=True,
+    **(
+        {}
+        if IS_SQLITE
+        else {
+            "pool_size": settings.db_pool_size,
+            "max_overflow": settings.db_max_overflow,
+            "pool_timeout": settings.db_pool_timeout_seconds,
+            "pool_recycle": settings.db_pool_recycle_seconds,
+        }
+    ),
 )
 
 
