@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import re
 import secrets
 from datetime import timedelta, timezone
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import Field
 from sqlalchemy import select
 
@@ -12,13 +16,176 @@ from app.api.deps import AuthenticatedUserIdDep, DbDep
 from app.core.auth_session import build_session, clear_session_cookies, set_session_cookies
 from app.core.config import settings
 from app.core.errors import AppError, ok_payload
-from app.db.utils import utc_now
+from app.db.utils import new_id, utc_now
+from app.models.auth_external_account import AuthExternalAccount
 from app.models.user import User
 from app.models.user_password import UserPassword
 from app.schemas.base import RequestModel
 from app.services.auth_service import hash_password, verify_password
 
 router = APIRouter()
+
+_LINUXDO_PROVIDER = "linuxdo"
+_LINUXDO_OIDC_STATE_COOKIE = "oidc_linuxdo_state"
+_LINUXDO_OIDC_VERIFIER_COOKIE = "oidc_linuxdo_verifier"
+_LINUXDO_OIDC_NEXT_COOKIE = "oidc_linuxdo_next"
+_LINUXDO_OIDC_COOKIE_MAX_AGE_SECONDS = 10 * 60
+
+_USER_ID_SANITIZE_RE = re.compile(r"[^a-z0-9_-]+")
+
+
+def _linuxdo_oidc_enabled() -> bool:
+    return bool((settings.linuxdo_oidc_client_id or "").strip() and (settings.linuxdo_oidc_client_secret or "").strip())
+
+
+def _safe_next_path(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] == '"':
+        raw = raw[1:-1].strip()
+    if not raw:
+        return "/"
+    if not raw.startswith("/"):
+        return "/"
+    if raw.startswith("//"):
+        return "/"
+    return raw
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _pkce_code_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("utf-8")).digest()
+    return _b64url(digest)
+
+
+def _pkce_code_verifier() -> str:
+    verifier = secrets.token_urlsafe(96)
+    if len(verifier) < 43:
+        verifier = (verifier + secrets.token_urlsafe(96))[:96]
+    return verifier[:128]
+
+
+def _linuxdo_discovery() -> dict[str, str]:
+    try:
+        import httpx
+
+        url = str(settings.linuxdo_oidc_discovery_url or "").strip()
+        if not url:
+            raise ValueError("missing_discovery_url")
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(url, headers={"Accept": "application/json"})
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        raise AppError(
+            code="OIDC_DISCOVERY_FAILED",
+            message="LinuxDo OIDC discovery 获取失败",
+            status_code=502,
+            details={"provider": _LINUXDO_PROVIDER, "error_type": type(exc).__name__},
+        ) from exc
+
+    if not isinstance(data, dict):
+        raise AppError(code="OIDC_DISCOVERY_FAILED", message="LinuxDo OIDC discovery 响应无效", status_code=502, details={"provider": _LINUXDO_PROVIDER})
+
+    def _req(key: str) -> str:
+        value = data.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise AppError(
+                code="OIDC_DISCOVERY_FAILED",
+                message=f"LinuxDo OIDC discovery 缺少字段：{key}",
+                status_code=502,
+                details={"provider": _LINUXDO_PROVIDER, "missing_key": key},
+            )
+        return value.strip()
+
+    return {
+        "authorization_endpoint": _req("authorization_endpoint"),
+        "token_endpoint": _req("token_endpoint"),
+        "userinfo_endpoint": _req("userinfo_endpoint"),
+        "issuer": _req("issuer"),
+    }
+
+
+def _linuxdo_exchange_code_for_token(*, token_endpoint: str, code: str, redirect_uri: str, code_verifier: str) -> dict:
+    try:
+        import httpx
+
+        payload = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": str(settings.linuxdo_oidc_client_id or "").strip(),
+            "client_secret": str(settings.linuxdo_oidc_client_secret or "").strip(),
+            "code_verifier": code_verifier,
+        }
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.post(token_endpoint, data=payload, headers={"Accept": "application/json"})
+            resp.raise_for_status()
+            out = resp.json()
+    except Exception as exc:
+        raise AppError(
+            code="OIDC_TOKEN_EXCHANGE_FAILED",
+            message="LinuxDo OIDC token 交换失败",
+            status_code=502,
+            details={"provider": _LINUXDO_PROVIDER, "error_type": type(exc).__name__},
+        ) from exc
+
+    return out if isinstance(out, dict) else {}
+
+
+def _linuxdo_fetch_userinfo(*, userinfo_endpoint: str, access_token: str) -> dict:
+    try:
+        import httpx
+
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(
+                userinfo_endpoint,
+                headers={"Accept": "application/json", "Authorization": f"Bearer {access_token}"},
+            )
+            resp.raise_for_status()
+            out = resp.json()
+    except Exception as exc:
+        raise AppError(
+            code="OIDC_USERINFO_FAILED",
+            message="LinuxDo OIDC userinfo 获取失败",
+            status_code=502,
+            details={"provider": _LINUXDO_PROVIDER, "error_type": type(exc).__name__},
+        ) from exc
+
+    return out if isinstance(out, dict) else {}
+
+
+def _oidc_cookie_kwargs() -> dict[str, object]:
+    return {
+        "httponly": True,
+        "secure": settings.app_env == "prod",
+        # Must be lax for cross-site OIDC redirects.
+        "samesite": "lax",
+        "max_age": _LINUXDO_OIDC_COOKIE_MAX_AGE_SECONDS,
+        "path": "/",
+    }
+
+
+def _linuxdo_suggest_user_id(db: DbDep, *, login: str) -> str:
+    login_norm = _USER_ID_SANITIZE_RE.sub("_", str(login or "").strip().lower()).strip("_")
+    if not login_norm:
+        login_norm = new_id().split("-", 1)[0]
+
+    base = f"linuxdo_{login_norm[:48]}".strip("_")[:64]
+    if not base:
+        base = f"linuxdo_{new_id().split('-', 1)[0]}"
+    if db.get(User, base) is None:
+        return base
+
+    for _ in range(8):
+        suffix = secrets.token_urlsafe(4).replace("-", "").replace("_", "")[:6].lower()
+        candidate = f"{base[: (64 - 1 - len(suffix))]}_{suffix}"
+        if db.get(User, candidate) is None:
+            return candidate
+
+    return f"{base[: (64 - 1 - 8)]}_{new_id().split('-', 1)[0][:8]}"
 
 
 def _user_public(user: User) -> dict:
@@ -92,6 +259,18 @@ def get_current_user(request: Request, db: DbDep, user_id: AuthenticatedUserIdDe
     return ok_payload(request_id=request_id, data={"user": _user_public(user), "session": session_payload})
 
 
+@router.get("/auth/providers")
+def list_auth_providers(request: Request) -> dict:
+    request_id = request.state.request_id
+    return ok_payload(
+        request_id=request_id,
+        data={
+            "local": {"enabled": True},
+            "linuxdo": {"enabled": _linuxdo_oidc_enabled()},
+        },
+    )
+
+
 @router.post("/auth/local/login")
 def local_login(request: Request, db: DbDep, body: LocalLoginRequest) -> JSONResponse:
     request_id = request.state.request_id
@@ -157,6 +336,138 @@ def local_register(request: Request, db: DbDep, body: LocalRegisterRequest) -> J
             },
         )
     )
+    set_session_cookies(response, user_id=user.id, expires_at=session.expires_at)
+    return response
+
+
+@router.get("/auth/oidc/linuxdo/start", name="linuxdo_oidc_start")
+def linuxdo_oidc_start(request: Request, next: str | None = None) -> RedirectResponse:
+    if not _linuxdo_oidc_enabled():
+        raise AppError(code="OIDC_NOT_CONFIGURED", message="LinuxDo OIDC 未配置（缺少 client_id/client_secret）", status_code=400)
+
+    discovery = _linuxdo_discovery()
+
+    state = secrets.token_urlsafe(24)
+    verifier = _pkce_code_verifier()
+    challenge = _pkce_code_challenge(verifier)
+
+    redirect_uri = (settings.linuxdo_oidc_redirect_uri or "").strip() or str(request.url_for("linuxdo_oidc_callback"))
+    next_path = _safe_next_path(next)
+
+    params = {
+        "response_type": "code",
+        "client_id": str(settings.linuxdo_oidc_client_id or "").strip(),
+        "redirect_uri": redirect_uri,
+        "scope": str(settings.linuxdo_oidc_scopes or "openid profile email").strip() or "openid profile email",
+        "state": state,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    }
+    url = f"{discovery['authorization_endpoint']}?{urlencode(params)}"
+
+    response = RedirectResponse(url=url, status_code=302)
+    response.set_cookie(_LINUXDO_OIDC_STATE_COOKIE, state, **_oidc_cookie_kwargs())
+    response.set_cookie(_LINUXDO_OIDC_VERIFIER_COOKIE, verifier, **_oidc_cookie_kwargs())
+    response.set_cookie(_LINUXDO_OIDC_NEXT_COOKIE, next_path, **_oidc_cookie_kwargs())
+    return response
+
+
+@router.get("/auth/oidc/linuxdo/callback", name="linuxdo_oidc_callback")
+def linuxdo_oidc_callback(request: Request, db: DbDep, code: str | None = None, state: str | None = None) -> RedirectResponse:
+    next_path = _safe_next_path(request.cookies.get(_LINUXDO_OIDC_NEXT_COOKIE))
+    response = RedirectResponse(url=next_path, status_code=302)
+    for name in (_LINUXDO_OIDC_STATE_COOKIE, _LINUXDO_OIDC_VERIFIER_COOKIE, _LINUXDO_OIDC_NEXT_COOKIE):
+        response.delete_cookie(key=name, path="/", secure=settings.app_env == "prod", samesite="lax")
+
+    if not _linuxdo_oidc_enabled():
+        return response
+
+    state_cookie = str(request.cookies.get(_LINUXDO_OIDC_STATE_COOKIE) or "").strip()
+    state_q = str(state or "").strip()
+    if not state_cookie or not state_q or not secrets.compare_digest(state_cookie, state_q):
+        return response
+
+    code_q = str(code or "").strip()
+    if not code_q:
+        return response
+
+    verifier = str(request.cookies.get(_LINUXDO_OIDC_VERIFIER_COOKIE) or "").strip()
+    if not verifier:
+        return response
+
+    try:
+        discovery = _linuxdo_discovery()
+        redirect_uri = (settings.linuxdo_oidc_redirect_uri or "").strip() or str(request.url_for("linuxdo_oidc_callback"))
+        token_res = _linuxdo_exchange_code_for_token(
+            token_endpoint=discovery["token_endpoint"],
+            code=code_q,
+            redirect_uri=redirect_uri,
+            code_verifier=verifier,
+        )
+        access_token = str(token_res.get("access_token") or "").strip()
+        if not access_token:
+            return response
+
+        userinfo = _linuxdo_fetch_userinfo(userinfo_endpoint=discovery["userinfo_endpoint"], access_token=access_token)
+        subject = str(userinfo.get("sub") or "").strip()
+        if not subject:
+            return response
+    except Exception:
+        return response
+
+    ext = db.get(AuthExternalAccount, (_LINUXDO_PROVIDER, subject))
+    user: User | None = None
+    if ext is not None:
+        user = db.get(User, str(ext.user_id))
+
+    login = str(userinfo.get("login") or userinfo.get("username") or "").strip()
+    display_name = str(userinfo.get("name") or login or "LinuxDo 用户").strip() or "LinuxDo 用户"
+    email = str(userinfo.get("email") or "").strip() or None
+    avatar_url = str(userinfo.get("avatar_url") or "").strip() or None
+
+    if email:
+        existing_email_user = db.execute(select(User.id).where(User.email == email).limit(1)).scalars().first()
+        if existing_email_user and (user is None or str(existing_email_user) != str(getattr(user, "id", ""))):
+            email = None
+
+    if user is None:
+        user_id = _linuxdo_suggest_user_id(db, login=login or display_name)
+        user = User(id=user_id, email=email, display_name=display_name, is_admin=False)
+        db.add(user)
+
+        ext = AuthExternalAccount(
+            provider=_LINUXDO_PROVIDER,
+            subject=subject,
+            user_id=user_id,
+            username=login or None,
+            email=str(userinfo.get("email") or "").strip() or None,
+            avatar_url=avatar_url,
+        )
+        db.add(ext)
+    else:
+        if ext is None:
+            ext = AuthExternalAccount(
+                provider=_LINUXDO_PROVIDER,
+                subject=subject,
+                user_id=str(user.id),
+                username=login or None,
+                email=str(userinfo.get("email") or "").strip() or None,
+                avatar_url=avatar_url,
+            )
+            db.add(ext)
+        else:
+            ext.username = login or ext.username
+            ext.email = str(userinfo.get("email") or "").strip() or ext.email
+            ext.avatar_url = avatar_url or ext.avatar_url
+
+        if email and not user.email:
+            user.email = email
+        if display_name and not user.display_name:
+            user.display_name = display_name
+
+    db.commit()
+
+    session = build_session(user_id=user.id)
     set_session_cookies(response, user_id=user.id, expires_at=session.expires_at)
     return response
 

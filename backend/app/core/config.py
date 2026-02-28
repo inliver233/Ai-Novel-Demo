@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     auth_admin_display_name: str | None = "管理员"
     auth_bcrypt_rounds: int = 12
 
+    linuxdo_oidc_discovery_url: str = "https://connect.linux.do/.well-known/openid-configuration"
+    linuxdo_oidc_client_id: str | None = None
+    linuxdo_oidc_client_secret: str | None = None
+    linuxdo_oidc_scopes: str = "openid profile email"
+    linuxdo_oidc_redirect_uri: str | None = None
+
     task_queue_backend: TaskQueueBackend = "rq"
     redis_url: str = "redis://localhost:6379/0"
     rq_queue_name: str = "default"
@@ -303,6 +309,36 @@ class Settings(BaseSettings):
         if raw > 15:
             return 15
         return raw
+
+    @field_validator("linuxdo_oidc_discovery_url", mode="before")
+    @classmethod
+    def _normalize_linuxdo_oidc_discovery_url(cls, value: object) -> str:
+        raw = str(value or "").strip()
+        return raw or "https://connect.linux.do/.well-known/openid-configuration"
+
+    @field_validator("linuxdo_oidc_client_id", mode="before")
+    @classmethod
+    def _normalize_linuxdo_oidc_client_id(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("linuxdo_oidc_client_secret", mode="before")
+    @classmethod
+    def _normalize_linuxdo_oidc_client_secret(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
+
+    @field_validator("linuxdo_oidc_scopes", mode="before")
+    @classmethod
+    def _normalize_linuxdo_oidc_scopes(cls, value: object) -> str:
+        raw = str(value or "").strip()
+        return raw or "openid profile email"
+
+    @field_validator("linuxdo_oidc_redirect_uri", mode="before")
+    @classmethod
+    def _normalize_linuxdo_oidc_redirect_uri(cls, value: object) -> str | None:
+        raw = str(value or "").strip()
+        return raw or None
 
     @field_validator("task_queue_backend", mode="before")
     @classmethod
