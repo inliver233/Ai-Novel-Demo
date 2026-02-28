@@ -71,7 +71,25 @@ npm run dev
 - Docker Compose 形态默认使用 `Postgres + Redis + rq_worker`，用于承载三位数并发的基础需求；SQLite 仅建议本地单机调试。
 - `SECRET_ENCRYPTION_KEY` 可留空：容器启动时会自动生成并持久化到 `app_data` 卷（不会输出明文）。
 
-（高级）也可使用 env-file 覆盖变量：`docker compose --env-file .env.docker.example up -d --build`
+（推荐）也可使用 env-file 覆盖变量：
+
+```bash
+cp .env.docker.example .env.docker
+# 然后编辑 .env.docker（不要提交到 git）
+docker compose --env-file .env.docker up -d --build
+```
+
+注意（Postgres 密码包含特殊字符时）：
+- `DATABASE_URL` 里的密码必须做 URL 编码（例如 `@` 需要写成 `%40`），否则会导致连接串解析错误。
+- 最简单的做法：给 `POSTGRES_PASSWORD` 选一个只包含字母/数字的密码；或按下方方式编码。
+
+```bash
+python3 - <<'PY'
+import urllib.parse
+pwd = "YourPostgresPasswordHere"
+print(urllib.parse.quote(pwd, safe=""))
+PY
+```
 
 ### 2) 启动
 
@@ -99,6 +117,73 @@ docker compose logs -f rq_worker
 - 数据卷：
   - Postgres：`postgres_data`
   - 应用数据（向量库 + 服务端密钥）：`app_data`（挂载到 `/data`；包含 `/data/chroma` 与 `/data/secrets`）
+
+### 5) Ubuntu 云服务器（从 git clone 到可访问）
+
+以下步骤适用于“只想尽快跑起来”的部署方式（HTTP + 端口访问）。如果你要用 LinuxDo OIDC，建议配 HTTPS（见下方）。
+
+1) 安装 Docker + Compose（Ubuntu）
+
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-plugin
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+2) 拉代码并切到 `test` 分支（部署用）
+
+```bash
+git clone <YOUR_REPO_URL>.git
+cd Ai-Novel-Demo
+git checkout test
+```
+
+3) 创建部署用 env 文件并修改关键项
+
+```bash
+cp .env.docker.example .env.docker
+nano .env.docker
+```
+
+至少建议修改（不要把真实值提交到 git）：
+- `AUTH_ADMIN_USER_ID` / `AUTH_ADMIN_PASSWORD`：管理员账号密码（只在“首次初始化空 DB”时写入；改了 env 不会自动重置旧密码，想重置可用全新部署时 `docker compose down -v`）。
+- `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` / `DATABASE_URL`：数据库配置（`POSTGRES_DB` 是库名，不是密码）。
+- （可选）`FRONTEND_PORT` / `BACKEND_PORT`：外网访问端口（默认 `5173/8000`）。
+- （可选）LinuxDo：`LINUXDO_OIDC_CLIENT_ID` / `LINUXDO_OIDC_CLIENT_SECRET` / `LINUXDO_OIDC_REDIRECT_URI`。
+
+4) 启动
+
+```bash
+docker compose --env-file .env.docker up -d --build
+docker compose ps
+docker compose logs -f backend
+```
+
+5) UFW 放行端口（示例：保留 SSH + 开前端端口）
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 5173/tcp
+# 如需直连后端（可选）：sudo ufw allow 8000/tcp
+sudo ufw enable
+sudo ufw status
+```
+
+6) LinuxDo OIDC（可选）
+
+- 回调地址（redirect uri）推荐填写：`https://<你的域名>/api/auth/oidc/linuxdo/callback`
+- 如果你暂时没有 HTTPS，可先不启用 LinuxDo（前端按钮仍会显示；未配置时点击会给出提示）。
+
+7) 迁移失败如何恢复（新部署）
+
+- 观察到后端/worker 反复重启、日志提示迁移失败时：通常是“首次初始化中断”导致。
+- 如果是新部署且允许清空数据，最快的恢复方式：
+
+```bash
+docker compose down -v
+docker compose --env-file .env.docker up -d --build
+```
 
 ## LLM 流式输出与请求格式
 
