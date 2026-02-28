@@ -25,6 +25,99 @@
         }
       ]
     },
+    "auth_external_accounts": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "avatar_url",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(512)"
+        },
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "email",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "provider",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(32)"
+        },
+        {
+          "dflt_value": null,
+          "name": "subject",
+          "notnull": 1,
+          "pk": 2,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "user_id",
+          "notnull": 1,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "username",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "user_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "users",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "name": "ix_auth_external_accounts_user_id",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_auth_external_accounts_user_id ON auth_external_accounts (user_id)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "provider",
+            "subject"
+          ],
+          "name": "sqlite_autoindex_auth_external_accounts_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
     "batch_generation_task_items": {
       "checks": [],
       "columns": [
