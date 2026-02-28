@@ -167,4 +167,4 @@ case "${DATABASE_URL:-}" in
     ;;
 esac
 
-exec uvicorn app.main:app --host "$HOST" --port "$PORT" --workers "$WORKERS"
+exec python -m uvicorn app.main:app --host "$HOST" --port "$PORT" --workers "$WORKERS"

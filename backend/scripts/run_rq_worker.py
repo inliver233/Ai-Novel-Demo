@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import os
+import sys
 from multiprocessing import Process
+from pathlib import Path
 
-from redis import Redis
-from rq import Queue, Worker
+_APP_ROOT = Path(__file__).resolve().parents[1]
+if str(_APP_ROOT) not in sys.path:
+    sys.path.insert(0, str(_APP_ROOT))
 
-from app.core.config import settings
-from app.core.logging import configure_logging
+from redis import Redis  # noqa: E402
+from rq import Queue, Worker  # noqa: E402
+
+from app.core.config import settings  # noqa: E402
+from app.core.logging import configure_logging  # noqa: E402
 
 # Ensure RQ can import worker entrypoints for all supported kinds.
 import app.services.project_task_service  # noqa: F401,E402
