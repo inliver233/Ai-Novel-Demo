@@ -5,7 +5,7 @@ from typing import Generator
 from unittest.mock import patch
 
 from fastapi import FastAPI, Request
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -56,6 +56,15 @@ class TestLinuxDoOidcEndpoints(unittest.TestCase):
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
         )
+
+        @event.listens_for(engine, "connect")
+        def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:  # type: ignore[no-untyped-def]
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA foreign_keys=ON;")
+            finally:
+                cursor.close()
+
         self.addCleanup(engine.dispose)
         User.__table__.create(engine)
         UserPassword.__table__.create(engine)
@@ -144,6 +153,7 @@ class TestLinuxDoOidcEndpoints(unittest.TestCase):
             user = User(id="linuxdo_alice", email=None, display_name=None, is_admin=False)
             ext = AuthExternalAccount(provider="linuxdo", subject="sub-123", user_id="linuxdo_alice", username=None, email=None, avatar_url=None)
             db.add(user)
+            db.flush([user])
             db.add(ext)
             db.commit()
 

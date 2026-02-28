@@ -469,6 +469,7 @@ def linuxdo_oidc_callback(request: Request, db: DbDep, code: str | None = None, 
             if existing_email_user and (user is None or str(existing_email_user) != str(getattr(user, "id", ""))):
                 email = None
 
+        user_created = False
         if user is None:
             if ext is not None:
                 user_id = str(ext.user_id)
@@ -476,28 +477,33 @@ def linuxdo_oidc_callback(request: Request, db: DbDep, code: str | None = None, 
                 user_id = _linuxdo_suggest_user_id(db, login=login or display_name) if attempt == 0 else f"linuxdo_{new_id().split('-', 1)[0]}"
             user = User(id=user_id, email=email, display_name=display_name, is_admin=False)
             db.add(user)
+            user_created = True
         else:
             if email and not user.email:
                 user.email = email
             if display_name and not user.display_name:
                 user.display_name = display_name
 
-        if ext is None:
-            ext = AuthExternalAccount(
-                provider=_LINUXDO_PROVIDER,
-                subject=subject,
-                user_id=str(user.id),
-                username=login or None,
-                email=email_raw,
-                avatar_url=avatar_url,
-            )
-            db.add(ext)
-        else:
-            ext.username = login or ext.username
-            ext.email = email_raw or ext.email
-            ext.avatar_url = avatar_url or ext.avatar_url
-
         try:
+            if user_created:
+                # Ensure the user row exists before inserting the external account mapping.
+                db.flush([user])
+
+            if ext is None:
+                ext = AuthExternalAccount(
+                    provider=_LINUXDO_PROVIDER,
+                    subject=subject,
+                    user_id=str(user.id),
+                    username=login or None,
+                    email=email_raw,
+                    avatar_url=avatar_url,
+                )
+                db.add(ext)
+            else:
+                ext.username = login or ext.username
+                ext.email = email_raw or ext.email
+                ext.avatar_url = avatar_url or ext.avatar_url
+
             db.commit()
             break
         except IntegrityError as exc:
