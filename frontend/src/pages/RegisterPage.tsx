@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../contexts/auth";
 import { UI_COPY } from "../lib/uiCopy";
 import { ApiError } from "../services/apiClient";
+import { fetchAuthProviders } from "../services/authProviders";
 import { useToast } from "../components/ui/toast";
 
 function safeNextPath(value: string | null): string {
@@ -19,6 +20,23 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const nextPath = useMemo(() => safeNextPath(searchParams.get("next")), [searchParams]);
+  const [linuxdoEnabled, setLinuxdoEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAuthProviders()
+      .then((providers) => {
+        if (cancelled) return;
+        setLinuxdoEnabled(Boolean(providers.linuxdo?.enabled));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLinuxdoEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [form, setForm] = useState(() => ({
     userId: "",
@@ -122,6 +140,26 @@ export function RegisterPage() {
                 {busy ? UI_COPY.auth.registering : UI_COPY.auth.register}
               </button>
             </div>
+
+            {linuxdoEnabled ? (
+              <div className="mt-6">
+                <div className="my-3 flex items-center gap-3 text-xs text-subtext">
+                  <div className="h-px flex-1 bg-border" />
+                  <div>或</div>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                <button
+                  className="btn btn-secondary w-full"
+                  onClick={() => {
+                    const url = `/api/auth/oidc/linuxdo/start?next=${encodeURIComponent(nextPath)}`;
+                    window.location.assign(url);
+                  }}
+                  type="button"
+                >
+                  LinuxDo 一键登录/注册
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-4 text-center text-xs text-subtext">

@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../contexts/auth";
 import { UI_COPY } from "../lib/uiCopy";
 import { DebugDetails } from "../components/atelier/DebugPageShell";
 import { ApiError } from "../services/apiClient";
+import { fetchAuthProviders } from "../services/authProviders";
 import { DEFAULT_USER_ID, getCurrentUserId } from "../services/currentUser";
 import { useToast } from "../components/ui/toast";
 
@@ -21,6 +22,23 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const nextPath = useMemo(() => safeNextPath(searchParams.get("next")), [searchParams]);
+  const [linuxdoEnabled, setLinuxdoEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAuthProviders()
+      .then((providers) => {
+        if (cancelled) return;
+        setLinuxdoEnabled(Boolean(providers.linuxdo?.enabled));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLinuxdoEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [form, setForm] = useState(() => ({
     userId: getCurrentUserId() === DEFAULT_USER_ID ? "" : getCurrentUserId(),
@@ -138,6 +156,26 @@ export function LoginPage() {
                 {busy ? UI_COPY.auth.loggingIn : UI_COPY.auth.login}
               </button>
             </div>
+
+            {linuxdoEnabled ? (
+              <div className="mt-6">
+                <div className="my-3 flex items-center gap-3 text-xs text-subtext">
+                  <div className="h-px flex-1 bg-border" />
+                  <div>或</div>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                <button
+                  className="btn btn-secondary w-full"
+                  onClick={() => {
+                    const url = `/api/auth/oidc/linuxdo/start?next=${encodeURIComponent(nextPath)}`;
+                    window.location.assign(url);
+                  }}
+                  type="button"
+                >
+                  LinuxDo 一键登录/注册
+                </button>
+              </div>
+            ) : null}
           </div>
           <div className="mt-4 text-center text-xs text-subtext">
             <div className="flex flex-wrap items-center justify-center gap-1">
