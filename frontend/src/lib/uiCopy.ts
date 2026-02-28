@@ -183,6 +183,7 @@ export const UI_COPY = {
     devFallbackTag: "本地模式（DEV）",
 
     linuxdoLogin: "LinuxDo 一键登录/注册",
+    linuxdoLoginFailedPrefix: "LinuxDo 登录失败：",
     linuxdoNotEnabledHint:
       "LinuxDo 登录未启用：请在后端环境变量中配置 LINUXDO_OIDC_CLIENT_ID / LINUXDO_OIDC_CLIENT_SECRET / LINUXDO_OIDC_REDIRECT_URI。",
     linuxdoCheckFailedPrefix: "无法检查 LinuxDo 配置：",

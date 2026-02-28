@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import re
 import secrets
 from datetime import timedelta, timezone
@@ -17,6 +18,7 @@ from app.api.deps import AuthenticatedUserIdDep, DbDep
 from app.core.auth_session import build_session, clear_session_cookies, set_session_cookies
 from app.core.config import settings
 from app.core.errors import AppError, ok_payload
+from app.core.logging import log_event
 from app.db.utils import new_id, utc_now
 from app.models.auth_external_account import AuthExternalAccount
 from app.models.user import User
@@ -25,6 +27,7 @@ from app.schemas.base import RequestModel
 from app.services.auth_service import hash_password, verify_password
 
 router = APIRouter()
+logger = logging.getLogger("ainovel")
 
 _LINUXDO_PROVIDER = "linuxdo"
 _LINUXDO_OIDC_STATE_COOKIE = "oidc_linuxdo_state"
@@ -375,26 +378,37 @@ def linuxdo_oidc_start(request: Request, next: str | None = None) -> RedirectRes
 
 @router.get("/auth/oidc/linuxdo/callback", name="linuxdo_oidc_callback")
 def linuxdo_oidc_callback(request: Request, db: DbDep, code: str | None = None, state: str | None = None) -> RedirectResponse:
+    request_id = request.state.request_id
     next_path = _safe_next_path(request.cookies.get(_LINUXDO_OIDC_NEXT_COOKIE))
+
+    def _clear_oidc_cookies(resp: RedirectResponse) -> None:
+        for name in (_LINUXDO_OIDC_STATE_COOKIE, _LINUXDO_OIDC_VERIFIER_COOKIE, _LINUXDO_OIDC_NEXT_COOKIE):
+            resp.delete_cookie(key=name, path="/", secure=settings.app_env == "prod", samesite="lax")
+
+    def _fail(error_code: str) -> RedirectResponse:
+        url = "/login?" + urlencode({"next": next_path, "oidc_error": error_code, "request_id": request_id})
+        resp = RedirectResponse(url=url, status_code=302)
+        _clear_oidc_cookies(resp)
+        return resp
+
     response = RedirectResponse(url=next_path, status_code=302)
-    for name in (_LINUXDO_OIDC_STATE_COOKIE, _LINUXDO_OIDC_VERIFIER_COOKIE, _LINUXDO_OIDC_NEXT_COOKIE):
-        response.delete_cookie(key=name, path="/", secure=settings.app_env == "prod", samesite="lax")
+    _clear_oidc_cookies(response)
 
     if not _linuxdo_oidc_enabled():
-        return response
+        return _fail("OIDC_NOT_CONFIGURED")
 
     state_cookie = str(request.cookies.get(_LINUXDO_OIDC_STATE_COOKIE) or "").strip()
     state_q = str(state or "").strip()
     if not state_cookie or not state_q or not secrets.compare_digest(state_cookie, state_q):
-        return response
+        return _fail("OIDC_STATE_MISMATCH")
 
     code_q = str(code or "").strip()
     if not code_q:
-        return response
+        return _fail("OIDC_CODE_MISSING")
 
     verifier = str(request.cookies.get(_LINUXDO_OIDC_VERIFIER_COOKIE) or "").strip()
     if not verifier:
-        return response
+        return _fail("OIDC_VERIFIER_MISSING")
 
     try:
         discovery = _linuxdo_discovery()
@@ -412,73 +426,105 @@ def linuxdo_oidc_callback(request: Request, db: DbDep, code: str | None = None, 
         userinfo = _linuxdo_fetch_userinfo(userinfo_endpoint=discovery["userinfo_endpoint"], access_token=access_token)
         subject = str(userinfo.get("sub") or "").strip()
         if not subject:
-            return response
-    except Exception:
-        return response
-
-    ext = db.get(AuthExternalAccount, (_LINUXDO_PROVIDER, subject))
-    user: User | None = None
-    if ext is not None:
-        user = db.get(User, str(ext.user_id))
+            return _fail("OIDC_SUBJECT_MISSING")
+    except AppError as exc:
+        log_event(
+            logger,
+            "warning",
+            event="AUTH_OIDC",
+            action="callback_failed",
+            provider=_LINUXDO_PROVIDER,
+            error_code=exc.code,
+            exception_type=type(exc).__name__,
+        )
+        return _fail(exc.code)
+    except Exception as exc:
+        log_event(
+            logger,
+            "error",
+            event="AUTH_OIDC",
+            action="callback_failed",
+            provider=_LINUXDO_PROVIDER,
+            error_code="OIDC_UNKNOWN",
+            exception_type=type(exc).__name__,
+        )
+        return _fail("OIDC_UNKNOWN")
 
     login = str(userinfo.get("login") or userinfo.get("username") or "").strip()
     display_name = str(userinfo.get("name") or login or "LinuxDo 用户").strip() or "LinuxDo 用户"
-    email = str(userinfo.get("email") or "").strip() or None
+    email_raw = str(userinfo.get("email") or "").strip() or None
     avatar_url = str(userinfo.get("avatar_url") or "").strip() or None
 
-    if email:
-        existing_email_user = db.execute(select(User.id).where(User.email == email).limit(1)).scalars().first()
-        if existing_email_user and (user is None or str(existing_email_user) != str(getattr(user, "id", ""))):
-            email = None
+    user: User | None = None
 
-    if user is None:
-        user_id = _linuxdo_suggest_user_id(db, login=login or display_name)
-        user = User(id=user_id, email=email, display_name=display_name, is_admin=False)
-        db.add(user)
+    for attempt in range(3):
+        ext = db.get(AuthExternalAccount, (_LINUXDO_PROVIDER, subject))
+        user = None
+        if ext is not None:
+            user = db.get(User, str(ext.user_id))
 
-        ext = AuthExternalAccount(
-            provider=_LINUXDO_PROVIDER,
-            subject=subject,
-            user_id=user_id,
-            username=login or None,
-            email=str(userinfo.get("email") or "").strip() or None,
-            avatar_url=avatar_url,
-        )
-        db.add(ext)
-    else:
+        email = email_raw if attempt == 0 else None
+        if email:
+            existing_email_user = db.execute(select(User.id).where(User.email == email).limit(1)).scalars().first()
+            if existing_email_user and (user is None or str(existing_email_user) != str(getattr(user, "id", ""))):
+                email = None
+
+        if user is None:
+            if ext is not None:
+                user_id = str(ext.user_id)
+            else:
+                user_id = _linuxdo_suggest_user_id(db, login=login or display_name) if attempt == 0 else f"linuxdo_{new_id().split('-', 1)[0]}"
+            user = User(id=user_id, email=email, display_name=display_name, is_admin=False)
+            db.add(user)
+        else:
+            if email and not user.email:
+                user.email = email
+            if display_name and not user.display_name:
+                user.display_name = display_name
+
         if ext is None:
             ext = AuthExternalAccount(
                 provider=_LINUXDO_PROVIDER,
                 subject=subject,
                 user_id=str(user.id),
                 username=login or None,
-                email=str(userinfo.get("email") or "").strip() or None,
+                email=email_raw,
                 avatar_url=avatar_url,
             )
             db.add(ext)
         else:
             ext.username = login or ext.username
-            ext.email = str(userinfo.get("email") or "").strip() or ext.email
+            ext.email = email_raw or ext.email
             ext.avatar_url = avatar_url or ext.avatar_url
 
-        if email and not user.email:
-            user.email = email
-        if display_name and not user.display_name:
-            user.display_name = display_name
-
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        ext = db.get(AuthExternalAccount, (_LINUXDO_PROVIDER, subject))
-        if ext is None:
-            return response
-        user = db.get(User, str(ext.user_id))
-        if user is None:
-            return response
+        try:
+            db.commit()
+            break
+        except IntegrityError as exc:
+            db.rollback()
+            if attempt >= 2:
+                log_event(
+                    logger,
+                    "warning",
+                    event="AUTH_OIDC",
+                    action="db_conflict",
+                    provider=_LINUXDO_PROVIDER,
+                    error_code="OIDC_DB_CONFLICT",
+                    exception_type=type(exc).__name__,
+                )
+                return _fail("OIDC_DB_CONFLICT")
+            continue
 
     if user is None:
-        return response
+        log_event(
+            logger,
+            "warning",
+            event="AUTH_OIDC",
+            action="db_missing_user",
+            provider=_LINUXDO_PROVIDER,
+            error_code="OIDC_DB_ERROR",
+        )
+        return _fail("OIDC_DB_ERROR")
 
     session = build_session(user_id=user.id)
     set_session_cookies(response, user_id=user.id, expires_at=session.expires_at)

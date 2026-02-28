@@ -173,12 +173,22 @@ class TestLinuxDoOidcEndpoints(unittest.TestCase):
                 "email": "alice@example.com",
                 "avatar_url": "https://example.com/avatar.png",
             },
-        ), patch.object(
-            Session,
-            "commit",
-            side_effect=IntegrityError("INSERT INTO auth_external_accounts ...", {}, Exception("duplicate key value violates unique constraint")),
         ):
-            resp = client.get("/api/auth/oidc/linuxdo/callback?code=code123&state=state1", follow_redirects=False)
+            original_commit = Session.commit
+            calls: dict[str, int] = {"n": 0}
+
+            def flaky_commit(self: Session) -> None:  # type: ignore[no-untyped-def]
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise IntegrityError(
+                        "INSERT INTO auth_external_accounts ...",
+                        {},
+                        Exception("duplicate key value violates unique constraint"),
+                    )
+                return original_commit(self)
+
+            with patch.object(Session, "commit", new=flaky_commit):
+                resp = client.get("/api/auth/oidc/linuxdo/callback?code=code123&state=state1", follow_redirects=False)
 
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp.headers.get("location"), "/")
@@ -190,7 +200,28 @@ class TestLinuxDoOidcEndpoints(unittest.TestCase):
         client.cookies.set(_LINUXDO_OIDC_VERIFIER_COOKIE, "verifier1")
         client.cookies.set(_LINUXDO_OIDC_NEXT_COOKIE, "https://evil.example/")
 
-        with patch.object(settings, "linuxdo_oidc_client_id", "cid"), patch.object(settings, "linuxdo_oidc_client_secret", "sec"):
+        with patch.object(settings, "linuxdo_oidc_client_id", "cid"), patch.object(settings, "linuxdo_oidc_client_secret", "sec"), patch(
+            "app.api.routes.auth._linuxdo_discovery",
+            return_value={
+                "authorization_endpoint": "https://connect.linux.do/oauth2/authorize",
+                "token_endpoint": "https://connect.linux.do/oauth2/token",
+                "userinfo_endpoint": "https://connect.linux.do/api/user",
+                "issuer": "https://connect.linux.do/",
+            },
+        ), patch(
+            "app.api.routes.auth._linuxdo_exchange_code_for_token",
+            return_value={"access_token": "at-123"},
+        ), patch(
+            "app.api.routes.auth._linuxdo_fetch_userinfo",
+            return_value={
+                "sub": "sub-123",
+                "login": "alice",
+                "username": "alice",
+                "name": "Alice",
+                "email": "alice@example.com",
+                "avatar_url": "https://example.com/avatar.png",
+            },
+        ):
             resp = client.get("/api/auth/oidc/linuxdo/callback?code=code123&state=state1", follow_redirects=False)
 
         self.assertEqual(resp.status_code, 302)

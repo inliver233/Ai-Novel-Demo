@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../contexts/auth";
@@ -20,8 +20,19 @@ export function LoginPage() {
   const auth = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const nextPath = useMemo(() => safeNextPath(searchParams.get("next")), [searchParams]);
+  const oidcError = useMemo(() => String(searchParams.get("oidc_error") || "").trim(), [searchParams]);
+  const oidcRequestId = useMemo(() => String(searchParams.get("request_id") || "").trim() || "unknown", [searchParams]);
+
+  useEffect(() => {
+    if (!oidcError) return;
+    toast.toastError(`${UI_COPY.auth.linuxdoLoginFailedPrefix}${oidcError}`, oidcRequestId);
+    const next = new URLSearchParams(searchParams);
+    next.delete("oidc_error");
+    next.delete("request_id");
+    setSearchParams(next, { replace: true });
+  }, [oidcError, oidcRequestId, searchParams, setSearchParams, toast]);
 
   const [form, setForm] = useState(() => ({
     userId: getCurrentUserId() === DEFAULT_USER_ID ? "" : getCurrentUserId(),
