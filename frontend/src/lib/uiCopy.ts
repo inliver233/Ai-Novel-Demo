@@ -156,7 +156,7 @@ export const UI_COPY = {
     haveAccountHint: "已有账号？",
     goLogin: "去登录",
     loginTitle: "登录",
-    loginSubtitle: "使用本地账号登录（会话保存在浏览器中）",
+    loginSubtitle: "使用本地账号登录（登录状态保存在浏览器 Cookie；数据在服务器数据库）",
     devFallbackHint: "已启用开发演示模式：无需登录也可进入应用。",
     devFallbackRiskHint: "重要：仅用于本地开发/演示。部署到公网时务必关闭 dev_fallback，以免绕过登录。",
     devFallbackNextStepHint: "如需权限/协作/多用户，请在下方使用账号登录。",
@@ -172,7 +172,7 @@ export const UI_COPY = {
     login: "登录",
     loggingIn: "登录中...",
     loginSuccess: "登录成功",
-    loginFooterHint: "提示：登录会话保存在浏览器中；退出登录会清理本地缓存。",
+    loginFooterHint: "提示：登录状态保存在浏览器 Cookie；退出登录会清理本地登录状态。",
     registerTitle: "注册",
     registerSubtitle: "创建本地账号（账号密码）",
     register: "注册并登录",
@@ -181,6 +181,11 @@ export const UI_COPY = {
     logout: "退出登录",
     sessionExpireAtPrefix: "会话到期：",
     devFallbackTag: "本地模式（DEV）",
+
+    linuxdoLogin: "LinuxDo 一键登录/注册",
+    linuxdoNotEnabledHint:
+      "LinuxDo 登录未启用：请在后端环境变量中配置 LINUXDO_OIDC_CLIENT_ID / LINUXDO_OIDC_CLIENT_SECRET / LINUXDO_OIDC_REDIRECT_URI。",
+    linuxdoCheckFailedPrefix: "无法检查 LinuxDo 配置：",
   },
   writing: {
     contextPreview: "上下文预览",
