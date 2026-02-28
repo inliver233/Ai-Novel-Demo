@@ -28,7 +28,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=32), nullable=False, server_default="queued"),
         sa.Column("total_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("completed_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("cancel_requested", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("cancel_requested", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("params_json", sa.Text(), nullable=True),
         sa.Column("error_json", sa.Text(), nullable=True),
         sa.Column("created_at", sa.String(length=32), nullable=False),
@@ -68,4 +68,3 @@ def downgrade() -> None:
     op.drop_index("ix_batch_generation_tasks_status", table_name="batch_generation_tasks")
     op.drop_index("ix_batch_generation_tasks_project_id", table_name="batch_generation_tasks")
     op.drop_table("batch_generation_tasks")
-
