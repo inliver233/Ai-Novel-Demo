@@ -134,7 +134,10 @@ def ensure_db_schema(*, engine: Engine = app_engine) -> None:
     database_url = settings.database_url
     cfg = _alembic_config(database_url=database_url)
 
-    with engine.connect() as conn:
+    # SQLAlchemy 2.0 will implicitly open a transaction on first execute; if we don't
+    # manage it explicitly, `alembic upgrade` may run inside that implicit transaction
+    # and then be rolled back when the connection is closed (observed in Docker/PG).
+    with engine.begin() as conn:
         cfg.attributes["connection"] = conn
         _acquire_pg_migration_lock(conn)
         try:
