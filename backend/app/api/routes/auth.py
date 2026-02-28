@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import AuthenticatedUserIdDep, DbDep
 from app.core.auth_session import build_session, clear_session_cookies, set_session_cookies
@@ -465,7 +466,19 @@ def linuxdo_oidc_callback(request: Request, db: DbDep, code: str | None = None, 
         if display_name and not user.display_name:
             user.display_name = display_name
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        ext = db.get(AuthExternalAccount, (_LINUXDO_PROVIDER, subject))
+        if ext is None:
+            return response
+        user = db.get(User, str(ext.user_id))
+        if user is None:
+            return response
+
+    if user is None:
+        return response
 
     session = build_session(user_id=user.id)
     set_session_cookies(response, user_id=user.id, expires_at=session.expires_at)

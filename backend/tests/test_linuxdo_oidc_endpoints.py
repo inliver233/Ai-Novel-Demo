@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from fastapi import FastAPI, Request
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.testclient import TestClient
@@ -137,6 +138,51 @@ class TestLinuxDoOidcEndpoints(unittest.TestCase):
             self.assertIsNotNone(ext)
             assert ext is not None
             self.assertEqual(ext.user_id, user.id)
+
+    def test_oidc_callback_is_idempotent_when_commit_hits_integrity_error(self) -> None:
+        with self.SessionLocal() as db:
+            user = User(id="linuxdo_alice", email=None, display_name=None, is_admin=False)
+            ext = AuthExternalAccount(provider="linuxdo", subject="sub-123", user_id="linuxdo_alice", username=None, email=None, avatar_url=None)
+            db.add(user)
+            db.add(ext)
+            db.commit()
+
+        client = TestClient(self.app)
+        client.cookies.set(_LINUXDO_OIDC_STATE_COOKIE, "state1")
+        client.cookies.set(_LINUXDO_OIDC_VERIFIER_COOKIE, "verifier1")
+        client.cookies.set(_LINUXDO_OIDC_NEXT_COOKIE, "/")
+
+        with patch.object(settings, "linuxdo_oidc_client_id", "cid"), patch.object(settings, "linuxdo_oidc_client_secret", "sec"), patch(
+            "app.api.routes.auth._linuxdo_discovery",
+            return_value={
+                "authorization_endpoint": "https://connect.linux.do/oauth2/authorize",
+                "token_endpoint": "https://connect.linux.do/oauth2/token",
+                "userinfo_endpoint": "https://connect.linux.do/api/user",
+                "issuer": "https://connect.linux.do/",
+            },
+        ), patch(
+            "app.api.routes.auth._linuxdo_exchange_code_for_token",
+            return_value={"access_token": "at-123"},
+        ), patch(
+            "app.api.routes.auth._linuxdo_fetch_userinfo",
+            return_value={
+                "sub": "sub-123",
+                "login": "alice",
+                "username": "alice",
+                "name": "Alice",
+                "email": "alice@example.com",
+                "avatar_url": "https://example.com/avatar.png",
+            },
+        ), patch.object(
+            Session,
+            "commit",
+            side_effect=IntegrityError("INSERT INTO auth_external_accounts ...", {}, Exception("duplicate key value violates unique constraint")),
+        ):
+            resp = client.get("/api/auth/oidc/linuxdo/callback?code=code123&state=state1", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.headers.get("location"), "/")
+        self.assertIsNotNone(client.cookies.get(settings.auth_cookie_user_id_name))
 
     def test_oidc_callback_next_path_is_fail_closed(self) -> None:
         client = TestClient(self.app)
