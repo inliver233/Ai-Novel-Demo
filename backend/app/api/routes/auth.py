@@ -502,6 +502,17 @@ def linuxdo_oidc_callback(request: Request, db: DbDep, code: str | None = None, 
             break
         except IntegrityError as exc:
             db.rollback()
+            try:
+                db.expunge_all()
+            except Exception:
+                pass
+
+            ext = db.get(AuthExternalAccount, (_LINUXDO_PROVIDER, subject))
+            if ext is not None:
+                user = db.get(User, str(ext.user_id))
+                if user is not None:
+                    break
+
             if attempt >= 2:
                 log_event(
                     logger,
@@ -510,6 +521,8 @@ def linuxdo_oidc_callback(request: Request, db: DbDep, code: str | None = None, 
                     action="db_conflict",
                     provider=_LINUXDO_PROVIDER,
                     error_code="OIDC_DB_CONFLICT",
+                    pgcode=str(getattr(getattr(exc, "orig", None), "pgcode", "") or ""),
+                    constraint_name=str(getattr(getattr(getattr(exc, "orig", None), "diag", None), "constraint_name", "") or ""),
                     exception_type=type(exc).__name__,
                 )
                 return _fail("OIDC_DB_CONFLICT")
