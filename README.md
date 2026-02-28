@@ -60,28 +60,23 @@ npm run dev
 
 生产部署前建议先过一遍安全清单：`docs/deployment/security-checklist.md`。
 
-### 1) 准备环境变量（必做）
+### 1) 修改 Compose（可选）
 
-```bash
-copy .env.docker.example .env.docker  # Windows
-```
+默认不改也能启动；对外部署建议至少修改 `docker-compose.yml` 里的：
+- `FRONTEND_PORT` / `BACKEND_PORT`（端口映射）
+- `AUTH_ADMIN_USER_ID` / `AUTH_ADMIN_PASSWORD`（管理员账号密码；默认 `admin` / `ChangeMe123!`，上线前务必修改）
+- （可选）LinuxDo OIDC：`LINUXDO_OIDC_CLIENT_ID` / `LINUXDO_OIDC_CLIENT_SECRET` / `LINUXDO_OIDC_REDIRECT_URI`
 
-编辑 `.env.docker`（**不要提交到 git**）：
-- `POSTGRES_PASSWORD`：Postgres 密码（必填）
-- `DATABASE_URL`：数据库连接串（必填，需与 `POSTGRES_*` 保持一致）
-- `SECRET_ENCRYPTION_KEY`：Fernet key（容器内是 Linux，dev 模式也需要；必填）
-  - 生成方式：`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+说明：
+- Docker Compose 形态默认使用 `Postgres + Redis + rq_worker`，用于承载三位数并发的基础需求；SQLite 仅建议本地单机调试。
+- `SECRET_ENCRYPTION_KEY` 可留空：容器启动时会自动生成并持久化到 `app_data` 卷（不会输出明文）。
 
-可选并发/性能参数（按宿主机资源与 Postgres `max_connections` 调整）：
-- `WEB_CONCURRENCY`：后端 web worker 数量（Docker 默认 `2`；SQLite 仅支持 `1`）
-- `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` / `DB_POOL_TIMEOUT_SECONDS` / `DB_POOL_RECYCLE_SECONDS`：SQLAlchemy 连接池
-- `RQ_WORKER_PROCESSES`：单个 `rq_worker` 容器内启动的 worker 进程数（默认 `1`）
-  - 也可用 `docker compose up --scale rq_worker=4` 水平扩展多个 worker 容器
+（高级）也可使用 env-file 覆盖变量：`docker compose --env-file .env.docker.example up -d --build`
 
 ### 2) 启动
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
 
 访问：
@@ -100,10 +95,10 @@ docker compose logs -f rq_worker
 ### 4) 回滚/重置策略（明确）
 
 - 回滚代码：切回旧 commit 后执行 `docker compose up --build -d`（默认保留 `postgres_data` 卷，不丢数据）。
-- 重置数据：`docker compose down -v`（会删除 `postgres_data`/`chroma_data` 卷，**不可恢复**）。
+- 重置数据：`docker compose down -v`（会删除 `postgres_data`/`app_data` 卷，**不可恢复**）。
 - 数据卷：
   - Postgres：`postgres_data`
-  - （可选）向量库（Phase 4A 预留）：`chroma_data`（挂载到 `/data/chroma`）
+  - 应用数据（向量库 + 服务端密钥）：`app_data`（挂载到 `/data`；包含 `/data/chroma` 与 `/data/secrets`）
 
 ## LLM 流式输出与请求格式
 

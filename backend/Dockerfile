@@ -20,7 +20,8 @@ COPY app ./app
 COPY scripts ./scripts
 
 RUN chmod +x scripts/entrypoint.sh \
-    && mkdir -p /data/chroma \
+    && mkdir -p /data/chroma /data/secrets \
+    && chmod 700 /data/secrets \
     && chown -R app:app /data /home/app
 
 USER app
