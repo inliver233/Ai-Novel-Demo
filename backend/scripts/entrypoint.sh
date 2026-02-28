@@ -138,11 +138,67 @@ if last_error is not None:
 PY
 fi
 
-python - <<'PY'
+SHOULD_BOOTSTRAP_DB=1
+if [ "$#" -gt 0 ]; then
+  SHOULD_BOOTSTRAP_DB=0
+fi
+
+case "$(printf '%s' "${RUN_DB_BOOTSTRAP:-}" | tr '[:upper:]' '[:lower:]')" in
+  1|true|yes|on)
+    SHOULD_BOOTSTRAP_DB=1
+    ;;
+  0|false|no|off)
+    SHOULD_BOOTSTRAP_DB=0
+    ;;
+esac
+
+if [ "$SHOULD_BOOTSTRAP_DB" -eq 1 ]; then
+  python - <<'PY'
+from app.core.logging import configure_logging
 from app.db.migrations import ensure_db_schema
+
+configure_logging()
 
 ensure_db_schema()
 PY
+
+  python - <<'PY'
+from app.core.errors import AppError
+from app.core.logging import configure_logging, log_event
+from app.core.config import settings
+from app.db.session import SessionLocal
+from app.services.auth_service import ensure_admin_user
+
+import logging
+
+configure_logging()
+logger = logging.getLogger("ainovel")
+
+db = SessionLocal()
+try:
+    ensure_admin_user(db)
+except AppError as exc:
+    raw = (settings.auth_admin_password or "").strip()
+    if settings.app_env == "dev" and exc.code == "VALIDATION_ERROR" and raw and len(raw) < 8:
+        log_event(
+            logger,
+            "warning",
+            event="AUTH_ADMIN_BOOTSTRAP",
+            action="skipped",
+            reason="invalid_password",
+            admin_user_id=settings.auth_admin_user_id,
+            password_length=len(raw),
+            min_password_length=8,
+            message="AUTH_ADMIN_PASSWORD 无效（长度 < 8），跳过 admin bootstrap（dev only）",
+        )
+    else:
+        raise
+finally:
+    db.close()
+PY
+
+  export AINOVEL_BOOTSTRAP_DONE=1
+fi
 
 if [ "$#" -gt 0 ]; then
   exec "$@"

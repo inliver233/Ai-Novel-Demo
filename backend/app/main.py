@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
@@ -24,6 +25,42 @@ from app.models.user import User
 from app.services.auth_service import ensure_admin_user
 
 logger = logging.getLogger("ainovel")
+
+
+def _env_truthy(name: str) -> bool | None:
+    raw = str(os.getenv(name) or "").strip().lower()
+    if not raw:
+        return None
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _web_concurrency() -> int:
+    raw = str(os.getenv("WEB_CONCURRENCY") or "").strip()
+    if not raw:
+        return 1
+    try:
+        value = int(raw)
+    except Exception:
+        return 1
+    return 1 if value <= 0 else value
+
+
+def _should_bootstrap_in_app() -> bool:
+    if _env_truthy("AINOVEL_BOOTSTRAP_DONE") is True:
+        return False
+
+    override = _env_truthy("AINOVEL_BOOTSTRAP_IN_APP")
+    if override is not None:
+        return override
+
+    if settings.app_env != "dev":
+        return False
+
+    return _web_concurrency() <= 1
 
 
 def _warn_sqlite_single_worker() -> None:
@@ -97,10 +134,11 @@ def _ensure_admin_user() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
-    ensure_db_schema()
+    if _should_bootstrap_in_app():
+        ensure_db_schema()
+        _ensure_admin_user()
     _warn_sqlite_single_worker()
     _ensure_local_user()
-    _ensure_admin_user()
     yield
     close_llm_http_client()
 
