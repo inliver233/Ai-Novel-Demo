@@ -45,10 +45,41 @@ class VectorChunk:
 
 _ALL_SOURCES: list[VectorSource] = ["worldbook", "outline", "chapter", "story_memory"]
 _PGVECTOR_TABLE = "vector_chunks"
+_PGVECTOR_READY_CACHE: tuple[bool, float] | None = None
+_PGVECTOR_READY_CACHE_TTL_SECONDS = 30.0
 
 
 def _is_postgres() -> bool:
     return getattr(getattr(engine, "dialect", None), "name", "") == "postgresql"
+
+
+def _pgvector_ready() -> bool:
+    global _PGVECTOR_READY_CACHE
+    now = time.time()
+    cached = _PGVECTOR_READY_CACHE
+    if cached is not None and (now - cached[1]) < _PGVECTOR_READY_CACHE_TTL_SECONDS:
+        return bool(cached[0])
+
+    if not _is_postgres():
+        _PGVECTOR_READY_CACHE = (False, now)
+        return False
+
+    ready = False
+    try:
+        with engine.connect() as conn:
+            ext_installed = bool(conn.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")).scalar())
+            if not ext_installed:
+                ready = False
+            else:
+                table_exists = bool(
+                    conn.execute(text("SELECT to_regclass('public.vector_chunks') IS NOT NULL")).scalar()
+                )
+                ready = bool(table_exists)
+    except Exception:
+        ready = False
+
+    _PGVECTOR_READY_CACHE = (bool(ready), now)
+    return bool(ready)
 
 
 def _prefer_pgvector() -> bool:
@@ -56,8 +87,8 @@ def _prefer_pgvector() -> bool:
     if backend == "chroma":
         return False
     if backend == "pgvector":
-        return _is_postgres()
-    return _is_postgres()
+        return _pgvector_ready()
+    return _pgvector_ready()
 
 
 def _safe_json_loads(raw: str | None) -> dict[str, Any]:

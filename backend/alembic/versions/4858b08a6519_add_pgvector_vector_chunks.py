@@ -9,6 +9,7 @@ Create Date: 2026-01-10
 from __future__ import annotations
 
 from alembic import op
+from sqlalchemy import text
 
 
 revision = "4858b08a6519"
@@ -21,13 +22,27 @@ def _is_postgres() -> bool:
     bind = op.get_bind()
     return getattr(getattr(bind, "dialect", None), "name", "") == "postgresql"
 
+def _pgvector_extension_available() -> bool:
+    bind = op.get_bind()
+    try:
+        return bool(bind.execute(text("SELECT 1 FROM pg_available_extensions WHERE name = 'vector'")).scalar())
+    except Exception:
+        return False
+
 
 def upgrade() -> None:
     if not _is_postgres():
         return
 
     # NOTE: This migration is Postgres-only. SQLite environments keep using Chroma (fail-soft).
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # For non-superuser managed Postgres, pgvector might not be installed/allowed. In that case we skip this migration
+    # and the app will fall back to Chroma.
+    if not _pgvector_extension_available():
+        return
+    try:
+        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    except Exception:
+        return
 
     op.execute(
         """
@@ -64,4 +79,3 @@ def downgrade() -> None:
 
     op.execute("DROP TABLE IF EXISTS vector_chunks")
     op.execute("DROP EXTENSION IF EXISTS vector")
-

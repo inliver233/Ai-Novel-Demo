@@ -69,6 +69,9 @@ npm run dev
 
 说明：
 - Docker Compose 形态默认使用 `Postgres + Redis + rq_worker`，用于承载三位数并发的基础需求；SQLite 仅建议本地单机调试。
+- Compose 的 Postgres 镜像默认包含 `pgvector` 扩展（用于 `vector_chunks` 向量索引表）。如果你改用外部/自建 Postgres：
+  - 推荐安装并允许 `CREATE EXTENSION vector`；
+  - 或将 `VECTOR_BACKEND=chroma`（继续使用 `/data/chroma`），系统会自动降级跳过 pgvector 表。
 - `SECRET_ENCRYPTION_KEY` 可留空：容器启动时会自动生成并持久化到 `app_data` 卷（不会输出明文）。
 
 （推荐）也可使用 env-file 覆盖变量：
