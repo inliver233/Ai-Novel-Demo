@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -126,3 +127,55 @@ class TestSearchFuzzyQuery(unittest.TestCase):
             self.assertGreaterEqual(len(items), 2)
             self.assertEqual(items[0].get("source_id"), "a")
 
+    def test_like_query_is_postgres_compatible(self) -> None:
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+
+        SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+        class _Dialect:
+            name = "postgresql"
+
+        class _Bind:
+            dialect = _Dialect()
+
+        class _DummyResult:
+            def __init__(self, rows: list[tuple]) -> None:
+                self._rows = rows
+
+            def all(self) -> list[tuple]:
+                return self._rows
+
+        with SessionLocal() as db:
+            captured_sql: dict[str, str] = {}
+
+            def _fake_execute(sql, params):  # type: ignore[no-untyped-def]
+                captured_sql["text"] = getattr(sql, "text", str(sql))
+                return _DummyResult(
+                    [
+                        (
+                            "chapter",
+                            "c1",
+                            "Hello world",
+                            "Hello brave world",
+                            "/projects/p1/writing?chapterId=c1",
+                            None,
+                            0,
+                            0,
+                            1,
+                            1,
+                        )
+                    ]
+                )
+
+            with patch.object(db, "get_bind", return_value=_Bind()), patch.object(db, "execute", side_effect=_fake_execute):
+                out = query_project_search(db=db, project_id="p1", q="Hello world", sources=None, limit=20, offset=0)
+
+            self.assertEqual(out.get("mode"), "like")
+            self.assertIn("strpos", captured_sql.get("text") or "")
+            self.assertIn("ILIKE", captured_sql.get("text") or "")
+            self.assertNotIn("instr(", captured_sql.get("text") or "")

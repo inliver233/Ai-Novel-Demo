@@ -760,11 +760,15 @@ def query_project_search(
         return {"items": [], "next_offset": None, "mode": "empty", "fts_enabled": False}
     params["q_primary"] = terms[0]
 
+    dialect = str(getattr(getattr(db.get_bind(), "dialect", None), "name", "") or "")
+    like_op = "ILIKE" if dialect == "postgresql" else "LIKE"
+    pos_fn = "strpos" if dialect == "postgresql" else "instr"
+
     where_parts: list[str] = []
     for idx, term in enumerate(terms):
         k = f"term_{idx}"
         params[k] = f"%{term}%"
-        where_parts.append(f"(COALESCE(title,'') LIKE :{k} OR content LIKE :{k})")
+        where_parts.append(f"(COALESCE(title,'') {like_op} :{k} OR content {like_op} :{k})")
     where = f"project_id = :project_id AND ({' AND '.join(where_parts)})"
     if sources_norm:
         keys = []
@@ -778,10 +782,10 @@ def query_project_search(
         db.execute(
             text(
                 "SELECT source_type,source_id,COALESCE(title,'') AS title,content, url_path, locator_json, "
-                "CASE WHEN COALESCE(title,'') LIKE :term_0 THEN 0 ELSE 1 END AS title_hit, "
-                "CASE WHEN content LIKE :term_0 THEN 0 ELSE 1 END AS content_hit, "
-                "instr(lower(COALESCE(title,'')), lower(:q_primary)) AS title_pos, "
-                "instr(lower(content), lower(:q_primary)) AS content_pos "
+                f"CASE WHEN COALESCE(title,'') {like_op} :term_0 THEN 0 ELSE 1 END AS title_hit, "
+                f"CASE WHEN content {like_op} :term_0 THEN 0 ELSE 1 END AS content_hit, "
+                f"{pos_fn}(lower(COALESCE(title,'')), lower(:q_primary)) AS title_pos, "
+                f"{pos_fn}(lower(content), lower(:q_primary)) AS content_pos "
                 "FROM search_documents "
                 f"WHERE {where} "
                 "ORDER BY title_hit ASC, content_hit ASC, "
