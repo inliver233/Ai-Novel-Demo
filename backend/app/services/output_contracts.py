@@ -243,18 +243,11 @@ class OutputContract:
                 return OutputParseResult(data=data, warnings=warnings, parse_error=parse_error)
 
             schema_version = value.get("schema_version")
-            if not isinstance(schema_version, str) or schema_version.strip() != "worldbook_auto_update_v1":
-                data = {"title": "", "summary_md": "", "ops": [], "raw_output": text}
-                if raw_json:
-                    data["raw_json"] = raw_json
-                return OutputParseResult(
-                    data=data,
-                    warnings=warnings,
-                    parse_error={
-                        "code": "WORLDBOOK_AUTO_UPDATE_PARSE_ERROR",
-                        "message": "schema_version 无效或缺失",
-                    },
-                )
+            schema_version_norm = schema_version.strip() if isinstance(schema_version, str) else ""
+            if not schema_version_norm:
+                warnings.append("schema_version_missing")
+            elif schema_version_norm != "worldbook_auto_update_v1":
+                warnings.append("schema_version_invalid")
 
             title = value.get("title")
             title_out = title.strip() if isinstance(title, str) else ""

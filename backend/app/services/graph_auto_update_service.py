@@ -107,7 +107,7 @@ def build_graph_auto_update_prompt_v1(
         "}\n"
         "\n"
         "规则：\n"
-        f"- ops 必须是非空数组，且长度 <= {MAX_OPS_V1}\n"
+        f"- ops 必须是数组（允许为空数组，当本章没有明确可抽取更新时），且长度 <= {MAX_OPS_V1}\n"
         "- 只允许 target_table: entities | relations | events | evidence（不要输出 foreshadows）\n"
         "- op=upsert 时 after 必填；op=delete 时 target_id 必填且 after 必须为 null\n"
         "- 不要捏造信息：信息不足则宁可少写\n"

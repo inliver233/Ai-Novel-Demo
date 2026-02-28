@@ -16,6 +16,7 @@ from app.models.project import Project
 from app.models.project_table import ProjectTable, ProjectTableRow
 from app.models.user import User
 from app.services import table_ai_update_service
+from app.services.llm_retry import LlmRetryExhausted
 from app.services.table_ai_update_service import table_ai_update_v1
 
 
@@ -134,7 +135,16 @@ class TestTableAiUpdateLlmErrorRunId(unittest.TestCase):
         with patch.object(table_ai_update_service, "SessionLocal", SessionLocal), patch(
             "app.services.table_ai_update_service.resolve_api_key_for_project", return_value="masked_api_key"
         ), patch(
-            "app.services.table_ai_update_service.call_llm_and_record", side_effect=TimeoutError("timeout")
+            "app.services.table_ai_update_service.call_llm_and_record_with_retries",
+            side_effect=LlmRetryExhausted(
+                error_type="TimeoutError",
+                error_message="timeout",
+                error_code=None,
+                status_code=None,
+                run_id=None,
+                attempts=[{"attempt": 1, "request_id": "rid-test", "run_id": None}],
+                last_exception=TimeoutError("timeout"),
+            ),
         ):
             res = table_ai_update_v1(
                 project_id="p1",

@@ -8,7 +8,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.errors import AppError
 from app.db.base import Base
 from app.models.chapter import Chapter
 from app.models.llm_preset import LLMPreset
@@ -17,6 +16,7 @@ from app.models.project import Project
 from app.models.project_table import ProjectTable, ProjectTableRow
 from app.models.user import User
 from app.services.generation_service import RecordedLlmResult
+from app.services.llm_retry import LlmRetryExhausted
 from app.services.table_ai_update_service import table_ai_update_v1
 
 
@@ -78,7 +78,6 @@ class TestTableAiUpdateTimeoutRetry(unittest.TestCase):
             db.commit()
 
     def test_retries_once_on_timeout_and_succeeds(self) -> None:
-        timeout_exc = AppError(code="LLM_TIMEOUT", message="timeout", status_code=504, details={"run_id": "run-orig"})
         model_out = _compact_json_dumps(
             {
                 "title": "Table Update",
@@ -90,12 +89,15 @@ class TestTableAiUpdateTimeoutRetry(unittest.TestCase):
         with patch("app.services.table_ai_update_service.SessionLocal", self.SessionLocal), patch(
             "app.services.table_ai_update_service.resolve_api_key_for_project", return_value="masked_api_key"
         ), patch(
-            "app.services.table_ai_update_service.call_llm_and_record",
-            side_effect=[
-                timeout_exc,
+            "app.services.table_ai_update_service.call_llm_and_record_with_retries",
+            return_value=(
                 RecordedLlmResult(text=model_out, finish_reason=None, latency_ms=1, dropped_params=[], run_id="run-retry"),
-            ],
-        ) as mock_call, patch(
+                [
+                    {"attempt": 1, "request_id": "rid-test", "run_id": "run-orig", "error_code": "LLM_TIMEOUT"},
+                    {"attempt": 2, "request_id": "rid-test:retry1", "run_id": "run-retry"},
+                ],
+            ),
+        ) as mock_retry, patch(
             "app.services.table_ai_update_service.propose_project_table_change_set",
             return_value={"change_set_id": "cs1"},
         ):
@@ -111,25 +113,34 @@ class TestTableAiUpdateTimeoutRetry(unittest.TestCase):
 
         self.assertTrue(bool(res.get("ok")))
         self.assertEqual(res.get("run_id"), "run-retry")
-        self.assertIn("llm_timeout_retry_used", list(res.get("warnings") or []))
+        self.assertIn("llm_retry_used", list(res.get("warnings") or []))
 
-        self.assertEqual(mock_call.call_count, 2)
-        first_llm_call = mock_call.call_args_list[0].kwargs.get("llm_call")
-        second_llm_call = mock_call.call_args_list[1].kwargs.get("llm_call")
-        self.assertEqual((first_llm_call.params or {}).get("max_tokens"), 1024)
-        self.assertEqual((second_llm_call.params or {}).get("max_tokens"), 512)
-        self.assertTrue(str(mock_call.call_args_list[1].kwargs.get("request_id") or "").endswith(":retry1"))
+        self.assertEqual(mock_retry.call_count, 1)
+        overrides = mock_retry.call_args.kwargs.get("llm_call_overrides_by_attempt") or {}
+        self.assertEqual((overrides.get(1) or {}).get("max_tokens"), 1024)
+        self.assertEqual((overrides.get(2) or {}).get("max_tokens"), 512)
+        self.assertEqual((overrides.get(3) or {}).get("max_tokens"), 512)
 
     def test_timeout_retry_exhausted_records_attempts(self) -> None:
-        timeout1 = AppError(code="LLM_TIMEOUT", message="timeout1", status_code=504, details={"run_id": "run-orig"})
-        timeout2 = AppError(code="LLM_TIMEOUT", message="timeout2", status_code=504, details={"run_id": "run-retry"})
+        exc = LlmRetryExhausted(
+            error_type="AppError",
+            error_message="timeout2",
+            error_code="LLM_TIMEOUT",
+            status_code=504,
+            run_id="run-retry",
+            attempts=[
+                {"attempt": 1, "request_id": "rid-test", "run_id": "run-orig", "error_code": "LLM_TIMEOUT"},
+                {"attempt": 2, "request_id": "rid-test:retry1", "run_id": "run-retry", "error_code": "LLM_TIMEOUT"},
+            ],
+            last_exception=TimeoutError("timeout2"),
+        )
 
         with patch("app.services.table_ai_update_service.SessionLocal", self.SessionLocal), patch(
             "app.services.table_ai_update_service.resolve_api_key_for_project", return_value="masked_api_key"
         ), patch(
-            "app.services.table_ai_update_service.call_llm_and_record",
-            side_effect=[timeout1, timeout2],
-        ) as mock_call:
+            "app.services.table_ai_update_service.call_llm_and_record_with_retries",
+            side_effect=exc,
+        ) as mock_retry:
             res = table_ai_update_v1(
                 project_id="p1",
                 actor_user_id="u1",
@@ -151,6 +162,4 @@ class TestTableAiUpdateTimeoutRetry(unittest.TestCase):
         self.assertEqual(attempts[0].get("attempt"), 1)
         self.assertEqual(attempts[1].get("attempt"), 2)
 
-        self.assertEqual(mock_call.call_count, 2)
-        second_llm_call = mock_call.call_args_list[1].kwargs.get("llm_call")
-        self.assertEqual((second_llm_call.params or {}).get("max_tokens"), 512)
+        self.assertEqual(mock_retry.call_count, 1)

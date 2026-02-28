@@ -94,13 +94,16 @@ class TestTableAiUpdateServiceRepair(unittest.TestCase):
         with patch("app.services.table_ai_update_service.SessionLocal", self.SessionLocal), patch(
             "app.services.table_ai_update_service.resolve_api_key_for_project", return_value="masked_api_key"
         ), patch(
-            "app.services.table_ai_update_service.call_llm_and_record",
-            return_value=RecordedLlmResult(
-                text="not json",
-                finish_reason=None,
-                latency_ms=1,
-                dropped_params=[],
-                run_id="run-orig",
+            "app.services.table_ai_update_service.call_llm_and_record_with_retries",
+            return_value=(
+                RecordedLlmResult(
+                    text="not json",
+                    finish_reason=None,
+                    latency_ms=1,
+                    dropped_params=[],
+                    run_id="run-orig",
+                ),
+                [{"attempt": 1, "request_id": "rid-test", "run_id": "run-orig"}],
             ),
         ), patch(
             "app.services.table_ai_update_service.repair_json_once",

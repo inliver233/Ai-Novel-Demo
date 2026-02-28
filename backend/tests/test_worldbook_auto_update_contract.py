@@ -55,12 +55,12 @@ class TestWorldbookAutoUpdateContract(unittest.TestCase):
         assert parsed.parse_error is not None
         self.assertEqual(parsed.parse_error.get("code"), "WORLDBOOK_AUTO_UPDATE_PARSE_ERROR")
 
-    def test_parse_error_when_schema_version_missing(self) -> None:
+    def test_schema_version_missing_is_allowed_as_v1(self) -> None:
         contract = contract_for_task("worldbook_auto_update")
         parsed = contract.parse('{"ops":[{"op":"dedupe","canonical_title":"A","duplicate_titles":["B"]}]}')
-        self.assertIsNotNone(parsed.parse_error)
-        assert parsed.parse_error is not None
-        self.assertIn("schema_version", str(parsed.parse_error.get("message")))
+        self.assertIsNone(parsed.parse_error)
+        self.assertIn("schema_version_missing", parsed.warnings)
+        self.assertEqual(len(parsed.data.get("ops") or []), 1)
 
     def test_parse_error_when_ops_empty(self) -> None:
         contract = contract_for_task("worldbook_auto_update")

@@ -204,4 +204,5 @@ class TableUpdateV1Request(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=64)
     title: str | None = Field(default=None, max_length=255)
     summary_md: str | None = Field(default=None, max_length=40000)
-    ops: list[TableRowOpV1] = Field(min_length=1, max_length=MAX_OPS_V1)
+    # NOTE: allow empty ops for fail-soft/no-op AI updates (align with other auto-update contracts).
+    ops: list[TableRowOpV1] = Field(default_factory=list, min_length=0, max_length=MAX_OPS_V1)

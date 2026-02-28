@@ -18,9 +18,17 @@ from app.models.llm_preset import LLMPreset
 from app.models.project import Project
 from app.models.project_table import ProjectTable, ProjectTableRow
 from app.models.project_task import ProjectTask
-from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
 from app.services.json_repair_service import repair_json_once
+from app.services.generation_service import prepare_llm_call
 from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_retry import (
+    LlmRetryExhausted,
+    call_llm_and_record_with_retries,
+    task_llm_max_attempts,
+    task_llm_retry_base_seconds,
+    task_llm_retry_jitter,
+    task_llm_retry_max_seconds,
+)
 from app.services.memory_update_service import propose_project_table_change_set
 from app.services.output_parsers import extract_json_value, likely_truncated_json
 from app.services.table_executor import MAX_OPS_V1, TableRowOpV1, TableUpdateV1Request, is_key_value_schema
@@ -155,7 +163,7 @@ def build_table_ai_update_prompt_v1(
         "}\n"
         "\n"
         "规则：\n"
-        f"- ops 必须是非空数组，且长度 <= {_MAX_OPS_AI_V1}（输出尽量短，避免超时；不要重复输出未变化的行）\n"
+        f"- ops 必须是数组（允许为空数组，当无需更新时），且长度 <= {_MAX_OPS_AI_V1}（输出尽量短，避免超时；不要重复输出未变化的行）\n"
         "- 只能修改给定的 table_id（不要写其它 table_id）\n"
         '- op=upsert 时 data 必填；op=delete 时 row_id 必填且 data 必须为 null\n'
         "- data 必须严格符合 schema.columns（字段名与类型）\n"
@@ -216,11 +224,22 @@ def parse_table_update_output_v1(
     summary_out = summary_md.strip() if isinstance(summary_md, str) else ""
 
     ops_raw = value.get("ops")
-    if not isinstance(ops_raw, list) or not ops_raw:
+    if ops_raw is None:
+        warnings.append("ops_missing")
+        ops_raw = []
+    if not isinstance(ops_raw, list):
         data: dict[str, Any] = {"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text}
         if raw_json:
             data["raw_json"] = raw_json
-        return data, warnings, {"code": "TABLE_UPDATE_PARSE_ERROR", "message": "ops 为空或缺失"}
+        return data, warnings, {"code": "TABLE_UPDATE_PARSE_ERROR", "message": "ops 必须是数组"}
+    if not ops_raw:
+        warnings.append("ops_empty")
+        data = {"title": title_out, "summary_md": summary_out, "ops": [], "raw_output": text}
+        if raw_json:
+            data["raw_json"] = raw_json
+        if finish_reason == "length":
+            warnings.append("output_truncated")
+        return data, warnings, None
 
     ops_out: list[dict[str, Any]] = []
     for idx, item in enumerate(ops_raw):
@@ -386,47 +405,36 @@ def table_ai_update_v1(
     if not prompt_system.strip() and not prompt_user.strip():
         return {"ok": False, "project_id": pid, "reason": "prompt_empty"}
 
-    attempts: list[dict[str, Any]] = []
+    llm_attempts: list[dict[str, Any]] = []
+    try:
+        base_max_tokens = llm_call.params.get("max_tokens")
 
-    def _is_timeout_exc(exc: Exception) -> bool:
-        if isinstance(exc, AppError):
-            if str(getattr(exc, "code", "") or "") == "LLM_TIMEOUT":
-                return True
-            if int(getattr(exc, "status_code", 0) or 0) == 504:
-                return True
-        return isinstance(exc, TimeoutError)
+        def _clamp_max_tokens(limit: int) -> int:
+            if isinstance(base_max_tokens, int) and base_max_tokens > 0:
+                return min(int(limit), int(base_max_tokens))
+            return int(limit)
 
-    def _retry_request_id(base: str) -> str:
-        suffix = "retry1"
-        candidate = f"{base}:{suffix}"
-        if len(candidate) <= 64:
-            return candidate
-        keep = max(0, 64 - (len(suffix) + 1))
-        return f"{base[:keep]}:{suffix}"
+        retry_system = (
+            prompt_system
+            + "\n"
+            + "【重试模式】上一轮调用失败/超时。请输出更短、更保守的更新：\n"
+            + "- 只输出裸 JSON（不要 Markdown，不要代码块）\n"
+            + f"- ops 长度 <= {_MAX_OPS_AI_RETRY_V1}\n"
+            + "- 只更新最确定的 1~3 个 key/行；不要穷举；不要重复输出未变化的行\n"
+        )
 
-    def _resolve_run_id(exc: Exception, *, request_id2: str) -> str | None:
-        run_id: str | None = None
-        if isinstance(exc, AppError):
-            details = exc.details if isinstance(getattr(exc, "details", None), dict) else {}
-            run_id = str(details.get("run_id") or "").strip() or None
-        run_id = run_id or str(getattr(exc, "run_id", "") or "").strip() or None
-        if not run_id:
-            run_id = _find_latest_run_id_for_request(project_id=pid, request_id=request_id2, run_type="table_ai_update_auto_propose")
-        return run_id
-
-    def _call_llm_once(*, attempt: int, request_id2: str, max_tokens: int, prompt_system2: str) -> RecordedLlmResult:
-        llm_call2 = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": int(max_tokens)})
-        return call_llm_and_record(
+        max_attempts = task_llm_max_attempts(default=3)
+        recorded, llm_attempts = call_llm_and_record_with_retries(
             logger=logger,
-            request_id=request_id2,
+            request_id=req,
             actor_user_id=actor,
             project_id=pid,
             chapter_id=chapter_id_effective,
             run_type="table_ai_update_auto_propose",
             api_key=str(resolved_api_key),
-            prompt_system=prompt_system2,
+            prompt_system=prompt_system,
             prompt_user=prompt_user,
-            llm_call=llm_call2,
+            llm_call=llm_call,
             run_params_extra_json={
                 "task": TABLE_AI_UPDATE_KIND,
                 "schema_version": "table_update_v1",
@@ -434,112 +442,66 @@ def table_ai_update_v1(
                 "table_name": table_name,
                 "kv_mode": bool(is_key_value_schema(schema_dict)),
                 "rows_in_prompt": int(len(existing_rows)),
-                "attempt": int(attempt),
-                "max_tokens": int(max_tokens),
             },
+            max_attempts=max_attempts,
+            retry_prompt_system=retry_system,
+            llm_call_overrides_by_attempt={
+                1: {"temperature": 0.2, "max_tokens": _clamp_max_tokens(_MAX_TOKENS_PRIMARY_V1)},
+                2: {"temperature": 0.1, "max_tokens": _clamp_max_tokens(_MAX_TOKENS_RETRY_V1)},
+                3: {"temperature": 0.0, "max_tokens": _clamp_max_tokens(_MAX_TOKENS_RETRY_V1)},
+            },
+            backoff_base_seconds=task_llm_retry_base_seconds(),
+            backoff_max_seconds=task_llm_retry_max_seconds(),
+            jitter=task_llm_retry_jitter(),
         )
+    except LlmRetryExhausted as exc:
+        run_id = str(exc.run_id or "").strip() or None
+        if not run_id:
+            for attempt in reversed(list(exc.attempts or [])):
+                rid2 = str(attempt.get("request_id") or "").strip()
+                if not rid2:
+                    continue
+                found = _find_latest_run_id_for_request(
+                    project_id=pid,
+                    request_id=rid2,
+                    run_type="table_ai_update_auto_propose",
+                )
+                if found:
+                    run_id = found
+                    break
 
-    llm_call2 = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": _MAX_TOKENS_PRIMARY_V1})
-    try:
-        recorded = _call_llm_once(attempt=1, request_id2=req, max_tokens=_MAX_TOKENS_PRIMARY_V1, prompt_system2=prompt_system)
-        attempts.append({"attempt": 1, "request_id": req, "max_tokens": _MAX_TOKENS_PRIMARY_V1, "run_id": recorded.run_id})
-    except Exception as exc:
-        run_id_1 = _resolve_run_id(exc, request_id2=req)
-        attempts.append(
-            {
-                "attempt": 1,
-                "request_id": req,
-                "max_tokens": _MAX_TOKENS_PRIMARY_V1,
-                "run_id": run_id_1,
-                "error_type": type(exc).__name__,
-            }
+        log_event(
+            logger,
+            "warning",
+            event="TABLE_AI_UPDATE_LLM_ERROR",
+            project_id=pid,
+            table_id=tid,
+            run_id=run_id,
+            error_type=str(exc.error_type),
+            request_id=req,
+            **exception_log_fields(exc.last_exception),
         )
-
-        if not _is_timeout_exc(exc):
-            log_event(
-                logger,
-                "warning",
-                event="TABLE_AI_UPDATE_LLM_ERROR",
-                project_id=pid,
-                table_id=tid,
-                run_id=run_id_1,
-                error_type=type(exc).__name__,
-                **exception_log_fields(exc),
-            )
-            safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
-            if not safe_message:
-                safe_message = type(exc).__name__
-            return {
-                "ok": False,
-                "project_id": pid,
-                "table_id": tid,
-                "reason": "llm_call_failed",
-                "run_id": run_id_1,
-                "error_type": type(exc).__name__,
-                "error_message": safe_message[:400],
-            }
-
-        # Retry once on timeout with smaller max_tokens and stricter output constraints.
-        req_retry = _retry_request_id(req)
-        prompt_system_retry = (
-            prompt_system
-            + "\n"
-            + "【重试模式】上一轮可能超时。请输出更短、更保守的更新：\n"
-            + f"- ops 长度 <= {_MAX_OPS_AI_RETRY_V1}\n"
-            + "- 只更新最确定的 1~3 个 key/行；不要穷举；不要重复输出未变化的行\n"
-        )
-        llm_call2 = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": _MAX_TOKENS_RETRY_V1})
-        try:
-            recorded = _call_llm_once(
-                attempt=2,
-                request_id2=req_retry,
-                max_tokens=_MAX_TOKENS_RETRY_V1,
-                prompt_system2=prompt_system_retry,
-            )
-            attempts.append(
-                {"attempt": 2, "request_id": req_retry, "max_tokens": _MAX_TOKENS_RETRY_V1, "run_id": recorded.run_id}
-            )
-        except Exception as exc2:
-            run_id_2 = _resolve_run_id(exc2, request_id2=req_retry) or run_id_1
-            attempts.append(
-                {
-                    "attempt": 2,
-                    "request_id": req_retry,
-                    "max_tokens": _MAX_TOKENS_RETRY_V1,
-                    "run_id": run_id_2,
-                    "error_type": type(exc2).__name__,
-                }
-            )
-            log_event(
-                logger,
-                "warning",
-                event="TABLE_AI_UPDATE_LLM_ERROR",
-                project_id=pid,
-                table_id=tid,
-                run_id=run_id_2,
-                error_type=type(exc2).__name__,
-                **exception_log_fields(exc2),
-            )
-            safe_message = redact_secrets_text(str(exc2)).replace("\n", " ").strip()
-            if not safe_message:
-                safe_message = type(exc2).__name__
-            return {
-                "ok": False,
-                "project_id": pid,
-                "table_id": tid,
-                "reason": "llm_call_failed",
-                "run_id": run_id_2,
-                "error_type": type(exc2).__name__,
-                "error_message": safe_message[:400],
-                "error": {"code": "LLM_TIMEOUT", "details": {"attempts": attempts}},
-            }
+        return {
+            "ok": False,
+            "project_id": pid,
+            "table_id": tid,
+            "reason": "llm_call_failed",
+            "run_id": run_id,
+            "error_type": exc.error_type,
+            "error_message": exc.error_message[:400],
+            "attempts": list(exc.attempts or []),
+            "error": {
+                "code": exc.error_code or "LLM_CALL_FAILED",
+                "details": {"attempts": list(exc.attempts or [])},
+            },
+        }
 
     repair_run_id: str | None = None
     parsed, warnings, parse_error = parse_table_update_output_v1(
         recorded.text, expected_table_id=tid, finish_reason=recorded.finish_reason
     )
-    if len(attempts) >= 2:
-        warnings = [*list(warnings or []), "llm_timeout_retry_used"]
+    if len(list(llm_attempts or [])) >= 2:
+        warnings = [*list(warnings or []), "llm_retry_used"]
     if parse_error is not None:
         repair_schema = (
             "{\n"
@@ -565,7 +527,7 @@ def table_ai_update_v1(
             project_id=pid,
             chapter_id=chapter_id_effective,
             api_key=str(resolved_api_key),
-            llm_call=llm_call2,
+            llm_call=llm_call,
             raw_output=recorded.text,
             schema=repair_schema,
             expected_root="object",
