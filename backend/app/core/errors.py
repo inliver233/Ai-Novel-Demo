@@ -12,7 +12,8 @@ class AppError(Exception):
     details: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        super().__init__(self.message)
+        # Avoid zero-arg super() edge cases in production; keep Exception args stable for str(err).
+        Exception.__init__(self, self.message)
 
     @staticmethod
     def unauthorized(message: str = "未登录", *, details: dict[str, Any] | None = None) -> "AppError":
