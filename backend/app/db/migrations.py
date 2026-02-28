@@ -135,6 +135,7 @@ def ensure_db_schema(*, engine: Engine = app_engine) -> None:
     cfg = _alembic_config(database_url=database_url)
 
     with engine.connect() as conn:
+        cfg.attributes["connection"] = conn
         _acquire_pg_migration_lock(conn)
         try:
             tables, project_cols = _inspect_tables(conn)
