@@ -114,6 +114,12 @@ class Settings(BaseSettings):
     fractal_scene_window: int = 5
     fractal_arc_window: int = 5
     fractal_char_limit: int = 6000
+    fractal_done_chapters_per_rebuild: int = 1000
+    fractal_recent_window_chapters: int = 80
+    fractal_mid_window_chapters: int = 200
+    fractal_long_window_chapters: int = 600
+    fractal_long_index_terms: int = 12
+    fractal_long_retrieval_hits: int = 3
 
     model_config = SettingsConfigDict(
         env_file=str(_backend_dir() / ".env"),
@@ -525,6 +531,105 @@ class Settings(BaseSettings):
         if raw <= 0:
             return 120
         return min(raw, 1000)
+
+    @field_validator("fractal_scene_window", mode="before")
+    @classmethod
+    def _normalize_fractal_scene_window(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 5
+        return min(raw, 50)
+
+    @field_validator("fractal_arc_window", mode="before")
+    @classmethod
+    def _normalize_fractal_arc_window(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 5
+        return min(raw, 50)
+
+    @field_validator("fractal_char_limit", mode="before")
+    @classmethod
+    def _normalize_fractal_char_limit(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 6000
+        return min(raw, 40000)
+
+    @field_validator("fractal_done_chapters_per_rebuild", mode="before")
+    @classmethod
+    def _normalize_fractal_done_chapters_per_rebuild(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 1000
+        return min(raw, 5000)
+
+    @field_validator("fractal_recent_window_chapters", mode="before")
+    @classmethod
+    def _normalize_fractal_recent_window_chapters(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 80
+        return min(raw, 500)
+
+    @field_validator("fractal_mid_window_chapters", mode="before")
+    @classmethod
+    def _normalize_fractal_mid_window_chapters(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 200
+        return min(raw, 1000)
+
+    @field_validator("fractal_long_window_chapters", mode="before")
+    @classmethod
+    def _normalize_fractal_long_window_chapters(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 600
+        return min(raw, 5000)
+
+    @field_validator("fractal_long_index_terms", mode="before")
+    @classmethod
+    def _normalize_fractal_long_index_terms(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 12
+        return min(raw, 64)
+
+    @field_validator("fractal_long_retrieval_hits", mode="before")
+    @classmethod
+    def _normalize_fractal_long_retrieval_hits(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 3
+        return min(raw, 20)
 
     @model_validator(mode="after")
     def _validate_crypto_config(self) -> "Settings":

@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.config import settings
 from app.db.base import Base
 from app.models.chapter import Chapter
 from app.models.fractal_memory import FractalMemory
@@ -17,10 +18,24 @@ from app.models.user import User
 from app.services.fractal_memory_service import (
     FractalConfig,
     compute_fractal,
+    enrich_fractal_context_for_query,
     get_fractal_context,
     rebuild_fractal_memory,
     rebuild_fractal_memory_v2,
 )
+
+
+def _default_fractal_cfg() -> FractalConfig:
+    return FractalConfig(
+        scene_window=5,
+        arc_window=5,
+        char_limit=6000,
+        recent_window_chapters=80,
+        mid_window_chapters=200,
+        long_window_chapters=600,
+        long_index_terms=12,
+        long_retrieval_hits=3,
+    )
 
 
 class TestFractalMemoryService(unittest.TestCase):
@@ -52,13 +67,18 @@ class TestFractalMemoryService(unittest.TestCase):
                 updated_at=t,
             ),
         ]
-        cfg = FractalConfig(scene_window=5, arc_window=5, char_limit=6000)
+        cfg = _default_fractal_cfg()
         a = compute_fractal(chapters=chapters, config=cfg)
         b = compute_fractal(chapters=chapters, config=cfg)
         self.assertEqual(a["prompt_block"]["text_md"], b["prompt_block"]["text_md"])
         self.assertEqual(len(a["scenes"]), 2)
         self.assertEqual(len(a["arcs"]), 1)
         self.assertEqual(len(a["sagas"]), 1)
+        self.assertIn("layers", a)
+        layers = a.get("layers") or {}
+        self.assertEqual((layers.get("recent_window") or {}).get("used"), 2)
+        self.assertTrue(isinstance((layers.get("mid_term") or {}).get("stages"), list))
+        self.assertTrue(isinstance((layers.get("long_term") or {}).get("retrievable_index"), list))
 
     def test_scene_window_groups_arcs(self) -> None:
         t = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -77,10 +97,22 @@ class TestFractalMemoryService(unittest.TestCase):
             )
             for i in range(1, 6)
         ]
-        cfg = FractalConfig(scene_window=2, arc_window=5, char_limit=6000)
+        cfg = FractalConfig(
+            scene_window=2,
+            arc_window=5,
+            char_limit=6000,
+            recent_window_chapters=4,
+            mid_window_chapters=3,
+            long_window_chapters=6,
+            long_index_terms=8,
+            long_retrieval_hits=2,
+        )
         out = compute_fractal(chapters=chapters, config=cfg)
         self.assertEqual(len(out["scenes"]), 5)
         self.assertEqual(len(out["arcs"]), 3)
+        layers = out.get("layers") or {}
+        self.assertEqual((layers.get("recent_window") or {}).get("used"), 4)
+        self.assertGreaterEqual(len((layers.get("mid_term") or {}).get("stages") or []), 2)
 
 
 class TestFractalMemoryStorageLoop(unittest.TestCase):
@@ -163,9 +195,14 @@ class TestFractalMemoryStorageLoop(unittest.TestCase):
         self.assertEqual(str(scenes[0].get("summary_md") or ""), "摘要：plot_analysis chapter_summary")
 
     def test_rebuild_caps_done_chapters_with_observable_config(self) -> None:
-        with self.SessionLocal() as db:
-            self._seed_project(db=db, chapter_count=260)
-            out = rebuild_fractal_memory(db=db, project_id="p1", reason="test_cap")
+        original_limit = settings.fractal_done_chapters_per_rebuild
+        try:
+            with self.SessionLocal() as db:
+                self._seed_project(db=db, chapter_count=260)
+                settings.fractal_done_chapters_per_rebuild = 200
+                out = rebuild_fractal_memory(db=db, project_id="p1", reason="test_cap")
+        finally:
+            settings.fractal_done_chapters_per_rebuild = original_limit
 
         cfg = out.get("config") or {}
         self.assertEqual(cfg.get("reason"), "test_cap")
@@ -178,6 +215,26 @@ class TestFractalMemoryStorageLoop(unittest.TestCase):
         scenes = list(out.get("scenes") or [])
         self.assertEqual(len(scenes), int(cfg.get("done_chapters_used") or 0))
         self.assertEqual(int(scenes[0].get("chapter_number") or 0), 61)
+        self.assertIn("layered_archive", cfg)
+
+    def test_enrich_context_adds_long_term_hits(self) -> None:
+        with self.SessionLocal() as db:
+            self._seed_project(db=db, chapter_count=12)
+            out = rebuild_fractal_memory(db=db, project_id="p1", reason="test_query")
+            enriched = enrich_fractal_context_for_query(
+                fractal_context=out,
+                query_text="scene 11",
+                max_hits=2,
+                char_limit_override=1200,
+            )
+
+        retrieval = enriched.get("retrieval") or {}
+        self.assertEqual(retrieval.get("max_hits"), 2)
+        self.assertIsInstance(retrieval.get("tokens"), list)
+        self.assertGreaterEqual(int(retrieval.get("hit_count") or 0), 1)
+        prompt_block = enriched.get("prompt_block") or {}
+        self.assertEqual(prompt_block.get("identifier"), "sys.memory.fractal")
+        self.assertIn("<FractalMemory>", str(prompt_block.get("text_md") or ""))
 
     def test_rebuild_v2_fallback_when_llm_preset_missing(self) -> None:
         with self.SessionLocal() as db:
