@@ -5,6 +5,7 @@ import json
 import logging
 import threading
 import time
+from dataclasses import dataclass
 from collections.abc import Callable
 
 from fastapi import APIRouter, Header, Request
@@ -16,11 +17,18 @@ from app.core.logging import log_event
 from app.db.session import SessionLocal
 from app.llm.capabilities import max_output_tokens_limit
 from app.llm.client import call_llm_stream_messages
+from app.llm.messages import ChatMessage
 from app.models.character import Character
 from app.models.llm_preset import LLMPreset
 from app.models.project_settings import ProjectSettings
 from app.schemas.outline_generate import OutlineGenerateRequest
-from app.services.generation_service import build_run_params_json, call_llm_and_record, prepare_llm_call, with_param_overrides
+from app.services.generation_service import (
+    PreparedLlmCall,
+    build_run_params_json,
+    call_llm_and_record,
+    prepare_llm_call,
+    with_param_overrides,
+)
 from app.services.llm_key_resolver import resolve_api_key_for_project
 from app.services.outline_store import ensure_active_outline
 from app.services.output_contracts import build_repair_prompt_for_task, contract_for_task
@@ -52,6 +60,126 @@ OUTLINE_FILL_HEARTBEAT_INTERVAL_SECONDS = 1.0
 OUTLINE_FILL_POLL_INTERVAL_SECONDS = 0.2
 
 OutlineFillProgressHook = Callable[[dict[str, object]], None]
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedOutlineGeneration:
+    resolved_api_key: str
+    prompt_system: str
+    prompt_user: str
+    prompt_messages: list[ChatMessage]
+    prompt_render_log_json: str
+    llm_call: PreparedLlmCall
+    target_chapter_count: int | None
+    run_params_extra_json: dict[str, object]
+
+
+def _prepare_outline_generation(
+    *,
+    db: DbDep,
+    project_id: str,
+    body: OutlineGenerateRequest,
+    user_id: str,
+    request_id: str,
+    x_llm_provider: str | None,
+    x_llm_api_key: str | None,
+) -> _PreparedOutlineGeneration:
+    project = require_project_editor(db, project_id=project_id, user_id=user_id)
+    preset = db.get(LLMPreset, project_id)
+    if preset is None:
+        raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
+    if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
+        raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
+    resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
+
+    settings_row = db.get(ProjectSettings, project_id)
+    world_setting = (settings_row.world_setting if settings_row else "") or ""
+    settings_style_guide = (settings_row.style_guide if settings_row else "") or ""
+    constraints = (settings_row.constraints if settings_row else "") or ""
+
+    style_resolution: dict[str, object] = {"style_id": None, "source": "disabled"}
+    if not body.context.include_world_setting:
+        world_setting = ""
+        settings_style_guide = ""
+        constraints = ""
+    else:
+        resolved_style_guide, style_resolution = resolve_style_guide(
+            db,
+            project_id=project_id,
+            user_id=user_id,
+            requested_style_id=body.style_id,
+            include_style_guide=True,
+            settings_style_guide=settings_style_guide,
+        )
+        settings_style_guide = resolved_style_guide
+
+    run_params_extra_json: dict[str, object] = {"style_resolution": style_resolution}
+
+    chars: list[Character] = []
+    if body.context.include_characters:
+        chars = db.execute(select(Character).where(Character.project_id == project_id)).scalars().all()
+    characters_text = format_characters(chars)
+    target_chapter_count = _extract_target_chapter_count(body.requirements)
+    guidance = _build_outline_generation_guidance(target_chapter_count)
+
+    requirements_text = json.dumps(body.requirements or {}, ensure_ascii=False, indent=2)
+    values = {
+        "project_name": project.name or "",
+        "genre": project.genre or "",
+        "logline": project.logline or "",
+        "world_setting": world_setting,
+        "style_guide": settings_style_guide,
+        "constraints": constraints,
+        "characters": characters_text,
+        "outline": "",
+        "chapter_number": "",
+        "chapter_title": "",
+        "chapter_plan": "",
+        "requirements": requirements_text,
+        "instruction": "",
+        "previous_chapter": "",
+        "target_chapter_count": target_chapter_count or "",
+        "chapter_count_rule": guidance.get("chapter_count_rule", ""),
+        "chapter_detail_rule": guidance.get("chapter_detail_rule", ""),
+    }
+
+    prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
+        db,
+        project_id=project_id,
+        task="outline_generate",
+        values=values,
+        macro_seed=request_id,
+        provider=preset.provider,
+    )
+    prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
+
+    llm_call = prepare_llm_call(preset)
+    current_max_tokens = llm_call.params.get("max_tokens")
+    current_max_tokens_int = int(current_max_tokens) if isinstance(current_max_tokens, int) else None
+    wanted_max_tokens = _recommend_outline_max_tokens(
+        target_chapter_count=target_chapter_count,
+        provider=llm_call.provider,
+        model=llm_call.model,
+        current_max_tokens=current_max_tokens_int,
+    )
+    if isinstance(wanted_max_tokens, int) and wanted_max_tokens > 0:
+        llm_call = with_param_overrides(llm_call, {"max_tokens": wanted_max_tokens})
+        run_params_extra_json["outline_auto_max_tokens"] = {
+            "target_chapter_count": target_chapter_count,
+            "from": current_max_tokens_int,
+            "to": wanted_max_tokens,
+        }
+
+    return _PreparedOutlineGeneration(
+        resolved_api_key=resolved_api_key,
+        prompt_system=prompt_system,
+        prompt_user=prompt_user,
+        prompt_messages=prompt_messages,
+        prompt_render_log_json=prompt_render_log_json,
+        llm_call=llm_call,
+        target_chapter_count=target_chapter_count,
+        run_params_extra_json=run_params_extra_json,
+    )
 
 
 def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
@@ -754,107 +882,23 @@ def generate_outline(
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ) -> dict:
     request_id = request.state.request_id
-    resolved_api_key = ""
-
-    prompt_system = ""
-    prompt_user = ""
-    prompt_render_log_json: str | None = None
-    llm_call = None
-    target_chapter_count: int | None = None
-    run_params_extra_json: dict[str, object] = {}
+    prepared: _PreparedOutlineGeneration | None = None
 
     db = SessionLocal()
     try:
-        project = require_project_editor(db, project_id=project_id, user_id=user_id)
-        preset = db.get(LLMPreset, project_id)
-        if preset is None:
-            raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-        if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
-            raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
-        resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
-
-        settings_row = db.get(ProjectSettings, project_id)
-        world_setting = (settings_row.world_setting if settings_row else "") or ""
-        settings_style_guide = (settings_row.style_guide if settings_row else "") or ""
-        constraints = (settings_row.constraints if settings_row else "") or ""
-
-        style_resolution: dict[str, object] = {"style_id": None, "source": "disabled"}
-        if not body.context.include_world_setting:
-            world_setting = ""
-            settings_style_guide = ""
-            constraints = ""
-        else:
-            resolved_style_guide, style_resolution = resolve_style_guide(
-                db,
-                project_id=project_id,
-                user_id=user_id,
-                requested_style_id=body.style_id,
-                include_style_guide=True,
-                settings_style_guide=settings_style_guide,
-            )
-            settings_style_guide = resolved_style_guide
-
-        run_params_extra_json = {"style_resolution": style_resolution}
-
-        chars: list[Character] = []
-        if body.context.include_characters:
-            chars = db.execute(select(Character).where(Character.project_id == project_id)).scalars().all()
-        characters_text = format_characters(chars)
-        target_chapter_count = _extract_target_chapter_count(body.requirements)
-        guidance = _build_outline_generation_guidance(target_chapter_count)
-
-        requirements_text = json.dumps(body.requirements or {}, ensure_ascii=False, indent=2)
-
-        values = {
-            "project_name": project.name or "",
-            "genre": project.genre or "",
-            "logline": project.logline or "",
-            "world_setting": world_setting,
-            "style_guide": settings_style_guide,
-            "constraints": constraints,
-            "characters": characters_text,
-            "outline": "",
-            "chapter_number": "",
-            "chapter_title": "",
-            "chapter_plan": "",
-            "requirements": requirements_text,
-            "instruction": "",
-            "previous_chapter": "",
-            "target_chapter_count": target_chapter_count or "",
-            "chapter_count_rule": guidance.get("chapter_count_rule", ""),
-            "chapter_detail_rule": guidance.get("chapter_detail_rule", ""),
-        }
-
-        prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
-            db,
+        prepared = _prepare_outline_generation(
+            db=db,
             project_id=project_id,
-            task="outline_generate",
-            values=values,
-            macro_seed=request_id,
-            provider=preset.provider,
+            body=body,
+            user_id=user_id,
+            request_id=request_id,
+            x_llm_provider=x_llm_provider,
+            x_llm_api_key=x_llm_api_key,
         )
-        prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
-
-        llm_call = prepare_llm_call(preset)
-        current_max_tokens = llm_call.params.get("max_tokens")
-        current_max_tokens_int = int(current_max_tokens) if isinstance(current_max_tokens, int) else None
-        wanted_max_tokens = _recommend_outline_max_tokens(
-            target_chapter_count=target_chapter_count,
-            provider=llm_call.provider,
-            model=llm_call.model,
-            current_max_tokens=current_max_tokens_int,
-        )
-        if isinstance(wanted_max_tokens, int) and wanted_max_tokens > 0:
-            llm_call = with_param_overrides(llm_call, {"max_tokens": wanted_max_tokens})
-            run_params_extra_json["outline_auto_max_tokens"] = {
-                "target_chapter_count": target_chapter_count,
-                "from": current_max_tokens_int,
-                "to": wanted_max_tokens,
-            }
     finally:
         db.close()
 
-    if llm_call is None:
+    if prepared is None:
         raise AppError(code="INTERNAL_ERROR", message="LLM 调用准备失败", status_code=500)
 
     llm_result = call_llm_and_record(
@@ -864,13 +908,13 @@ def generate_outline(
         project_id=project_id,
         chapter_id=None,
         run_type="outline",
-        api_key=str(resolved_api_key),
-        prompt_system=prompt_system,
-        prompt_user=prompt_user,
-        prompt_messages=prompt_messages,
-        prompt_render_log_json=prompt_render_log_json,
-        llm_call=llm_call,
-        run_params_extra_json=run_params_extra_json,
+        api_key=str(prepared.resolved_api_key),
+        prompt_system=prepared.prompt_system,
+        prompt_user=prepared.prompt_user,
+        prompt_messages=prepared.prompt_messages,
+        prompt_render_log_json=prepared.prompt_render_log_json,
+        llm_call=prepared.llm_call,
+        run_params_extra_json=prepared.run_params_extra_json,
     )
 
     raw_output = llm_result.text
@@ -879,7 +923,7 @@ def generate_outline(
     parsed = contract.parse(raw_output, finish_reason=finish_reason)
     data, warnings, parse_error = parsed.data, parsed.warnings, parsed.parse_error
 
-    if parse_error is not None and llm_call.provider in (
+    if parse_error is not None and prepared.llm_call.provider in (
         "openai",
         "openai_responses",
         "openai_compatible",
@@ -890,7 +934,7 @@ def generate_outline(
             if repair is None:
                 raise AppError(code="OUTLINE_FIX_UNSUPPORTED", message="该任务不支持输出修复", status_code=400)
             fix_system, fix_user, fix_run_type = repair
-            fix_call = with_param_overrides(llm_call, {"temperature": 0, "max_tokens": 1024})
+            fix_call = with_param_overrides(prepared.llm_call, {"temperature": 0, "max_tokens": 1024})
             fixed = call_llm_and_record(
                 logger=logger,
                 request_id=request_id,
@@ -898,11 +942,11 @@ def generate_outline(
                 project_id=project_id,
                 chapter_id=None,
                 run_type=fix_run_type,
-                api_key=str(resolved_api_key),
+                api_key=str(prepared.resolved_api_key),
                 prompt_system=fix_system,
                 prompt_user=fix_user,
                 llm_call=fix_call,
-                run_params_extra_json=run_params_extra_json,
+                run_params_extra_json=prepared.run_params_extra_json,
             )
             fixed_parsed = contract.parse(fixed.text)
             fixed_data, fixed_warnings, fixed_error = fixed_parsed.data, fixed_parsed.warnings, fixed_parsed.parse_error
@@ -918,18 +962,18 @@ def generate_outline(
     if parse_error is None:
         data, coverage_warnings = _enforce_outline_chapter_coverage(
             data=data,
-            target_chapter_count=target_chapter_count,
+            target_chapter_count=prepared.target_chapter_count,
         )
         warnings.extend(coverage_warnings)
         data, fill_warnings, fill_run_ids = _fill_outline_missing_chapters_with_llm(
             data=data,
-            target_chapter_count=target_chapter_count,
+            target_chapter_count=prepared.target_chapter_count,
             request_id=request_id,
             actor_user_id=user_id,
             project_id=project_id,
-            api_key=str(resolved_api_key),
-            llm_call=llm_call,
-            run_params_extra_json=run_params_extra_json,
+            api_key=str(prepared.resolved_api_key),
+            llm_call=prepared.llm_call,
+            run_params_extra_json=prepared.run_params_extra_json,
         )
         warnings.extend(fill_warnings)
         if fill_run_ids:
@@ -968,99 +1012,35 @@ def generate_outline_stream(
 
         prompt_system = ""
         prompt_user = ""
+        prompt_messages: list[ChatMessage] = []
         prompt_render_log_json: str | None = None
         run_params_extra_json: dict[str, object] | None = None
         run_params_json: str | None = None
         llm_call = None
         resolved_api_key = ""
         target_chapter_count: int | None = None
+        prepared: _PreparedOutlineGeneration | None = None
 
         db = SessionLocal()
         try:
-            project = require_project_editor(db, project_id=project_id, user_id=user_id)
-            preset = db.get(LLMPreset, project_id)
-            if preset is None:
-                raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-            if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
-                raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
-            resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
-
-            settings_row = db.get(ProjectSettings, project_id)
-            world_setting = (settings_row.world_setting if settings_row else "") or ""
-            settings_style_guide = (settings_row.style_guide if settings_row else "") or ""
-            constraints = (settings_row.constraints if settings_row else "") or ""
-
-            style_resolution: dict[str, object] = {"style_id": None, "source": "disabled"}
-            if not body.context.include_world_setting:
-                world_setting = ""
-                settings_style_guide = ""
-                constraints = ""
-            else:
-                resolved_style_guide, style_resolution = resolve_style_guide(
-                    db,
-                    project_id=project_id,
-                    user_id=user_id,
-                    requested_style_id=body.style_id,
-                    include_style_guide=True,
-                    settings_style_guide=settings_style_guide,
-                )
-                settings_style_guide = resolved_style_guide
-
-            run_params_extra_json = {"style_resolution": style_resolution}
-
-            chars: list[Character] = []
-            if body.context.include_characters:
-                chars = db.execute(select(Character).where(Character.project_id == project_id)).scalars().all()
-            characters_text = format_characters(chars)
-            target_chapter_count = _extract_target_chapter_count(body.requirements)
-            guidance = _build_outline_generation_guidance(target_chapter_count)
-
-            requirements_text = json.dumps(body.requirements or {}, ensure_ascii=False, indent=2)
-            values = {
-                "project_name": project.name or "",
-                "genre": project.genre or "",
-                "logline": project.logline or "",
-                "world_setting": world_setting,
-                "style_guide": settings_style_guide,
-                "constraints": constraints,
-                "characters": characters_text,
-                "outline": "",
-                "chapter_number": "",
-                "chapter_title": "",
-                "chapter_plan": "",
-                "requirements": requirements_text,
-                "instruction": "",
-                "previous_chapter": "",
-                "target_chapter_count": target_chapter_count or "",
-                "chapter_count_rule": guidance.get("chapter_count_rule", ""),
-                "chapter_detail_rule": guidance.get("chapter_detail_rule", ""),
-            }
-
-            prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
-                db,
+            prepared = _prepare_outline_generation(
+                db=db,
                 project_id=project_id,
-                task="outline_generate",
-                values=values,
-                macro_seed=request_id,
-                provider=preset.provider,
+                body=body,
+                user_id=user_id,
+                request_id=request_id,
+                x_llm_provider=x_llm_provider,
+                x_llm_api_key=x_llm_api_key,
             )
-            prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
-            llm_call = prepare_llm_call(preset)
-            current_max_tokens = llm_call.params.get("max_tokens")
-            current_max_tokens_int = int(current_max_tokens) if isinstance(current_max_tokens, int) else None
-            wanted_max_tokens = _recommend_outline_max_tokens(
-                target_chapter_count=target_chapter_count,
-                provider=llm_call.provider,
-                model=llm_call.model,
-                current_max_tokens=current_max_tokens_int,
-            )
-            if isinstance(wanted_max_tokens, int) and wanted_max_tokens > 0:
-                llm_call = with_param_overrides(llm_call, {"max_tokens": wanted_max_tokens})
-                run_params_extra_json["outline_auto_max_tokens"] = {
-                    "target_chapter_count": target_chapter_count,
-                    "from": current_max_tokens_int,
-                    "to": wanted_max_tokens,
-                }
+
+            resolved_api_key = prepared.resolved_api_key
+            prompt_system = prepared.prompt_system
+            prompt_user = prepared.prompt_user
+            prompt_messages = prepared.prompt_messages
+            prompt_render_log_json = prepared.prompt_render_log_json
+            llm_call = prepared.llm_call
+            target_chapter_count = prepared.target_chapter_count
+            run_params_extra_json = prepared.run_params_extra_json
             run_params_json = build_run_params_json(
                 params_json=llm_call.params_json,
                 memory_retrieval_log_json=None,
