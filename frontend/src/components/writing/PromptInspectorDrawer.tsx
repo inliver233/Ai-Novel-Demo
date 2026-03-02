@@ -114,6 +114,7 @@ export function PromptInspectorDrawer(props: Props) {
       plan_first: false,
       post_edit: genForm.post_edit,
       post_edit_sanitize: genForm.post_edit_sanitize,
+      content_optimize: genForm.content_optimize,
       macro_seed: macroSeed,
       ...(genForm.prompt_override != null ? { prompt_override: genForm.prompt_override } : {}),
       style_id: genForm.style_id,

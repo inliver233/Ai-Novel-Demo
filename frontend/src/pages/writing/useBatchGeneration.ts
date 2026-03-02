@@ -98,6 +98,7 @@ export function useBatchGeneration(args: {
         plan_first: genForm.plan_first,
         post_edit: genForm.post_edit,
         post_edit_sanitize: genForm.post_edit_sanitize,
+        content_optimize: genForm.content_optimize,
         style_id: genForm.style_id,
         context: {
           include_world_setting: genForm.context.include_world_setting,

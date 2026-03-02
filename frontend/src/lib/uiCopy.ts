@@ -466,6 +466,7 @@ export const UI_COPY = {
       chapterGenerate: "章节（chapter_generate）",
       planChapter: "规划（plan_chapter，M3）",
       postEdit: "润色（post_edit，M3）",
+      contentOptimize: "正文优化（content_optimize，P0）",
       chapterAnalyze: "章节分析（chapter_analyze，P2）",
       chapterRewrite: "章节重写（chapter_rewrite，P2）",
     },

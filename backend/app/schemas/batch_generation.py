@@ -22,6 +22,7 @@ class BatchGenerationCreateRequest(BaseModel):
     plan_first: bool = False
     post_edit: bool = False
     post_edit_sanitize: bool = False
+    content_optimize: bool = False
     style_id: str | None = Field(default=None, max_length=36)
     context: ChapterGenerateContext = Field(default_factory=ChapterGenerateContext)
 

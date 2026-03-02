@@ -587,6 +587,7 @@ export function PromptStudioPage() {
       { key: "chapter_generate", label: UI_COPY.promptStudio.tasks.chapterGenerate },
       { key: "plan_chapter", label: UI_COPY.promptStudio.tasks.planChapter },
       { key: "post_edit", label: UI_COPY.promptStudio.tasks.postEdit },
+      { key: "content_optimize", label: UI_COPY.promptStudio.tasks.contentOptimize },
       { key: "chapter_analyze", label: UI_COPY.promptStudio.tasks.chapterAnalyze },
       { key: "chapter_rewrite", label: UI_COPY.promptStudio.tasks.chapterRewrite },
     ],

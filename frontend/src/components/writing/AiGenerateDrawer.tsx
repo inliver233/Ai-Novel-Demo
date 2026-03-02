@@ -27,6 +27,8 @@ type Props = {
   onOpenPromptInspector: () => void;
   postEditCompareAvailable?: boolean;
   onOpenPostEditCompare?: () => void;
+  contentOptimizeCompareAvailable?: boolean;
+  onOpenContentOptimizeCompare?: () => void;
 };
 
 type WritingStyle = {
@@ -664,6 +666,20 @@ export function AiGenerateDrawer(props: Props) {
                   type="checkbox"
                 />
               </label>
+              <label className="flex items-center justify-between gap-3 text-sm text-ink">
+                <span>正文优化</span>
+                <input
+                  className="checkbox"
+                  checked={props.genForm.content_optimize}
+                  disabled={props.generating}
+                  name="content_optimize"
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    props.setGenForm((v) => ({ ...v, content_optimize: checked }));
+                  }}
+                  type="checkbox"
+                />
+              </label>
               <div className="text-[11px] text-subtext">失败会降级保留原文，并记录原因。</div>
             </div>
           ) : (
@@ -693,6 +709,16 @@ export function AiGenerateDrawer(props: Props) {
             type="button"
           >
             润色对比/回退
+          </button>
+        ) : null}
+        {props.contentOptimizeCompareAvailable ? (
+          <button
+            className="btn btn-secondary"
+            disabled={props.generating || !props.onOpenContentOptimizeCompare}
+            onClick={() => props.onOpenContentOptimizeCompare?.()}
+            type="button"
+          >
+            正文优化对比/回退
           </button>
         ) : null}
         {hasPromptOverride ? (

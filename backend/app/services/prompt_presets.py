@@ -356,6 +356,8 @@ def get_active_preset_for_task(db: Session, *, project_id: str, task: str, allow
             return ensure_default_plan_preset(db, project_id=project_id)
         if task == "post_edit":
             return ensure_default_post_edit_preset(db, project_id=project_id)
+        if task == "content_optimize":
+            return ensure_default_content_optimize_preset(db, project_id=project_id)
         if task == "outline_generate":
             return ensure_default_outline_preset(db, project_id=project_id, activate=True)
         if task == "chapter_generate":

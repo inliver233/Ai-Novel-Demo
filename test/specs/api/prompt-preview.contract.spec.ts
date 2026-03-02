@@ -183,6 +183,43 @@ test("api: prompt_preview contract", async ({ request }) => {
   expect(raw).not.toMatch(/sk-[a-zA-Z0-9]{10,}/);
 });
 
+test("api: prompt_preview supports content_optimize task", async ({ request }) => {
+  const state = loadState();
+  const { projectId } = await bootstrapProject(request);
+
+  const presets = await request.get(`${state.backendUrl}/api/projects/${projectId}/prompt_presets`);
+  expect(presets.ok()).toBeTruthy();
+  const presetsJson = (await presets.json()) as ApiOk<{
+    presets: Array<{ id: string; name: string; active_for?: string[] }>;
+  }>;
+  const preset =
+    presetsJson.data.presets.find((p) => Array.isArray(p.active_for) && p.active_for.includes("content_optimize")) ??
+    presetsJson.data.presets.find((p) => p.name.includes("content_optimize")) ??
+    null;
+  expect(Boolean(preset?.id)).toBeTruthy();
+
+  const res = await request.post(`${state.backendUrl}/api/projects/${projectId}/prompt_preview`, {
+    data: {
+      task: "content_optimize",
+      preset_id: preset?.id,
+      values: {
+        raw_content: "这是原始正文。需要保持剧情事实，仅优化表达和可读性。",
+        story: {
+          raw_content: "这是原始正文。需要保持剧情事实，仅优化表达和可读性。",
+        },
+      },
+    },
+  });
+  expect(res.ok()).toBeTruthy();
+  const json = (await res.json()) as ApiOk<{
+    preview: { task: string; preset_id: string; system: string; user: string };
+  }>;
+  expect(json.ok).toBe(true);
+  expect(json.data.preview.task).toBe("content_optimize");
+  expect(typeof json.data.preview.preset_id).toBe("string");
+  expect(json.data.preview.system.length + json.data.preview.user.length).toBeGreaterThan(0);
+});
+
 test("api: prompt_preview invalid task returns validation error", async ({ request }) => {
   const state = loadState();
   const { projectId } = await bootstrapProject(request);

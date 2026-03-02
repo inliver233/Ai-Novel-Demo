@@ -11,6 +11,7 @@ import { BatchGenerationModal } from "../components/writing/BatchGenerationModal
 import { ChapterListPanel } from "../components/writing/ChapterListPanel";
 import { CreateChapterDialog } from "../components/writing/CreateChapterDialog";
 import { ChapterAnalysisModal } from "../components/writing/ChapterAnalysisModal";
+import { ContentOptimizeCompareDrawer } from "../components/writing/ContentOptimizeCompareDrawer";
 import { ContextPreviewDrawer } from "../components/writing/ContextPreviewDrawer";
 import { ForeshadowDrawer } from "../components/writing/ForeshadowDrawer";
 import { GenerationHistoryDrawer } from "../components/writing/GenerationHistoryDrawer";
@@ -145,6 +146,7 @@ export function WritingPage() {
   const [aiOpen, setAiOpen] = useState(false);
   const [promptInspectorOpen, setPromptInspectorOpen] = useState(false);
   const [postEditCompareOpen, setPostEditCompareOpen] = useState(false);
+  const [contentOptimizeCompareOpen, setContentOptimizeCompareOpen] = useState(false);
   const [tablesOpen, setTablesOpen] = useState(false);
   const [contextPreviewOpen, setContextPreviewOpen] = useState(false);
   const [memoryUpdateOpen, setMemoryUpdateOpen] = useState(false);
@@ -213,6 +215,8 @@ export function WritingPage() {
     setGenForm,
     postEditCompare,
     applyPostEditVariant,
+    contentOptimizeCompare,
+    applyContentOptimizeVariant,
     generate,
     abortGenerate,
   } = generation;
@@ -679,6 +683,8 @@ export function WritingPage() {
         onOpenPromptInspector={() => setPromptInspectorOpen(true)}
         postEditCompareAvailable={Boolean(postEditCompare)}
         onOpenPostEditCompare={() => setPostEditCompareOpen(true)}
+        contentOptimizeCompareAvailable={Boolean(contentOptimizeCompare)}
+        onOpenContentOptimizeCompare={() => setContentOptimizeCompareOpen(true)}
       />
 
       <PostEditCompareDrawer
@@ -690,6 +696,17 @@ export function WritingPage() {
         appliedChoice={postEditCompare?.appliedChoice ?? "post_edit"}
         onApplyRaw={() => void applyPostEditVariant("raw")}
         onApplyPostEdit={() => void applyPostEditVariant("post_edit")}
+      />
+
+      <ContentOptimizeCompareDrawer
+        open={contentOptimizeCompareOpen && Boolean(contentOptimizeCompare)}
+        onClose={() => setContentOptimizeCompareOpen(false)}
+        rawContentMd={contentOptimizeCompare?.rawContentMd ?? ""}
+        optimizedContentMd={contentOptimizeCompare?.optimizedContentMd ?? ""}
+        requestId={contentOptimizeCompare?.requestId ?? null}
+        appliedChoice={contentOptimizeCompare?.appliedChoice ?? "content_optimize"}
+        onApplyRaw={() => void applyContentOptimizeVariant("raw")}
+        onApplyOptimized={() => void applyContentOptimizeVariant("content_optimize")}
       />
 
       <PromptInspectorDrawer

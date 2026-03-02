@@ -32,6 +32,10 @@ type GenerateResponse = {
   post_edit_raw_content_md?: string;
   post_edit_edited_content_md?: string;
   post_edit_run_id?: string;
+  content_optimize_applied?: boolean;
+  content_optimize_raw_content_md?: string;
+  content_optimize_optimized_content_md?: string;
+  content_optimize_run_id?: string;
 };
 
 export type PostEditCompare = {
@@ -43,6 +47,15 @@ export type PostEditCompare = {
   appliedChoice: "raw" | "post_edit";
 };
 
+export type ContentOptimizeCompare = {
+  requestId: string | null;
+  generationRunId: string | null;
+  contentOptimizeRunId: string | null;
+  rawContentMd: string;
+  optimizedContentMd: string;
+  appliedChoice: "raw" | "content_optimize";
+};
+
 const DEFAULT_GEN_FORM: GenerateForm = {
   instruction: "写出本章冲突升级，结尾留钩子。",
   target_word_count: 3000,
@@ -50,6 +63,7 @@ const DEFAULT_GEN_FORM: GenerateForm = {
   plan_first: false,
   post_edit: false,
   post_edit_sanitize: false,
+  content_optimize: false,
   style_id: null,
   memory_injection_enabled: true,
   memory_query_text: "",
@@ -117,6 +131,7 @@ export function useChapterGeneration(args: {
   const genStreamClientRef = useRef<SSEPostClient | null>(null);
   const genStreamHasChunkRef = useRef(false);
   const [postEditCompare, setPostEditCompare] = useState<PostEditCompare | null>(null);
+  const [contentOptimizeCompare, setContentOptimizeCompare] = useState<ContentOptimizeCompare | null>(null);
 
   const [genForm, setGenForm] = useState<GenerateForm>(() => ({
     ...DEFAULT_GEN_FORM,
@@ -139,6 +154,7 @@ export function useChapterGeneration(args: {
 
   useEffect(() => {
     setPostEditCompare(null);
+    setContentOptimizeCompare(null);
   }, [activeChapter?.id]);
 
   useEffect(() => {
@@ -182,6 +198,24 @@ export function useChapterGeneration(args: {
     [activeChapter, postEditCompare, setForm, toast],
   );
 
+  const applyContentOptimizeVariant = useCallback(
+    async (choice: ContentOptimizeCompare["appliedChoice"]) => {
+      if (!contentOptimizeCompare) return;
+      const nextContent =
+        choice === "raw" ? contentOptimizeCompare.rawContentMd : contentOptimizeCompare.optimizedContentMd;
+      setForm((prev) => {
+        if (!prev) return prev;
+        return { ...prev, content_md: nextContent, status: "drafting" };
+      });
+      setContentOptimizeCompare((prev) => (prev ? { ...prev, appliedChoice: choice } : prev));
+      toast.toastSuccess(
+        choice === "raw" ? "已采用优化前原稿（别忘了保存）" : "已采用正文优化稿（别忘了保存）",
+        contentOptimizeCompare.requestId ?? undefined,
+      );
+    },
+    [contentOptimizeCompare, setForm, toast],
+  );
+
   const generate = useCallback(
     async (
       mode: "replace" | "append",
@@ -196,6 +230,7 @@ export function useChapterGeneration(args: {
       const streamProviderSupported = preset.provider.startsWith("openai");
 
       setPostEditCompare(null);
+      setContentOptimizeCompare(null);
       if (dirty) {
         const choice = await confirm.choose({
           title: "章节有未保存修改，如何生成？",
@@ -239,6 +274,7 @@ export function useChapterGeneration(args: {
           plan_first: genForm.plan_first,
           post_edit: genForm.post_edit,
           post_edit_sanitize: genForm.post_edit_sanitize,
+          content_optimize: genForm.content_optimize,
           ...(typeof macroSeed === "string" && macroSeed.trim() ? { macro_seed: macroSeed.trim() } : {}),
           ...(promptOverride != null ? { prompt_override: promptOverride } : {}),
           style_id: genForm.style_id,
@@ -327,6 +363,15 @@ export function useChapterGeneration(args: {
               const postEditEdited =
                 typeof obj?.post_edit_edited_content_md === "string" ? obj.post_edit_edited_content_md : null;
               const postEditRunId = typeof obj?.post_edit_run_id === "string" ? obj.post_edit_run_id : null;
+              const contentOptimizeApplied = Boolean(obj?.content_optimize_applied);
+              const contentOptimizeRaw =
+                typeof obj?.content_optimize_raw_content_md === "string" ? obj.content_optimize_raw_content_md : null;
+              const contentOptimizeOptimized =
+                typeof obj?.content_optimize_optimized_content_md === "string"
+                  ? obj.content_optimize_optimized_content_md
+                  : null;
+              const contentOptimizeRunId =
+                typeof obj?.content_optimize_run_id === "string" ? obj.content_optimize_run_id : null;
               const dropped = Array.isArray(obj?.dropped_params)
                 ? obj.dropped_params.filter((p): p is string => typeof p === "string" && p.trim().length > 0)
                 : [];
@@ -374,6 +419,36 @@ export function useChapterGeneration(args: {
                   editedContentMd: editedFull,
                   appliedChoice: postEditApplied ? "post_edit" : "raw",
                 });
+              } else {
+                setPostEditCompare(null);
+              }
+
+              const contentOptimizeRawTrimmed = contentOptimizeRaw?.trim() ?? "";
+              const contentOptimizeOptimizedTrimmed = contentOptimizeOptimized?.trim() ?? "";
+              if (
+                genForm.content_optimize &&
+                contentOptimizeRawTrimmed &&
+                contentOptimizeOptimizedTrimmed &&
+                contentOptimizeRawTrimmed !== contentOptimizeOptimizedTrimmed
+              ) {
+                const rawFull =
+                  mode === "append"
+                    ? appendMarkdown(baseContent, contentOptimizeRawTrimmed)
+                    : contentOptimizeRawTrimmed;
+                const optimizedFull =
+                  mode === "append"
+                    ? appendMarkdown(baseContent, contentOptimizeOptimizedTrimmed)
+                    : contentOptimizeOptimizedTrimmed;
+                setContentOptimizeCompare({
+                  requestId: requestId ?? null,
+                  generationRunId: genRunId,
+                  contentOptimizeRunId,
+                  rawContentMd: rawFull,
+                  optimizedContentMd: optimizedFull,
+                  appliedChoice: contentOptimizeApplied ? "content_optimize" : "raw",
+                });
+              } else {
+                setContentOptimizeCompare(null);
               }
             },
           });
@@ -415,6 +490,8 @@ export function useChapterGeneration(args: {
 
                 const postEditRawTrimmed = (res.data.post_edit_raw_content_md ?? "").trim();
                 const postEditEditedTrimmed = (res.data.post_edit_edited_content_md ?? "").trim();
+                const contentOptimizeRawTrimmed = (res.data.content_optimize_raw_content_md ?? "").trim();
+                const contentOptimizeOptimizedTrimmed = (res.data.content_optimize_optimized_content_md ?? "").trim();
 
                 setForm((prev) => {
                   if (!prev) return prev;
@@ -448,6 +525,34 @@ export function useChapterGeneration(args: {
                     editedContentMd: editedFull,
                     appliedChoice: res.data.post_edit_applied ? "post_edit" : "raw",
                   });
+                } else {
+                  setPostEditCompare(null);
+                }
+
+                if (
+                  genForm.content_optimize &&
+                  contentOptimizeRawTrimmed &&
+                  contentOptimizeOptimizedTrimmed &&
+                  contentOptimizeRawTrimmed !== contentOptimizeOptimizedTrimmed
+                ) {
+                  const rawFull =
+                    mode === "append"
+                      ? appendMarkdown(baseContent, contentOptimizeRawTrimmed)
+                      : contentOptimizeRawTrimmed;
+                  const optimizedFull =
+                    mode === "append"
+                      ? appendMarkdown(baseContent, contentOptimizeOptimizedTrimmed)
+                      : contentOptimizeOptimizedTrimmed;
+                  setContentOptimizeCompare({
+                    requestId: res.request_id ?? null,
+                    generationRunId: res.data.generation_run_id ?? null,
+                    contentOptimizeRunId: res.data.content_optimize_run_id ?? null,
+                    rawContentMd: rawFull,
+                    optimizedContentMd: optimizedFull,
+                    appliedChoice: res.data.content_optimize_applied ? "content_optimize" : "raw",
+                  });
+                } else {
+                  setContentOptimizeCompare(null);
                 }
 
                 toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
@@ -495,6 +600,8 @@ export function useChapterGeneration(args: {
 
           const postEditRawTrimmed = (res.data.post_edit_raw_content_md ?? "").trim();
           const postEditEditedTrimmed = (res.data.post_edit_edited_content_md ?? "").trim();
+          const contentOptimizeRawTrimmed = (res.data.content_optimize_raw_content_md ?? "").trim();
+          const contentOptimizeOptimizedTrimmed = (res.data.content_optimize_optimized_content_md ?? "").trim();
 
           setForm((prev) => {
             if (!prev) return prev;
@@ -527,6 +634,32 @@ export function useChapterGeneration(args: {
               editedContentMd: editedFull,
               appliedChoice: res.data.post_edit_applied ? "post_edit" : "raw",
             });
+          } else {
+            setPostEditCompare(null);
+          }
+
+          if (
+            genForm.content_optimize &&
+            contentOptimizeRawTrimmed &&
+            contentOptimizeOptimizedTrimmed &&
+            contentOptimizeRawTrimmed !== contentOptimizeOptimizedTrimmed
+          ) {
+            const rawFull =
+              mode === "append" ? appendMarkdown(baseContent, contentOptimizeRawTrimmed) : contentOptimizeRawTrimmed;
+            const optimizedFull =
+              mode === "append"
+                ? appendMarkdown(baseContent, contentOptimizeOptimizedTrimmed)
+                : contentOptimizeOptimizedTrimmed;
+            setContentOptimizeCompare({
+              requestId: res.request_id ?? null,
+              generationRunId: res.data.generation_run_id ?? null,
+              contentOptimizeRunId: res.data.content_optimize_run_id ?? null,
+              rawContentMd: rawFull,
+              optimizedContentMd: optimizedFull,
+              appliedChoice: res.data.content_optimize_applied ? "content_optimize" : "raw",
+            });
+          } else {
+            setContentOptimizeCompare(null);
           }
 
           toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
@@ -570,6 +703,8 @@ export function useChapterGeneration(args: {
     setGenForm,
     postEditCompare,
     applyPostEditVariant,
+    contentOptimizeCompare,
+    applyContentOptimizeVariant,
     generate,
     abortGenerate,
   };
