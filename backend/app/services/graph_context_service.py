@@ -12,12 +12,19 @@ from sqlalchemy.orm import Session, load_only
 from app.core.config import settings
 from app.core.logging import exception_log_fields, log_event
 from app.models.structured_memory import MemoryEntity, MemoryEvidence, MemoryRelation
+from app.services.context_budget_observability import build_budget_observability
 
 logger = logging.getLogger("ainovel")
 
-_PROMPT_BLOCK_CHAR_LIMIT = 6000
+_DEFAULT_PROMPT_BLOCK_CHAR_LIMIT = 6000
 _PROMPT_BLOCK_TRUNCATION_MARK = "\n…(truncated)\n"
-_MATCH_ENTITY_ALIAS_CANDIDATES_LIMIT = 2000
+_DEFAULT_MATCH_ENTITY_ALIAS_CANDIDATES_LIMIT = 2000
+_PROMPT_BLOCK_CHAR_LIMIT = _DEFAULT_PROMPT_BLOCK_CHAR_LIMIT
+_GRAPH_DROPPED_REASON_EXPLAIN = {
+    "edge_budget": "关联边数量达到 max_edges 上限。",
+    "node_budget": "新增节点会超过 max_nodes 上限，相关边被跳过。",
+    "prompt_char_budget": "GraphContext 文本超过图谱注入字符预算。",
+}
 
 
 def _build_prompt_block(*, inner: str, char_limit: int) -> dict[str, Any]:
@@ -190,6 +197,40 @@ def _extract_query_phrases(query_text: str, *, max_phrases: int = 48, max_ngram:
     return phrases
 
 
+def _effective_graph_limits(*, hop: int, max_nodes: int, max_edges: int) -> dict[str, int]:
+    hop_cap = max(0, min(int(getattr(settings, "graph_max_hop", 1) or 1), 2))
+    node_cap = max(1, min(int(getattr(settings, "graph_max_nodes", 200) or 200), 2000))
+    edge_cap = max(0, min(int(getattr(settings, "graph_max_edges", 500) or 500), 5000))
+    prompt_char_cap = max(200, min(int(getattr(settings, "graph_prompt_char_limit", _DEFAULT_PROMPT_BLOCK_CHAR_LIMIT) or _DEFAULT_PROMPT_BLOCK_CHAR_LIMIT), 50000))
+    alias_candidates_cap = max(10, min(int(getattr(settings, "graph_match_entity_alias_candidates_limit", _DEFAULT_MATCH_ENTITY_ALIAS_CANDIDATES_LIMIT) or _DEFAULT_MATCH_ENTITY_ALIAS_CANDIDATES_LIMIT), 10000))
+    return {
+        "hop": max(0, min(int(hop), hop_cap)),
+        "max_nodes": max(1, min(int(max_nodes), node_cap)),
+        "max_edges": max(0, min(int(max_edges), edge_cap)),
+        "prompt_char_limit": int(prompt_char_cap),
+        "alias_candidates_limit": int(alias_candidates_cap),
+    }
+
+
+def _graph_budget_observability(
+    *,
+    limits: dict[str, int],
+    dropped: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return build_budget_observability(
+        module="graph",
+        limits={
+            "hop": int(limits.get("hop") or 0),
+            "max_nodes": int(limits.get("max_nodes") or 0),
+            "max_edges": int(limits.get("max_edges") or 0),
+            "prompt_char_limit": int(limits.get("prompt_char_limit") or 0),
+            "alias_candidates_limit": int(limits.get("alias_candidates_limit") or 0),
+        },
+        dropped=dropped,
+        reason_explain=_GRAPH_DROPPED_REASON_EXPLAIN,
+    )
+
+
 def _load_match_candidates(
     *,
     db: Session,
@@ -262,19 +303,23 @@ def query_graph_context(
 
     Fail-soft: returns stable shape even when empty / disabled / errors.
     """
+    limits = _effective_graph_limits(hop=hop, max_nodes=max_nodes, max_edges=max_edges)
     if not enabled:
+        budget_obs = _graph_budget_observability(limits=limits, dropped=[])
         return {
             "enabled": False,
             "disabled_reason": "disabled",
             "query_text": query_text,
-            "params": {"hop": int(hop), "max_nodes": int(max_nodes), "max_edges": int(max_edges)},
+            "params": {"hop": int(limits["hop"]), "max_nodes": int(limits["max_nodes"]), "max_edges": int(limits["max_edges"])},
             "matched": {"entity_ids": [], "entity_names": []},
             "nodes": [],
             "edges": [],
             "evidence": [],
             "timings_ms": {},
             "truncated": {"nodes": False, "edges": False},
-            "prompt_block": _build_prompt_block(inner="", char_limit=_PROMPT_BLOCK_CHAR_LIMIT),
+            "dropped": [],
+            "budget_observability": budget_obs,
+            "prompt_block": _build_prompt_block(inner="", char_limit=int(limits["prompt_char_limit"])),
             "logs": [],
         }
 
@@ -293,15 +338,18 @@ def query_graph_context(
             except Exception:
                 effective_query_text = query_text
 
-        hop = max(0, min(int(hop), 1))
-        max_nodes = max(1, min(int(max_nodes), 200))
-        max_edges = max(0, min(int(max_edges), 500))
+        limits = _effective_graph_limits(hop=hop, max_nodes=max_nodes, max_edges=max_edges)
+        hop = int(limits["hop"])
+        max_nodes = int(limits["max_nodes"])
+        max_edges = int(limits["max_edges"])
+        prompt_char_limit = int(limits["prompt_char_limit"])
+        alias_candidates_limit = int(limits["alias_candidates_limit"])
 
         candidates, match_meta = _load_match_candidates(
             db=db,
             project_id=project_id,
             query_text=effective_query_text,
-            alias_candidates_limit=_MATCH_ENTITY_ALIAS_CANDIDATES_LIMIT,
+            alias_candidates_limit=alias_candidates_limit,
         )
 
         matched_pairs = _match_entities(entities=candidates, query_text=effective_query_text, max_matches=min(12, max_nodes))
@@ -313,6 +361,7 @@ def query_graph_context(
         picked_edges: list[MemoryRelation] = []
         truncated_edges = False
         truncated_nodes = False
+        dropped: list[dict[str, Any]] = []
 
         if hop >= 1 and seed_ids and max_edges > 0:
             rels = (
@@ -333,9 +382,10 @@ def query_graph_context(
                 .all()
             )
 
-            for r in rels:
+            for idx, r in enumerate(rels):
                 if len(picked_edges) >= max_edges:
                     truncated_edges = True
+                    dropped.append({"reason": "edge_budget", "count": max(1, len(rels) - idx)})
                     break
                 a = str(r.from_entity_id)
                 b = str(r.to_entity_id)
@@ -344,6 +394,7 @@ def query_graph_context(
                 new_nodes = [x for x in (a, b) if x not in node_ids]
                 if len(node_ids) + len(new_nodes) > max_nodes:
                     truncated_nodes = True
+                    dropped.append({"id": str(r.id), "reason": "node_budget"})
                     continue
                 node_ids.update(new_nodes)
                 picked_edges.append(r)
@@ -465,7 +516,10 @@ def query_graph_context(
                 lines.append(line)
 
         inner = "\n".join(lines).strip()
-        prompt_block = _build_prompt_block(inner=inner, char_limit=_PROMPT_BLOCK_CHAR_LIMIT)
+        prompt_block = _build_prompt_block(inner=inner, char_limit=prompt_char_limit)
+        if bool(prompt_block.get("truncated")):
+            dropped.append({"reason": "prompt_char_budget"})
+        budget_obs = _graph_budget_observability(limits=limits, dropped=dropped)
 
         out = {
             "enabled": True,
@@ -478,6 +532,8 @@ def query_graph_context(
             "evidence": evidence_payloads,
             "timings_ms": {"load": int((t1 - t0) * 1000), "format": int((time.perf_counter() - t1) * 1000)},
             "truncated": {"nodes": bool(truncated_nodes), "edges": bool(truncated_edges)},
+            "dropped": dropped,
+            "budget_observability": budget_obs,
             "prompt_block": prompt_block,
             "logs": [
                 {
@@ -487,6 +543,7 @@ def query_graph_context(
                     "counts": {"nodes": len(node_payloads), "edges": len(edge_payloads), "evidence": len(evidence_payloads)},
                     "truncated": {"nodes": bool(truncated_nodes), "edges": bool(truncated_edges)},
                     "prompt_block_truncated": bool(prompt_block.get("truncated")),
+                    "budget_observability": budget_obs,
                 }
             ],
         }
@@ -514,18 +571,21 @@ def query_graph_context(
             **exception_log_fields(exc),
         )
         safe_error = f"graph_query_failed:{type(exc).__name__}"
+        budget_obs = _graph_budget_observability(limits=limits, dropped=[])
         return {
             "enabled": False,
             "disabled_reason": "error",
             "error": safe_error,
             "query_text": query_text,
-            "params": {"hop": int(hop), "max_nodes": int(max_nodes), "max_edges": int(max_edges)},
+            "params": {"hop": int(limits["hop"]), "max_nodes": int(limits["max_nodes"]), "max_edges": int(limits["max_edges"])},
             "matched": {"entity_ids": [], "entity_names": []},
             "nodes": [],
             "edges": [],
             "evidence": [],
             "timings_ms": {"total": int((time.perf_counter() - t0) * 1000)},
             "truncated": {"nodes": False, "edges": False},
-            "prompt_block": _build_prompt_block(inner="", char_limit=_PROMPT_BLOCK_CHAR_LIMIT),
+            "dropped": [],
+            "budget_observability": budget_obs,
+            "prompt_block": _build_prompt_block(inner="", char_limit=int(limits["prompt_char_limit"])),
             "logs": [],
         }

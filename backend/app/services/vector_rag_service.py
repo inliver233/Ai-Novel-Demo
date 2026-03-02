@@ -24,6 +24,7 @@ from app.models.project_settings import ProjectSettings
 from app.models.project_task import ProjectTask
 from app.models.story_memory import StoryMemory
 from app.models.worldbook_entry import WorldBookEntry
+from app.services.context_budget_observability import build_budget_observability
 from app.services.embedding_service import (
     embed_texts as embed_texts_with_providers,
     embedding_enabled_reason,
@@ -47,6 +48,11 @@ _ALL_SOURCES: list[VectorSource] = ["worldbook", "outline", "chapter", "story_me
 _PGVECTOR_TABLE = "vector_chunks"
 _PGVECTOR_READY_CACHE: tuple[bool, float] | None = None
 _PGVECTOR_READY_CACHE_TTL_SECONDS = 30.0
+_VECTOR_DROPPED_REASON_EXPLAIN = {
+    "duplicate_chunk": "同一 source/source_id/chunk_index 已存在于最终候选，避免重复注入。",
+    "per_source_budget": "同一 source+source_id 的 chunk 数达到上限（vector_per_source_id_max_chunks）。",
+    "budget": "达到最终注入 chunk 上限（vector_final_max_chunks）。",
+}
 
 
 def _is_postgres() -> bool:
@@ -567,6 +573,27 @@ def _build_vector_query_counts(
         "dropped_total": int(len(dropped)),
         "dropped_by_reason": dropped_by_reason,
     }
+
+
+def _vector_budget_observability(
+    *,
+    top_k: int,
+    max_chunks: int,
+    per_source_max_chunks: int,
+    char_limit: int,
+    dropped: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return build_budget_observability(
+        module="vector",
+        limits={
+            "max_candidates": int(top_k),
+            "final_max_chunks": int(max_chunks),
+            "per_source_max_chunks": int(per_source_max_chunks),
+            "final_char_limit": int(char_limit),
+        },
+        dropped=dropped,
+        reason_explain=_VECTOR_DROPPED_REASON_EXPLAIN,
+    )
 
 
 def _backend_dir() -> Path:
@@ -2133,8 +2160,9 @@ def query_project(
 
             final_chunks, super_sort_obs = _super_sort_final_chunks(final_chunks, super_sort=super_sort)
 
+            final_char_limit = int(settings.vector_final_char_limit or 6000)
             post_start = time.perf_counter()
-            text_md, truncated = _format_final_text(final_chunks, char_limit=int(settings.vector_final_char_limit or 6000))
+            text_md, truncated = _format_final_text(final_chunks, char_limit=final_char_limit)
             post_ms = int((time.perf_counter() - post_start) * 1000)
 
             timings_ms = {"embed": embed_ms, "query": query_ms, "post": post_ms, "rerank": int(rerank_obs.get("timing_ms") or 0)}
@@ -2142,6 +2170,13 @@ def query_project(
                 candidates_total=len(candidates),
                 returned_candidates=trimmed_candidates,
                 final_selected=len(final_chunks),
+                dropped=dropped,
+            )
+            budget_obs = _vector_budget_observability(
+                top_k=top_k,
+                max_chunks=max_chunks,
+                per_source_max_chunks=per_source_max_chunks,
+                char_limit=final_char_limit,
                 dropped=dropped,
             )
             log_event(
@@ -2173,6 +2208,7 @@ def query_project(
                 "final": {"chunks": final_chunks, "text_md": text_md, "truncated": truncated},
                 "dropped": dropped,
                 "counts": obs_counts,
+                "budget_observability": budget_obs,
                 "rerank": rerank_obs,
                 "super_sort": super_sort_obs,
                 "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},
@@ -2389,8 +2425,9 @@ def query_project(
 
     final_chunks, super_sort_obs = _super_sort_final_chunks(final_chunks, super_sort=super_sort)
 
+    final_char_limit = int(settings.vector_final_char_limit or 6000)
     post_start = time.perf_counter()
-    text_md, truncated = _format_final_text(final_chunks, char_limit=int(settings.vector_final_char_limit or 6000))
+    text_md, truncated = _format_final_text(final_chunks, char_limit=final_char_limit)
     post_ms = int((time.perf_counter() - post_start) * 1000)
 
     timings_ms = {"embed": embed_ms, "query": query_ms, "post": post_ms, "rerank": int(rerank_obs.get("timing_ms") or 0)}
@@ -2398,6 +2435,13 @@ def query_project(
         candidates_total=len(candidates),
         returned_candidates=trimmed_candidates,
         final_selected=len(final_chunks),
+        dropped=dropped,
+    )
+    budget_obs = _vector_budget_observability(
+        top_k=top_k,
+        max_chunks=max_chunks,
+        per_source_max_chunks=per_source_max_chunks,
+        char_limit=final_char_limit,
         dropped=dropped,
     )
     log_event(
@@ -2426,6 +2470,7 @@ def query_project(
         "final": {"chunks": final_chunks, "text_md": text_md, "truncated": truncated},
         "dropped": dropped,
         "counts": obs_counts,
+        "budget_observability": budget_obs,
         "rerank": rerank_obs,
         "super_sort": super_sort_obs,
         "prompt_block": {"identifier": "sys.memory.vector_rag", "role": "system", "text_md": text_md},

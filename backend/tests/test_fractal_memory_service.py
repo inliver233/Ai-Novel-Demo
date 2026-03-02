@@ -190,6 +190,9 @@ class TestFractalMemoryStorageLoop(unittest.TestCase):
         self.assertEqual(cfg.get("done_chapters_total"), 2)
         self.assertEqual(cfg.get("done_chapters_used"), 2)
         self.assertFalse(bool(cfg.get("done_chapters_truncated")))
+        budget_obs = fetched.get("budget_observability") or {}
+        self.assertEqual(budget_obs.get("module"), "fractal")
+        self.assertIsInstance(budget_obs.get("limits"), dict)
         scenes = list(rebuilt.get("scenes") or [])
         self.assertTrue(scenes)
         self.assertEqual(str(scenes[0].get("summary_md") or ""), "摘要：plot_analysis chapter_summary")

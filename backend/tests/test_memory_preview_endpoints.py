@@ -169,6 +169,11 @@ class TestMemoryPreviewEndpoints(unittest.TestCase):
         self.assertIsNotNone(worldbook_log)
         self.assertEqual(worldbook_log.get("budget_char_limit"), 200)
         self.assertEqual(worldbook_log.get("budget_source"), "override")
+        graph_log = next((x for x in logs if isinstance(x, dict) and x.get("section") == "graph"), None)
+        self.assertIsNotNone(graph_log)
+        graph_budget_obs = (graph_log or {}).get("budget_observability") if isinstance(graph_log, dict) else None
+        self.assertIsInstance(graph_budget_obs, dict)
+        self.assertEqual((graph_budget_obs or {}).get("module"), "graph")
 
     def test_memory_preview_tables_section_empty_when_no_tables(self) -> None:
         client = TestClient(self.app)

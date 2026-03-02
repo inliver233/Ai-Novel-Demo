@@ -110,6 +110,12 @@ class Settings(BaseSettings):
 
     glossary_query_expand_enabled: bool = False
 
+    graph_max_hop: int = 1
+    graph_max_nodes: int = 200
+    graph_max_edges: int = 500
+    graph_prompt_char_limit: int = 6000
+    graph_match_entity_alias_candidates_limit: int = 2000
+
     fractal_enabled: bool = True
     fractal_scene_window: int = 5
     fractal_arc_window: int = 5
@@ -531,6 +537,61 @@ class Settings(BaseSettings):
         if raw <= 0:
             return 120
         return min(raw, 1000)
+
+    @field_validator("graph_max_hop", mode="before")
+    @classmethod
+    def _normalize_graph_max_hop(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 1
+        return min(raw, 2)
+
+    @field_validator("graph_max_nodes", mode="before")
+    @classmethod
+    def _normalize_graph_max_nodes(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 200
+        return min(raw, 2000)
+
+    @field_validator("graph_max_edges", mode="before")
+    @classmethod
+    def _normalize_graph_max_edges(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw < 0:
+            return 500
+        return min(raw, 5000)
+
+    @field_validator("graph_prompt_char_limit", mode="before")
+    @classmethod
+    def _normalize_graph_prompt_char_limit(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 6000
+        return min(raw, 50000)
+
+    @field_validator("graph_match_entity_alias_candidates_limit", mode="before")
+    @classmethod
+    def _normalize_graph_match_entity_alias_candidates_limit(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 2000
+        return min(raw, 10000)
 
     @field_validator("fractal_scene_window", mode="before")
     @classmethod

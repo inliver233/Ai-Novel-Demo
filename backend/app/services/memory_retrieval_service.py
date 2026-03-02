@@ -838,6 +838,9 @@ def retrieve_memory_context_pack(
             "note": "vector_rag_service.query_project",
             "timings_ms": vector_rag.get("timings_ms"),
             "counts": vector_rag.get("counts"),
+            "budget_observability": vector_rag.get("budget_observability")
+            if isinstance(vector_rag.get("budget_observability"), dict)
+            else None,
             "rerank": vector_rag.get("rerank"),
             "dropped_total": int(vector_rag.get("counts", {}).get("dropped_total", 0))
             if isinstance(vector_rag.get("counts"), dict)
@@ -856,6 +859,9 @@ def retrieve_memory_context_pack(
             "enabled": bool(graph.get("enabled")),
             "disabled_reason": graph.get("disabled_reason"),
             "note": "graph_context_service.query_graph_context",
+            "budget_observability": graph.get("budget_observability")
+            if isinstance(graph.get("budget_observability"), dict)
+            else None,
             "token_estimate": estimate_tokens(str(graph.get("text_md") or "")),
             "truncated": bool(graph.get("truncated")) if "truncated" in graph else None,
             "budget_char_limit": int(graph_budget),
@@ -866,6 +872,9 @@ def retrieve_memory_context_pack(
             "enabled": bool(fractal.get("enabled")),
             "disabled_reason": fractal.get("disabled_reason"),
             "note": "Phase 6.2: use /api/projects/{project_id}/fractal/rebuild to rebuild deterministically",
+            "budget_observability": fractal.get("budget_observability")
+            if isinstance(fractal.get("budget_observability"), dict)
+            else None,
             "retrieval": fractal.get("retrieval") if isinstance(fractal.get("retrieval"), dict) else None,
             "retrieval_hit_count": int((fractal.get("retrieval") or {}).get("hit_count") or 0)
             if isinstance(fractal.get("retrieval"), dict)

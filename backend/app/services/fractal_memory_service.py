@@ -18,6 +18,7 @@ from app.db.utils import new_id
 from app.models.chapter import Chapter
 from app.models.fractal_memory import FractalMemory
 from app.models.story_memory import StoryMemory
+from app.services.context_budget_observability import build_budget_observability
 from app.services.output_parsers import parse_tag_output
 from app.services.prompt_preset_resources import load_preset_resource
 from app.services.prompting import render_template
@@ -31,6 +32,12 @@ _DEFAULT_MAX_DONE_CHAPTERS_PER_REBUILD = 1000
 _FRACTAL_V2_RESOURCE_KEY = "fractal_v2_v1"
 _FRACTAL_V2_TAG = "fractal_v2"
 _TOKEN_RE = re.compile(r"[0-9A-Za-z\u4e00-\u9fff]{2,}")
+_FRACTAL_DROPPED_REASON_EXPLAIN = {
+    "recent_window_budget": "最近窗口只保留最近 N 章高频记忆。",
+    "prompt_char_budget": "Fractal 注入文本超过字符预算后被截断。",
+    "done_chapters_budget": "重建时 done 章节超过可处理上限，仅使用最近窗口。",
+    "long_retrieval_budget": "长期索引命中数量超过 max_hits，仅保留前 N 条。",
+}
 
 T = TypeVar("T")
 
@@ -189,6 +196,31 @@ def _build_fractal_prompt_inner(
     return "\n\n".join(s for s in sections if str(s).strip()).strip()
 
 
+def _fractal_budget_observability(
+    *,
+    config: FractalConfig,
+    dropped: list[dict[str, Any]],
+    done_limit: int | None = None,
+) -> dict[str, Any]:
+    limits = {
+        "scene_window": int(config.scene_window),
+        "arc_window": int(config.arc_window),
+        "char_limit": int(config.char_limit),
+        "recent_window_chapters": int(config.recent_window_chapters),
+        "mid_window_chapters": int(config.mid_window_chapters),
+        "long_window_chapters": int(config.long_window_chapters),
+        "long_index_terms": int(config.long_index_terms),
+    }
+    if done_limit is not None:
+        limits["done_chapters_per_rebuild"] = int(done_limit)
+    return build_budget_observability(
+        module="fractal",
+        limits=limits,
+        dropped=dropped,
+        reason_explain=_FRACTAL_DROPPED_REASON_EXPLAIN,
+    )
+
+
 def compute_fractal(
     *,
     chapters: list[Chapter],
@@ -323,15 +355,33 @@ def compute_fractal(
     if not prompt_inner:
         latest_saga = sagas[-1]["summary_md"] if sagas else ""
         prompt_inner = str(latest_saga or "").strip()
+    prompt_original_chars = len(prompt_inner)
     prompt_inner = _clip_text(prompt_inner, limit=max(0, int(config.char_limit)))
+    prompt_truncated = bool(max(0, int(config.char_limit)) > 0 and prompt_original_chars > int(config.char_limit))
     text_md = f"<FractalMemory>\n{prompt_inner}\n</FractalMemory>" if prompt_inner else ""
+
+    dropped: list[dict[str, Any]] = []
+    if len(scenes) > len(recent_window_chapters):
+        dropped.append({"reason": "recent_window_budget", "count": len(scenes) - len(recent_window_chapters)})
+    if prompt_truncated:
+        dropped.append({"reason": "prompt_char_budget", "count": 1})
+    budget_obs = _fractal_budget_observability(config=config, dropped=dropped)
 
     return {
         "scenes": scenes,
         "arcs": arcs,
         "sagas": sagas,
         "layers": layers,
-        "prompt_block": {"identifier": "sys.memory.fractal", "role": "system", "text_md": text_md},
+        "dropped": dropped,
+        "budget_observability": budget_obs,
+        "prompt_block": {
+            "identifier": "sys.memory.fractal",
+            "role": "system",
+            "text_md": text_md,
+            "truncated": bool(prompt_truncated),
+            "char_limit": int(config.char_limit),
+            "original_chars": int(prompt_original_chars),
+        },
     }
 
 
@@ -359,7 +409,15 @@ def select_fractal_long_term_hits(
     outlines = long_term.get("outlines") if isinstance(long_term, dict) else None
     tokens = _query_tokens(query_text)
     if not tokens or not isinstance(outlines, list) or max_hits <= 0:
-        return {"query_text": str(query_text or ""), "tokens": tokens, "hit_count": 0, "max_hits": int(max_hits), "hits": []}
+        return {
+            "query_text": str(query_text or ""),
+            "tokens": tokens,
+            "total_candidates": 0,
+            "hit_count": 0,
+            "max_hits": int(max_hits),
+            "hits": [],
+            "dropped": [],
+        }
 
     token_set = set(tokens)
     scored: list[tuple[int, int, dict[str, Any]]] = []
@@ -395,13 +453,19 @@ def select_fractal_long_term_hits(
         )
 
     scored.sort(key=lambda item: (-item[0], item[1]))
-    hits = [entry for _score, _index, entry in scored[:max(0, int(max_hits))]]
+    limit = max(0, int(max_hits))
+    hits = [entry for _score, _index, entry in scored[:limit]]
+    dropped: list[dict[str, Any]] = []
+    if len(scored) > len(hits):
+        dropped.append({"reason": "long_retrieval_budget", "count": len(scored) - len(hits)})
     return {
         "query_text": str(query_text or ""),
         "tokens": tokens,
+        "total_candidates": int(len(scored)),
         "hit_count": len(hits),
-        "max_hits": int(max_hits),
+        "max_hits": int(limit),
         "hits": hits,
+        "dropped": dropped,
     }
 
 
@@ -416,6 +480,27 @@ def enrich_fractal_context_for_query(
     layers = out.get("layers") if isinstance(out.get("layers"), dict) else {}
     retrieval = select_fractal_long_term_hits(layers=layers, query_text=query_text, max_hits=max_hits)
     out["retrieval"] = retrieval
+    base_dropped = [row for row in (out.get("dropped") or []) if isinstance(row, dict)]
+    retrieval_dropped = [row for row in (retrieval.get("dropped") or []) if isinstance(row, dict)]
+    if retrieval_dropped:
+        base_dropped.extend(retrieval_dropped)
+        out["dropped"] = base_dropped
+        cfg_obj = out.get("config") if isinstance(out.get("config"), dict) else {}
+        cfg_for_budget = FractalConfig(
+            scene_window=max(1, int(cfg_obj.get("scene_window") or 5)),
+            arc_window=max(1, int(cfg_obj.get("arc_window") or 5)),
+            char_limit=max(0, int(cfg_obj.get("char_limit") or 6000)),
+            recent_window_chapters=max(1, int(cfg_obj.get("recent_window_chapters") or 80)),
+            mid_window_chapters=max(1, int(cfg_obj.get("mid_window_chapters") or 200)),
+            long_window_chapters=max(1, int(cfg_obj.get("long_window_chapters") or 600)),
+            long_index_terms=max(1, int(cfg_obj.get("long_index_terms") or 12)),
+            long_retrieval_hits=max(1, int(cfg_obj.get("long_retrieval_hits") or 3)),
+        )
+        out["budget_observability"] = _fractal_budget_observability(
+            config=cfg_for_budget,
+            dropped=base_dropped,
+            done_limit=int(cfg_obj.get("done_chapters_limit") or 0) if cfg_obj.get("done_chapters_limit") is not None else None,
+        )
 
     if not retrieval.get("hits"):
         return out
@@ -454,6 +539,8 @@ def get_fractal_context(*, db: Session, project_id: str, enabled: bool) -> dict[
             "scenes": [],
             "arcs": [],
             "sagas": [],
+            "dropped": [],
+            "budget_observability": {},
             "prompt_block": {"identifier": "sys.memory.fractal", "role": "system", "text_md": ""},
         }
 
@@ -467,6 +554,8 @@ def get_fractal_context(*, db: Session, project_id: str, enabled: bool) -> dict[
             "scenes": [],
             "arcs": [],
             "sagas": [],
+            "dropped": [],
+            "budget_observability": {},
             "prompt_block": {"identifier": "sys.memory.fractal", "role": "system", "text_md": ""},
         }
 
@@ -494,8 +583,33 @@ def get_fractal_context(*, db: Session, project_id: str, enabled: bool) -> dict[
     if not prompt_inner:
         latest = sagas[-1]["summary_md"] if isinstance(sagas, list) and sagas and isinstance(sagas[-1], dict) else ""
         prompt_inner = str(latest or "").strip()
-    prompt_inner = _clip_text(prompt_inner, limit=max(0, int(cfg_dict.get("char_limit") or 6000)))
+    prompt_char_limit = max(0, int(cfg_dict.get("char_limit") or 6000))
+    prompt_original_chars = len(prompt_inner)
+    prompt_inner = _clip_text(prompt_inner, limit=prompt_char_limit)
+    prompt_truncated = bool(prompt_char_limit > 0 and prompt_original_chars > prompt_char_limit)
     text_md = f"<FractalMemory>\n{prompt_inner}\n</FractalMemory>" if prompt_inner else ""
+
+    dropped_cfg = cfg_dict.get("dropped")
+    dropped = dropped_cfg if isinstance(dropped_cfg, list) else []
+    budget_cfg = cfg_dict.get("budget_observability")
+    if isinstance(budget_cfg, dict):
+        budget_observability = budget_cfg
+    else:
+        cfg_for_budget = FractalConfig(
+            scene_window=max(1, int(cfg_dict.get("scene_window") or 5)),
+            arc_window=max(1, int(cfg_dict.get("arc_window") or 5)),
+            char_limit=max(0, int(cfg_dict.get("char_limit") or 6000)),
+            recent_window_chapters=max(1, int(cfg_dict.get("recent_window_chapters") or 80)),
+            mid_window_chapters=max(1, int(cfg_dict.get("mid_window_chapters") or 200)),
+            long_window_chapters=max(1, int(cfg_dict.get("long_window_chapters") or 600)),
+            long_index_terms=max(1, int(cfg_dict.get("long_index_terms") or 12)),
+            long_retrieval_hits=max(1, int(cfg_dict.get("long_retrieval_hits") or 3)),
+        )
+        budget_observability = _fractal_budget_observability(
+            config=cfg_for_budget,
+            dropped=[row for row in dropped if isinstance(row, dict)],
+            done_limit=int(cfg_dict.get("done_chapters_limit") or 0) if cfg_dict.get("done_chapters_limit") is not None else None,
+        )
 
     v2_cfg = cfg_dict.get("v2") if isinstance(cfg_dict, dict) else None
     v2_summary_md = str(v2_cfg.get("summary_md") or "").strip() if isinstance(v2_cfg, dict) else ""
@@ -510,7 +624,16 @@ def get_fractal_context(*, db: Session, project_id: str, enabled: bool) -> dict[
         "scenes": scenes if isinstance(scenes, list) else [],
         "arcs": arcs if isinstance(arcs, list) else [],
         "sagas": sagas if isinstance(sagas, list) else [],
-        "prompt_block": {"identifier": "sys.memory.fractal", "role": "system", "text_md": text_md},
+        "dropped": dropped if isinstance(dropped, list) else [],
+        "budget_observability": budget_observability if isinstance(budget_observability, dict) else {},
+        "prompt_block": {
+            "identifier": "sys.memory.fractal",
+            "role": "system",
+            "text_md": text_md,
+            "truncated": bool(prompt_truncated),
+            "char_limit": int(prompt_char_limit),
+            "original_chars": int(prompt_original_chars),
+        },
         "prompt_block_v2": {"identifier": "sys.memory.fractal_v2", "role": "system", "text_md": v2_text_md},
         "updated_at": row.updated_at.isoformat().replace("+00:00", "Z"),
     }
@@ -881,6 +1004,10 @@ def rebuild_fractal_memory(*, db: Session, project_id: str, reason: str) -> dict
                     chapter_summary_by_id[cid] = summary
 
     computed = compute_fractal(chapters=done_chapters, config=cfg, chapter_summary_by_id=chapter_summary_by_id)
+    dropped_items = [row for row in (computed.get("dropped") or []) if isinstance(row, dict)]
+    if done_truncated:
+        dropped_items.append({"reason": "done_chapters_budget", "count": max(1, done_total - len(done_chapters))})
+    budget_obs = _fractal_budget_observability(config=cfg, dropped=dropped_items, done_limit=done_limit)
     row = db.execute(select(FractalMemory).where(FractalMemory.project_id == project_id)).scalars().first()
     if row is None:
         row = FractalMemory(id=new_id(), project_id=project_id)
@@ -902,6 +1029,8 @@ def rebuild_fractal_memory(*, db: Session, project_id: str, reason: str) -> dict
             "done_chapters_limit": done_limit,
             "done_chapters_truncated": bool(done_truncated),
             "layered_archive": computed.get("layers") if isinstance(computed.get("layers"), dict) else {},
+            "dropped": dropped_items,
+            "budget_observability": budget_obs,
         }
     )
     row.scenes_json = _compact_json_dumps(computed["scenes"])

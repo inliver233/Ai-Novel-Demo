@@ -61,12 +61,15 @@ class TestGraphContextPromptBlockLimits(unittest.TestCase):
             result = self._query(db)
 
         prompt = result.get("prompt_block") or {}
+        budget_obs = result.get("budget_observability") or {}
         self.assertEqual(prompt.get("char_limit"), _PROMPT_BLOCK_CHAR_LIMIT)
         self.assertFalse(prompt.get("truncated"))
         self.assertIsInstance(prompt.get("text_md"), str)
         self.assertIn("<GraphContext>", prompt.get("text_md") or "")
         self.assertIn("</GraphContext>", prompt.get("text_md") or "")
         self.assertLessEqual(len(prompt.get("text_md") or ""), _PROMPT_BLOCK_CHAR_LIMIT)
+        self.assertEqual(budget_obs.get("module"), "graph")
+        self.assertEqual(int(budget_obs.get("dropped_total") or 0), 0)
 
     def test_prompt_block_truncates_when_over_limit(self) -> None:
         huge = "X" * (_PROMPT_BLOCK_CHAR_LIMIT * 3)
@@ -88,6 +91,7 @@ class TestGraphContextPromptBlockLimits(unittest.TestCase):
 
         prompt = result.get("prompt_block") or {}
         text_md = str(prompt.get("text_md") or "")
+        budget_obs = result.get("budget_observability") or {}
         self.assertEqual(prompt.get("char_limit"), _PROMPT_BLOCK_CHAR_LIMIT)
         self.assertTrue(prompt.get("truncated"))
         self.assertIsInstance(prompt.get("original_chars"), int)
@@ -96,6 +100,10 @@ class TestGraphContextPromptBlockLimits(unittest.TestCase):
         self.assertIn("(truncated)", text_md)
         self.assertIn("<GraphContext>", text_md)
         self.assertIn("</GraphContext>", text_md)
+        dropped = result.get("dropped") or []
+        self.assertTrue(any(str(item.get("reason") or "") == "prompt_char_budget" for item in dropped if isinstance(item, dict)))
+        self.assertEqual(budget_obs.get("module"), "graph")
+        self.assertGreaterEqual(int((budget_obs.get("dropped_by_reason") or {}).get("prompt_char_budget") or 0), 1)
 
 
 if __name__ == "__main__":
