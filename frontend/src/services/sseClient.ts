@@ -1,4 +1,5 @@
 import { ApiError, type ApiErrorPayload } from "./apiClient";
+import { shouldNotifyUnauthorized } from "./unauthorizedPolicy";
 
 export type SSEMessage =
   | {
@@ -118,7 +119,8 @@ export class SSEPostClient {
     if (!response.ok) {
       const payload = await parseJsonSafe(response);
       if (isApiErrorPayload(payload)) {
-        if (response.status === 401) notifyUnauthorized(payload.request_id ?? this.requestId);
+        if (shouldNotifyUnauthorized(response.status, payload.error.code))
+          notifyUnauthorized(payload.request_id ?? this.requestId);
         throw new ApiError({
           code: payload.error.code,
           message: payload.error.message,
@@ -127,7 +129,7 @@ export class SSEPostClient {
           status: response.status,
         });
       }
-      if (response.status === 401) notifyUnauthorized(this.requestId);
+      if (shouldNotifyUnauthorized(response.status, null)) notifyUnauthorized(this.requestId);
       throw new SSEError({ code: "SSE_BAD_RESPONSE", message: `HTTP ${response.status}`, requestId: this.requestId });
     }
 

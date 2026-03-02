@@ -1,3 +1,5 @@
+import { shouldNotifyUnauthorized } from "./unauthorizedPolicy";
+
 export type ApiErrorPayload = {
   ok: false;
   error: { code: string; message: string; details?: unknown };
@@ -121,7 +123,8 @@ export async function apiJson<T>(path: string, init?: ApiRequestInit): Promise<A
   if (typeof payload === "object" && payload && "ok" in payload) {
     const typed = payload as ApiOkPayload<T> | ApiErrorPayload;
     if (typed.ok) return typed as ApiOkPayload<T>;
-    if (res.status === 401) notifyUnauthorized(typed.request_id ?? requestIdHeader ?? "unknown");
+    if (shouldNotifyUnauthorized(res.status, typed.error.code))
+      notifyUnauthorized(typed.request_id ?? requestIdHeader ?? "unknown");
     throw new ApiError({
       code: typed.error.code,
       message: typed.error.message,
@@ -131,7 +134,7 @@ export async function apiJson<T>(path: string, init?: ApiRequestInit): Promise<A
     });
   }
 
-  if (res.status === 401) notifyUnauthorized(requestIdHeader ?? "unknown");
+  if (shouldNotifyUnauthorized(res.status, null)) notifyUnauthorized(requestIdHeader ?? "unknown");
   throw new ApiError({
     code: "BAD_RESPONSE",
     message: "响应格式错误",
@@ -156,7 +159,7 @@ export async function apiDownloadMarkdown(path: string): Promise<{ filename: str
   const payload = (await parseJsonSafe(res)) as ApiErrorPayload | unknown;
   if (typeof payload === "object" && payload && "ok" in payload && (payload as ApiErrorPayload).ok === false) {
     const typed = payload as ApiErrorPayload;
-    if (res.status === 401) notifyUnauthorized(typed.request_id ?? requestIdHeader);
+    if (shouldNotifyUnauthorized(res.status, typed.error.code)) notifyUnauthorized(typed.request_id ?? requestIdHeader);
     throw new ApiError({
       code: typed.error.code,
       message: typed.error.message,
@@ -166,7 +169,7 @@ export async function apiDownloadMarkdown(path: string): Promise<{ filename: str
     });
   }
 
-  if (res.status === 401) notifyUnauthorized(requestIdHeader);
+  if (shouldNotifyUnauthorized(res.status, null)) notifyUnauthorized(requestIdHeader);
   throw new ApiError({
     code: "BAD_RESPONSE",
     message: "导出失败",
@@ -192,7 +195,7 @@ export async function apiDownloadAttachment(
   const payload = (await parseJsonSafe(res)) as ApiErrorPayload | unknown;
   if (typeof payload === "object" && payload && "ok" in payload && (payload as ApiErrorPayload).ok === false) {
     const typed = payload as ApiErrorPayload;
-    if (res.status === 401) notifyUnauthorized(typed.request_id ?? requestIdHeader);
+    if (shouldNotifyUnauthorized(res.status, typed.error.code)) notifyUnauthorized(typed.request_id ?? requestIdHeader);
     throw new ApiError({
       code: typed.error.code,
       message: typed.error.message,
@@ -202,7 +205,7 @@ export async function apiDownloadAttachment(
     });
   }
 
-  if (res.status === 401) notifyUnauthorized(requestIdHeader);
+  if (shouldNotifyUnauthorized(res.status, null)) notifyUnauthorized(requestIdHeader);
   throw new ApiError({
     code: "BAD_RESPONSE",
     message: "下载失败",
