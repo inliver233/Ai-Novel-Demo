@@ -1171,8 +1171,14 @@ def generate_outline_stream(
             if generation_run_id is not None:
                 data["generation_run_id"] = generation_run_id
 
+            # Keep stream result payload compact to reduce client-side SSE parse failures on large outputs.
+            result_data = dict(data)
+            result_data.pop("raw_output", None)
+            result_data.pop("raw_json", None)
+            result_data.pop("fixed_json", None)
+
             yield sse_progress(message="完成", progress=100, status="success")
-            yield sse_result(data)
+            yield sse_result(result_data)
             yield sse_done()
         except GeneratorExit:
             return

@@ -51,6 +51,61 @@ function extractOutlineChapters(structure: unknown): OutlineGenChapter[] {
     .filter((v): v is OutlineGenChapter => Boolean(v));
 }
 
+function normalizeOutlineGenResult(raw: unknown, fallbackRawOutput = ""): OutlineGenResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const data = raw as {
+    outline_md?: unknown;
+    chapters?: unknown;
+    raw_output?: unknown;
+    parse_error?: unknown;
+  };
+  const outline_md = typeof data.outline_md === "string" ? data.outline_md : "";
+  const chapters = extractOutlineChapters({ chapters: data.chapters });
+  const raw_output = typeof data.raw_output === "string" ? data.raw_output : fallbackRawOutput;
+  const parse_error =
+    data.parse_error && typeof data.parse_error === "object"
+      ? {
+          code: String((data.parse_error as { code?: unknown }).code ?? ""),
+          message: String((data.parse_error as { message?: unknown }).message ?? ""),
+        }
+      : undefined;
+  if (!outline_md && chapters.length === 0 && !raw_output) return null;
+  return { outline_md, chapters, raw_output, parse_error };
+}
+
+function parseOutlineGenResultFromText(text: string): OutlineGenResult | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const candidates: string[] = [trimmed];
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    candidates.push(trimmed.slice(firstBrace, lastBrace + 1));
+  }
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      const normalized = normalizeOutlineGenResult(parsed, text);
+      if (normalized) return normalized;
+    } catch {
+      // ignore and continue fallback parsing
+    }
+  }
+  return null;
+}
+
+function toFinalPreviewJson(result: OutlineGenResult): string {
+  return JSON.stringify(
+    {
+      outline_md: result.outline_md,
+      chapters: result.chapters,
+      parse_error: result.parse_error ?? undefined,
+    },
+    null,
+    2,
+  );
+}
+
 export function OutlinePage() {
   const { projectId } = useParams();
   const toast = useToast();
@@ -793,6 +848,18 @@ export function OutlinePage() {
 
                 if (genStreamEnabled) {
                   setGenStreamProgress({ message: "开始生成...", progress: 0, status: "processing" });
+                  let streamRawText = "";
+                  let streamResult: OutlineGenResult | null = null;
+
+                  const applyStreamResult = (candidate: unknown, fallbackRaw = ""): boolean => {
+                    const normalized = normalizeOutlineGenResult(candidate, fallbackRaw);
+                    if (!normalized) return false;
+                    streamResult = normalized;
+                    setGenPreview(normalized);
+                    setGenStreamText(toFinalPreviewJson(normalized));
+                    return true;
+                  };
+
                   const client = new SSEPostClient(`/api/projects/${projectId}/outline/generate-stream`, payload, {
                     headers,
                     onProgress: ({ message, progress, status }) => {
@@ -800,16 +867,37 @@ export function OutlinePage() {
                     },
                     onChunk: (content) => {
                       genStreamHasChunkRef.current = true;
+                      streamRawText += content;
                       setGenStreamText((prev) => prev + content);
                     },
                     onResult: (data) => {
-                      setGenPreview(data as OutlineGenResult);
+                      void applyStreamResult(data, streamRawText);
                     },
                   });
                   genStreamClientRef.current = client;
 
                   try {
-                    await client.connect();
+                    const done = await client.connect();
+                    if (!streamResult) {
+                      const doneApplied = applyStreamResult(done.result, done.accumulatedContent || streamRawText);
+                      if (!doneApplied) {
+                        const parsedFromRaw = parseOutlineGenResultFromText(done.accumulatedContent || streamRawText);
+                        if (parsedFromRaw) {
+                          streamResult = parsedFromRaw;
+                          setGenPreview(parsedFromRaw);
+                          setGenStreamText(toFinalPreviewJson(parsedFromRaw));
+                        }
+                      }
+                    }
+                    if (!streamResult) {
+                      setGenStreamProgress((prev) => ({
+                        message: "生成已结束，但结果解析失败，请重试",
+                        progress: prev?.progress ?? 100,
+                        status: "error",
+                      }));
+                      toast.toastError("流式完成但未收到可用结果，请重试");
+                      return;
+                    }
                     setGenStreamProgress((prev) =>
                       prev ? { ...prev, message: "完成", progress: 100, status: "success" } : prev,
                     );
@@ -825,7 +913,11 @@ export function OutlinePage() {
                           headers,
                           body: JSON.stringify(payload),
                         });
-                        setGenPreview(res.data);
+                        const normalized = normalizeOutlineGenResult(res.data, "");
+                        setGenPreview(normalized ?? res.data);
+                        if (normalized) {
+                          setGenStreamText(toFinalPreviewJson(normalized));
+                        }
                         setGenStreamProgress(null);
                         toast.toastSuccess("生成完成");
                       } else {
