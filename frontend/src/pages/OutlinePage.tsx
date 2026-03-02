@@ -608,7 +608,10 @@ export function OutlinePage() {
 
       <Modal
         open={genModalOpen}
-        onClose={() => setGenModalOpen(false)}
+        onClose={() => {
+          genStreamClientRef.current?.abort();
+          setGenModalOpen(false);
+        }}
         panelClassName="surface max-w-2xl p-6"
         ariaLabel="AI 生成大纲"
       >
@@ -617,7 +620,14 @@ export function OutlinePage() {
             <div className="font-content text-2xl">AI 生成大纲</div>
             <div className="mt-1 text-xs text-subtext">生成结果会先预览，可选择覆盖当前大纲或另存为新大纲。</div>
           </div>
-          <button className="btn btn-secondary" onClick={() => setGenModalOpen(false)} type="button">
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              genStreamClientRef.current?.abort();
+              setGenModalOpen(false);
+            }}
+            type="button"
+          >
             关闭
           </button>
         </div>
@@ -746,7 +756,7 @@ export function OutlinePage() {
           >
             取消
           </button>
-          {generating && genStreamEnabled ? (
+          {genStreamEnabled && (generating || genStreamProgress?.status === "processing") ? (
             <button
               className="btn btn-secondary"
               onClick={() => {
@@ -800,11 +810,15 @@ export function OutlinePage() {
 
                   try {
                     await client.connect();
+                    setGenStreamProgress((prev) =>
+                      prev ? { ...prev, message: "完成", progress: 100, status: "success" } : prev,
+                    );
                     toast.toastSuccess("生成完成");
                   } catch (e) {
                     const err = e as unknown;
                     if (err instanceof SSEError && err.code !== "SSE_SERVER_ERROR" && err.code !== "ABORTED") {
                       if (!genStreamHasChunkRef.current) {
+                        setGenStreamProgress({ message: "流式失败，回退非流式...", progress: 0, status: "processing" });
                         toast.toastError("流式生成失败，已回退非流式");
                         const res = await apiJson<OutlineGenResult>(`/api/projects/${projectId}/outline/generate`, {
                           method: "POST",
@@ -812,24 +826,46 @@ export function OutlinePage() {
                           body: JSON.stringify(payload),
                         });
                         setGenPreview(res.data);
+                        setGenStreamProgress(null);
                         toast.toastSuccess("生成完成");
                       } else {
+                        setGenStreamProgress((prev) => ({
+                          message: "流式连接中断，可重试生成",
+                          progress: prev?.progress ?? 0,
+                          status: "error",
+                        }));
                         toast.toastError(`${err.message} (${err.code})`, err.requestId);
                       }
                       return;
                     }
                     if (err instanceof SSEError && err.code === "SSE_SERVER_ERROR") {
+                      setGenStreamProgress((prev) => ({
+                        message: "生成失败，可重试生成",
+                        progress: prev?.progress ?? 0,
+                        status: "error",
+                      }));
                       toast.toastError(`${err.message} (${err.code})`, err.requestId);
                       return;
                     }
                     if (err instanceof SSEError && err.code === "ABORTED") {
+                      setGenStreamProgress(null);
                       toast.toastSuccess("已取消生成");
                       return;
                     }
                     if (err instanceof ApiError) {
+                      setGenStreamProgress((prev) => ({
+                        message: "生成失败，可重试生成",
+                        progress: prev?.progress ?? 0,
+                        status: "error",
+                      }));
                       toast.toastError(`${err.message} (${err.code})`, err.requestId);
                       return;
                     }
+                    setGenStreamProgress((prev) => ({
+                      message: "生成失败，可重试生成",
+                      progress: prev?.progress ?? 0,
+                      status: "error",
+                    }));
                     toast.toastError("流式生成失败");
                   }
                 } else {
@@ -845,6 +881,7 @@ export function OutlinePage() {
                 const err = e as ApiError;
                 toast.toastError(`${err.message} (${err.code})`, err.requestId);
               } finally {
+                genStreamClientRef.current = null;
                 setGenerating(false);
               }
             }}

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import logging
+import threading
 import time
+from collections.abc import Callable
 
 from fastapi import APIRouter, Header, Request
 from sqlalchemy import select
@@ -41,8 +44,14 @@ from app.schemas.outline import OutlineOut, OutlineUpdate
 
 router = APIRouter()
 logger = logging.getLogger("ainovel")
-OUTLINE_FILL_MAX_ATTEMPTS = 3
-OUTLINE_FILL_BATCH_SIZE = 30
+OUTLINE_FILL_MIN_BATCH_SIZE = 6
+OUTLINE_FILL_MAX_BATCH_SIZE = 18
+OUTLINE_FILL_STAGNANT_ROUNDS_LIMIT = 3
+OUTLINE_FILL_MAX_TOTAL_ATTEMPTS = 48
+OUTLINE_FILL_HEARTBEAT_INTERVAL_SECONDS = 1.0
+OUTLINE_FILL_POLL_INTERVAL_SECONDS = 0.2
+
+OutlineFillProgressHook = Callable[[dict[str, object]], None]
 
 
 def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
@@ -237,6 +246,46 @@ def _format_chapter_number_ranges(numbers: list[int]) -> str:
     return ", ".join(ranges)
 
 
+def _outline_fill_batch_size_for_missing(missing_count: int) -> int:
+    if missing_count <= 0:
+        return OUTLINE_FILL_MIN_BATCH_SIZE
+    if missing_count >= 160:
+        return OUTLINE_FILL_MAX_BATCH_SIZE
+    if missing_count >= 80:
+        return 14
+    if missing_count >= 40:
+        return 12
+    if missing_count >= 20:
+        return 10
+    if missing_count >= 10:
+        return 8
+    return OUTLINE_FILL_MIN_BATCH_SIZE
+
+
+def _outline_fill_max_attempts_for_missing(missing_count: int) -> int:
+    if missing_count <= 0:
+        return 1
+    # Weak models may only return ~5 chapters per call; keep enough room for incremental convergence.
+    estimated = (missing_count + 4) // 5 + 2
+    return max(6, min(OUTLINE_FILL_MAX_TOTAL_ATTEMPTS, estimated))
+
+
+def _outline_fill_progress_message(progress: dict[str, object] | None) -> str:
+    if not isinstance(progress, dict):
+        return "补全缺失章节..."
+    remaining_raw = progress.get("remaining_count")
+    remaining = int(remaining_raw) if isinstance(remaining_raw, int) else 0
+    attempt_raw = progress.get("attempt")
+    attempt = int(attempt_raw) if isinstance(attempt_raw, int) else 0
+    max_attempts_raw = progress.get("max_attempts")
+    max_attempts = int(max_attempts_raw) if isinstance(max_attempts_raw, int) else 0
+    if attempt > 0 and max_attempts > 0 and remaining > 0:
+        return f"补全缺失章节... 第 {attempt}/{max_attempts} 轮，剩余 {remaining} 章"
+    if remaining > 0:
+        return f"补全缺失章节... 剩余 {remaining} 章"
+    return "补全缺失章节..."
+
+
 def _enforce_outline_chapter_coverage(
     *,
     data: dict[str, object],
@@ -316,6 +365,7 @@ def _fill_outline_missing_chapters_with_llm(
     api_key: str,
     llm_call,
     run_params_extra_json: dict[str, object] | None,
+    progress_hook: OutlineFillProgressHook | None = None,
 ) -> tuple[dict[str, object], list[str], list[str]]:
     if not target_chapter_count or target_chapter_count <= 0:
         return data, [], []
@@ -326,13 +376,38 @@ def _fill_outline_missing_chapters_with_llm(
     warnings: list[str] = list(normalize_warnings)
     continue_run_ids: list[str] = []
     contract = contract_for_task("outline_generate")
+    missing_numbers = _collect_missing_chapter_numbers(chapters_now, target_chapter_count=target_chapter_count)
+    max_attempts = _outline_fill_max_attempts_for_missing(len(missing_numbers))
     stagnant_rounds = 0
+    attempt = 0
 
-    for attempt in range(1, OUTLINE_FILL_MAX_ATTEMPTS + 1):
+    if progress_hook is not None:
+        progress_hook(
+            {
+                "event": "fill_start",
+                "attempt": 0,
+                "max_attempts": max_attempts,
+                "remaining_count": len(missing_numbers),
+            }
+        )
+
+    while attempt < max_attempts:
         missing_numbers = _collect_missing_chapter_numbers(chapters_now, target_chapter_count=target_chapter_count)
         if not missing_numbers:
             break
-        batch_missing = missing_numbers[:OUTLINE_FILL_BATCH_SIZE]
+        batch_size = _outline_fill_batch_size_for_missing(len(missing_numbers))
+        batch_missing = missing_numbers[:batch_size]
+        attempt += 1
+        if progress_hook is not None:
+            progress_hook(
+                {
+                    "event": "attempt_start",
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
+                    "batch_size": len(batch_missing),
+                    "remaining_count": len(missing_numbers),
+                }
+            )
         fill_system, fill_user = _build_outline_missing_chapters_prompts(
             target_chapter_count=target_chapter_count,
             missing_numbers=batch_missing,
@@ -351,22 +426,42 @@ def _fill_outline_missing_chapters_with_llm(
         fill_extra = dict(run_params_extra_json or {})
         fill_extra["outline_fill_missing"] = {
             "attempt": attempt,
+            "max_attempts": max_attempts,
             "target_chapter_count": target_chapter_count,
             "batch_missing": batch_missing,
         }
-        filled = call_llm_and_record(
-            logger=logger,
-            request_id=request_id,
-            actor_user_id=actor_user_id,
-            project_id=project_id,
-            chapter_id=None,
-            run_type="outline_fill_missing",
-            api_key=api_key,
-            prompt_system=fill_system,
-            prompt_user=fill_user,
-            llm_call=fill_call,
-            run_params_extra_json=fill_extra,
-        )
+        try:
+            filled = call_llm_and_record(
+                logger=logger,
+                request_id=request_id,
+                actor_user_id=actor_user_id,
+                project_id=project_id,
+                chapter_id=None,
+                run_type="outline_fill_missing",
+                api_key=api_key,
+                prompt_system=fill_system,
+                prompt_user=fill_user,
+                llm_call=fill_call,
+                run_params_extra_json=fill_extra,
+            )
+        except AppError as exc:
+            warnings.append("outline_fill_missing_call_failed")
+            if exc.code == "LLM_TIMEOUT":
+                warnings.append("outline_fill_missing_timeout")
+            stagnant_rounds += 1
+            if progress_hook is not None:
+                progress_hook(
+                    {
+                        "event": "attempt_call_failed",
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "error_code": exc.code,
+                        "remaining_count": len(missing_numbers),
+                    }
+                )
+            if stagnant_rounds >= OUTLINE_FILL_STAGNANT_ROUNDS_LIMIT:
+                break
+            continue
         continue_run_ids.append(filled.run_id)
         filled_parsed = contract.parse(filled.text, finish_reason=filled.finish_reason)
         filled_data, filled_warnings, filled_error = filled_parsed.data, filled_parsed.warnings, filled_parsed.parse_error
@@ -376,7 +471,16 @@ def _fill_outline_missing_chapters_with_llm(
             if filled.finish_reason == "length":
                 warnings.append("outline_fill_missing_truncated")
             stagnant_rounds += 1
-            if stagnant_rounds >= 2:
+            if progress_hook is not None:
+                progress_hook(
+                    {
+                        "event": "attempt_parse_failed",
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "remaining_count": len(missing_numbers),
+                    }
+                )
+            if stagnant_rounds >= OUTLINE_FILL_STAGNANT_ROUNDS_LIMIT:
                 break
             continue
 
@@ -385,7 +489,16 @@ def _fill_outline_missing_chapters_with_llm(
         if not incoming:
             warnings.append("outline_fill_missing_empty")
             stagnant_rounds += 1
-            if stagnant_rounds >= 2:
+            if progress_hook is not None:
+                progress_hook(
+                    {
+                        "event": "attempt_empty",
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "remaining_count": len(missing_numbers),
+                    }
+                )
+            if stagnant_rounds >= OUTLINE_FILL_STAGNANT_ROUNDS_LIMIT:
                 break
             continue
 
@@ -407,17 +520,53 @@ def _fill_outline_missing_chapters_with_llm(
         if accepted <= 0:
             warnings.append("outline_fill_missing_no_progress")
             stagnant_rounds += 1
-            if stagnant_rounds >= 2:
+            if progress_hook is not None:
+                progress_hook(
+                    {
+                        "event": "attempt_no_progress",
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "remaining_count": len(missing_numbers),
+                    }
+                )
+            if stagnant_rounds >= OUTLINE_FILL_STAGNANT_ROUNDS_LIMIT:
                 break
             continue
 
         warnings.append("outline_fill_missing_applied")
         stagnant_rounds = 0
         chapters_now = [by_number[n] for n in sorted(by_number.keys())]
+        remaining = len(_collect_missing_chapter_numbers(chapters_now, target_chapter_count=target_chapter_count))
+        if progress_hook is not None:
+            progress_hook(
+                {
+                    "event": "attempt_applied",
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
+                    "accepted": accepted,
+                    "remaining_count": remaining,
+                }
+            )
 
     data["chapters"] = chapters_now
     data, coverage_warnings = _enforce_outline_chapter_coverage(data=data, target_chapter_count=target_chapter_count)
     warnings.extend(coverage_warnings)
+    coverage = data.get("chapter_coverage")
+    if isinstance(coverage, dict):
+        remaining_count = int(coverage.get("missing_count") or 0)
+        if remaining_count > 0:
+            warnings.append("outline_fill_missing_remaining")
+    else:
+        remaining_count = 0
+    if progress_hook is not None:
+        progress_hook(
+            {
+                "event": "fill_done",
+                "attempt": attempt,
+                "max_attempts": max_attempts,
+                "remaining_count": remaining_count,
+            }
+        )
     return data, _dedupe_warnings(warnings), continue_run_ids
 
 
@@ -962,16 +1111,45 @@ def generate_outline_stream(
                 warnings.extend(coverage_warnings)
                 if target_chapter_count:
                     yield sse_progress(message="补全缺失章节...", progress=94)
-                data, fill_warnings, fill_run_ids = _fill_outline_missing_chapters_with_llm(
-                    data=data,
-                    target_chapter_count=target_chapter_count,
-                    request_id=request_id,
-                    actor_user_id=user_id,
-                    project_id=project_id,
-                    api_key=str(resolved_api_key),
-                    llm_call=llm_call,
-                    run_params_extra_json=run_params_extra_json,
-                )
+                fill_progress_lock = threading.Lock()
+                fill_progress: dict[str, object] = {}
+
+                def _on_fill_progress(update: dict[str, object]) -> None:
+                    if not isinstance(update, dict):
+                        return
+                    with fill_progress_lock:
+                        fill_progress.update(update)
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    fill_future = executor.submit(
+                        _fill_outline_missing_chapters_with_llm,
+                        data=data,
+                        target_chapter_count=target_chapter_count,
+                        request_id=request_id,
+                        actor_user_id=user_id,
+                        project_id=project_id,
+                        api_key=str(resolved_api_key),
+                        llm_call=llm_call,
+                        run_params_extra_json=run_params_extra_json,
+                        progress_hook=_on_fill_progress,
+                    )
+
+                    last_ping = 0.0
+                    last_message = ""
+                    while not fill_future.done():
+                        now = time.monotonic()
+                        if now - last_ping >= OUTLINE_FILL_HEARTBEAT_INTERVAL_SECONDS:
+                            yield sse_heartbeat()
+                            with fill_progress_lock:
+                                snapshot = dict(fill_progress)
+                            message = _outline_fill_progress_message(snapshot)
+                            if message != last_message:
+                                yield sse_progress(message=message, progress=94)
+                                last_message = message
+                            last_ping = now
+                        time.sleep(OUTLINE_FILL_POLL_INTERVAL_SECONDS)
+
+                    data, fill_warnings, fill_run_ids = fill_future.result()
                 warnings.extend(fill_warnings)
                 if fill_run_ids:
                     coverage = data.get("chapter_coverage")
