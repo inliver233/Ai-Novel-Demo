@@ -13,5 +13,7 @@ JSON Schema：
 {% if chapter_count_rule %}- {{chapter_count_rule}}
 {% endif %}{% if chapter_detail_rule %}- {{chapter_detail_rule}}
 {% else %}- beats 每章 5~9 条，按发生顺序；每条用短句，明确“发生了什么/造成什么后果”{% endif %}
-- 若输出长度受限，必须优先保证章节数量与编号完整；可压缩每章 beats 的字数与条数，但不得减少章节总数
+- 若输出长度受限，必须优先保证章节数量与编号完整；可压缩为每章 1 条短句，但不得减少章节总数
+- 严禁输出“待补全/自动补齐/占位/TODO/略”等占位内容
+- 严禁只输出前几章或示例章节；必须输出完整 chapters 数组
 - outline_md 用 Markdown 写“整体梗概/人物主线/悬念与伏笔分布/节奏规划”，不要写成正文

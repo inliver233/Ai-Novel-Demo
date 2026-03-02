@@ -41,6 +41,8 @@ from app.schemas.outline import OutlineOut, OutlineUpdate
 
 router = APIRouter()
 logger = logging.getLogger("ainovel")
+OUTLINE_FILL_MAX_ATTEMPTS = 3
+OUTLINE_FILL_BATCH_SIZE = 30
 
 
 def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
@@ -82,12 +84,14 @@ def _build_outline_generation_guidance(target_chapter_count: int | None) -> dict
         }
     if target_chapter_count <= 20:
         detail = "beats 每章 5~9 条，按发生顺序；每条用短句，明确“发生了什么/造成什么后果”。"
-    elif target_chapter_count <= 60:
-        detail = "beats 每章 3~5 条，保持因果推进；每条保持短句，避免冗长。"
+    elif target_chapter_count <= 40:
+        detail = "beats 每章 2~4 条，保持因果推进；每条保持短句，避免冗长。"
+    elif target_chapter_count <= 80:
+        detail = "beats 每章 1~2 条，仅保留关键推进；优先保证章号覆盖完整。"
     elif target_chapter_count <= 120:
-        detail = "beats 每章 2~3 条，只保留主冲突与关键转折，保证节奏连续。"
+        detail = "beats 每章 1~2 条，只保留主冲突与关键转折，保证节奏连续。"
     else:
-        detail = "beats 每章 1~2 条，极简表达关键推进；若长度受限，优先保留章节覆盖与编号完整。"
+        detail = "beats 每章 1 条，极简表达关键推进；若长度受限，优先保留章节覆盖与编号完整。"
     return {
         "chapter_count_rule": (
             f"chapters 必须输出 {target_chapter_count} 章，number 需完整覆盖 1..{target_chapter_count} 且不缺号。"
@@ -105,9 +109,7 @@ def _recommend_outline_max_tokens(
 ) -> int | None:
     if not target_chapter_count or target_chapter_count <= 20:
         return None
-    if target_chapter_count <= 60:
-        wanted = 4096
-    elif target_chapter_count <= 120:
+    if target_chapter_count <= 40:
         wanted = 8192
     else:
         wanted = 12000
@@ -119,6 +121,19 @@ def _recommend_outline_max_tokens(
     if isinstance(current_max_tokens, int) and current_max_tokens >= wanted:
         return None
     return wanted if wanted > 0 else None
+
+
+def _dedupe_warnings(values: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        if not isinstance(item, str):
+            continue
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
 
 
 def _normalize_outline_chapters(chapters: object) -> tuple[list[dict[str, object]], list[str]]:
@@ -185,6 +200,43 @@ def _normalize_outline_chapters(chapters: object) -> tuple[list[dict[str, object
     return normalized, warnings
 
 
+def _chapter_score(chapter: dict[str, object]) -> int:
+    title = str(chapter.get("title") or "").strip()
+    beats = chapter.get("beats")
+    beats_count = len(beats) if isinstance(beats, list) else 0
+    return len(title) + beats_count
+
+
+def _collect_missing_chapter_numbers(chapters: list[dict[str, object]], target_chapter_count: int) -> list[int]:
+    existing_numbers: set[int] = set()
+    for chapter in chapters:
+        try:
+            number = int(chapter.get("number"))
+        except Exception:
+            continue
+        if 1 <= number <= target_chapter_count:
+            existing_numbers.add(number)
+    return [n for n in range(1, target_chapter_count + 1) if n not in existing_numbers]
+
+
+def _format_chapter_number_ranges(numbers: list[int]) -> str:
+    if not numbers:
+        return ""
+    nums = sorted(set(int(n) for n in numbers))
+    ranges: list[str] = []
+    start = nums[0]
+    prev = nums[0]
+    for n in nums[1:]:
+        if n == prev + 1:
+            prev = n
+            continue
+        ranges.append(f"{start}-{prev}" if start != prev else str(start))
+        start = n
+        prev = n
+    ranges.append(f"{start}-{prev}" if start != prev else str(start))
+    return ", ".join(ranges)
+
+
 def _enforce_outline_chapter_coverage(
     *,
     data: dict[str, object],
@@ -210,44 +262,163 @@ def _enforce_outline_chapter_coverage(
     if filtered_beyond_target:
         warnings.append("outline_chapter_beyond_target_filtered")
 
-    chapters_out: list[dict[str, object]] = []
-    missing_numbers: list[int] = []
-    for number in range(1, target_chapter_count + 1):
-        chapter = by_number.get(number)
-        if chapter is None:
-            missing_numbers.append(number)
-            chapters_out.append(
-                {
-                    "number": number,
-                    "title": f"第{number}章（待补全）",
-                    "beats": ["【自动补齐】该章由系统补位，请补写关键事件与转折。"],
-                }
-            )
-            continue
-
-        title = str(chapter.get("title") or "").strip() or f"第{number}章"
-        beats_raw = chapter.get("beats")
-        beats: list[str] = []
-        if isinstance(beats_raw, list):
-            for beat in beats_raw:
-                if beat is None:
-                    continue
-                text = str(beat).strip()
-                if text:
-                    beats.append(text)
-        chapters_out.append({"number": number, "title": title, "beats": beats})
-
+    chapters_out = [by_number[n] for n in sorted(by_number.keys())]
+    missing_numbers = _collect_missing_chapter_numbers(chapters_out, target_chapter_count=target_chapter_count)
+    coverage: dict[str, object] = {
+        "target_chapter_count": target_chapter_count,
+        "parsed_chapter_count": len(chapters_out),
+        "missing_count": len(missing_numbers),
+        "missing_numbers": missing_numbers,
+    }
     if missing_numbers:
-        warnings.append("outline_chapter_coverage_autofilled")
-        data["chapter_coverage"] = {
-            "target_chapter_count": target_chapter_count,
-            "parsed_chapter_count": len(by_number),
-            "filled_missing_count": len(missing_numbers),
-            "filled_missing_numbers": missing_numbers,
-        }
+        warnings.append("outline_chapter_coverage_incomplete")
+    data["chapter_coverage"] = coverage
 
     data["chapters"] = chapters_out
     return data, warnings
+
+
+def _build_outline_missing_chapters_prompts(
+    *,
+    target_chapter_count: int,
+    missing_numbers: list[int],
+    existing_chapters: list[dict[str, object]],
+    outline_md: str,
+) -> tuple[str, str]:
+    system = (
+        "你是严谨的长篇大纲补全器。"
+        "你必须只输出一个 JSON 对象，禁止任何解释、Markdown、代码块。"
+        '输出格式固定为：{"chapters":[{"number":int,"title":string,"beats":[string]}]}。'
+        "仅输出请求的缺失章号，每个章号出现且仅出现一次。"
+        "禁止输出‘待补全/自动补齐/占位/TODO’等占位词。"
+    )
+    compact = [{"number": int(c["number"]), "title": str(c.get("title") or "")[:24]} for c in existing_chapters if "number" in c]
+    if len(compact) > 60:
+        compact = [*compact[:30], *compact[-30:]]
+    user = (
+        f"目标总章数：{target_chapter_count}\n"
+        f"缺失章号：{_format_chapter_number_ranges(missing_numbers)}\n"
+        f"已有章节（仅供连续性参考，不可重写）：{json.dumps(compact, ensure_ascii=False)}\n"
+        f"整体梗概（节选）：{(outline_md or '')[:2500]}\n\n"
+        "请只输出缺失章号对应的 chapters。\n"
+        "每章要求：title 简洁；beats 1~2 条且为具体事件短句。"
+    )
+    return system, user
+
+
+def _fill_outline_missing_chapters_with_llm(
+    *,
+    data: dict[str, object],
+    target_chapter_count: int | None,
+    request_id: str,
+    actor_user_id: str,
+    project_id: str,
+    api_key: str,
+    llm_call,
+    run_params_extra_json: dict[str, object] | None,
+) -> tuple[dict[str, object], list[str], list[str]]:
+    if not target_chapter_count or target_chapter_count <= 0:
+        return data, [], []
+    chapters_now, normalize_warnings = _normalize_outline_chapters(data.get("chapters"))
+    if not chapters_now:
+        return data, normalize_warnings, []
+
+    warnings: list[str] = list(normalize_warnings)
+    continue_run_ids: list[str] = []
+    contract = contract_for_task("outline_generate")
+    stagnant_rounds = 0
+
+    for attempt in range(1, OUTLINE_FILL_MAX_ATTEMPTS + 1):
+        missing_numbers = _collect_missing_chapter_numbers(chapters_now, target_chapter_count=target_chapter_count)
+        if not missing_numbers:
+            break
+        batch_missing = missing_numbers[:OUTLINE_FILL_BATCH_SIZE]
+        fill_system, fill_user = _build_outline_missing_chapters_prompts(
+            target_chapter_count=target_chapter_count,
+            missing_numbers=batch_missing,
+            existing_chapters=chapters_now,
+            outline_md=str(data.get("outline_md") or ""),
+        )
+        current_max_tokens = llm_call.params.get("max_tokens")
+        current_max_tokens_int = int(current_max_tokens) if isinstance(current_max_tokens, int) else None
+        fill_max_tokens = _recommend_outline_max_tokens(
+            target_chapter_count=max(41, len(batch_missing) + 20),
+            provider=llm_call.provider,
+            model=llm_call.model,
+            current_max_tokens=current_max_tokens_int,
+        )
+        fill_call = with_param_overrides(llm_call, {"max_tokens": fill_max_tokens}) if fill_max_tokens else llm_call
+        fill_extra = dict(run_params_extra_json or {})
+        fill_extra["outline_fill_missing"] = {
+            "attempt": attempt,
+            "target_chapter_count": target_chapter_count,
+            "batch_missing": batch_missing,
+        }
+        filled = call_llm_and_record(
+            logger=logger,
+            request_id=request_id,
+            actor_user_id=actor_user_id,
+            project_id=project_id,
+            chapter_id=None,
+            run_type="outline_fill_missing",
+            api_key=api_key,
+            prompt_system=fill_system,
+            prompt_user=fill_user,
+            llm_call=fill_call,
+            run_params_extra_json=fill_extra,
+        )
+        continue_run_ids.append(filled.run_id)
+        filled_parsed = contract.parse(filled.text, finish_reason=filled.finish_reason)
+        filled_data, filled_warnings, filled_error = filled_parsed.data, filled_parsed.warnings, filled_parsed.parse_error
+        warnings.extend(filled_warnings)
+        if filled_error is not None:
+            warnings.append("outline_fill_missing_parse_failed")
+            if filled.finish_reason == "length":
+                warnings.append("outline_fill_missing_truncated")
+            stagnant_rounds += 1
+            if stagnant_rounds >= 2:
+                break
+            continue
+
+        incoming, incoming_warnings = _normalize_outline_chapters(filled_data.get("chapters"))
+        warnings.extend(incoming_warnings)
+        if not incoming:
+            warnings.append("outline_fill_missing_empty")
+            stagnant_rounds += 1
+            if stagnant_rounds >= 2:
+                break
+            continue
+
+        accepted = 0
+        allowed = set(batch_missing)
+        by_number = {int(c["number"]): c for c in chapters_now if int(c["number"]) <= target_chapter_count}
+        for chapter in incoming:
+            number = int(chapter["number"])
+            if number not in allowed:
+                continue
+            previous = by_number.get(number)
+            if previous is None:
+                by_number[number] = chapter
+                accepted += 1
+                continue
+            if _chapter_score(chapter) > _chapter_score(previous):
+                by_number[number] = chapter
+
+        if accepted <= 0:
+            warnings.append("outline_fill_missing_no_progress")
+            stagnant_rounds += 1
+            if stagnant_rounds >= 2:
+                break
+            continue
+
+        warnings.append("outline_fill_missing_applied")
+        stagnant_rounds = 0
+        chapters_now = [by_number[n] for n in sorted(by_number.keys())]
+
+    data["chapters"] = chapters_now
+    data, coverage_warnings = _enforce_outline_chapter_coverage(data=data, target_chapter_count=target_chapter_count)
+    warnings.extend(coverage_warnings)
+    return data, _dedupe_warnings(warnings), continue_run_ids
 
 
 @router.get("/projects/{project_id}/outline")
@@ -334,6 +505,7 @@ def generate_outline(
     prompt_render_log_json: str | None = None
     llm_call = None
     target_chapter_count: int | None = None
+    run_params_extra_json: dict[str, object] = {}
 
     db = SessionLocal()
     try:
@@ -366,7 +538,7 @@ def generate_outline(
             )
             settings_style_guide = resolved_style_guide
 
-        run_params_extra_json: dict[str, object] = {"style_resolution": style_resolution}
+        run_params_extra_json = {"style_resolution": style_resolution}
 
         chars: list[Character] = []
         if body.context.include_characters:
@@ -493,7 +665,24 @@ def generate_outline(
             target_chapter_count=target_chapter_count,
         )
         warnings.extend(coverage_warnings)
+        data, fill_warnings, fill_run_ids = _fill_outline_missing_chapters_with_llm(
+            data=data,
+            target_chapter_count=target_chapter_count,
+            request_id=request_id,
+            actor_user_id=user_id,
+            project_id=project_id,
+            api_key=str(resolved_api_key),
+            llm_call=llm_call,
+            run_params_extra_json=run_params_extra_json,
+        )
+        warnings.extend(fill_warnings)
+        if fill_run_ids:
+            coverage = data.get("chapter_coverage")
+            if isinstance(coverage, dict):
+                coverage["fill_run_ids"] = fill_run_ids
+                data["chapter_coverage"] = coverage
 
+    warnings = _dedupe_warnings(warnings)
     if warnings:
         data["warnings"] = warnings
     if parse_error is not None:
@@ -771,7 +960,26 @@ def generate_outline_stream(
                     target_chapter_count=target_chapter_count,
                 )
                 warnings.extend(coverage_warnings)
+                if target_chapter_count:
+                    yield sse_progress(message="补全缺失章节...", progress=94)
+                data, fill_warnings, fill_run_ids = _fill_outline_missing_chapters_with_llm(
+                    data=data,
+                    target_chapter_count=target_chapter_count,
+                    request_id=request_id,
+                    actor_user_id=user_id,
+                    project_id=project_id,
+                    api_key=str(resolved_api_key),
+                    llm_call=llm_call,
+                    run_params_extra_json=run_params_extra_json,
+                )
+                warnings.extend(fill_warnings)
+                if fill_run_ids:
+                    coverage = data.get("chapter_coverage")
+                    if isinstance(coverage, dict):
+                        coverage["fill_run_ids"] = fill_run_ids
+                        data["chapter_coverage"] = coverage
 
+            warnings = _dedupe_warnings(warnings)
             if warnings:
                 data["warnings"] = warnings
             if parse_error is not None:

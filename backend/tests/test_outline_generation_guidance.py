@@ -7,6 +7,7 @@ from app.api.routes.outline import (
     _build_outline_generation_guidance,
     _enforce_outline_chapter_coverage,
     _extract_target_chapter_count,
+    _format_chapter_number_ranges,
     _recommend_outline_max_tokens,
 )
 from app.services.prompting import render_template
@@ -24,6 +25,11 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
     def test_build_outline_generation_guidance_for_long_form(self) -> None:
         guidance = _build_outline_generation_guidance(200)
         self.assertIn("200", guidance["chapter_count_rule"])
+        self.assertIn("每章 1 条", guidance["chapter_detail_rule"])
+
+    def test_build_outline_generation_guidance_for_50_chapters(self) -> None:
+        guidance = _build_outline_generation_guidance(50)
+        self.assertIn("50", guidance["chapter_count_rule"])
         self.assertIn("1~2", guidance["chapter_detail_rule"])
 
     def test_build_outline_generation_guidance_default(self) -> None:
@@ -41,6 +47,26 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
                 current_max_tokens=4096,
             ),
             12000,
+        )
+        # 50 chapters should use aggressive max_tokens to avoid truncation.
+        self.assertEqual(
+            _recommend_outline_max_tokens(
+                target_chapter_count=50,
+                provider="openai",
+                model="gpt-4o-mini",
+                current_max_tokens=4096,
+            ),
+            12000,
+        )
+        # 40 chapters recommendation is lower than >40 bracket.
+        self.assertEqual(
+            _recommend_outline_max_tokens(
+                target_chapter_count=40,
+                provider="openai",
+                model="gpt-4o-mini",
+                current_max_tokens=4096,
+            ),
+            8192,
         )
         # gpt-4 output limit is 8192; recommendation should be clamped.
         self.assertEqual(
@@ -90,8 +116,9 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         rendered_default, _missing_default, error_default = render_template(template, values={}, macro_seed="test-seed")
         self.assertIsNone(error_default)
         self.assertIn("beats 每章 5~9 条", rendered_default)
+        self.assertIn("严禁输出“待补全/自动补齐/占位/TODO/略”等占位内容", rendered_default)
 
-    def test_enforce_outline_chapter_coverage_autofills_missing_numbers(self) -> None:
+    def test_enforce_outline_chapter_coverage_marks_missing_numbers_without_padding(self) -> None:
         data = {
             "outline_md": "x",
             "chapters": [
@@ -101,11 +128,11 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         }
         out, warnings = _enforce_outline_chapter_coverage(data=data, target_chapter_count=4)
         chapters = out["chapters"]
-        self.assertEqual([c["number"] for c in chapters], [1, 2, 3, 4])
-        self.assertIn("outline_chapter_coverage_autofilled", warnings)
+        self.assertEqual([c["number"] for c in chapters], [1, 3])
+        self.assertIn("outline_chapter_coverage_incomplete", warnings)
         coverage = out.get("chapter_coverage") or {}
-        self.assertEqual(coverage.get("filled_missing_numbers"), [2, 4])
-        self.assertEqual(coverage.get("filled_missing_count"), 2)
+        self.assertEqual(coverage.get("missing_numbers"), [2, 4])
+        self.assertEqual(coverage.get("missing_count"), 2)
 
     def test_enforce_outline_chapter_coverage_dedupes_and_filters_extra(self) -> None:
         data = {
@@ -119,18 +146,23 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         }
         out, warnings = _enforce_outline_chapter_coverage(data=data, target_chapter_count=3)
         chapters = out["chapters"]
-        self.assertEqual([c["number"] for c in chapters], [1, 2, 3])
-        self.assertEqual(chapters[1]["title"], "第二章完整版")
+        self.assertEqual([c["number"] for c in chapters], [2])
+        self.assertEqual(chapters[0]["title"], "第二章完整版")
         self.assertIn("outline_chapter_number_deduped", warnings)
         self.assertIn("outline_chapter_invalid_filtered", warnings)
         self.assertIn("outline_chapter_beyond_target_filtered", warnings)
-        self.assertIn("outline_chapter_coverage_autofilled", warnings)
+        self.assertIn("outline_chapter_coverage_incomplete", warnings)
 
     def test_enforce_outline_chapter_coverage_no_target_is_noop(self) -> None:
         data = {"outline_md": "x", "chapters": [{"number": 1, "title": "第一章", "beats": ["a"]}]}
         out, warnings = _enforce_outline_chapter_coverage(data=data, target_chapter_count=None)
         self.assertEqual(out["chapters"], data["chapters"])
         self.assertEqual(warnings, [])
+
+    def test_format_chapter_number_ranges(self) -> None:
+        self.assertEqual(_format_chapter_number_ranges([1, 2, 3, 7, 9, 10]), "1-3, 7, 9-10")
+        self.assertEqual(_format_chapter_number_ranges([5]), "5")
+        self.assertEqual(_format_chapter_number_ranges([]), "")
 
 
 if __name__ == "__main__":
