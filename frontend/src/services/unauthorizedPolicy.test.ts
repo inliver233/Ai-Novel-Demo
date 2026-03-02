@@ -24,4 +24,3 @@ describe("shouldNotifyUnauthorized", () => {
     expect(shouldNotifyUnauthorized(401, undefined)).toBe(true);
   });
 });
-

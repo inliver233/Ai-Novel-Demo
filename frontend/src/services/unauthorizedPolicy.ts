@@ -6,4 +6,3 @@ export function shouldNotifyUnauthorized(status: number, errorCode?: string | nu
   if (!code) return true;
   return code === "UNAUTHORIZED";
 }
-
