@@ -44,6 +44,7 @@ from app.services.prompt_presets import (
     reset_prompt_preset_to_default_resource,
     render_preset_for_task,
 )
+from app.services.prompt_task_catalog import PROMPT_TASK_SET
 
 router = APIRouter()
 
@@ -645,16 +646,7 @@ def preview_prompt(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
     request_id = request.state.request_id
     require_project_editor(db, project_id=project_id, user_id=user_id)
 
-    allowed_tasks = {
-        "outline_generate",
-        "chapter_generate",
-        "plan_chapter",
-        "post_edit",
-        "content_optimize",
-        "chapter_analyze",
-        "chapter_rewrite",
-    }
-    if body.task not in allowed_tasks:
+    if body.task not in PROMPT_TASK_SET:
         raise AppError.validation(message="不支持的 task")
 
     llm_preset = db.get(LLMPreset, project_id)

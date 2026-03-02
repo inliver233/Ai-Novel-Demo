@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { copyText } from "../lib/copyText";
+import { PROMPT_STUDIO_TASKS } from "../lib/promptTaskCatalog";
 import { UI_COPY } from "../lib/uiCopy";
 import { usePersistentOutletIsActive } from "../hooks/usePersistentOutlet";
 import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
@@ -14,15 +15,7 @@ import { PromptStudioPreviewPanel } from "./promptStudio/PromptStudioPreviewPane
 import type { PromptStudioTask } from "./promptStudio/types";
 import { guessPreviewValues } from "./promptStudio/utils";
 
-const PREVIEW_TASKS: PromptStudioTask[] = [
-  { key: "outline_generate", label: UI_COPY.promptStudio.tasks.outlineGenerate },
-  { key: "chapter_generate", label: UI_COPY.promptStudio.tasks.chapterGenerate },
-  { key: "plan_chapter", label: UI_COPY.promptStudio.tasks.planChapter },
-  { key: "post_edit", label: UI_COPY.promptStudio.tasks.postEdit },
-  { key: "content_optimize", label: UI_COPY.promptStudio.tasks.contentOptimize },
-  { key: "chapter_analyze", label: UI_COPY.promptStudio.tasks.chapterAnalyze },
-  { key: "chapter_rewrite", label: UI_COPY.promptStudio.tasks.chapterRewrite },
-];
+const PREVIEW_TASKS: PromptStudioTask[] = PROMPT_STUDIO_TASKS;
 
 const SUPPORTED_PREVIEW_TASK_KEYS = new Set(PREVIEW_TASKS.map((t) => t.key));
 const TEMPLATE_VAR_TOKEN_RE = /{{\s*([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)\s*}}/g;
