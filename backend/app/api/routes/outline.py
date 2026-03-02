@@ -109,6 +109,81 @@ def _build_outline_generation_guidance(target_chapter_count: int | None) -> dict
     }
 
 
+def _chapter_beats_count(chapter: dict[str, object]) -> int:
+    beats_raw = chapter.get("beats")
+    if not isinstance(beats_raw, list):
+        return 0
+    count = 0
+    for beat in beats_raw:
+        if isinstance(beat, str) and beat.strip():
+            count += 1
+    return count
+
+
+def _outline_fill_detail_rule(*, target_chapter_count: int, existing_chapters: list[dict[str, object]]) -> str:
+    base_rule = _build_outline_generation_guidance(target_chapter_count).get("chapter_detail_rule") or (
+        "beats 每章 1~2 条，保持关键推进。"
+    )
+
+    beat_counts: list[int] = []
+    for chapter in existing_chapters:
+        count = _chapter_beats_count(chapter)
+        if count > 0:
+            beat_counts.append(count)
+    beat_counts.sort()
+    if not beat_counts:
+        return base_rule
+
+    median = beat_counts[len(beat_counts) // 2]
+    low = max(1, median - 1)
+    high = max(low, median + 1)
+
+    if target_chapter_count > 120:
+        low, high = min(low, 2), min(high, 2)
+    elif target_chapter_count > 80:
+        low, high = min(low, 2), min(high, 3)
+    elif target_chapter_count > 40:
+        low, high = min(low, 2), min(high, 4)
+    else:
+        low, high = min(low, 4), min(high, 6)
+
+    consistency = (
+        f"补全章节的 beats 粒度需尽量贴近已有章节（当前已生成章节 beats 中位数约 {median} 条）；"
+        f"本轮建议每章 {low}~{high} 条。"
+    )
+    return f"{base_rule} {consistency}"
+
+
+def _outline_fill_style_samples(existing_chapters: list[dict[str, object]]) -> str:
+    if not existing_chapters:
+        return "[]"
+
+    total = len(existing_chapters)
+    sample_indexes = sorted({0, min(1, total - 1), total // 2, total - 1})
+    samples: list[dict[str, object]] = []
+    for idx in sample_indexes:
+        if idx < 0 or idx >= total:
+            continue
+        chapter = existing_chapters[idx]
+        number = int(chapter.get("number") or 0)
+        if number <= 0:
+            continue
+        title = str(chapter.get("title") or "")[:24]
+        beats_raw = chapter.get("beats")
+        beats: list[str] = []
+        if isinstance(beats_raw, list):
+            for beat in beats_raw:
+                text = str(beat).strip()
+                if text:
+                    beats.append(text[:42])
+                if len(beats) >= 3:
+                    break
+        samples.append({"number": number, "title": title, "beats": beats})
+        if len(samples) >= 4:
+            break
+    return json.dumps(samples, ensure_ascii=False)
+
+
 def _recommend_outline_max_tokens(
     *,
     target_chapter_count: int | None,
@@ -207,6 +282,25 @@ def _normalize_outline_chapters(chapters: object) -> tuple[list[dict[str, object
 
     normalized = [by_number[n] for n in sorted(by_number.keys())]
     return normalized, warnings
+
+
+def _clone_outline_chapters(chapters: list[dict[str, object]]) -> list[dict[str, object]]:
+    cloned: list[dict[str, object]] = []
+    for chapter in chapters:
+        try:
+            number = int(chapter.get("number"))
+        except Exception:
+            continue
+        title = str(chapter.get("title") or "")
+        beats_raw = chapter.get("beats")
+        beats: list[str] = []
+        if isinstance(beats_raw, list):
+            for beat in beats_raw:
+                text = str(beat).strip()
+                if text:
+                    beats.append(text)
+        cloned.append({"number": number, "title": title, "beats": beats})
+    return cloned
 
 
 def _chapter_score(chapter: dict[str, object]) -> int:
@@ -334,12 +428,18 @@ def _build_outline_missing_chapters_prompts(
     existing_chapters: list[dict[str, object]],
     outline_md: str,
 ) -> tuple[str, str]:
+    fill_detail_rule = _outline_fill_detail_rule(
+        target_chapter_count=target_chapter_count,
+        existing_chapters=existing_chapters,
+    )
+    style_samples = _outline_fill_style_samples(existing_chapters)
     system = (
         "你是严谨的长篇大纲补全器。"
         "你必须只输出一个 JSON 对象，禁止任何解释、Markdown、代码块。"
         '输出格式固定为：{"chapters":[{"number":int,"title":string,"beats":[string]}]}。'
         "仅输出请求的缺失章号，每个章号出现且仅出现一次。"
         "禁止输出‘待补全/自动补齐/占位/TODO’等占位词。"
+        "每个 beats 必须是具体事件，避免空泛总结。"
     )
     compact = [{"number": int(c["number"]), "title": str(c.get("title") or "")[:24]} for c in existing_chapters if "number" in c]
     if len(compact) > 60:
@@ -348,9 +448,10 @@ def _build_outline_missing_chapters_prompts(
         f"目标总章数：{target_chapter_count}\n"
         f"缺失章号：{_format_chapter_number_ranges(missing_numbers)}\n"
         f"已有章节（仅供连续性参考，不可重写）：{json.dumps(compact, ensure_ascii=False)}\n"
+        f"风格参考样本（模仿细节密度与句式，不得复用剧情）：{style_samples}\n"
         f"整体梗概（节选）：{(outline_md or '')[:2500]}\n\n"
         "请只输出缺失章号对应的 chapters。\n"
-        "每章要求：title 简洁；beats 1~2 条且为具体事件短句。"
+        f"每章要求：title 简洁；{fill_detail_rule}"
     )
     return system, user
 
@@ -503,6 +604,7 @@ def _fill_outline_missing_chapters_with_llm(
             continue
 
         accepted = 0
+        accepted_numbers: list[int] = []
         allowed = set(batch_missing)
         by_number = {int(c["number"]): c for c in chapters_now if int(c["number"]) <= target_chapter_count}
         for chapter in incoming:
@@ -513,6 +615,7 @@ def _fill_outline_missing_chapters_with_llm(
             if previous is None:
                 by_number[number] = chapter
                 accepted += 1
+                accepted_numbers.append(number)
                 continue
             if _chapter_score(chapter) > _chapter_score(previous):
                 by_number[number] = chapter
@@ -538,12 +641,16 @@ def _fill_outline_missing_chapters_with_llm(
         chapters_now = [by_number[n] for n in sorted(by_number.keys())]
         remaining = len(_collect_missing_chapter_numbers(chapters_now, target_chapter_count=target_chapter_count))
         if progress_hook is not None:
+            chapter_snapshot = _clone_outline_chapters(chapters_now)
             progress_hook(
                 {
                     "event": "attempt_applied",
                     "attempt": attempt,
                     "max_attempts": max_attempts,
                     "accepted": accepted,
+                    "accepted_numbers": accepted_numbers,
+                    "chapters_snapshot": chapter_snapshot,
+                    "chapter_count": len(chapter_snapshot),
                     "remaining_count": remaining,
                 }
             )
@@ -1109,6 +1216,10 @@ def generate_outline_stream(
                     target_chapter_count=target_chapter_count,
                 )
                 warnings.extend(coverage_warnings)
+                preview_outline_md = str(data.get("outline_md") or "")
+                preview_chapters, _preview_warnings = _normalize_outline_chapters(data.get("chapters"))
+                if preview_chapters:
+                    yield sse_result({"outline_md": preview_outline_md, "chapters": _clone_outline_chapters(preview_chapters)})
                 if target_chapter_count:
                     yield sse_progress(message="补全缺失章节...", progress=94)
                 fill_progress_lock = threading.Lock()
@@ -1136,12 +1247,30 @@ def generate_outline_stream(
 
                     last_ping = 0.0
                     last_message = ""
+                    last_snapshot_attempt = -1
                     while not fill_future.done():
                         now = time.monotonic()
                         if now - last_ping >= OUTLINE_FILL_HEARTBEAT_INTERVAL_SECONDS:
                             yield sse_heartbeat()
                             with fill_progress_lock:
                                 snapshot = dict(fill_progress)
+                            snapshot_event = str(snapshot.get("event") or "")
+                            snapshot_attempt_raw = snapshot.get("attempt")
+                            if isinstance(snapshot_attempt_raw, int):
+                                snapshot_attempt = snapshot_attempt_raw
+                            else:
+                                try:
+                                    snapshot_attempt = int(snapshot_attempt_raw) if snapshot_attempt_raw is not None else 0
+                                except Exception:
+                                    snapshot_attempt = 0
+                            snapshot_chapters = snapshot.get("chapters_snapshot")
+                            if (
+                                snapshot_event == "attempt_applied"
+                                and snapshot_attempt > last_snapshot_attempt
+                                and isinstance(snapshot_chapters, list)
+                            ):
+                                yield sse_result({"outline_md": preview_outline_md, "chapters": snapshot_chapters})
+                                last_snapshot_attempt = snapshot_attempt
                             message = _outline_fill_progress_message(snapshot)
                             if message != last_message:
                                 yield sse_progress(message=message, progress=94)

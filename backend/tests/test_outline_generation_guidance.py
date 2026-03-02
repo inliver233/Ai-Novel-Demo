@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.api.routes.outline import (
+    _build_outline_missing_chapters_prompts,
     _build_outline_generation_guidance,
     _enforce_outline_chapter_coverage,
     _extract_target_chapter_count,
@@ -201,6 +202,23 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         )
         self.assertEqual(_outline_fill_progress_message(None), "补全缺失章节...")
 
+    def test_fill_prompt_uses_style_samples_and_adaptive_detail_rule(self) -> None:
+        existing = [
+            {"number": 1, "title": "第一章", "beats": ["a1", "a2", "a3", "a4"]},
+            {"number": 2, "title": "第二章", "beats": ["b1", "b2", "b3", "b4"]},
+            {"number": 3, "title": "第三章", "beats": ["c1", "c2", "c3", "c4"]},
+            {"number": 4, "title": "第四章", "beats": ["d1", "d2", "d3", "d4"]},
+        ]
+        _system, user = _build_outline_missing_chapters_prompts(
+            target_chapter_count=50,
+            missing_numbers=[5, 6, 7],
+            existing_chapters=existing,
+            outline_md="x",
+        )
+        self.assertIn("风格参考样本", user)
+        self.assertIn("中位数约 4 条", user)
+        self.assertIn("本轮建议每章", user)
+
     def test_fill_missing_chapters_keeps_progressing_for_weak_model(self) -> None:
         llm_call = PreparedLlmCall(
             provider="openai",
@@ -216,6 +234,7 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
             "chapters": [{"number": i, "title": f"第{i}章", "beats": ["a"]} for i in range(1, 6)],
         }
         call_count = {"value": 0}
+        progress_events: list[dict[str, object]] = []
 
         def _parse_missing_numbers(prompt_user: str) -> list[int]:
             m = re.search(r"缺失章号：([^\n]+)", prompt_user)
@@ -253,6 +272,7 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
                 api_key="k",
                 llm_call=llm_call,
                 run_params_extra_json={},
+                progress_hook=lambda update: progress_events.append(dict(update)),
             )
 
         chapters = out.get("chapters") or []
@@ -261,6 +281,11 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         coverage = out.get("chapter_coverage") or {}
         self.assertEqual(coverage.get("missing_count"), 0)
         self.assertIn("outline_fill_missing_applied", warnings)
+        applied = [e for e in progress_events if e.get("event") == "attempt_applied"]
+        self.assertTrue(applied)
+        latest = applied[-1]
+        self.assertIsInstance(latest.get("chapters_snapshot"), list)
+        self.assertEqual(int(latest.get("chapter_count") or 0), 50)
 
     def test_fill_missing_chapters_fail_soft_on_llm_error(self) -> None:
         llm_call = PreparedLlmCall(
