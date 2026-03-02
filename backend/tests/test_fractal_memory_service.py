@@ -14,7 +14,13 @@ from app.models.outline import Outline
 from app.models.project import Project
 from app.models.story_memory import StoryMemory
 from app.models.user import User
-from app.services.fractal_memory_service import FractalConfig, compute_fractal, get_fractal_context, rebuild_fractal_memory
+from app.services.fractal_memory_service import (
+    FractalConfig,
+    compute_fractal,
+    get_fractal_context,
+    rebuild_fractal_memory,
+    rebuild_fractal_memory_v2,
+)
 
 
 class TestFractalMemoryService(unittest.TestCase):
@@ -172,3 +178,27 @@ class TestFractalMemoryStorageLoop(unittest.TestCase):
         scenes = list(out.get("scenes") or [])
         self.assertEqual(len(scenes), int(cfg.get("done_chapters_used") or 0))
         self.assertEqual(int(scenes[0].get("chapter_number") or 0), 61)
+
+    def test_rebuild_v2_fallback_when_llm_preset_missing(self) -> None:
+        with self.SessionLocal() as db:
+            self._seed_project(db=db, chapter_count=3)
+            out = rebuild_fractal_memory_v2(
+                db=db,
+                project_id="p1",
+                reason="test_v2_missing",
+                request_id="rid-test-v2-missing",
+                actor_user_id="u1",
+                api_key="",
+                llm_call=None,
+            )
+
+        self.assertTrue(bool(out.get("enabled")))
+        self.assertIsNone(out.get("disabled_reason"))
+        v2 = out.get("v2") or {}
+        self.assertFalse(bool(v2.get("enabled")))
+        self.assertEqual(v2.get("status"), "fallback")
+        self.assertEqual(v2.get("disabled_reason"), "llm_preset_missing")
+        prompt_block_v2 = out.get("prompt_block_v2") or {}
+        self.assertEqual(prompt_block_v2.get("identifier"), "sys.memory.fractal_v2")
+        self.assertEqual(prompt_block_v2.get("role"), "system")
+        self.assertEqual(prompt_block_v2.get("text_md"), "")

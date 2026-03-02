@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.errors import AppError
-from app.core.logging import log_event
+from app.core.logging import exception_log_fields, log_event
 from app.db.utils import new_id
 from app.models.chapter import Chapter
 from app.models.fractal_memory import FractalMemory
@@ -233,6 +233,54 @@ def _render_fractal_v2_prompt(
     return "\n\n".join(system_parts).strip(), "\n\n".join(user_parts).strip(), blocks_log
 
 
+def _merge_v2_payload_into_output(*, base_output: dict[str, Any], v2_payload: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base_output)
+    payload = dict(v2_payload)
+    out["v2"] = payload
+
+    summary_md = str(payload.get("summary_md") or "").strip() if bool(payload.get("enabled")) else ""
+    text_md = f"<FractalMemoryV2>\n{summary_md}\n</FractalMemoryV2>" if summary_md else ""
+    out["prompt_block_v2"] = {
+        "identifier": "sys.memory.fractal_v2",
+        "role": "system",
+        "text_md": text_md,
+    }
+    return out
+
+
+def _persist_v2_and_return_context(
+    *,
+    db: Session,
+    row: FractalMemory,
+    cfg_dict: dict[str, Any],
+    v2_payload: dict[str, Any],
+    project_id: str,
+    reason: str,
+    stage: str,
+    base_output: dict[str, Any],
+) -> dict[str, Any]:
+    next_cfg = dict(cfg_dict)
+    next_cfg["v2"] = dict(v2_payload)
+    row.config_json = _compact_json_dumps(next_cfg)
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        log_event(
+            logger,
+            "error",
+            event="FRACTAL_MEMORY",
+            action="rebuild_v2_persist_failed",
+            project_id=project_id,
+            reason=reason,
+            stage=stage,
+            disabled_reason=v2_payload.get("disabled_reason"),
+            **exception_log_fields(exc),
+        )
+        return _merge_v2_payload_into_output(base_output=base_output, v2_payload=v2_payload)
+    return get_fractal_context(db=db, project_id=project_id, enabled=True)
+
+
 def rebuild_fractal_memory_v2(
     *,
     db: Session,
@@ -255,6 +303,7 @@ def rebuild_fractal_memory_v2(
 
     cfg_obj = _safe_json_loads(row.config_json, default={})
     cfg_dict: dict[str, Any] = cfg_obj if isinstance(cfg_obj, dict) else {}
+    base_output = base if isinstance(base, dict) else {}
 
     sagas = base.get("sagas") if isinstance(base, dict) else None
     latest_summary = ""
@@ -262,34 +311,55 @@ def rebuild_fractal_memory_v2(
         latest_summary = str(sagas[-1].get("summary_md") or "").strip()
 
     if not latest_summary:
-        cfg_dict["v2"] = {
+        v2_payload = {
             "enabled": False,
             "status": "skipped",
             "disabled_reason": "no_content",
         }
-        row.config_json = _compact_json_dumps(cfg_dict)
-        db.commit()
-        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+        return _persist_v2_and_return_context(
+            db=db,
+            row=row,
+            cfg_dict=cfg_dict,
+            v2_payload=v2_payload,
+            project_id=project_id,
+            reason=reason,
+            stage="no_content",
+            base_output=base_output,
+        )
 
     if llm_call is None:
-        cfg_dict["v2"] = {
+        v2_payload = {
             "enabled": False,
             "status": "fallback",
             "disabled_reason": "llm_preset_missing",
         }
-        row.config_json = _compact_json_dumps(cfg_dict)
-        db.commit()
-        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+        return _persist_v2_and_return_context(
+            db=db,
+            row=row,
+            cfg_dict=cfg_dict,
+            v2_payload=v2_payload,
+            project_id=project_id,
+            reason=reason,
+            stage="llm_preset_missing",
+            base_output=base_output,
+        )
 
     if not str(api_key or "").strip():
-        cfg_dict["v2"] = {
+        v2_payload = {
             "enabled": False,
             "status": "fallback",
             "disabled_reason": "api_key_missing",
         }
-        row.config_json = _compact_json_dumps(cfg_dict)
-        db.commit()
-        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+        return _persist_v2_and_return_context(
+            db=db,
+            row=row,
+            cfg_dict=cfg_dict,
+            v2_payload=v2_payload,
+            project_id=project_id,
+            reason=reason,
+            stage="api_key_missing",
+            base_output=base_output,
+        )
 
     char_limit = int(cfg_dict.get("char_limit") or 6000)
     system, user, render_blocks = _render_fractal_v2_prompt(summary_md=latest_summary, char_limit=char_limit, macro_seed=request_id)
@@ -322,30 +392,44 @@ def rebuild_fractal_memory_v2(
             },
         )
     except AppError as exc:
-        cfg_dict["v2"] = {
+        v2_payload = {
             "enabled": False,
             "status": "fallback",
             "disabled_reason": "llm_error",
             "error_code": exc.code,
         }
-        row.config_json = _compact_json_dumps(cfg_dict)
-        db.commit()
-        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+        return _persist_v2_and_return_context(
+            db=db,
+            row=row,
+            cfg_dict=cfg_dict,
+            v2_payload=v2_payload,
+            project_id=project_id,
+            reason=reason,
+            stage="llm_error",
+            base_output=base_output,
+        )
     except Exception as exc:
-        cfg_dict["v2"] = {
+        v2_payload = {
             "enabled": False,
             "status": "fallback",
             "disabled_reason": "internal_error",
             "error_type": type(exc).__name__,
         }
-        row.config_json = _compact_json_dumps(cfg_dict)
-        db.commit()
-        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+        return _persist_v2_and_return_context(
+            db=db,
+            row=row,
+            cfg_dict=cfg_dict,
+            v2_payload=v2_payload,
+            project_id=project_id,
+            reason=reason,
+            stage="internal_error",
+            base_output=base_output,
+        )
 
     parsed, warnings, parse_error = parse_tag_output(result.text, tag=_FRACTAL_V2_TAG, output_key="summary_md")
     summary_v2 = str(parsed.get("summary_md") or "").strip()
     if parse_error is not None or not summary_v2:
-        cfg_dict["v2"] = {
+        v2_payload = {
             "enabled": False,
             "status": "fallback",
             "disabled_reason": "parse_error",
@@ -354,14 +438,21 @@ def rebuild_fractal_memory_v2(
             "warnings": warnings,
             "parse_error": parse_error,
         }
-        row.config_json = _compact_json_dumps(cfg_dict)
-        db.commit()
-        return get_fractal_context(db=db, project_id=project_id, enabled=True)
+        return _persist_v2_and_return_context(
+            db=db,
+            row=row,
+            cfg_dict=cfg_dict,
+            v2_payload=v2_payload,
+            project_id=project_id,
+            reason=reason,
+            stage="parse_error",
+            base_output=base_output,
+        )
 
     if char_limit > 0 and len(summary_v2) > char_limit:
         summary_v2 = summary_v2[:char_limit].rstrip() + "…"
 
-    cfg_dict["v2"] = {
+    v2_payload = {
         "enabled": True,
         "status": "ok",
         "summary_md": summary_v2,
@@ -373,9 +464,16 @@ def rebuild_fractal_memory_v2(
         "dropped_params": list(result.dropped_params),
         "warnings": warnings,
     }
-    row.config_json = _compact_json_dumps(cfg_dict)
-    db.commit()
-    out = get_fractal_context(db=db, project_id=project_id, enabled=True)
+    out = _persist_v2_and_return_context(
+        db=db,
+        row=row,
+        cfg_dict=cfg_dict,
+        v2_payload=v2_payload,
+        project_id=project_id,
+        reason=reason,
+        stage="v2_ok",
+        base_output=base_output,
+    )
 
     log_event(
         logger,
