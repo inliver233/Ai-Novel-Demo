@@ -6,7 +6,6 @@ import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { copyText } from "../lib/copyText";
 import { PROMPT_STUDIO_TASKS } from "../lib/promptTaskCatalog";
-import { UI_COPY } from "../lib/uiCopy";
 import { usePersistentOutletIsActive } from "../hooks/usePersistentOutlet";
 import { UnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 import { ApiError, apiJson, sanitizeFilename } from "../services/apiClient";
