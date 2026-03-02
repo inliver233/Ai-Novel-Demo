@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from dataclasses import dataclass
 import json
 import logging
 import time
@@ -251,6 +252,118 @@ def _mcp_research_params(*, cfg: McpResearchConfigSvc, applied: bool, tool_run_i
         "tool_run_ids": list(tool_run_ids),
         "warnings": list(warnings or []),
     }
+
+
+@dataclass(frozen=True, slots=True)
+class _ChapterMemoryPreparation:
+    memory_pack: dict[str, object] | None
+    memory_injection_config: dict[str, object] | None
+    memory_retrieval_log_json: dict[str, object] | None
+
+
+def _resolve_memory_modules(raw_modules: dict[str, bool]) -> dict[str, bool]:
+    return {
+        "worldbook": bool(raw_modules.get("worldbook", True)),
+        "story_memory": bool(raw_modules.get("story_memory", True)),
+        "semantic_history": bool(raw_modules.get("semantic_history", False)),
+        "foreshadow_open_loops": bool(raw_modules.get("foreshadow_open_loops", False)),
+        "structured": bool(raw_modules.get("structured", True)),
+        "tables": bool(raw_modules.get("tables", True)),
+        "vector_rag": bool(raw_modules.get("vector_rag", True)),
+        "graph": bool(raw_modules.get("graph", True)),
+        "fractal": bool(raw_modules.get("fractal", True)),
+    }
+
+
+def _prepare_chapter_memory_injection(
+    *,
+    db: Session,
+    project_id: str,
+    chapter: Chapter,
+    body: ChapterGenerateRequest,
+    settings_row: ProjectSettings | None,
+    base_instruction: str,
+    values: dict[str, object],
+) -> _ChapterMemoryPreparation:
+    if not body.memory_injection_enabled:
+        return _ChapterMemoryPreparation(
+            memory_pack=None,
+            memory_injection_config=None,
+            memory_retrieval_log_json=None,
+        )
+
+    memory_query_text = ""
+    query_text_source = "auto"
+    requested_query_text = str(body.memory_query_text or "").strip()
+    if requested_query_text:
+        memory_query_text = requested_query_text[:5000]
+        query_text_source = "user"
+    else:
+        memory_query_text = base_instruction
+        if chapter.plan:
+            memory_query_text = f"{memory_query_text}\n\n{chapter.plan}".strip()
+        memory_query_text = memory_query_text[:5000]
+
+    memory_modules = _resolve_memory_modules(body.memory_modules or {})
+    raw_query_text = memory_query_text
+    qp_cfg = parse_query_preprocessing_config(
+        (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
+    )
+    memory_query_text, preprocess_obs = normalize_query_text(query_text=raw_query_text, config=qp_cfg)
+
+    pack = None
+    pack_errors = None
+    try:
+        pack = retrieve_memory_context_pack(
+            db=db,
+            project_id=project_id,
+            query_text=memory_query_text,
+            section_enabled=memory_modules,
+        )
+    except Exception:
+        pack = None
+        pack_errors = ["memory_pack_error"]
+
+    memory_pack = pack.model_dump() if pack is not None else None
+    if memory_pack is not None:
+        values["memory"] = memory_pack
+
+    memory_injection_config: dict[str, object] = {
+        "query_text": memory_query_text,
+        "query_text_source": query_text_source,
+        "modules": memory_modules,
+        "raw_query_text": raw_query_text,
+        "normalized_query_text": memory_query_text,
+        "preprocess_obs": preprocess_obs,
+    }
+    memory_retrieval_log_json = build_memory_retrieval_log_json(
+        enabled=True,
+        query_text=memory_query_text,
+        pack=pack,
+        errors=pack_errors,
+    )
+    return _ChapterMemoryPreparation(
+        memory_pack=memory_pack,
+        memory_injection_config=memory_injection_config,
+        memory_retrieval_log_json=memory_retrieval_log_json,
+    )
+
+
+def _build_memory_run_params_extra_json(
+    *,
+    style_resolution: dict[str, object],
+    memory_injection_enabled: bool,
+    memory_preparation: _ChapterMemoryPreparation,
+) -> dict[str, object]:
+    params: dict[str, object] = {
+        "style_resolution": style_resolution,
+        "memory_injection_enabled": memory_injection_enabled,
+    }
+    # Mirror generation_runs.params_json fields for observability + replay.
+    if memory_injection_enabled and memory_preparation.memory_injection_config is not None:
+        params["memory_injection_config"] = memory_preparation.memory_injection_config
+        params["memory_retrieval_log_json"] = memory_preparation.memory_retrieval_log_json
+    return params
 
 
 def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
@@ -870,82 +983,18 @@ def generate_chapter_precheck(
         )
         settings_row = db.get(ProjectSettings, project_id)
         values["context_optimizer_enabled"] = bool(getattr(settings_row, "context_optimizer_enabled", False))
-
-        pack = None
-        pack_errors = None
-        memory_query_text = ""
-        query_text_source = "auto"
-        memory_modules = {
-            "worldbook": True,
-            "story_memory": True,
-            "semantic_history": False,
-            "foreshadow_open_loops": False,
-            "structured": True,
-            "tables": True,
-            "vector_rag": True,
-            "graph": True,
-            "fractal": True,
-        }
-        raw_query_text = ""
-        preprocess_obs = None
-        if body.memory_injection_enabled:
-            requested_query_text = str(body.memory_query_text or "").strip()
-            if requested_query_text:
-                memory_query_text = requested_query_text[:5000]
-                query_text_source = "user"
-            else:
-                memory_query_text = base_instruction
-                if chapter.plan:
-                    memory_query_text = f"{memory_query_text}\n\n{chapter.plan}".strip()
-                memory_query_text = memory_query_text[:5000]
-
-            raw_modules = body.memory_modules or {}
-            memory_modules = {
-                "worldbook": bool(raw_modules.get("worldbook", True)),
-                "story_memory": bool(raw_modules.get("story_memory", True)),
-                "semantic_history": bool(raw_modules.get("semantic_history", False)),
-                "foreshadow_open_loops": bool(raw_modules.get("foreshadow_open_loops", False)),
-                "structured": bool(raw_modules.get("structured", True)),
-                "tables": bool(raw_modules.get("tables", True)),
-                "vector_rag": bool(raw_modules.get("vector_rag", True)),
-                "graph": bool(raw_modules.get("graph", True)),
-                "fractal": bool(raw_modules.get("fractal", True)),
-            }
-
-            raw_query_text = memory_query_text
-            qp_cfg = parse_query_preprocessing_config(
-                (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
-            )
-            memory_query_text, preprocess_obs = normalize_query_text(query_text=raw_query_text, config=qp_cfg)
-            try:
-                pack = retrieve_memory_context_pack(
-                    db=db,
-                    project_id=project_id,
-                    query_text=memory_query_text,
-                    section_enabled=memory_modules,
-                )
-                values["memory"] = pack.model_dump()
-            except Exception:
-                pack = None
-                pack_errors = ["memory_pack_error"]
-
-        # Mirror generation_runs.params_json fields for observability + replay.
-        if body.memory_injection_enabled:
-            memory_injection_config = {
-                "query_text": memory_query_text,
-                "query_text_source": query_text_source,
-                "modules": memory_modules,
-                "raw_query_text": raw_query_text,
-                "normalized_query_text": memory_query_text,
-                "preprocess_obs": preprocess_obs,
-            }
-            memory_retrieval_log_json = build_memory_retrieval_log_json(
-                enabled=True,
-                query_text=memory_query_text,
-                pack=pack,
-                errors=pack_errors,
-            )
-            memory_pack = pack.model_dump() if pack is not None else None
+        memory_preparation = _prepare_chapter_memory_injection(
+            db=db,
+            project_id=project_id,
+            chapter=chapter,
+            body=body,
+            settings_row=settings_row,
+            base_instruction=base_instruction,
+            values=values,
+        )
+        memory_pack = memory_preparation.memory_pack
+        memory_injection_config = memory_preparation.memory_injection_config
+        memory_retrieval_log_json = memory_preparation.memory_retrieval_log_json
 
         mcp_cfg = _build_mcp_research_config(body)
         mcp_step = run_mcp_research_step(
@@ -1074,83 +1123,21 @@ def generate_chapter(
         )
         settings_row = db.get(ProjectSettings, project_id)
         values["context_optimizer_enabled"] = bool(getattr(settings_row, "context_optimizer_enabled", False))
-        pack = None
-        pack_errors = None
-        memory_query_text = ""
-        query_text_source = "auto"
-        memory_modules = {
-            "worldbook": True,
-            "story_memory": True,
-            "semantic_history": False,
-            "foreshadow_open_loops": False,
-            "structured": True,
-            "tables": True,
-            "vector_rag": True,
-            "graph": True,
-            "fractal": True,
-        }
-        raw_query_text = ""
-        preprocess_obs = None
-        if body.memory_injection_enabled:
-            requested_query_text = str(body.memory_query_text or "").strip()
-            if requested_query_text:
-                memory_query_text = requested_query_text[:5000]
-                query_text_source = "user"
-            else:
-                memory_query_text = base_instruction
-                if chapter.plan:
-                    memory_query_text = f"{memory_query_text}\n\n{chapter.plan}".strip()
-                memory_query_text = memory_query_text[:5000]
-
-            raw_modules = body.memory_modules or {}
-            memory_modules = {
-                "worldbook": bool(raw_modules.get("worldbook", True)),
-                "story_memory": bool(raw_modules.get("story_memory", True)),
-                "semantic_history": bool(raw_modules.get("semantic_history", False)),
-                "foreshadow_open_loops": bool(raw_modules.get("foreshadow_open_loops", False)),
-                "structured": bool(raw_modules.get("structured", True)),
-                "tables": bool(raw_modules.get("tables", True)),
-                "vector_rag": bool(raw_modules.get("vector_rag", True)),
-                "graph": bool(raw_modules.get("graph", True)),
-                "fractal": bool(raw_modules.get("fractal", True)),
-            }
-
-            raw_query_text = memory_query_text
-            qp_cfg = parse_query_preprocessing_config(
-                (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
-            )
-            memory_query_text, preprocess_obs = normalize_query_text(query_text=raw_query_text, config=qp_cfg)
-            try:
-                pack = retrieve_memory_context_pack(
-                    db=db,
-                    project_id=project_id,
-                    query_text=memory_query_text,
-                    section_enabled=memory_modules,
-                )
-                values["memory"] = pack.model_dump()
-            except Exception:
-                pack = None
-                pack_errors = ["memory_pack_error"]
+        memory_preparation = _prepare_chapter_memory_injection(
+            db=db,
+            project_id=project_id,
+            chapter=chapter,
+            body=body,
+            settings_row=settings_row,
+            base_instruction=base_instruction,
+            values=values,
+        )
         render_values = values
-        run_params_extra_json = {
-            "style_resolution": style_resolution,
-            "memory_injection_enabled": body.memory_injection_enabled,
-        }
-        if body.memory_injection_enabled:
-            run_params_extra_json["memory_injection_config"] = {
-                "query_text": memory_query_text,
-                "query_text_source": query_text_source,
-                "modules": memory_modules,
-                "raw_query_text": raw_query_text,
-                "normalized_query_text": memory_query_text,
-                "preprocess_obs": preprocess_obs,
-            }
-            run_params_extra_json["memory_retrieval_log_json"] = build_memory_retrieval_log_json(
-                enabled=True,
-                query_text=memory_query_text,
-                pack=pack,
-                errors=pack_errors,
-            )
+        run_params_extra_json = _build_memory_run_params_extra_json(
+            style_resolution=style_resolution,
+            memory_injection_enabled=body.memory_injection_enabled,
+            memory_preparation=memory_preparation,
+        )
 
         mcp_cfg = _build_mcp_research_config(body)
         mcp_step = run_mcp_research_step(
@@ -1490,82 +1477,21 @@ def generate_chapter_stream(
             )
             settings_row = db.get(ProjectSettings, project_id)
             values["context_optimizer_enabled"] = bool(getattr(settings_row, "context_optimizer_enabled", False))
-            pack = None
-            pack_errors = None
-            if body.memory_injection_enabled:
-                query_text_source = "auto"
-                memory_modules = {
-                    "worldbook": True,
-                    "story_memory": True,
-                    "semantic_history": False,
-                    "foreshadow_open_loops": False,
-                    "structured": True,
-                    "tables": True,
-                    "vector_rag": True,
-                    "graph": True,
-                    "fractal": True,
-                }
-                raw_query_text = ""
-                preprocess_obs = None
-                requested_query_text = str(body.memory_query_text or "").strip()
-                if requested_query_text:
-                    memory_query_text = requested_query_text[:5000]
-                    query_text_source = "user"
-                else:
-                    memory_query_text = base_instruction
-                    if chapter.plan:
-                        memory_query_text = f"{memory_query_text}\n\n{chapter.plan}".strip()
-                    memory_query_text = memory_query_text[:5000]
-
-                raw_modules = body.memory_modules or {}
-                memory_modules = {
-                    "worldbook": bool(raw_modules.get("worldbook", True)),
-                    "story_memory": bool(raw_modules.get("story_memory", True)),
-                    "semantic_history": bool(raw_modules.get("semantic_history", False)),
-                    "foreshadow_open_loops": bool(raw_modules.get("foreshadow_open_loops", False)),
-                    "structured": bool(raw_modules.get("structured", True)),
-                    "tables": bool(raw_modules.get("tables", True)),
-                    "vector_rag": bool(raw_modules.get("vector_rag", True)),
-                    "graph": bool(raw_modules.get("graph", True)),
-                    "fractal": bool(raw_modules.get("fractal", True)),
-                }
-
-                raw_query_text = memory_query_text
-                qp_cfg = parse_query_preprocessing_config(
-                    (settings_row.query_preprocessing_json or "").strip() if settings_row is not None else None
-                )
-                memory_query_text, preprocess_obs = normalize_query_text(query_text=raw_query_text, config=qp_cfg)
-                try:
-                    pack = retrieve_memory_context_pack(
-                        db=db,
-                        project_id=project_id,
-                        query_text=memory_query_text,
-                        section_enabled=memory_modules,
-                    )
-                    values["memory"] = pack.model_dump()
-                except Exception:
-                    pack = None
-                    pack_errors = ["memory_pack_error"]
+            memory_preparation = _prepare_chapter_memory_injection(
+                db=db,
+                project_id=project_id,
+                chapter=chapter,
+                body=body,
+                settings_row=settings_row,
+                base_instruction=base_instruction,
+                values=values,
+            )
             render_values = values
-            run_params_extra_json = {
-                "style_resolution": style_resolution,
-                "memory_injection_enabled": body.memory_injection_enabled,
-            }
-            if body.memory_injection_enabled:
-                run_params_extra_json["memory_injection_config"] = {
-                    "query_text": memory_query_text,
-                    "query_text_source": query_text_source,
-                    "modules": memory_modules,
-                    "raw_query_text": raw_query_text,
-                    "normalized_query_text": memory_query_text,
-                    "preprocess_obs": preprocess_obs,
-                }
-                run_params_extra_json["memory_retrieval_log_json"] = build_memory_retrieval_log_json(
-                    enabled=True,
-                    query_text=memory_query_text,
-                    pack=pack,
-                    errors=pack_errors,
-                )
+            run_params_extra_json = _build_memory_run_params_extra_json(
+                style_resolution=style_resolution,
+                memory_injection_enabled=body.memory_injection_enabled,
+                memory_preparation=memory_preparation,
+            )
 
             mcp_cfg = _build_mcp_research_config(body)
             mcp_step = run_mcp_research_step(
