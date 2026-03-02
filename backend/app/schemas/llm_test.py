@@ -14,7 +14,7 @@ class LLMTestRequest(BaseModel):
     provider: LLMProvider
     base_url: str | None = Field(default=None, max_length=2048)
     model: str = Field(min_length=1, max_length=255)
-    timeout_seconds: int | None = Field(default=90, ge=1, le=1800)
+    timeout_seconds: int | None = Field(default=180, ge=1, le=1800)
     params: dict[str, Any] = Field(default_factory=dict, max_length=200)
     extra: dict[str, Any] = Field(default_factory=dict, max_length=200)
 

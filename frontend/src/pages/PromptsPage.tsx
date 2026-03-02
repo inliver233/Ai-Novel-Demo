@@ -115,7 +115,7 @@ function parseStopList(text: string): string[] {
 
 function parseTimeoutSecondsForTest(value: string): number {
   const n = parseNumber(value);
-  const i = Math.trunc(n ?? 90);
+  const i = Math.trunc(n ?? 180);
   if (i < 1) return 1;
   if (i > 1800) return 1800;
   return i;
@@ -197,12 +197,12 @@ export function PromptsPage() {
     model: "gpt-4o-mini",
     temperature: "0.7",
     top_p: "1",
-    max_tokens: "8192",
+    max_tokens: "12000",
     presence_penalty: "0",
     frequency_penalty: "0",
     top_k: "",
     stop: "",
-    timeout_seconds: "90",
+    timeout_seconds: "180",
     extra: "{}",
   });
 
@@ -842,6 +842,10 @@ export function PromptsPage() {
       toast.toastError("请先选择一个后端配置");
       return;
     }
+    if (dirty) {
+      const ok = await saveAll();
+      if (!ok) return;
+    }
     const name = profileName.trim();
     setProfileBusy(true);
     try {
@@ -865,6 +869,7 @@ export function PromptsPage() {
       setProfileBusy(false);
     }
   }, [
+    dirty,
     llmForm.base_url,
     llmForm.model,
     llmForm.provider,
@@ -872,6 +877,7 @@ export function PromptsPage() {
     profileName,
     projectId,
     reloadAll,
+    saveAll,
     selectedProfileId,
     toast,
   ]);

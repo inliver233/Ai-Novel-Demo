@@ -10,7 +10,7 @@ from app.api.deps import DbDep, UserIdDep, require_outline_viewer, require_owned
 from app.core.errors import AppError, ok_payload
 from app.core.logging import exception_log_fields, log_event
 from app.db.utils import new_id
-from app.llm.utils import default_max_tokens, is_default_like_max_tokens, normalize_base_url
+from app.llm.utils import default_max_tokens, normalize_base_url
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.knowledge_base import KnowledgeBase
@@ -408,16 +408,13 @@ def update_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
                     frequency_penalty=0.0,
                     top_k=None,
                     stop_json="[]",
-                    timeout_seconds=90,
+                    timeout_seconds=180,
                     extra_json="{}",
                 )
                 db.add(preset)
 
-            old_provider = preset.provider
             preset.provider = profile.provider
             preset.model = profile.model
-            if is_default_like_max_tokens(old_provider, preset.max_tokens):
-                preset.max_tokens = default_max_tokens(profile.provider, profile.model)
             if profile.provider in ("openai", "openai_responses"):
                 preset.base_url = normalize_base_url(profile.base_url or "https://api.openai.com/v1")
             elif profile.provider in ("openai_compatible", "openai_responses_compatible"):

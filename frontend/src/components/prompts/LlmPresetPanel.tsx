@@ -273,7 +273,7 @@ export function LlmPresetPanel(props: Props) {
             />
           </label>
           <label className="grid gap-1">
-            <span className="text-xs text-subtext">超时（timeout_seconds，默认 90，最大 1800/30 分钟）</span>
+            <span className="text-xs text-subtext">超时（timeout_seconds，默认 180，最大 1800/30 分钟）</span>
             <input
               className="input"
               name="timeout_seconds"

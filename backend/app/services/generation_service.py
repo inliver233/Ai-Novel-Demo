@@ -90,7 +90,7 @@ def prepare_llm_call(preset: LLMPreset) -> PreparedLlmCall:
         provider=preset.provider,
         model=preset.model,
         base_url=preset.base_url or "",
-        timeout_seconds=int(preset.timeout_seconds or 90),
+        timeout_seconds=int(preset.timeout_seconds or 180),
         params=params,
         params_json=params_json,
         extra=extra,

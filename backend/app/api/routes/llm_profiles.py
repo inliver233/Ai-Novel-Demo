@@ -7,7 +7,7 @@ from app.api.deps import DbDep, UserIdDep, require_owned_llm_profile
 from app.core.errors import AppError, ok_payload
 from app.core.secrets import SecretCryptoError, encrypt_secret, mask_api_key
 from app.db.utils import new_id
-from app.llm.utils import default_max_tokens, is_default_like_max_tokens, normalize_base_url
+from app.llm.utils import default_max_tokens, normalize_base_url
 from app.models.llm_preset import LLMPreset
 from app.models.llm_profile import LLMProfile
 from app.models.project import Project
@@ -66,18 +66,15 @@ def _sync_bound_project_presets(db: DbDep, profile: LLMProfile) -> None:
                 frequency_penalty=0.0,
                 top_k=None,
                 stop_json="[]",
-                timeout_seconds=90,
+                timeout_seconds=180,
                 extra_json="{}",
             )
             db.add(preset)
             continue
 
-        old_provider = preset.provider
         preset.provider = profile.provider
         preset.base_url = base_url
         preset.model = profile.model
-        if is_default_like_max_tokens(old_provider, preset.max_tokens):
-            preset.max_tokens = default_max_tokens(profile.provider, profile.model)
 
 
 @router.get("/llm_profiles")

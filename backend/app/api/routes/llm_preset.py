@@ -27,7 +27,7 @@ def _default_preset(project_id: str) -> LLMPreset:
         frequency_penalty=0.0,
         top_k=None,
         stop_json="[]",
-        timeout_seconds=90,
+        timeout_seconds=180,
         extra_json="{}",
     )
 

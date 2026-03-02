@@ -51,9 +51,12 @@ def max_context_tokens_limit(provider: str, model: str | None) -> int | None:
 
 
 def recommended_max_tokens(provider: str, model: str | None) -> int:
+    p = _normalize_provider(provider)
     limit = max_output_tokens_limit(provider, model)
     if isinstance(limit, int) and limit > 0:
-        return min(8192, limit)
-    if _normalize_provider(provider) in ("anthropic", "gemini"):
+        return min(12000, limit)
+    if p in ("openai", "openai_responses", "openai_compatible", "openai_responses_compatible"):
+        return 12000
+    if p in ("anthropic", "gemini"):
         return 8192
     return 8192

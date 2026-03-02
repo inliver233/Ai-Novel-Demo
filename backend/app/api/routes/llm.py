@@ -78,7 +78,7 @@ def llm_test(
                 system="You are a connection test.",
                 user="Reply with 'pong' only.",
                 params=params,
-                timeout_seconds=int(body.timeout_seconds or 90),
+                timeout_seconds=int(body.timeout_seconds or 180),
                 extra=dict(body.extra or {}),
             )
             break
