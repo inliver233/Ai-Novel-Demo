@@ -5,6 +5,7 @@ import unittest
 
 from app.api.routes.outline import (
     _build_outline_generation_guidance,
+    _enforce_outline_chapter_coverage,
     _extract_target_chapter_count,
     _recommend_outline_max_tokens,
 )
@@ -89,6 +90,47 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         rendered_default, _missing_default, error_default = render_template(template, values={}, macro_seed="test-seed")
         self.assertIsNone(error_default)
         self.assertIn("beats 每章 5~9 条", rendered_default)
+
+    def test_enforce_outline_chapter_coverage_autofills_missing_numbers(self) -> None:
+        data = {
+            "outline_md": "x",
+            "chapters": [
+                {"number": 1, "title": "第一章", "beats": ["a"]},
+                {"number": 3, "title": "第三章", "beats": ["c"]},
+            ],
+        }
+        out, warnings = _enforce_outline_chapter_coverage(data=data, target_chapter_count=4)
+        chapters = out["chapters"]
+        self.assertEqual([c["number"] for c in chapters], [1, 2, 3, 4])
+        self.assertIn("outline_chapter_coverage_autofilled", warnings)
+        coverage = out.get("chapter_coverage") or {}
+        self.assertEqual(coverage.get("filled_missing_numbers"), [2, 4])
+        self.assertEqual(coverage.get("filled_missing_count"), 2)
+
+    def test_enforce_outline_chapter_coverage_dedupes_and_filters_extra(self) -> None:
+        data = {
+            "outline_md": "x",
+            "chapters": [
+                {"number": 2, "title": "第二章", "beats": ["b"]},
+                {"number": "2", "title": "第二章完整版", "beats": ["b1", "b2"]},
+                {"number": 5, "title": "超出范围", "beats": ["overflow"]},
+                {"number": "bad", "title": "无效", "beats": []},
+            ],
+        }
+        out, warnings = _enforce_outline_chapter_coverage(data=data, target_chapter_count=3)
+        chapters = out["chapters"]
+        self.assertEqual([c["number"] for c in chapters], [1, 2, 3])
+        self.assertEqual(chapters[1]["title"], "第二章完整版")
+        self.assertIn("outline_chapter_number_deduped", warnings)
+        self.assertIn("outline_chapter_invalid_filtered", warnings)
+        self.assertIn("outline_chapter_beyond_target_filtered", warnings)
+        self.assertIn("outline_chapter_coverage_autofilled", warnings)
+
+    def test_enforce_outline_chapter_coverage_no_target_is_noop(self) -> None:
+        data = {"outline_md": "x", "chapters": [{"number": 1, "title": "第一章", "beats": ["a"]}]}
+        out, warnings = _enforce_outline_chapter_coverage(data=data, target_chapter_count=None)
+        self.assertEqual(out["chapters"], data["chapters"])
+        self.assertEqual(warnings, [])
 
 
 if __name__ == "__main__":

@@ -121,6 +121,135 @@ def _recommend_outline_max_tokens(
     return wanted if wanted > 0 else None
 
 
+def _normalize_outline_chapters(chapters: object) -> tuple[list[dict[str, object]], list[str]]:
+    if not isinstance(chapters, list):
+        return [], []
+
+    warnings: list[str] = []
+    by_number: dict[int, dict[str, object]] = {}
+    dropped_invalid = 0
+    dropped_non_positive = 0
+    deduped = 0
+
+    for item in chapters:
+        if not isinstance(item, dict):
+            dropped_invalid += 1
+            continue
+        try:
+            number = int(item.get("number"))
+        except Exception:
+            dropped_invalid += 1
+            continue
+        if number <= 0:
+            dropped_non_positive += 1
+            continue
+
+        title = str(item.get("title") or "").strip()
+        beats_raw = item.get("beats")
+        beats: list[str] = []
+        if isinstance(beats_raw, list):
+            for beat in beats_raw:
+                if beat is None:
+                    continue
+                text = str(beat).strip()
+                if text:
+                    beats.append(text)
+        elif isinstance(beats_raw, str):
+            text = beats_raw.strip()
+            if text:
+                beats.append(text)
+
+        chapter = {"number": number, "title": title, "beats": beats}
+        existing = by_number.get(number)
+        if existing is None:
+            by_number[number] = chapter
+            continue
+
+        deduped += 1
+        existing_title = str(existing.get("title") or "").strip()
+        existing_beats = existing.get("beats")
+        existing_beats_count = len(existing_beats) if isinstance(existing_beats, list) else 0
+        existing_score = len(existing_title) + existing_beats_count
+        next_score = len(title) + len(beats)
+        if next_score > existing_score:
+            by_number[number] = chapter
+
+    if dropped_invalid:
+        warnings.append("outline_chapter_invalid_filtered")
+    if dropped_non_positive:
+        warnings.append("outline_chapter_non_positive_filtered")
+    if deduped:
+        warnings.append("outline_chapter_number_deduped")
+
+    normalized = [by_number[n] for n in sorted(by_number.keys())]
+    return normalized, warnings
+
+
+def _enforce_outline_chapter_coverage(
+    *,
+    data: dict[str, object],
+    target_chapter_count: int | None,
+) -> tuple[dict[str, object], list[str]]:
+    if not target_chapter_count or target_chapter_count <= 0:
+        return data, []
+
+    raw_chapters = data.get("chapters")
+    normalized, warnings = _normalize_outline_chapters(raw_chapters)
+    if not normalized:
+        return data, warnings
+
+    by_number: dict[int, dict[str, object]] = {}
+    filtered_beyond_target = 0
+    for chapter in normalized:
+        number = int(chapter["number"])
+        if number > target_chapter_count:
+            filtered_beyond_target += 1
+            continue
+        by_number[number] = chapter
+
+    if filtered_beyond_target:
+        warnings.append("outline_chapter_beyond_target_filtered")
+
+    chapters_out: list[dict[str, object]] = []
+    missing_numbers: list[int] = []
+    for number in range(1, target_chapter_count + 1):
+        chapter = by_number.get(number)
+        if chapter is None:
+            missing_numbers.append(number)
+            chapters_out.append(
+                {
+                    "number": number,
+                    "title": f"第{number}章（待补全）",
+                    "beats": ["【自动补齐】该章由系统补位，请补写关键事件与转折。"],
+                }
+            )
+            continue
+
+        title = str(chapter.get("title") or "").strip() or f"第{number}章"
+        beats_raw = chapter.get("beats")
+        beats: list[str] = []
+        if isinstance(beats_raw, list):
+            for beat in beats_raw:
+                if beat is None:
+                    continue
+                text = str(beat).strip()
+                if text:
+                    beats.append(text)
+        chapters_out.append({"number": number, "title": title, "beats": beats})
+
+    if missing_numbers:
+        warnings.append("outline_chapter_coverage_autofilled")
+        data["chapter_coverage"] = {
+            "target_chapter_count": target_chapter_count,
+            "parsed_chapter_count": len(by_number),
+            "filled_missing_count": len(missing_numbers),
+            "filled_missing_numbers": missing_numbers,
+        }
+
+    data["chapters"] = chapters_out
+    return data, warnings
+
+
 @router.get("/projects/{project_id}/outline")
 def get_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str) -> dict:
     request_id = request.state.request_id
@@ -204,6 +333,7 @@ def generate_outline(
     prompt_user = ""
     prompt_render_log_json: str | None = None
     llm_call = None
+    target_chapter_count: int | None = None
 
     db = SessionLocal()
     try:
@@ -357,6 +487,13 @@ def generate_outline(
         except AppError:
             warnings.append("outline_fix_json_failed")
 
+    if parse_error is None:
+        data, coverage_warnings = _enforce_outline_chapter_coverage(
+            data=data,
+            target_chapter_count=target_chapter_count,
+        )
+        warnings.extend(coverage_warnings)
+
     if warnings:
         data["warnings"] = warnings
     if parse_error is not None:
@@ -391,6 +528,7 @@ def generate_outline_stream(
         run_params_json: str | None = None
         llm_call = None
         resolved_api_key = ""
+        target_chapter_count: int | None = None
 
         db = SessionLocal()
         try:
@@ -626,6 +764,13 @@ def generate_outline_stream(
                         parse_error = None
                 except AppError:
                     warnings.append("outline_fix_json_failed")
+
+            if parse_error is None:
+                data, coverage_warnings = _enforce_outline_chapter_coverage(
+                    data=data,
+                    target_chapter_count=target_chapter_count,
+                )
+                warnings.extend(coverage_warnings)
 
             if warnings:
                 data["warnings"] = warnings
