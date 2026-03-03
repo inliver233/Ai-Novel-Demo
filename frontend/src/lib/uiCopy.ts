@@ -32,7 +32,6 @@ export const UI_COPY = {
     worldBook: "世界书",
     rag: "知识库（RAG）",
     search: "搜索引擎",
-    glossary: "术语映射",
     graph: "图谱/关系",
     fractal: "分形（Fractal）",
     styles: "风格",
