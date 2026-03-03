@@ -91,7 +91,10 @@ export function RegisterPage() {
                     value={form.userId}
                     onChange={(e) => setForm((v) => ({ ...v, userId: e.target.value }))}
                     autoComplete="username"
+                    autoCapitalize="off"
+                    spellCheck={false}
                     placeholder={UI_COPY.auth.userIdPlaceholder}
+                    required
                   />
                 </label>
                 <label className="grid gap-1">
@@ -104,6 +107,7 @@ export function RegisterPage() {
                     onChange={(e) => setForm((v) => ({ ...v, password: e.target.value }))}
                     autoComplete="new-password"
                     placeholder={UI_COPY.auth.passwordPlaceholder}
+                    required
                   />
                 </label>
                 <label className="grid gap-1">
@@ -116,6 +120,8 @@ export function RegisterPage() {
                     onChange={(e) => setForm((v) => ({ ...v, confirmPassword: e.target.value }))}
                     autoComplete="new-password"
                     placeholder={UI_COPY.auth.confirmPasswordPlaceholder}
+                    aria-invalid={passwordMismatch || undefined}
+                    required
                   />
                 </label>
                 {passwordMismatch ? <div className="text-xs text-danger">两次输入的密码不一致</div> : null}

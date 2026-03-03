@@ -120,7 +120,10 @@ export function LoginPage() {
                     value={form.userId}
                     onChange={(e) => setForm((v) => ({ ...v, userId: e.target.value }))}
                     autoComplete="username"
+                    autoCapitalize="off"
+                    spellCheck={false}
                     placeholder={UI_COPY.auth.userIdPlaceholder}
+                    required
                   />
                 </label>
                 <label className="grid gap-1">
@@ -133,6 +136,7 @@ export function LoginPage() {
                     onChange={(e) => setForm((v) => ({ ...v, password: e.target.value }))}
                     autoComplete="current-password"
                     placeholder={UI_COPY.auth.passwordPlaceholder}
+                    required
                   />
                 </label>
               </div>
