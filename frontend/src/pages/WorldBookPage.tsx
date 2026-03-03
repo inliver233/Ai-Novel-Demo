@@ -33,6 +33,7 @@ import {
   updateWorldBookEntry,
 } from "../services/worldbookApi";
 import { useWorldBookFilters } from "./worldbook/useWorldBookFilters";
+import { useWorldBookPagination } from "./worldbook/useWorldBookPagination";
 
 type WorldBookEntryForm = {
   title: string;
@@ -409,33 +410,19 @@ export function WorldBookPage() {
     setBulkExcludedIds([]);
   }, [bulkMode, bulkExcludedIds.length, bulkSelectAllActive, searchText, sortMode]);
 
-  const [entryPageIndex, setEntryPageIndex] = useState(0);
-
-  const paginateEntries = filteredEntries.length > WORLD_BOOK_ENTRY_RENDER_THRESHOLD;
-  const totalEntryPages = paginateEntries ? Math.ceil(filteredEntries.length / WORLD_BOOK_ENTRY_PAGE_SIZE) : 1;
-  const maxEntryPageIndex = Math.max(0, totalEntryPages - 1);
-  const entryPageIndexClamped = Math.min(entryPageIndex, maxEntryPageIndex);
-  const entryPageStart = paginateEntries ? entryPageIndexClamped * WORLD_BOOK_ENTRY_PAGE_SIZE : 0;
-  const entryPageEnd = paginateEntries
-    ? Math.min(entryPageStart + WORLD_BOOK_ENTRY_PAGE_SIZE, filteredEntries.length)
-    : filteredEntries.length;
-
-  useEffect(() => {
-    setEntryPageIndex(0);
-  }, [searchText, sortMode]);
-
-  useEffect(() => {
-    if (!paginateEntries) {
-      if (entryPageIndex !== 0) setEntryPageIndex(0);
-      return;
-    }
-    if (entryPageIndexClamped !== entryPageIndex) setEntryPageIndex(entryPageIndexClamped);
-  }, [entryPageIndex, entryPageIndexClamped, paginateEntries]);
-
-  const visibleEntries = useMemo(
-    () => (paginateEntries ? filteredEntries.slice(entryPageStart, entryPageEnd) : filteredEntries),
-    [entryPageEnd, entryPageStart, filteredEntries, paginateEntries],
-  );
+  const {
+    paginate: paginateEntries,
+    totalPages: totalEntryPages,
+    pageIndex: entryPageIndexClamped,
+    pageStart: entryPageStart,
+    pageEnd: entryPageEnd,
+    pageItems: visibleEntries,
+    setPageIndex: setEntryPageIndex,
+  } = useWorldBookPagination(filteredEntries, {
+    threshold: WORLD_BOOK_ENTRY_RENDER_THRESHOLD,
+    pageSize: WORLD_BOOK_ENTRY_PAGE_SIZE,
+    resetToken: `${searchText}::${sortMode}`,
+  });
 
   const bulkVisibleSelectedCount = useMemo(() => {
     if (!bulkMode) return 0;

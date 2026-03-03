@@ -1,12 +1,6 @@
 import clsx from "clsx";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
-import {
-  CircleHelp,
-  LayoutDashboard,
-  PanelLeftClose,
-  PanelLeftOpen,
-  UserCog,
-} from "lucide-react";
+import { CircleHelp, LayoutDashboard, PanelLeftClose, PanelLeftOpen, UserCog } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate, useOutlet, useParams } from "react-router-dom";
 

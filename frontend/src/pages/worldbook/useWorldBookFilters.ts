@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { worldBookFilterStorageKey } from "../../services/storageKeys";
@@ -78,10 +78,9 @@ export function resolveWorldBookFilters(options: {
 
 export function useWorldBookFilters(projectId: string | undefined) {
   const [searchParams] = useSearchParams();
-  const [searchText, setSearchText] = useState("");
-  const [sortMode, setSortMode] = useState<WorldBookSortMode>(DEFAULT_WORLD_BOOK_SORT_MODE);
   const urlSearch = searchParams.get("search");
   const urlSort = searchParams.get("sort");
+  const stateToken = `${projectId ?? "none"}::${urlSearch ?? ""}::${urlSort ?? ""}`;
 
   const initialFilters = useMemo(() => {
     if (!projectId) return { searchText: "", sortMode: DEFAULT_WORLD_BOOK_SORT_MODE };
@@ -92,10 +91,56 @@ export function useWorldBookFilters(projectId: string | undefined) {
     });
   }, [projectId, urlSearch, urlSort]);
 
-  useEffect(() => {
-    setSearchText(initialFilters.searchText);
-    setSortMode(initialFilters.sortMode);
-  }, [initialFilters.searchText, initialFilters.sortMode]);
+  const [state, setState] = useState(() => ({
+    token: stateToken,
+    searchText: initialFilters.searchText,
+    sortMode: initialFilters.sortMode,
+  }));
+
+  const effective =
+    state.token === stateToken
+      ? state
+      : {
+          token: stateToken,
+          searchText: initialFilters.searchText,
+          sortMode: initialFilters.sortMode,
+        };
+
+  const setSearchText = useCallback(
+    (next: string | ((prev: string) => string)) => {
+      setState((prev) => {
+        const base =
+          prev.token === stateToken
+            ? prev
+            : {
+                token: stateToken,
+                searchText: initialFilters.searchText,
+                sortMode: initialFilters.sortMode,
+              };
+        const value = typeof next === "function" ? next(base.searchText) : next;
+        return { ...base, searchText: value };
+      });
+    },
+    [initialFilters.searchText, initialFilters.sortMode, stateToken],
+  );
+
+  const setSortMode = useCallback(
+    (next: WorldBookSortMode | ((prev: WorldBookSortMode) => WorldBookSortMode)) => {
+      setState((prev) => {
+        const base =
+          prev.token === stateToken
+            ? prev
+            : {
+                token: stateToken,
+                searchText: initialFilters.searchText,
+                sortMode: initialFilters.sortMode,
+              };
+        const value = typeof next === "function" ? next(base.sortMode) : next;
+        return { ...base, sortMode: value };
+      });
+    },
+    [initialFilters.searchText, initialFilters.sortMode, stateToken],
+  );
 
   useEffect(() => {
     if (!projectId) return;
@@ -104,19 +149,19 @@ export function useWorldBookFilters(projectId: string | undefined) {
       localStorage.setItem(
         key,
         JSON.stringify({
-          searchText,
-          sortMode,
+          searchText: effective.searchText,
+          sortMode: effective.sortMode,
         }),
       );
     } catch {
       // ignore
     }
-  }, [projectId, searchText, sortMode]);
+  }, [effective.searchText, effective.sortMode, projectId]);
 
   return {
-    searchText,
+    searchText: effective.searchText,
     setSearchText,
-    sortMode,
+    sortMode: effective.sortMode,
     setSortMode,
   };
 }
