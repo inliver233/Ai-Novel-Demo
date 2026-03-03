@@ -3,6 +3,7 @@ import clsx from "clsx";
 type ProgressBarProps = {
   value: number;
   ariaLabel: string;
+  ariaValueText?: string;
   min?: number;
   max?: number;
   className?: string;
@@ -13,10 +14,19 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-export function ProgressBar({ value, ariaLabel, min = 0, max = 100, className, indicatorClassName }: ProgressBarProps) {
+export function ProgressBar({
+  value,
+  ariaLabel,
+  ariaValueText,
+  min = 0,
+  max = 100,
+  className,
+  indicatorClassName,
+}: ProgressBarProps) {
   const safeMax = max > min ? max : min + 1;
   const clamped = clamp(Number.isFinite(value) ? value : min, min, safeMax);
   const percent = ((clamped - min) / (safeMax - min)) * 100;
+  const valueText = ariaValueText ?? `${Math.round(percent)}%`;
 
   return (
     <div
@@ -26,6 +36,7 @@ export function ProgressBar({ value, ariaLabel, min = 0, max = 100, className, i
       aria-valuemin={min}
       aria-valuemax={safeMax}
       aria-valuenow={Math.round(clamped)}
+      aria-valuetext={valueText}
     >
       <div
         className={clsx(

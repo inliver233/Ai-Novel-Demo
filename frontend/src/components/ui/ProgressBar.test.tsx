@@ -12,6 +12,7 @@ describe("ProgressBar", () => {
     expect(html).toContain('aria-valuemin="0"');
     expect(html).toContain('aria-valuemax="100"');
     expect(html).toContain('aria-valuenow="100"');
+    expect(html).toContain('aria-valuetext="100%"');
     expect(html).toContain("width:100%");
   });
 
@@ -20,6 +21,13 @@ describe("ProgressBar", () => {
 
     expect(html).toContain('aria-valuemax="8"');
     expect(html).toContain('aria-valuenow="6"');
+    expect(html).toContain('aria-valuetext="75%"');
     expect(html).toContain("width:75%");
+  });
+
+  it("supports custom aria value text", () => {
+    const html = renderToStaticMarkup(<ProgressBar value={40} ariaLabel="自定义进度" ariaValueText="处理中 4/10" />);
+
+    expect(html).toContain('aria-valuetext="处理中 4/10"');
   });
 });
