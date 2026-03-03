@@ -6,6 +6,7 @@ import {
   BookText,
   Database,
   FileDown,
+  Flag,
   Globe,
   ListTodo,
   Palette,
@@ -106,6 +107,14 @@ export const APP_SHELL_PROJECT_NAV_ITEMS: ReadonlyArray<AppShellProjectNavItem> 
     label: UI_COPY.nav.preview,
     ariaLabel: "预览 (nav_preview)",
     to: (projectId) => `/projects/${projectId}/preview`,
+  },
+  {
+    id: "foreshadows",
+    group: "view",
+    icon: Flag,
+    label: UI_COPY.nav.foreshadows,
+    ariaLabel: "伏笔 (nav_foreshadows)",
+    to: (projectId) => `/projects/${projectId}/foreshadows`,
   },
   {
     id: "reader",

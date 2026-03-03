@@ -35,6 +35,7 @@ describe("appShellNavConfig", () => {
 
     expect(workbench).toContain("writing");
     expect(view).toContain("chapterAnalysis");
+    expect(view).toContain("foreshadows");
     expect(aiConfig).toContain("prompts");
     expect(advancedDebug).toContain("search");
   });
