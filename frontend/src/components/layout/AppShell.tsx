@@ -1,28 +1,11 @@
 import clsx from "clsx";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import {
-  Bot,
-  BookOpen,
-  BookOpenText,
-  BookText,
   CircleHelp,
-  Database,
-  FileDown,
-  Globe,
   LayoutDashboard,
-  ListTodo,
-  Palette,
   PanelLeftClose,
   PanelLeftOpen,
-  PenLine,
-  Share2,
-  Settings,
-  Snowflake,
-  Sparkles,
-  TableOfContents,
-  Table2,
   UserCog,
-  Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate, useOutlet, useParams } from "react-router-dom";
@@ -41,6 +24,13 @@ import {
   advancedDebugVisibleStorageKey,
   sidebarCollapsedStorageKey,
 } from "../../services/uiState";
+import {
+  APP_SHELL_ADVANCED_DEBUG_PROJECT_NAV_GROUP,
+  APP_SHELL_PRIMARY_PROJECT_NAV_GROUPS,
+  APP_SHELL_PROJECT_NAV_GROUP_TITLES,
+  getAppShellProjectNavItems,
+  type AppShellProjectNavGroup,
+} from "./appShellNavConfig";
 
 function useSidebarCollapsed(): [boolean, (v: boolean) => void] {
   const storageKey = sidebarCollapsedStorageKey(getCurrentUserId());
@@ -142,6 +132,33 @@ function SidebarButton(props: {
       {props.collapsed ? null : <span className="relative z-10 min-w-0 truncate">{props.label}</span>}
     </button>
   );
+}
+
+function ProjectNavGroupTitle(props: { label: string; collapsed: boolean; className?: string }) {
+  if (props.collapsed) return null;
+  return <div className={clsx("px-3 pt-2 text-[11px] font-medium text-subtext", props.className)}>{props.label}</div>;
+}
+
+function renderProjectNavItems(props: {
+  group: AppShellProjectNavGroup;
+  projectId: string;
+  collapsed: boolean;
+  onClick?: () => void;
+}) {
+  return getAppShellProjectNavItems(props.group).map((item) => {
+    const Icon = item.icon;
+    return (
+      <SidebarLink
+        key={item.id}
+        collapsed={props.collapsed}
+        icon={<Icon size={18} />}
+        label={item.label}
+        ariaLabel={item.ariaLabel}
+        to={item.to(props.projectId)}
+        onClick={props.onClick}
+      />
+    );
+  });
 }
 
 const PERSISTENT_OUTLET_CACHE_MAX_ENTRIES = 3;
@@ -349,129 +366,21 @@ export function AppShell() {
                     <div className="my-2 h-px bg-border" />
                     {projectId ? (
                       <>
-                        <div className="px-3 pt-2 text-[11px] font-medium text-subtext">
-                          {UI_COPY.nav.groupWorkbench}
-                        </div>
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<PenLine size={18} />}
-                          label={UI_COPY.nav.writing}
-                          ariaLabel="写作 (nav_writing)"
-                          to={`/projects/${projectId}/writing`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<TableOfContents size={18} />}
-                          label={UI_COPY.nav.outline}
-                          ariaLabel="大纲 (nav_outline)"
-                          to={`/projects/${projectId}/outline`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Users size={18} />}
-                          label={UI_COPY.nav.characters}
-                          ariaLabel="角色卡 (nav_characters)"
-                          to={`/projects/${projectId}/characters`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Globe size={18} />}
-                          label={UI_COPY.nav.worldBook}
-                          ariaLabel="世界书 (nav_worldbook)"
-                          to={`/projects/${projectId}/worldbook`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Share2 size={18} />}
-                          label={UI_COPY.nav.graph}
-                          ariaLabel="图谱/关系 (nav_graph)"
-                          to={`/projects/${projectId}/graph`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Table2 size={18} />}
-                          label={UI_COPY.nav.numericTables}
-                          ariaLabel="数值表格（NumericTables） (nav_numeric_tables)"
-                          to={`/projects/${projectId}/numeric-tables`}
-                          onClick={closeMobileNav}
-                        />
-
-                        <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">
-                          {UI_COPY.nav.groupView}
-                        </div>
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<BookText size={18} />}
-                          label={UI_COPY.nav.chapterAnalysis}
-                          ariaLabel="剧情记忆 (nav_chapter_analysis)"
-                          to={`/projects/${projectId}/chapter-analysis`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<BookOpen size={18} />}
-                          label={UI_COPY.nav.preview}
-                          ariaLabel="预览 (nav_preview)"
-                          to={`/projects/${projectId}/preview`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<BookOpenText size={18} />}
-                          label={UI_COPY.nav.reader}
-                          ariaLabel="阅读 (nav_reader)"
-                          to={`/projects/${projectId}/reader`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<FileDown size={18} />}
-                          label={UI_COPY.nav.export}
-                          ariaLabel="导出 (nav_export)"
-                          to={`/projects/${projectId}/export`}
-                          onClick={closeMobileNav}
-                        />
-
-                        <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">
-                          {UI_COPY.nav.groupAiConfig}
-                        </div>
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Bot size={18} />}
-                          label={UI_COPY.nav.prompts}
-                          ariaLabel="模型配置 (nav_prompts)"
-                          to={`/projects/${projectId}/prompts`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Sparkles size={18} />}
-                          label={UI_COPY.nav.promptStudio}
-                          ariaLabel="提示词工作室 (nav_prompt_studio)"
-                          to={`/projects/${projectId}/prompt-studio`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Palette size={18} />}
-                          label={UI_COPY.nav.styles}
-                          ariaLabel="风格 (nav_styles)"
-                          to={`/projects/${projectId}/styles`}
-                          onClick={closeMobileNav}
-                        />
-                        <SidebarLink
-                          collapsed={false}
-                          icon={<Settings size={18} />}
-                          label={UI_COPY.nav.projectSettings}
-                          ariaLabel="项目设置 (nav_settings)"
-                          to={`/projects/${projectId}/settings`}
-                          onClick={closeMobileNav}
-                        />
+                        {APP_SHELL_PRIMARY_PROJECT_NAV_GROUPS.map((group, index) => (
+                          <div key={group}>
+                            <ProjectNavGroupTitle
+                              collapsed={false}
+                              className={index === 0 ? undefined : "mt-2"}
+                              label={APP_SHELL_PROJECT_NAV_GROUP_TITLES[group]}
+                            />
+                            {renderProjectNavItems({
+                              group,
+                              projectId,
+                              collapsed: false,
+                              onClick: closeMobileNav,
+                            })}
+                          </div>
+                        ))}
 
                         <label className="mt-2 flex items-center justify-between gap-2 rounded-atelier border border-border bg-canvas px-3 py-2 text-xs text-subtext">
                           <span>显示高级调试</span>
@@ -497,49 +406,15 @@ export function AppShell() {
                             }}
                           >
                             <summary className="cursor-pointer select-none px-3 py-2 text-[11px] font-medium text-subtext">
-                              {UI_COPY.nav.groupAdvancedDebug}
+                              {APP_SHELL_PROJECT_NAV_GROUP_TITLES[APP_SHELL_ADVANCED_DEBUG_PROJECT_NAV_GROUP]}
                             </summary>
                             <div className="flex flex-col gap-1 px-1 pb-2">
-                              <SidebarLink
-                                collapsed={false}
-                                icon={<Database size={18} />}
-                                label={UI_COPY.nav.rag}
-                                ariaLabel="知识库（RAG） (nav_rag)"
-                                to={`/projects/${projectId}/rag`}
-                                onClick={closeMobileNav}
-                              />
-                              <SidebarLink
-                                collapsed={false}
-                                icon={<BookText size={18} />}
-                                label={UI_COPY.nav.search}
-                                ariaLabel="搜索引擎 (nav_search)"
-                                to={`/projects/${projectId}/search`}
-                                onClick={closeMobileNav}
-                              />
-                              <SidebarLink
-                                collapsed={false}
-                                icon={<Snowflake size={18} />}
-                                label={UI_COPY.nav.fractal}
-                                ariaLabel="分形（Fractal） (nav_fractal)"
-                                to={`/projects/${projectId}/fractal`}
-                                onClick={closeMobileNav}
-                              />
-                              <SidebarLink
-                                collapsed={false}
-                                icon={<Table2 size={18} />}
-                                label={UI_COPY.nav.structuredMemory}
-                                ariaLabel="图谱底座数据 (nav_structured_memory)"
-                                to={`/projects/${projectId}/structured-memory`}
-                                onClick={closeMobileNav}
-                              />
-                              <SidebarLink
-                                collapsed={false}
-                                icon={<ListTodo size={18} />}
-                                label={UI_COPY.nav.tasks}
-                                ariaLabel="任务中心 (nav_tasks)"
-                                to={`/projects/${projectId}/tasks`}
-                                onClick={closeMobileNav}
-                              />
+                              {renderProjectNavItems({
+                                group: APP_SHELL_ADVANCED_DEBUG_PROJECT_NAV_GROUP,
+                                projectId,
+                                collapsed: false,
+                                onClick: closeMobileNav,
+                              })}
                             </div>
                           </details>
                         ) : null}
@@ -611,117 +486,20 @@ export function AppShell() {
               <div className="my-2 h-px bg-border" />
               {projectId ? (
                 <>
-                  {collapsed ? null : (
-                    <div className="px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupWorkbench}</div>
-                  )}
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<PenLine size={18} />}
-                    label={UI_COPY.nav.writing}
-                    ariaLabel="写作 (nav_writing)"
-                    to={`/projects/${projectId}/writing`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<TableOfContents size={18} />}
-                    label={UI_COPY.nav.outline}
-                    ariaLabel="大纲 (nav_outline)"
-                    to={`/projects/${projectId}/outline`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Users size={18} />}
-                    label={UI_COPY.nav.characters}
-                    ariaLabel="角色卡 (nav_characters)"
-                    to={`/projects/${projectId}/characters`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Globe size={18} />}
-                    label={UI_COPY.nav.worldBook}
-                    ariaLabel="世界书 (nav_worldbook)"
-                    to={`/projects/${projectId}/worldbook`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Share2 size={18} />}
-                    label={UI_COPY.nav.graph}
-                    ariaLabel="图谱/关系 (nav_graph)"
-                    to={`/projects/${projectId}/graph`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Table2 size={18} />}
-                    label={UI_COPY.nav.numericTables}
-                    ariaLabel="数值表格（NumericTables） (nav_numeric_tables)"
-                    to={`/projects/${projectId}/numeric-tables`}
-                  />
-
-                  {collapsed ? null : (
-                    <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">{UI_COPY.nav.groupView}</div>
-                  )}
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<BookText size={18} />}
-                    label={UI_COPY.nav.chapterAnalysis}
-                    ariaLabel="剧情记忆 (nav_chapter_analysis)"
-                    to={`/projects/${projectId}/chapter-analysis`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<BookOpen size={18} />}
-                    label={UI_COPY.nav.preview}
-                    ariaLabel="预览 (nav_preview)"
-                    to={`/projects/${projectId}/preview`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<BookOpenText size={18} />}
-                    label={UI_COPY.nav.reader}
-                    ariaLabel="阅读 (nav_reader)"
-                    to={`/projects/${projectId}/reader`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<FileDown size={18} />}
-                    label={UI_COPY.nav.export}
-                    ariaLabel="导出 (nav_export)"
-                    to={`/projects/${projectId}/export`}
-                  />
-
-                  {collapsed ? null : (
-                    <div className="mt-2 px-3 pt-2 text-[11px] font-medium text-subtext">
-                      {UI_COPY.nav.groupAiConfig}
+                  {APP_SHELL_PRIMARY_PROJECT_NAV_GROUPS.map((group, index) => (
+                    <div key={group}>
+                      <ProjectNavGroupTitle
+                        collapsed={collapsed}
+                        className={index === 0 ? undefined : "mt-2"}
+                        label={APP_SHELL_PROJECT_NAV_GROUP_TITLES[group]}
+                      />
+                      {renderProjectNavItems({
+                        group,
+                        projectId,
+                        collapsed,
+                      })}
                     </div>
-                  )}
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Bot size={18} />}
-                    label={UI_COPY.nav.prompts}
-                    ariaLabel="模型配置 (nav_prompts)"
-                    to={`/projects/${projectId}/prompts`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Sparkles size={18} />}
-                    label={UI_COPY.nav.promptStudio}
-                    ariaLabel="提示词工作室 (nav_prompt_studio)"
-                    to={`/projects/${projectId}/prompt-studio`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Palette size={18} />}
-                    label={UI_COPY.nav.styles}
-                    ariaLabel="风格 (nav_styles)"
-                    to={`/projects/${projectId}/styles`}
-                  />
-                  <SidebarLink
-                    collapsed={collapsed}
-                    icon={<Settings size={18} />}
-                    label={UI_COPY.nav.projectSettings}
-                    ariaLabel="项目设置 (nav_settings)"
-                    to={`/projects/${projectId}/settings`}
-                  />
+                  ))}
 
                   {collapsed ? null : (
                     <label className="mt-2 flex items-center justify-between gap-2 rounded-atelier border border-border bg-canvas px-3 py-2 text-xs text-subtext">
@@ -742,43 +520,11 @@ export function AppShell() {
 
                   {advancedDebugVisible ? (
                     collapsed ? (
-                      <>
-                        <SidebarLink
-                          collapsed={collapsed}
-                          icon={<Database size={18} />}
-                          label={UI_COPY.nav.rag}
-                          ariaLabel="知识库（RAG） (nav_rag)"
-                          to={`/projects/${projectId}/rag`}
-                        />
-                        <SidebarLink
-                          collapsed={collapsed}
-                          icon={<BookText size={18} />}
-                          label={UI_COPY.nav.search}
-                          ariaLabel="搜索引擎 (nav_search)"
-                          to={`/projects/${projectId}/search`}
-                        />
-                        <SidebarLink
-                          collapsed={collapsed}
-                          icon={<Snowflake size={18} />}
-                          label={UI_COPY.nav.fractal}
-                          ariaLabel="分形（Fractal） (nav_fractal)"
-                          to={`/projects/${projectId}/fractal`}
-                        />
-                        <SidebarLink
-                          collapsed={collapsed}
-                          icon={<Table2 size={18} />}
-                          label={UI_COPY.nav.structuredMemory}
-                          ariaLabel="图谱底座数据 (nav_structured_memory)"
-                          to={`/projects/${projectId}/structured-memory`}
-                        />
-                        <SidebarLink
-                          collapsed={collapsed}
-                          icon={<ListTodo size={18} />}
-                          label={UI_COPY.nav.tasks}
-                          ariaLabel="任务中心 (nav_tasks)"
-                          to={`/projects/${projectId}/tasks`}
-                        />
-                      </>
+                      renderProjectNavItems({
+                        group: APP_SHELL_ADVANCED_DEBUG_PROJECT_NAV_GROUP,
+                        projectId,
+                        collapsed,
+                      })
                     ) : (
                       <details
                         className="mt-2 rounded-atelier border border-border bg-canvas"
@@ -788,44 +534,14 @@ export function AppShell() {
                         }}
                       >
                         <summary className="cursor-pointer select-none px-3 py-2 text-[11px] font-medium text-subtext">
-                          {UI_COPY.nav.groupAdvancedDebug}
+                          {APP_SHELL_PROJECT_NAV_GROUP_TITLES[APP_SHELL_ADVANCED_DEBUG_PROJECT_NAV_GROUP]}
                         </summary>
                         <div className="flex flex-col gap-1 px-1 pb-2">
-                          <SidebarLink
-                            collapsed={collapsed}
-                            icon={<Database size={18} />}
-                            label={UI_COPY.nav.rag}
-                            ariaLabel="知识库（RAG） (nav_rag)"
-                            to={`/projects/${projectId}/rag`}
-                          />
-                          <SidebarLink
-                            collapsed={collapsed}
-                            icon={<BookText size={18} />}
-                            label={UI_COPY.nav.search}
-                            ariaLabel="搜索引擎 (nav_search)"
-                            to={`/projects/${projectId}/search`}
-                          />
-                          <SidebarLink
-                            collapsed={collapsed}
-                            icon={<Snowflake size={18} />}
-                            label={UI_COPY.nav.fractal}
-                            ariaLabel="分形（Fractal） (nav_fractal)"
-                            to={`/projects/${projectId}/fractal`}
-                          />
-                          <SidebarLink
-                            collapsed={collapsed}
-                            icon={<Table2 size={18} />}
-                            label={UI_COPY.nav.structuredMemory}
-                            ariaLabel="图谱底座数据 (nav_structured_memory)"
-                            to={`/projects/${projectId}/structured-memory`}
-                          />
-                          <SidebarLink
-                            collapsed={collapsed}
-                            icon={<ListTodo size={18} />}
-                            label={UI_COPY.nav.tasks}
-                            ariaLabel="任务中心 (nav_tasks)"
-                            to={`/projects/${projectId}/tasks`}
-                          />
+                          {renderProjectNavItems({
+                            group: APP_SHELL_ADVANCED_DEBUG_PROJECT_NAV_GROUP,
+                            projectId,
+                            collapsed,
+                          })}
                         </div>
                       </details>
                     )
