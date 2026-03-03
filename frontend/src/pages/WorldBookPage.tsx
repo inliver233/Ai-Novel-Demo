@@ -32,6 +32,7 @@ import {
   type ProjectTask,
   updateWorldBookEntry,
 } from "../services/worldbookApi";
+import { useWorldBookFilters } from "./worldbook/useWorldBookFilters";
 
 type WorldBookEntryForm = {
   title: string;
@@ -170,10 +171,7 @@ export function WorldBookPage() {
   const [baseline, setBaseline] = useState<WorldBookEntryForm | null>(null);
   const [form, setForm] = useState<WorldBookEntryForm>(() => toForm(null));
 
-  const [searchText, setSearchText] = useState("");
-  const [sortMode, setSortMode] = useState<
-    "updated_desc" | "updated_asc" | "priority_desc" | "priority_asc" | "enabled_desc" | "enabled_asc"
-  >("updated_desc");
+  const { searchText, setSearchText, sortMode, setSortMode } = useWorldBookFilters(projectId);
 
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkSelectAllActive, setBulkSelectAllActive] = useState(false);
@@ -340,41 +338,6 @@ export function WorldBookPage() {
     setBulkSelectedIds((prev) => prev.filter((id) => idSet.has(id)));
     setBulkExcludedIds((prev) => prev.filter((id) => idSet.has(id)));
   }, [bulkExcludedIds.length, bulkMode, bulkSelectAllActive, bulkSelectedIds.length, entries]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    try {
-      const raw = localStorage.getItem(`ainovel:worldbook:filter:${projectId}`) || "";
-      const parsed = JSON.parse(raw) as { searchText?: unknown; sortMode?: unknown } | null;
-      if (parsed && typeof parsed === "object") {
-        if (typeof parsed.searchText === "string") setSearchText(parsed.searchText);
-        if (typeof parsed.sortMode === "string") {
-          const v = parsed.sortMode;
-          if (
-            v === "updated_desc" ||
-            v === "updated_asc" ||
-            v === "priority_desc" ||
-            v === "priority_asc" ||
-            v === "enabled_desc" ||
-            v === "enabled_asc"
-          ) {
-            setSortMode(v);
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    try {
-      localStorage.setItem(`ainovel:worldbook:filter:${projectId}`, JSON.stringify({ searchText, sortMode }));
-    } catch {
-      // ignore
-    }
-  }, [projectId, searchText, sortMode]);
 
   const filterState = useMemo(() => {
     const tokens = tokenizeSearch(searchText);

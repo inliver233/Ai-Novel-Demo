@@ -177,23 +177,10 @@ export function SearchPage() {
         return;
       }
       if (it.source_type === "worldbook_entry") {
-        const key = `ainovel:worldbook:filter:${projectId}`;
-        let sortMode = "updated_desc";
-        try {
-          const raw = localStorage.getItem(key) || "";
-          if (raw) {
-            const prev = JSON.parse(raw) as { sortMode?: unknown } | null;
-            if (prev && typeof prev === "object" && typeof prev.sortMode === "string") sortMode = prev.sortMode;
-          }
-        } catch {
-          // ignore
-        }
-        try {
-          localStorage.setItem(key, JSON.stringify({ searchText: it.title || query.trim(), sortMode }));
-        } catch {
-          // ignore
-        }
-        navigate(`/projects/${projectId}/worldbook`);
+        const params = new URLSearchParams();
+        const search = String(it.title || query.trim()).trim();
+        if (search) params.set("search", search);
+        navigate(`/projects/${projectId}/worldbook${params.toString() ? `?${params.toString()}` : ""}`);
         return;
       }
       if (it.source_type === "character") {
