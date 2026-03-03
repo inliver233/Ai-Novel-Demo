@@ -1,7 +1,7 @@
 import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { LayoutGroup, motion } from "framer-motion";
+import { LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import clsx from "clsx";
 
 import { transition } from "../../lib/motion";
@@ -41,6 +41,8 @@ export function MarkdownEditor({
   const userChangeRef = useRef(false);
   const followOutputRef = useRef(true);
   const lastScrollTopRef = useRef(0);
+  const reduceMotion = useReducedMotion();
+  const tabIndicatorTransition = reduceMotion ? { duration: 0.01 } : transition.fast;
 
   const setTextareaRef = useCallback(
     (el: HTMLTextAreaElement | null) => {
@@ -88,7 +90,7 @@ export function MarkdownEditor({
                 <motion.span
                   layoutId={tabIndicatorLayoutId}
                   className="absolute inset-0 rounded-atelier bg-canvas"
-                  transition={transition.fast}
+                  transition={tabIndicatorTransition}
                 />
               ) : null}
               <span className="relative z-10">编辑</span>
@@ -105,7 +107,7 @@ export function MarkdownEditor({
                 <motion.span
                   layoutId={tabIndicatorLayoutId}
                   className="absolute inset-0 rounded-atelier bg-canvas"
-                  transition={transition.fast}
+                  transition={tabIndicatorTransition}
                 />
               ) : null}
               <span className="relative z-10">预览</span>

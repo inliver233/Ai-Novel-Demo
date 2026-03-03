@@ -149,6 +149,14 @@
       --motion-duration-stagger: 1ms;
       --motion-distance-fade-up: 0px;
     }
+
+    .animate-ping,
+    .animate-pulse,
+    .animate-spin,
+    .animate-bounce,
+    .skeleton {
+      animation: none !important;
+    }
   }
 }
 
