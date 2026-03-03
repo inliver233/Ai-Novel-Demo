@@ -177,7 +177,8 @@ export function mapLoadedSettingsToForms(loaded: SettingsLoaded): LoadedSettings
       vector_embedding_sentence_transformers_model: settings.vector_embedding_sentence_transformers_model ?? "",
     },
     vectorRerankTopKDraft: String(rerankTopK),
-    vectorRerankTimeoutDraft: settings.vector_rerank_timeout_seconds != null ? String(settings.vector_rerank_timeout_seconds) : "",
+    vectorRerankTimeoutDraft:
+      settings.vector_rerank_timeout_seconds != null ? String(settings.vector_rerank_timeout_seconds) : "",
     vectorRerankHybridAlphaDraft:
       settings.vector_rerank_hybrid_alpha != null ? String(settings.vector_rerank_hybrid_alpha) : "",
   };

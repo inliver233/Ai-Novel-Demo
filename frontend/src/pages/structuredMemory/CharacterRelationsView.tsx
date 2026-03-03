@@ -709,5 +709,3 @@ export function CharacterRelationsView(props: {
     </div>
   );
 }
-
-

@@ -9,6 +9,15 @@ import { copyText } from "../lib/copyText";
 import { humanizeChangeSetStatus, humanizeTaskStatus } from "../lib/humanize";
 import { ApiError, apiJson } from "../services/apiClient";
 import { UI_COPY } from "../lib/uiCopy";
+import { StatusBadge } from "./taskCenter/StatusBadge";
+import {
+  extractChangeSetIdFromProjectTaskResult,
+  extractChangeSetStatusFromProjectTaskResult,
+  extractHowToFix,
+  extractRunIdFromProjectTaskError,
+  extractRunIdFromProjectTaskResult,
+  safeJsonStringify,
+} from "./taskCenter/helpers";
 
 type MemoryChangeSetSummary = {
   id: string;
@@ -69,77 +78,6 @@ type HealthData = {
   redis_error_type?: string | null;
   worker_hint?: string | null;
 };
-
-function extractChangeSetIdFromProjectTaskResult(result: unknown): string | null {
-  if (!result || typeof result !== "object") return null;
-  const o = result as Record<string, unknown>;
-  const cs = o.change_set;
-  if (!cs || typeof cs !== "object") return null;
-  const id = (cs as Record<string, unknown>).id;
-  return typeof id === "string" && id.trim() ? id.trim() : null;
-}
-
-function extractChangeSetStatusFromProjectTaskResult(result: unknown): string | null {
-  if (!result || typeof result !== "object") return null;
-  const o = result as Record<string, unknown>;
-  const cs = o.change_set;
-  if (!cs || typeof cs !== "object") return null;
-  const s = (cs as Record<string, unknown>).status;
-  return typeof s === "string" && s.trim() ? s.trim() : null;
-}
-
-function statusTone(status: string): "ok" | "warn" | "bad" | "info" {
-  const s = String(status || "").trim();
-  if (s === "failed") return "bad";
-  if (s === "running") return "warn";
-  if (s === "queued" || s === "proposed") return "info";
-  return "ok";
-}
-
-function StatusBadge(props: { status: string; kind: "change_set" | "task" }) {
-  const tone = statusTone(props.status);
-  const cls =
-    tone === "bad"
-      ? "bg-danger/10 text-danger"
-      : tone === "warn"
-        ? "bg-warning/10 text-warning"
-        : tone === "info"
-          ? "bg-info/10 text-info"
-          : "bg-success/10 text-success";
-  const label = props.kind === "change_set" ? humanizeChangeSetStatus(props.status) : humanizeTaskStatus(props.status);
-  return <span className={`inline-flex rounded px-2 py-0.5 text-[11px] ${cls}`}>{label}</span>;
-}
-
-function safeJsonStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function extractHowToFix(error: unknown): string[] {
-  if (!error || typeof error !== "object") return [];
-  const details = (error as Record<string, unknown>).details;
-  if (!details || typeof details !== "object") return [];
-  const how = (details as Record<string, unknown>).how_to_fix;
-  if (!Array.isArray(how)) return [];
-  return how.filter((it) => typeof it === "string" && it.trim()).map((it) => it.trim());
-}
-
-function extractRunIdFromProjectTaskError(error: unknown): string | null {
-  if (!error || typeof error !== "object") return null;
-  const details = (error as Record<string, unknown>).details;
-  if (!details || typeof details !== "object") return null;
-  const runId = (details as Record<string, unknown>).run_id;
-  return typeof runId === "string" && runId.trim() ? runId.trim() : null;
-}
-
-function extractRunIdFromProjectTaskResult(result: unknown): string | null {
-  if (!result || typeof result !== "object") return null;
-  const runId = (result as Record<string, unknown>).run_id;
-  return typeof runId === "string" && runId.trim() ? runId.trim() : null;
-}
 
 export function TaskCenterPage() {
   const { projectId } = useParams();
