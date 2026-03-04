@@ -14,10 +14,14 @@ from app.api.routes.outline import (
     _extract_target_chapter_count,
     _fill_outline_missing_chapters_with_llm,
     _format_chapter_number_ranges,
+    _generate_outline_segmented_with_llm,
     _outline_fill_batch_size_for_missing,
     _outline_fill_max_attempts_for_missing,
     _outline_fill_progress_message,
+    _outline_segment_batch_size_for_target,
+    _parse_outline_batch_output,
     _recommend_outline_max_tokens,
+    _should_use_outline_segmented_mode,
 )
 from app.core.errors import AppError
 from app.services.generation_service import PreparedLlmCall
@@ -47,6 +51,17 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         guidance = _build_outline_generation_guidance(None)
         self.assertEqual(guidance["chapter_count_rule"], "")
         self.assertIn("5~9", guidance["chapter_detail_rule"])
+
+    def test_should_use_outline_segmented_mode(self) -> None:
+        self.assertFalse(_should_use_outline_segmented_mode(None))
+        self.assertFalse(_should_use_outline_segmented_mode(79))
+        self.assertTrue(_should_use_outline_segmented_mode(80))
+        self.assertTrue(_should_use_outline_segmented_mode(500))
+
+    def test_outline_segment_batch_size_for_target(self) -> None:
+        self.assertEqual(_outline_segment_batch_size_for_target(60), 12)
+        self.assertEqual(_outline_segment_batch_size_for_target(200), 10)
+        self.assertEqual(_outline_segment_batch_size_for_target(900), 8)
 
     def test_recommend_outline_max_tokens(self) -> None:
         # gpt-4o-mini output limit is 16384; 200 chapters should recommend 12000 when current max is lower.
@@ -202,6 +217,21 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         )
         self.assertEqual(_outline_fill_progress_message(None), "补全缺失章节...")
 
+    def test_parse_outline_batch_output_uses_fallback_outline(self) -> None:
+        text = json.dumps(
+            {
+                "chapters": [{"number": 1, "title": "第一章", "beats": ["事件 A"]}],
+            },
+            ensure_ascii=False,
+        )
+        data, warnings, parse_error = _parse_outline_batch_output(text=text, fallback_outline_md="# 已有总纲")
+        self.assertIsNone(parse_error)
+        self.assertEqual(data.get("outline_md"), "# 已有总纲")
+        chapters = data.get("chapters") or []
+        self.assertEqual(len(chapters), 1)
+        self.assertEqual(chapters[0]["number"], 1)
+        self.assertEqual(warnings, [])
+
     def test_fill_prompt_uses_style_samples_and_adaptive_detail_rule(self) -> None:
         existing = [
             {"number": 1, "title": "第一章", "beats": ["a1", "a2", "a3", "a4"]},
@@ -322,6 +352,60 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         self.assertIn("outline_fill_missing_timeout", warnings)
         coverage = out.get("chapter_coverage") or {}
         self.assertGreater(int(coverage.get("missing_count") or 0), 0)
+
+    def test_segmented_generation_recovers_sparse_batch_outputs(self) -> None:
+        llm_call = PreparedLlmCall(
+            provider="openai",
+            model="gpt-4o-mini",
+            base_url="",
+            timeout_seconds=180,
+            params={"max_tokens": 4096},
+            params_json=json.dumps({"max_tokens": 4096}, ensure_ascii=False),
+            extra={},
+        )
+        call_count = {"value": 0}
+        progress_events: list[dict[str, object]] = []
+
+        def _fake_call_llm_and_record(**kwargs):  # type: ignore[no-untyped-def]
+            call_count["value"] += 1
+            extra = kwargs.get("run_params_extra_json")
+            segment_meta = extra.get("outline_segment") if isinstance(extra, dict) else {}
+            batch_numbers_raw = segment_meta.get("batch_numbers") if isinstance(segment_meta, dict) else []
+            batch_numbers = [int(n) for n in batch_numbers_raw] if isinstance(batch_numbers_raw, list) else []
+            selected = batch_numbers[:5]
+            chapters = [{"number": n, "title": f"第{n}章", "beats": [f"事件{n}"]} for n in selected]
+            outline_md = "# 分段总纲\n\n- 用于测试分段收敛" if int(segment_meta.get("batch_index") or 0) == 1 else ""
+            text = json.dumps({"outline_md": outline_md, "chapters": chapters}, ensure_ascii=False)
+            return SimpleNamespace(
+                text=text,
+                finish_reason="stop",
+                run_id=f"run-{call_count['value']}",
+                latency_ms=35,
+                dropped_params=[],
+            )
+
+        with patch("app.api.routes.outline.call_llm_and_record", side_effect=_fake_call_llm_and_record):
+            res = _generate_outline_segmented_with_llm(
+                request_id="rid-segment-test",
+                actor_user_id="u1",
+                project_id="p1",
+                api_key="k",
+                llm_call=llm_call,
+                prompt_system="sys",
+                prompt_user="usr",
+                target_chapter_count=26,
+                run_params_extra_json={},
+                progress_hook=lambda update: progress_events.append(dict(update)),
+            )
+
+        chapters = res.data.get("chapters") or []
+        self.assertIsNone(res.parse_error)
+        self.assertEqual(len(chapters), 26)
+        self.assertEqual(chapters[0]["number"], 1)
+        self.assertEqual(chapters[-1]["number"], 26)
+        self.assertGreater(call_count["value"], 5)
+        self.assertIn("outline_segment_applied", res.warnings)
+        self.assertTrue(any(evt.get("event") == "batch_applied" for evt in progress_events))
 
 
 if __name__ == "__main__":
