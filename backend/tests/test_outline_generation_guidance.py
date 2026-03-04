@@ -8,7 +8,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.api.routes.outline import (
+    OUTLINE_SEGMENT_INDEX_MAX_CHARS,
     _build_outline_missing_chapters_prompts,
+    _build_outline_segment_chapter_index,
+    _build_outline_segment_prompts,
     _build_outline_generation_guidance,
     _enforce_outline_chapter_coverage,
     _extract_target_chapter_count,
@@ -21,6 +24,7 @@ from app.api.routes.outline import (
     _outline_segment_batch_size_for_target,
     _parse_outline_batch_output,
     _recommend_outline_max_tokens,
+    _strip_segment_conflicting_prompt_sections,
     _should_use_outline_segmented_mode,
 )
 from app.core.errors import AppError
@@ -231,6 +235,51 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         self.assertEqual(len(chapters), 1)
         self.assertEqual(chapters[0]["number"], 1)
         self.assertEqual(warnings, [])
+
+    def test_strip_segment_conflicting_prompt_sections(self) -> None:
+        source = (
+            "<REQUIREMENTS_JSON>{\"chapter_count\":500}</REQUIREMENTS_JSON>\n"
+            "<CHAPTER_TARGET>\n目标章节数：500（请严格保证 chapters 数组条目数与之相同）\n</CHAPTER_TARGET>\n"
+            "<STYLE_GUIDE>xx</STYLE_GUIDE>"
+        )
+        stripped = _strip_segment_conflicting_prompt_sections(source)
+        self.assertNotIn("<CHAPTER_TARGET>", stripped)
+        self.assertIn("<REQUIREMENTS_JSON>", stripped)
+        self.assertIn("<STYLE_GUIDE>", stripped)
+
+    def test_build_outline_segment_prompts_drops_chapter_target_block(self) -> None:
+        base_user = (
+            "<PROJECT>p</PROJECT>\n"
+            "<CHAPTER_TARGET>\n目标章节数：120（请严格保证 chapters 数组条目数与之相同）\n</CHAPTER_TARGET>\n"
+            "<REQUIREMENTS_JSON>{\"chapter_count\":120}</REQUIREMENTS_JSON>"
+        )
+        _system, user = _build_outline_segment_prompts(
+            base_prompt_system="sys",
+            base_prompt_user=base_user,
+            target_chapter_count=120,
+            batch_numbers=[1, 2, 3],
+            existing_chapters=[],
+            existing_outline_md="",
+            attempt=1,
+            max_attempts=3,
+        )
+        self.assertNotIn("<CHAPTER_TARGET>", user)
+        self.assertIn("<SEGMENT_TASK>", user)
+        self.assertIn("当前批次缺失章号", user)
+
+    def test_segment_chapter_index_is_budgeted(self) -> None:
+        chapters = [
+            {"number": idx, "title": f"第{idx}章_" + ("标题" * 20), "beats": ["a", "b"]}
+            for idx in range(1, 801)
+        ]
+        index_json = _build_outline_segment_chapter_index(chapters)
+        self.assertLessEqual(len(index_json), OUTLINE_SEGMENT_INDEX_MAX_CHARS + 200)
+        payload = json.loads(index_json)
+        self.assertEqual(int(payload.get("total") or 0), 800)
+        self.assertGreater(int(payload.get("omitted") or 0), 0)
+        items = payload.get("items")
+        self.assertIsInstance(items, list)
+        self.assertLess(len(items), 800)
 
     def test_fill_prompt_uses_style_samples_and_adaptive_detail_rule(self) -> None:
         existing = [

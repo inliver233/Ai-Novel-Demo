@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import logging
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -64,6 +65,9 @@ OUTLINE_SEGMENT_DEFAULT_BATCH_SIZE = 10
 OUTLINE_SEGMENT_MAX_ATTEMPTS_PER_BATCH = 6
 OUTLINE_SEGMENT_STAGNANT_ATTEMPTS_LIMIT = 3
 OUTLINE_SEGMENT_RECENT_CONTEXT_WINDOW = 24
+OUTLINE_SEGMENT_INDEX_MAX_ITEMS = 140
+OUTLINE_SEGMENT_INDEX_MAX_CHARS = 6000
+OUTLINE_SEGMENT_RECENT_WINDOW_MAX_CHARS = 2800
 
 OutlineFillProgressHook = Callable[[dict[str, object]], None]
 OutlineSegmentProgressHook = Callable[[dict[str, object]], None]
@@ -390,6 +394,41 @@ def _outline_segment_batches(target_chapter_count: int, batch_size: int) -> list
     return out
 
 
+def _shrink_outline_segment_items(
+    items: list[dict[str, object]],
+    *,
+    max_items: int,
+    max_chars: int,
+) -> list[dict[str, object]]:
+    if not items:
+        return []
+    sampled = list(items)
+    if len(sampled) > max_items:
+        head = max(20, max_items // 2)
+        tail = max_items - head
+        sampled = [*sampled[:head], *sampled[-tail:]]
+
+    payload = json.dumps({"items": sampled}, ensure_ascii=False)
+    if len(payload) <= max_chars:
+        return sampled
+
+    compact = list(sampled)
+    while len(compact) > 32:
+        compact = [*compact[: len(compact) // 2], *compact[-max(1, len(compact) // 4) :]]
+        payload = json.dumps({"items": compact}, ensure_ascii=False)
+        if len(payload) <= max_chars:
+            return compact
+    return compact
+
+
+def _strip_segment_conflicting_prompt_sections(text: str) -> str:
+    if not text.strip():
+        return text
+    # Segmented mode should not retain "single response must cover all chapters" instructions.
+    without_target = re.sub(r"(?is)<\s*CHAPTER_TARGET\s*>[\s\S]*?<\s*/\s*CHAPTER_TARGET\s*>", "", text)
+    return without_target.strip()
+
+
 def _build_outline_segment_chapter_index(chapters: list[dict[str, object]]) -> str:
     items: list[dict[str, object]] = []
     for chapter in chapters:
@@ -401,7 +440,18 @@ def _build_outline_segment_chapter_index(chapters: list[dict[str, object]]) -> s
             continue
         title = str(chapter.get("title") or "").strip()
         items.append({"number": number, "title": title[:28]})
-    return json.dumps(items, ensure_ascii=False)
+    items.sort(key=lambda row: int(row.get("number") or 0))
+    total = len(items)
+    sampled = _shrink_outline_segment_items(
+        items,
+        max_items=OUTLINE_SEGMENT_INDEX_MAX_ITEMS,
+        max_chars=OUTLINE_SEGMENT_INDEX_MAX_CHARS,
+    )
+    payload: dict[str, object] = {"total": total, "items": sampled}
+    omitted = total - len(sampled)
+    if omitted > 0:
+        payload["omitted"] = omitted
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def _build_outline_segment_recent_window(chapters: list[dict[str, object]]) -> str:
@@ -427,7 +477,19 @@ def _build_outline_segment_recent_window(chapters: list[dict[str, object]]) -> s
                 if len(beats) >= 3:
                     break
         items.append({"number": number, "title": title[:28], "beats": beats})
-    return json.dumps(items, ensure_ascii=False)
+    text = json.dumps(items, ensure_ascii=False)
+    if len(text) <= OUTLINE_SEGMENT_RECENT_WINDOW_MAX_CHARS:
+        return text
+    compact: list[dict[str, object]] = []
+    for row in items:
+        compact.append(
+            {
+                "number": int(row.get("number") or 0),
+                "title": str(row.get("title") or "")[:18],
+                "beats": [str(x)[:40] for x in (row.get("beats") if isinstance(row.get("beats"), list) else [])[:2]],
+            }
+        )
+    return json.dumps(compact, ensure_ascii=False)
 
 
 def _recommend_outline_segment_max_tokens(
@@ -496,6 +558,7 @@ def _build_outline_segment_prompts(
     attempt: int,
     max_attempts: int,
 ) -> tuple[str, str]:
+    base_user = _strip_segment_conflicting_prompt_sections(base_prompt_user)
     missing_ranges = _format_chapter_number_ranges(batch_numbers)
     detail_rule = _outline_fill_detail_rule(
         target_chapter_count=target_chapter_count,
@@ -518,7 +581,7 @@ def _build_outline_segment_prompts(
         "不得输出占位内容（如 TODO/待补全/略）。\n"
     )
     user = (
-        f"{base_prompt_user}\n\n"
+        f"{base_user}\n\n"
         "<SEGMENT_TASK>\n"
         f"目标总章数：{target_chapter_count}\n"
         f"当前批次缺失章号：{missing_ranges}\n"
@@ -885,6 +948,78 @@ def _generate_outline_segmented_with_llm(
         dropped_params=dropped_params,
         finish_reasons=finish_reasons,
         meta=meta,
+    )
+
+
+def _build_outline_segment_aggregate_output_text(
+    *,
+    data: dict[str, object],
+    warnings: list[str],
+    meta: dict[str, object],
+) -> str:
+    chapters = data.get("chapters")
+    chapter_count = len(chapters) if isinstance(chapters, list) else 0
+    coverage = data.get("chapter_coverage")
+    summary: dict[str, object] = {
+        "mode": "segmented",
+        "chapter_count": chapter_count,
+        "warnings": warnings[:40],
+        "segmented_generation": meta,
+    }
+    if isinstance(coverage, dict):
+        summary["chapter_coverage"] = {
+            "target_chapter_count": coverage.get("target_chapter_count"),
+            "missing_count": coverage.get("missing_count"),
+            "missing_numbers_preview": (coverage.get("missing_numbers") or [])[:30]
+            if isinstance(coverage.get("missing_numbers"), list)
+            else [],
+        }
+    return json.dumps(summary, ensure_ascii=False)
+
+
+def _write_outline_segmented_aggregate_run(
+    *,
+    request_id: str,
+    actor_user_id: str,
+    project_id: str,
+    run_type: str,
+    llm_call: PreparedLlmCall,
+    prompt_system: str,
+    prompt_user: str,
+    prompt_render_log_json: str | None,
+    run_params_json: str,
+    data: dict[str, object],
+    warnings: list[str],
+    parse_error: dict[str, object] | None,
+    segmented_run_ids: list[str],
+    meta: dict[str, object],
+) -> str:
+    output_text = _build_outline_segment_aggregate_output_text(data=data, warnings=warnings, meta=meta)
+    error_json: str | None = None
+    if parse_error is not None:
+        error_payload = {
+            "code": str(parse_error.get("code") or "OUTLINE_PARSE_ERROR"),
+            "message": str(parse_error.get("message") or "分段生成结果不完整"),
+            "details": {
+                "segmented_run_ids": segmented_run_ids,
+                "segmented_generation": meta,
+            },
+        }
+        error_json = json.dumps(error_payload, ensure_ascii=False)
+    return write_generation_run(
+        request_id=request_id,
+        actor_user_id=actor_user_id,
+        project_id=project_id,
+        chapter_id=None,
+        run_type=run_type,
+        provider=llm_call.provider,
+        model=llm_call.model,
+        prompt_system=prompt_system,
+        prompt_user=prompt_user,
+        prompt_render_log_json=prompt_render_log_json,
+        params_json=run_params_json,
+        output_text=output_text,
+        error_json=error_json,
     )
 
 
@@ -1467,15 +1602,37 @@ def generate_outline(
             target_chapter_count=prepared.target_chapter_count,
             run_params_extra_json=prepared.run_params_extra_json,
         )
+        aggregate_params_json = build_run_params_json(
+            params_json=prepared.llm_call.params_json,
+            memory_retrieval_log_json=None,
+            extra_json=prepared.run_params_extra_json,
+        )
+        aggregate_run_id = _write_outline_segmented_aggregate_run(
+            request_id=request_id,
+            actor_user_id=user_id,
+            project_id=project_id,
+            run_type="outline_segmented",
+            llm_call=prepared.llm_call,
+            prompt_system=prepared.prompt_system,
+            prompt_user=prepared.prompt_user,
+            prompt_render_log_json=prepared.prompt_render_log_json,
+            run_params_json=aggregate_params_json,
+            data=segmented.data,
+            warnings=segmented.warnings,
+            parse_error=segmented.parse_error,
+            segmented_run_ids=segmented.run_ids,
+            meta=segmented.meta,
+        )
         data = dict(segmented.data)
         warnings = _dedupe_warnings(segmented.warnings)
         if warnings:
             data["warnings"] = warnings
         if segmented.parse_error is not None:
             data["parse_error"] = segmented.parse_error
+        data["generation_run_id"] = aggregate_run_id
         if segmented.run_ids:
-            data["generation_run_id"] = segmented.run_ids[0]
-            data["generation_run_ids"] = segmented.run_ids
+            data["generation_sub_run_ids"] = segmented.run_ids
+            data["generation_run_ids"] = [aggregate_run_id, *segmented.run_ids]
         if segmented.latency_ms > 0:
             data["latency_ms"] = segmented.latency_ms
         if segmented.dropped_params:
@@ -1713,15 +1870,32 @@ def generate_outline_stream(
 
                 segmented = future.result()
 
+            aggregate_run_id = _write_outline_segmented_aggregate_run(
+                request_id=request_id,
+                actor_user_id=user_id,
+                project_id=project_id,
+                run_type="outline_stream_segmented",
+                llm_call=llm_call,
+                prompt_system=prompt_system,
+                prompt_user=prompt_user,
+                prompt_render_log_json=prompt_render_log_json,
+                run_params_json=run_params_json,
+                data=segmented.data,
+                warnings=segmented.warnings,
+                parse_error=segmented.parse_error,
+                segmented_run_ids=segmented.run_ids,
+                meta=segmented.meta,
+            )
             data = dict(segmented.data)
             warnings = _dedupe_warnings(segmented.warnings)
             if warnings:
                 data["warnings"] = warnings
             if segmented.parse_error is not None:
                 data["parse_error"] = segmented.parse_error
+            data["generation_run_id"] = aggregate_run_id
             if segmented.run_ids:
-                data["generation_run_id"] = segmented.run_ids[0]
-                data["generation_run_ids"] = segmented.run_ids
+                data["generation_sub_run_ids"] = segmented.run_ids
+                data["generation_run_ids"] = [aggregate_run_id, *segmented.run_ids]
             if segmented.latency_ms > 0:
                 data["latency_ms"] = segmented.latency_ms
             if segmented.dropped_params:
