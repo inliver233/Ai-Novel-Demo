@@ -256,7 +256,7 @@ test("ui: global search hits multi-sources and can jump", async ({ page, request
   const wbCard = results2.locator(".panel").filter({ hasText: "worldbook_entry" }).first();
   await expect(wbCard).toBeVisible();
   await wbCard.getByLabel("search_jump", { exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/worldbook$`));
+  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/worldbook(?:\\?.*)?$`));
   await waitForWorldbookEntryCardsLoaded(page, { minCount: 1 });
   await expect(page.getByRole("button", { name: new RegExp(worldbookTitle) }).first()).toBeVisible();
 

@@ -63,6 +63,7 @@ type Props = {
 
 type ModuleEditorProps = {
   moduleId: string;
+  legacyMainFieldNames?: boolean;
   title: string;
   subtitle: string;
   form: LlmForm;
@@ -139,6 +140,10 @@ function maxTokensHint(
 }
 
 function ModuleEditor(props: ModuleEditorProps) {
+  const fieldName = useCallback(
+    (key: string) => (props.legacyMainFieldNames ? key : `${props.moduleId}_${key}`),
+    [props.legacyMainFieldNames, props.moduleId],
+  );
   const extraValidation = useMemo(() => validateExtraJson(props.form.extra), [props.form.extra]);
   const extraErrorText = extraValidation.ok
     ? ""
@@ -171,7 +176,7 @@ function ModuleEditor(props: ModuleEditorProps) {
           <span className="text-xs text-subtext">服务商（provider）</span>
           <select
             className="select"
-            name={`${props.moduleId}_provider`}
+            name={fieldName("provider")}
             value={props.form.provider}
             disabled={props.saving}
             onChange={(e) =>
@@ -205,7 +210,7 @@ function ModuleEditor(props: ModuleEditorProps) {
           <input
             className="input"
             list={`${props.moduleId}_models`}
-            name={`${props.moduleId}_model`}
+            name={fieldName("model")}
             disabled={props.saving}
             value={props.form.model}
             onChange={(e) => props.setForm((v) => ({ ...v, model: e.target.value }))}
@@ -228,7 +233,7 @@ function ModuleEditor(props: ModuleEditorProps) {
           <input
             className="input"
             disabled={props.saving}
-            name={`${props.moduleId}_base_url`}
+            name={fieldName("base_url")}
             placeholder={
               props.form.provider === "openai_compatible" || props.form.provider === "openai_responses_compatible"
                 ? "https://your-gateway.example.com/v1"
@@ -445,6 +450,7 @@ export function LlmPresetPanel(props: Props) {
       <div className="mt-4">
         <ModuleEditor
           moduleId="main-module"
+          legacyMainFieldNames
           title="主模块（默认）"
           subtitle="所有未单独覆盖的任务都会使用这里的 provider/model/参数。"
           form={props.llmForm}
