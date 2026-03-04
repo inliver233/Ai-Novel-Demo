@@ -56,6 +56,13 @@ type Props = {
   onAddTaskModule: () => void;
   onTaskProfileChange: (taskKey: string, profileId: string | null) => void;
   onTaskFormChange: (taskKey: string, updater: (prev: LlmForm) => LlmForm) => void;
+  taskTesting: Record<string, boolean>;
+  onTestTaskConnection: (taskKey: string) => void;
+  taskApiKeyDrafts: Record<string, string>;
+  onTaskApiKeyDraftChange: (taskKey: string, value: string) => void;
+  taskProfileBusy: Record<string, boolean>;
+  onSaveTaskApiKey: (taskKey: string) => void;
+  onClearTaskApiKey: (taskKey: string) => void;
   onSaveTask: (taskKey: string) => void;
   onDeleteTask: (taskKey: string) => void;
   onReloadTaskModels: (taskKey: string) => void;
@@ -531,10 +538,14 @@ export function LlmPresetPanel(props: Props) {
         ) : (
           <div className="mt-4 grid gap-4">
             {props.taskModules.map((task) => {
-              const profileMismatch =
-                task.llm_profile_id &&
-                props.profiles.find((p) => p.id === task.llm_profile_id)?.provider &&
-                props.profiles.find((p) => p.id === task.llm_profile_id)?.provider !== task.form.provider;
+              const boundProfile = task.llm_profile_id
+                ? (props.profiles.find((p) => p.id === task.llm_profile_id) ?? null)
+                : null;
+              const profileMismatch = Boolean(boundProfile && boundProfile.provider !== task.form.provider);
+              const testing = Boolean(props.taskTesting[task.task_key]);
+              const profileBusy = Boolean(props.taskProfileBusy[task.task_key]);
+              const taskBusy = task.saving || task.deleting || profileBusy;
+              const taskUiLocked = taskBusy || testing;
               return (
                 <div className="rounded-atelier border border-border/70 bg-canvas p-3" key={task.task_key}>
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -551,15 +562,23 @@ export function LlmPresetPanel(props: Props) {
                       ) : null}
                       <button
                         className="btn btn-secondary btn-sm"
-                        disabled={task.modelList.loading || task.saving || task.deleting}
+                        disabled={task.modelList.loading || taskUiLocked}
                         onClick={() => props.onReloadTaskModels(task.task_key)}
                         type="button"
                       >
                         {task.modelList.loading ? "拉取中..." : "模型列表"}
                       </button>
                       <button
+                        className="btn btn-secondary btn-sm"
+                        disabled={taskUiLocked || props.profileBusy}
+                        onClick={() => props.onTestTaskConnection(task.task_key)}
+                        type="button"
+                      >
+                        {testing ? "测试中..." : "测试连接"}
+                      </button>
+                      <button
                         className="btn btn-primary btn-sm"
-                        disabled={!task.dirty || task.saving || task.deleting}
+                        disabled={!task.dirty || taskUiLocked}
                         onClick={() => props.onSaveTask(task.task_key)}
                         type="button"
                       >
@@ -567,7 +586,7 @@ export function LlmPresetPanel(props: Props) {
                       </button>
                       <button
                         className="btn btn-ghost btn-sm text-accent hover:bg-accent/10"
-                        disabled={task.saving || task.deleting}
+                        disabled={taskUiLocked}
                         onClick={() => props.onDeleteTask(task.task_key)}
                         type="button"
                       >
@@ -582,7 +601,7 @@ export function LlmPresetPanel(props: Props) {
                       className="select"
                       value={task.llm_profile_id ?? ""}
                       onChange={(e) => props.onTaskProfileChange(task.task_key, e.target.value || null)}
-                      disabled={task.saving || task.deleting}
+                      disabled={taskUiLocked}
                     >
                       <option value="">（回退主配置）</option>
                       {props.profiles.map((profile) => (
@@ -599,6 +618,44 @@ export function LlmPresetPanel(props: Props) {
                         所选配置库 provider 与当前模块 provider 不一致，保存会失败。
                       </div>
                     ) : null}
+                    {boundProfile ? (
+                      <>
+                        <div className="text-[11px] text-subtext">
+                          当前绑定配置：{boundProfile.name}（{boundProfile.provider}/{boundProfile.model}）
+                          {boundProfile.has_api_key
+                            ? `，已保存 Key：${boundProfile.masked_api_key ?? "（已保存）"}`
+                            : "，尚未保存 Key"}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          <input
+                            className="input flex-1 min-w-[220px]"
+                            disabled={taskUiLocked}
+                            placeholder="输入该配置库的新 Key（共享给复用该配置库的模块）"
+                            type="password"
+                            value={props.taskApiKeyDrafts[task.task_key] ?? ""}
+                            onChange={(e) => props.onTaskApiKeyDraftChange(task.task_key, e.target.value)}
+                          />
+                          <button
+                            className="btn btn-primary btn-sm"
+                            disabled={taskUiLocked || !(props.taskApiKeyDrafts[task.task_key] ?? "").trim()}
+                            onClick={() => props.onSaveTaskApiKey(task.task_key)}
+                            type="button"
+                          >
+                            保存 Key
+                          </button>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            disabled={taskUiLocked || !boundProfile.has_api_key}
+                            onClick={() => props.onClearTaskApiKey(task.task_key)}
+                            type="button"
+                          >
+                            清除 Key
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-[11px] text-subtext">当前未绑定任务专属配置库，Key 将继承主配置。</div>
+                    )}
                   </div>
 
                   <ModuleEditor
@@ -607,7 +664,7 @@ export function LlmPresetPanel(props: Props) {
                     subtitle="该任务专属模型参数。"
                     form={task.form}
                     setForm={(updater) => props.onTaskFormChange(task.task_key, updater)}
-                    saving={task.saving || task.deleting}
+                    saving={taskUiLocked}
                     dirty={task.dirty}
                     capabilities={null}
                     modelList={task.modelList}

@@ -62,6 +62,59 @@ const EMPTY_MODEL_LIST_STATE: LlmModelListState = {
   requestId: null,
 };
 
+function formatLlmTestApiError(err: ApiError): string {
+  const details =
+    err.details && typeof err.details === "object" && err.details !== null
+      ? (err.details as Record<string, unknown>)
+      : null;
+  const upstreamStatusCode = details && "status_code" in details ? details.status_code : undefined;
+  const upstreamErrorRaw = details && "upstream_error" in details ? details.upstream_error : undefined;
+  const upstreamError = (() => {
+    if (!upstreamErrorRaw) return null;
+    if (typeof upstreamErrorRaw === "string") {
+      const s = upstreamErrorRaw.trim();
+      if (!s) return null;
+      try {
+        const parsed = JSON.parse(s) as unknown;
+        if (parsed && typeof parsed === "object") {
+          const obj = parsed as Record<string, unknown>;
+          if (typeof obj.detail === "string" && obj.detail.trim()) return obj.detail.trim();
+          if (obj.error && typeof obj.error === "object") {
+            const errObj = obj.error as Record<string, unknown>;
+            if (typeof errObj.message === "string" && errObj.message.trim()) return errObj.message.trim();
+          }
+        }
+      } catch {
+        // ignore
+      }
+      return s.length > 160 ? `${s.slice(0, 160)}…` : s;
+    }
+    return String(upstreamErrorRaw);
+  })();
+  const compatAdjustments =
+    details && "compat_adjustments" in details && Array.isArray(details.compat_adjustments)
+      ? (details.compat_adjustments as unknown[])
+          .filter((x) => typeof x === "string" && x)
+          .slice(0, 6)
+          .join("、")
+      : null;
+  return err.code === "LLM_KEY_MISSING"
+    ? "请先保存 API Key"
+    : err.code === "LLM_AUTH_ERROR"
+      ? "API Key 无效或已过期，请检查后重试"
+      : err.code === "LLM_TIMEOUT"
+        ? "连接超时，请检查网络或 base_url 是否正确"
+        : err.code === "LLM_BAD_REQUEST"
+          ? `请求参数有误，可能是模型名称或参数不支持${upstreamError ? `（上游：${upstreamError}）` : ""}${
+              compatAdjustments ? `（兼容：${compatAdjustments}）` : ""
+            }`
+          : err.code === "LLM_UPSTREAM_ERROR"
+            ? `服务暂时不可用，请稍后重试（${
+                typeof upstreamStatusCode === "number" ? upstreamStatusCode : err.status
+              }）`
+            : err.message;
+}
+
 export function PromptsPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -132,6 +185,9 @@ export function PromptsPage() {
   const [taskModelLists, setTaskModelLists] = useState<Record<string, LlmModelListState>>({});
   const [taskSaving, setTaskSaving] = useState<Record<string, boolean>>({});
   const [taskDeleting, setTaskDeleting] = useState<Record<string, boolean>>({});
+  const [taskTesting, setTaskTesting] = useState<Record<string, boolean>>({});
+  const [taskProfileBusy, setTaskProfileBusy] = useState<Record<string, boolean>>({});
+  const [taskApiKeyDrafts, setTaskApiKeyDrafts] = useState<Record<string, string>>({});
   const [selectedAddTaskKey, setSelectedAddTaskKey] = useState("");
 
   const reloadAll = useCallback(async () => {
@@ -182,6 +238,9 @@ export function PromptsPage() {
       setTaskModelLists({});
       setTaskSaving({});
       setTaskDeleting({});
+      setTaskTesting({});
+      setTaskProfileBusy({});
+      setTaskApiKeyDrafts({});
       const firstAddable = nextTaskCatalog.find((item) => !nextTaskDrafts[item.key])?.key ?? "";
       setSelectedAddTaskKey(firstAddable);
 
@@ -271,6 +330,9 @@ export function PromptsPage() {
 
   const selectedProfileId = project?.llm_profile_id ?? null;
   const selectedProfile = selectedProfileId ? (profiles.find((p) => p.id === selectedProfileId) ?? null) : null;
+  const upsertProfile = useCallback((profile: LLMProfile) => {
+    setProfiles((prev) => [profile, ...prev.filter((item) => item.id !== profile.id)]);
+  }, []);
 
   const taskCatalogByKey = useMemo(() => {
     const map = new Map<string, LLMTaskCatalogItem>();
@@ -449,6 +511,11 @@ export function PromptsPage() {
         },
       };
     });
+    setTaskApiKeyDrafts((prev) => ({ ...prev, [taskKey]: "" }));
+  }, []);
+
+  const updateTaskApiKeyDraft = useCallback((taskKey: string, value: string) => {
+    setTaskApiKeyDrafts((prev) => ({ ...prev, [taskKey]: value }));
   }, []);
 
   const addTaskModule = useCallback(() => {
@@ -467,6 +534,7 @@ export function PromptsPage() {
       };
     });
     setTaskModelLists((prev) => ({ ...prev, [taskKey]: { ...EMPTY_MODEL_LIST_STATE } }));
+    setTaskApiKeyDrafts((prev) => ({ ...prev, [taskKey]: "" }));
   }, [llmForm, selectedAddTaskKey]);
 
   const saveTaskModule = useCallback(
@@ -474,6 +542,10 @@ export function PromptsPage() {
       if (!projectId) return false;
       const draft = taskDrafts[taskKey];
       if (!draft) return false;
+      if (taskProfileBusy[taskKey]) {
+        if (!opts?.silent) toast.toastError("该任务正在更新 API Key，请稍后再试");
+        return false;
+      }
       const payload = buildPresetPayload(draft.form);
       if (!payload.ok) {
         if (!opts?.silent) toast.toastError(payload.message);
@@ -528,7 +600,7 @@ export function PromptsPage() {
         setTaskSaving((prev) => ({ ...prev, [taskKey]: false }));
       }
     },
-    [profiles, projectId, taskDrafts, toast],
+    [profiles, projectId, taskDrafts, taskProfileBusy, toast],
   );
 
   const deleteTaskModule = useCallback(
@@ -556,6 +628,21 @@ export function PromptsPage() {
           delete next[taskKey];
           return next;
         });
+        setTaskTesting((prev) => {
+          const next = { ...prev };
+          delete next[taskKey];
+          return next;
+        });
+        setTaskProfileBusy((prev) => {
+          const next = { ...prev };
+          delete next[taskKey];
+          return next;
+        });
+        setTaskApiKeyDrafts((prev) => {
+          const next = { ...prev };
+          delete next[taskKey];
+          return next;
+        });
         toast.toastSuccess("已移除未保存模块");
         return true;
       }
@@ -579,6 +666,21 @@ export function PromptsPage() {
           return next;
         });
         setTaskModelLists((prev) => {
+          const next = { ...prev };
+          delete next[taskKey];
+          return next;
+        });
+        setTaskTesting((prev) => {
+          const next = { ...prev };
+          delete next[taskKey];
+          return next;
+        });
+        setTaskProfileBusy((prev) => {
+          const next = { ...prev };
+          delete next[taskKey];
+          return next;
+        });
+        setTaskApiKeyDrafts((prev) => {
           const next = { ...prev };
           delete next[taskKey];
           return next;
@@ -1194,6 +1296,181 @@ export function PromptsPage() {
     }
   }, [bumpWizardLocal, confirm, profileBusy, refreshWizard, reloadAll, selectedProfileId, toast]);
 
+  const saveTaskApiKey = useCallback(
+    async (taskKey: string): Promise<boolean> => {
+      const draft = taskDrafts[taskKey];
+      if (!draft) return false;
+      const profileId = (draft.llm_profile_id ?? "").trim();
+      if (!profileId) {
+        toast.toastError("请先为该任务模块绑定一个 API 配置库");
+        return false;
+      }
+
+      const key = (taskApiKeyDrafts[taskKey] ?? "").trim();
+      if (!key) {
+        toast.toastError("请先填写 API Key");
+        return false;
+      }
+      if (taskProfileBusy[taskKey]) return false;
+
+      setTaskProfileBusy((prev) => ({ ...prev, [taskKey]: true }));
+      try {
+        const res = await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles/${profileId}`, {
+          method: "PUT",
+          body: JSON.stringify({ api_key: key }),
+        });
+        upsertProfile(res.data.profile);
+        setTaskApiKeyDrafts((prev) => ({ ...prev, [taskKey]: "" }));
+        await refreshWizard();
+        bumpWizardLocal();
+        toast.toastSuccess("任务模块绑定配置的 Key 已保存", res.request_id);
+        return true;
+      } catch (e) {
+        const err = e as ApiError;
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+        return false;
+      } finally {
+        setTaskProfileBusy((prev) => ({ ...prev, [taskKey]: false }));
+      }
+    },
+    [bumpWizardLocal, refreshWizard, taskApiKeyDrafts, taskDrafts, taskProfileBusy, toast, upsertProfile],
+  );
+
+  const clearTaskApiKey = useCallback(
+    async (taskKey: string): Promise<boolean> => {
+      const draft = taskDrafts[taskKey];
+      if (!draft) return false;
+      const profileId = (draft.llm_profile_id ?? "").trim();
+      if (!profileId) {
+        toast.toastError("请先为该任务模块绑定一个 API 配置库");
+        return false;
+      }
+      const profile = profiles.find((item) => item.id === profileId) ?? null;
+      if (!profile?.has_api_key) return true;
+      if (taskProfileBusy[taskKey]) return false;
+
+      const taskLabel = taskCatalogByKey.get(taskKey)?.label ?? taskKey;
+      const ok = await confirm.confirm({
+        title: "清除任务模块绑定配置的 API Key？",
+        description: `将清除配置库「${profile.name}」的 Key。该配置库被其他模块复用时也会立即失效。`,
+        confirmText: "清除",
+        cancelText: "取消",
+        danger: true,
+      });
+      if (!ok) return false;
+
+      setTaskProfileBusy((prev) => ({ ...prev, [taskKey]: true }));
+      try {
+        const res = await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles/${profileId}`, {
+          method: "PUT",
+          body: JSON.stringify({ api_key: null }),
+        });
+        upsertProfile(res.data.profile);
+        setTaskApiKeyDrafts((prev) => ({ ...prev, [taskKey]: "" }));
+        await refreshWizard();
+        bumpWizardLocal();
+        toast.toastSuccess(`模块「${taskLabel}」绑定配置的 Key 已清除`, res.request_id);
+        return true;
+      } catch (e) {
+        const err = e as ApiError;
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+        return false;
+      } finally {
+        setTaskProfileBusy((prev) => ({ ...prev, [taskKey]: false }));
+      }
+    },
+    [
+      bumpWizardLocal,
+      confirm,
+      profiles,
+      refreshWizard,
+      taskCatalogByKey,
+      taskDrafts,
+      taskProfileBusy,
+      toast,
+      upsertProfile,
+    ],
+  );
+
+  const testTaskConnection = useCallback(
+    async (taskKey: string): Promise<boolean> => {
+      if (!projectId) return false;
+      const draft = taskDrafts[taskKey];
+      if (!draft) return false;
+
+      const payload = buildPresetPayload(draft.form);
+      if (!payload.ok) {
+        toast.toastError(payload.message);
+        return false;
+      }
+
+      const boundProfileId = (draft.llm_profile_id ?? "").trim() || null;
+      const boundProfile = boundProfileId ? (profiles.find((item) => item.id === boundProfileId) ?? null) : null;
+      if (boundProfileId && !boundProfile) {
+        toast.toastError("任务模块绑定的配置库不存在，请重新选择");
+        return false;
+      }
+      const effectiveProfile = boundProfile ?? selectedProfile;
+      if (!effectiveProfile) {
+        toast.toastError("请先为任务模块绑定配置库，或先设置主配置并保存 Key");
+        return false;
+      }
+      if (effectiveProfile.provider !== payload.payload.provider) {
+        if (boundProfile) {
+          toast.toastError("任务模块 provider 必须与所选 API 配置库 provider 一致");
+        } else {
+          toast.toastError("当前任务未绑定配置库，将回退主配置。请保持 provider 一致，或为任务绑定独立配置库");
+        }
+        return false;
+      }
+      if (!effectiveProfile.has_api_key) {
+        toast.toastError("请先保存该任务生效配置的 API Key");
+        return false;
+      }
+
+      const model = payload.payload.model.trim();
+      const baseUrl = payload.payload.base_url;
+      const taskLabel = taskCatalogByKey.get(taskKey)?.label ?? taskKey;
+
+      setTaskTesting((prev) => ({ ...prev, [taskKey]: true }));
+      try {
+        const res = await apiJson<{ latency_ms: number; text?: string }>("/api/llm/test", {
+          method: "POST",
+          headers: {
+            "X-LLM-Provider": payload.payload.provider,
+          },
+          body: JSON.stringify({
+            project_id: projectId,
+            profile_id: boundProfileId,
+            provider: payload.payload.provider,
+            base_url: baseUrl,
+            model,
+            timeout_seconds: parseTimeoutSecondsForTest(draft.form.timeout_seconds),
+            extra: payload.payload.extra,
+            params: {
+              temperature: payload.payload.temperature ?? 0,
+              // Some models may emit "thinking" blocks before final text; keep this > tiny to ensure we get a text preview.
+              max_tokens: 64,
+            },
+          }),
+        });
+        const preview = (res.data.text ?? "").trim();
+        toast.toastSuccess(
+          `模块「${taskLabel}」连接成功（延迟 ${res.data.latency_ms}ms${preview ? `，输出：${preview}` : ""}）`,
+          res.request_id,
+        );
+        return true;
+      } catch (e) {
+        const err = e as ApiError;
+        toast.toastError(formatLlmTestApiError(err), err.requestId);
+        return false;
+      } finally {
+        setTaskTesting((prev) => ({ ...prev, [taskKey]: false }));
+      }
+    },
+    [profiles, projectId, selectedProfile, taskCatalogByKey, taskDrafts, toast],
+  );
+
   const testConnection = useCallback(async (): Promise<boolean> => {
     if (!projectId) return false;
     if (!selectedProfileId) {
@@ -1246,58 +1523,7 @@ export function PromptsPage() {
       return true;
     } catch (e) {
       const err = e as ApiError;
-      const details =
-        err.details && typeof err.details === "object" && err.details !== null
-          ? (err.details as Record<string, unknown>)
-          : null;
-      const upstreamStatusCode = details && "status_code" in details ? details.status_code : undefined;
-      const upstreamErrorRaw = details && "upstream_error" in details ? details.upstream_error : undefined;
-      const upstreamError = (() => {
-        if (!upstreamErrorRaw) return null;
-        if (typeof upstreamErrorRaw === "string") {
-          const s = upstreamErrorRaw.trim();
-          if (!s) return null;
-          try {
-            const parsed = JSON.parse(s) as unknown;
-            if (parsed && typeof parsed === "object") {
-              const obj = parsed as Record<string, unknown>;
-              if (typeof obj.detail === "string" && obj.detail.trim()) return obj.detail.trim();
-              if (obj.error && typeof obj.error === "object") {
-                const errObj = obj.error as Record<string, unknown>;
-                if (typeof errObj.message === "string" && errObj.message.trim()) return errObj.message.trim();
-              }
-            }
-          } catch {
-            // ignore
-          }
-          return s.length > 160 ? `${s.slice(0, 160)}…` : s;
-        }
-        return String(upstreamErrorRaw);
-      })();
-      const compatAdjustments =
-        details && "compat_adjustments" in details && Array.isArray(details.compat_adjustments)
-          ? (details.compat_adjustments as unknown[])
-              .filter((x) => typeof x === "string" && x)
-              .slice(0, 6)
-              .join("、")
-          : null;
-      const msg =
-        err.code === "LLM_KEY_MISSING"
-          ? "请先保存 API Key"
-          : err.code === "LLM_AUTH_ERROR"
-            ? "API Key 无效或已过期，请检查后重试"
-            : err.code === "LLM_TIMEOUT"
-              ? "连接超时，请检查网络或 base_url 是否正确"
-              : err.code === "LLM_BAD_REQUEST"
-                ? `请求参数有误，可能是模型名称或参数不支持${upstreamError ? `（上游：${upstreamError}）` : ""}${
-                    compatAdjustments ? `（兼容：${compatAdjustments}）` : ""
-                  }`
-                : err.code === "LLM_UPSTREAM_ERROR"
-                  ? `服务暂时不可用，请稍后重试（${
-                      typeof upstreamStatusCode === "number" ? upstreamStatusCode : err.status
-                    }）`
-                  : err.message;
-      toast.toastError(msg, err.requestId);
+      toast.toastError(formatLlmTestApiError(err), err.requestId);
       return false;
     } finally {
       setTesting(false);
@@ -1428,6 +1654,13 @@ export function PromptsPage() {
         onTaskFormChange={updateTaskForm}
         onSaveTask={(taskKey) => void saveTaskModule(taskKey)}
         onDeleteTask={(taskKey) => void deleteTaskModule(taskKey)}
+        taskTesting={taskTesting}
+        onTestTaskConnection={(taskKey) => void testTaskConnection(taskKey)}
+        taskApiKeyDrafts={taskApiKeyDrafts}
+        onTaskApiKeyDraftChange={updateTaskApiKeyDraft}
+        taskProfileBusy={taskProfileBusy}
+        onSaveTaskApiKey={(taskKey) => void saveTaskApiKey(taskKey)}
+        onClearTaskApiKey={(taskKey) => void clearTaskApiKey(taskKey)}
         onReloadTaskModels={reloadTaskModels}
       />
 
