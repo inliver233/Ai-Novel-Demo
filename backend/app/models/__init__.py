@@ -7,6 +7,7 @@ from app.models.fractal_memory import FractalMemory
 from app.models.knowledge_base import KnowledgeBase
 from app.models.llm_profile import LLMProfile
 from app.models.llm_preset import LLMPreset
+from app.models.llm_task_preset import LLMTaskPreset
 from app.models.memory_task import MemoryTask
 from app.models.outline import Outline
 from app.models.project import Project
@@ -47,6 +48,7 @@ __all__ = [
     "KnowledgeBase",
     "LLMProfile",
     "LLMPreset",
+    "LLMTaskPreset",
     "MemoryTask",
     "Outline",
     "Project",

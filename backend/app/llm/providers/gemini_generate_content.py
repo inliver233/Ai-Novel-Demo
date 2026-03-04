@@ -57,6 +57,9 @@ def call_gemini_generate_content(
         generation_config["topK"] = filtered_params["top_k"]
     if "stop" in filtered_params:
         generation_config["stopSequences"] = filtered_params["stop"]
+    thinking_cfg = extra.get("thinkingConfig") or extra.get("thinking_config")
+    if isinstance(thinking_cfg, dict):
+        generation_config["thinkingConfig"] = thinking_cfg
 
     normalized = merge_consecutive(messages)
     system, non_system = coalesce_system(normalized)
@@ -111,6 +114,7 @@ def call_gemini_generate_content(
             lambda: _clamp_generation_config_max_output_tokens(generation_config, limit=8192, compat_adjustments=compat_adjustments),
             lambda: _clamp_generation_config_max_output_tokens(generation_config, limit=4096, compat_adjustments=compat_adjustments),
             lambda: _clamp_generation_config_max_output_tokens(generation_config, limit=1024, compat_adjustments=compat_adjustments),
+            lambda: drop_generation_config_param("thinkingConfig"),
             lambda: drop_generation_config_param("stopSequences"),
             lambda: drop_generation_config_param("topK"),
             lambda: drop_generation_config_param("topP"),

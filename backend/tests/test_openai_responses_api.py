@@ -28,9 +28,10 @@ class TestOpenAiResponsesApi(unittest.TestCase):
             self.assertEqual(fmt.get("name"), "TestSchema")
             self.assertEqual(fmt.get("schema"), {"type": "object", "properties": {"x": {"type": "string"}}})
             self.assertEqual(fmt.get("strict"), True)
+            self.assertEqual(text_cfg.get("verbosity"), "low")
 
             self.assertEqual(payload.get("reasoning"), {"effort": "medium"})
-            self.assertEqual(payload.get("verbosity"), "low")
+            self.assertNotIn("verbosity", payload)
 
             return httpx.Response(200, json={"output_text": "pong", "status": "completed"})
 

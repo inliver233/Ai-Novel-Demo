@@ -29,6 +29,7 @@ def call_anthropic_messages(
 ) -> LLMCallResult:
     endpoint = f"{base_url}/v1/messages"
     anthropic_version = extra.get("anthropic_version") or extra.get("anthropicVersion") or "2023-06-01"
+    anthropic_beta = extra.get("anthropic_beta") or extra.get("anthropicBeta")
     max_tokens = int(filtered_params.get("max_tokens") or 1500)
 
     normalized = merge_consecutive(messages)
@@ -59,18 +60,32 @@ def call_anthropic_messages(
         "system": system_prompt,
         "messages": anthropic_messages,
     }
+    thinking = extra.get("thinking")
+    if isinstance(thinking, dict):
+        payload["thinking"] = thinking
     payload = {k: v for k, v in payload.items() if v is not None}
     compat_adjustments: list[str] = []
+
+    def _build_headers() -> dict[str, str]:
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": str(anthropic_version),
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if anthropic_beta:
+            if isinstance(anthropic_beta, str) and anthropic_beta.strip():
+                headers["anthropic-beta"] = anthropic_beta.strip()
+            elif isinstance(anthropic_beta, list):
+                parts = [str(p).strip() for p in anthropic_beta if str(p).strip()]
+                if parts:
+                    headers["anthropic-beta"] = ",".join(parts)
+        return headers
 
     def post_anthropic(payload_obj: dict[str, Any]) -> httpx.Response:
         return client.post(
             endpoint,
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": str(anthropic_version),
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
+            headers=_build_headers(),
             json=payload_obj,
             timeout=timeout,
         )
@@ -106,6 +121,7 @@ def call_anthropic_messages(
             lambda: clamp_max_tokens(8192),
             lambda: clamp_max_tokens(4096),
             lambda: clamp_max_tokens(1024),
+            lambda: drop_payload_param("thinking"),
             lambda: drop_payload_param("stop_sequences"),
             lambda: drop_payload_param("top_k"),
             lambda: drop_payload_param("top_p"),

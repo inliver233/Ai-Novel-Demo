@@ -217,6 +217,38 @@ export interface LLMProfile {
   updated_at: string;
 }
 
+export interface LLMTaskCatalogItem {
+  key: string;
+  label: string;
+  group: string;
+  description: string;
+}
+
+export interface LLMTaskPreset extends LLMPreset {
+  task_key: string;
+  llm_profile_id?: string | null;
+  source?: string;
+}
+
+export interface LLMModelItem {
+  id: string;
+  display_name?: string;
+  provider: LLMProvider;
+  name?: string;
+}
+
+export interface LLMModelsWarning {
+  code: string;
+  message: string;
+}
+
+export interface LLMModelsResponse {
+  provider: LLMProvider;
+  base_url: string;
+  models: LLMModelItem[];
+  warning?: LLMModelsWarning | null;
+}
+
 export interface ProjectSummaryItem {
   project: Project;
   settings: ProjectSettings | null;

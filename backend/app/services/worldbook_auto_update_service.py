@@ -7,8 +7,10 @@ import re
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.logging import exception_log_fields, log_event, redact_secrets_text
 from app.db.session import SessionLocal
 from app.db.utils import new_id
@@ -24,9 +26,10 @@ from app.schemas.worldbook_auto_update import (
     WorldbookEntryCreateV1,
     WorldbookEntryPatchV1,
 )
-from app.services.json_repair_service import repair_json_once
 from app.services.generation_service import prepare_llm_call
+from app.services.json_repair_service import repair_json_once
 from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_task_preset_resolver import resolve_task_llm_config
 from app.services.llm_retry import (
     LlmRetryExhausted,
     call_llm_and_record_with_retries,
@@ -64,6 +67,42 @@ def _env_int(name: str, *, default: int) -> int:
     except Exception:
         return default
     return value if value > 0 else default
+
+
+def _resolve_worldbook_llm_call(
+    *,
+    db: Session,
+    project: Project,
+    actor_user_id: str,
+) -> tuple[object, str] | None:
+    missing_key_exc: AppError | None = None
+    try:
+        resolved_task = resolve_task_llm_config(
+            db,
+            project=project,
+            user_id=actor_user_id,
+            task_key=WORLDBOOK_AUTO_UPDATE_TASK,
+            header_api_key=None,
+        )
+    except OperationalError:
+        resolved_task = None
+    except AppError as exc:
+        if str(exc.code or "") != "LLM_KEY_MISSING":
+            raise
+        missing_key_exc = exc
+        resolved_task = None
+
+    if resolved_task is not None:
+        return resolved_task.llm_call, str(resolved_task.api_key)
+
+    preset = db.get(LLMPreset, project.id)
+    if preset is None:
+        if missing_key_exc is not None:
+            raise missing_key_exc
+        return None
+
+    api_key = resolve_api_key_for_project(db, project=project, user_id=actor_user_id, header_api_key=None)
+    return prepare_llm_call(preset), str(api_key)
 
 
 def _chapter_summary_max_chars() -> int:
@@ -596,8 +635,9 @@ def worldbook_auto_update_v1(
     world_setting = ""
     existing_titles: list[str] = []
     existing_entries_preview: list[dict[str, Any]] = []
-    preset: LLMPreset | None = None
     project: Project | None = None
+    llm_call = None
+    api_key = ""
 
     db_read = SessionLocal()
     try:
@@ -605,9 +645,22 @@ def worldbook_auto_update_v1(
         if project is None:
             return {"ok": False, "project_id": pid, "reason": "project_not_found"}
 
-        preset = db_read.get(LLMPreset, pid)
-        if preset is None:
+        try:
+            resolved = _resolve_worldbook_llm_call(db=db_read, project=project, actor_user_id=actor_user_id)
+        except Exception as exc:
+            safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+            if not safe_message:
+                safe_message = type(exc).__name__
+            return {
+                "ok": False,
+                "project_id": pid,
+                "reason": "api_key_missing",
+                "error_type": type(exc).__name__,
+                "error_message": safe_message[:400],
+            }
+        if resolved is None:
             return {"ok": False, "project_id": pid, "reason": "llm_preset_missing"}
+        llm_call, api_key = resolved
 
         settings_row = db_read.get(ProjectSettings, pid)
         world_setting = (settings_row.world_setting if settings_row else "") or ""
@@ -654,7 +707,7 @@ def worldbook_auto_update_v1(
     finally:
         db_read.close()
 
-    if preset is None or project is None:
+    if project is None or llm_call is None:
         return {"ok": False, "project_id": pid, "reason": "llm_preset_missing"}
 
     system, user = build_worldbook_auto_update_prompt_v1(
@@ -667,25 +720,6 @@ def worldbook_auto_update_v1(
         existing_worldbook_entries_preview=existing_entries_preview,
     )
 
-    try:
-        db_key = SessionLocal()
-        try:
-            api_key = resolve_api_key_for_project(db_key, project=project, user_id=actor_user_id, header_api_key=None)
-        finally:
-            db_key.close()
-    except Exception as exc:
-        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
-        if not safe_message:
-            safe_message = type(exc).__name__
-        return {
-            "ok": False,
-            "project_id": pid,
-            "reason": "api_key_missing",
-            "error_type": type(exc).__name__,
-            "error_message": safe_message[:400],
-        }
-
-    llm_call = prepare_llm_call(preset)
     llm_attempts: list[dict[str, Any]] = []
 
     try:

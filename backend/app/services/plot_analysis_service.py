@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from sqlalchemy import delete, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
@@ -25,6 +25,7 @@ from app.schemas.chapter_analysis import ChapterAnalyzeRequest
 from app.services.chapter_context_service import build_chapter_analyze_render_values
 from app.services.generation_service import prepare_llm_call
 from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_task_preset_resolver import resolve_task_llm_config
 from app.services.llm_retry import (
     LlmRetryExhausted,
     call_llm_and_record_with_retries,
@@ -63,6 +64,42 @@ _ANALYSIS_SCHEMA_V1_LIST_ITEM_KEYS: dict[str, set[str]] = {
     "character_states": {"character_name", "state_before", "state_after", "psychological_change"},
     "suggestions": {"title", "excerpt", "issue", "recommendation", "priority"},
 }
+
+
+def _resolve_plot_llm_call(
+    *,
+    db: Session,
+    project: Project,
+    actor_user_id: str,
+) -> tuple[object, str] | None:
+    missing_key_exc: AppError | None = None
+    try:
+        resolved_task = resolve_task_llm_config(
+            db,
+            project=project,
+            user_id=actor_user_id,
+            task_key=PLOT_AUTO_UPDATE_KIND,
+            header_api_key=None,
+        )
+    except OperationalError:
+        resolved_task = None
+    except AppError as exc:
+        if str(exc.code or "") != "LLM_KEY_MISSING":
+            raise
+        missing_key_exc = exc
+        resolved_task = None
+
+    if resolved_task is not None:
+        return resolved_task.llm_call, str(resolved_task.api_key)
+
+    preset = db.get(LLMPreset, project.id)
+    if preset is None:
+        if missing_key_exc is not None:
+            raise missing_key_exc
+        return None
+
+    api_key = resolve_api_key_for_project(db, project=project, user_id=actor_user_id, header_api_key=None)
+    return prepare_llm_call(preset), str(api_key)
 
 
 def _canonical_json(value: dict[str, Any]) -> str:
@@ -677,7 +714,6 @@ def plot_auto_update_v1(
 
     db_read = SessionLocal()
     project: Project | None = None
-    preset: LLMPreset | None = None
     chapter_number = 0
     chapter_content_md = ""
     prompt_system = ""
@@ -685,6 +721,7 @@ def plot_auto_update_v1(
     prompt_messages = None
     prompt_render_log_json: str | None = None
     llm_call = None
+    api_key = ""
     try:
         chapter = db_read.get(Chapter, cid)
         if chapter is None:
@@ -700,10 +737,11 @@ def plot_auto_update_v1(
         if project is None:
             return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "project_not_found"}
 
-        preset = db_read.get(LLMPreset, pid)
-        if preset is None:
+        resolved = _resolve_plot_llm_call(db=db_read, project=project, actor_user_id=actor)
+        if resolved is None:
             return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "llm_preset_missing"}
 
+        llm_call, api_key = resolved
         chapter_number = int(getattr(chapter, "number", 0) or 0)
         chapter_content_md = str(getattr(chapter, "content_md", "") or "")
 
@@ -725,22 +763,9 @@ def plot_auto_update_v1(
             task="chapter_analyze",
             values=values,  # type: ignore[arg-type]
             macro_seed=f"{req}:plot_auto_update",
-            provider=preset.provider,
+            provider=llm_call.provider,
         )
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
-        llm_call = prepare_llm_call(preset)
-    finally:
-        db_read.close()
-
-    if project is None or preset is None or llm_call is None:
-        return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "llm_preset_missing"}
-
-    try:
-        db_key = SessionLocal()
-        try:
-            api_key = resolve_api_key_for_project(db_key, project=project, user_id=actor, header_api_key=None)
-        finally:
-            db_key.close()
     except Exception as exc:
         safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
         if not safe_message:
@@ -753,6 +778,11 @@ def plot_auto_update_v1(
             "error_type": type(exc).__name__,
             "error_message": safe_message[:400],
         }
+    finally:
+        db_read.close()
+
+    if project is None or llm_call is None:
+        return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "llm_preset_missing"}
 
     llm_attempts: list[dict[str, Any]] = []
     try:

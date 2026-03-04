@@ -10,15 +10,14 @@ from app.api.deps import DbDep, UserIdDep, require_chapter_editor, require_chapt
 from app.core.logging import log_event
 from app.core.errors import AppError, ok_payload
 from app.db.session import SessionLocal
-from app.models.llm_preset import LLMPreset
 from app.models.project import Project
 from app.models.story_memory import StoryMemory
 from app.schemas.chapter_analysis import ChapterAnalyzeRequest, ChapterAnalysisApplyRequest, ChapterRewriteRequest
 from app.schemas.memory_update import MemoryUpdateV1Request
 from app.services.annotations_service import build_annotations_from_story_memories
 from app.services.chapter_context_service import build_chapter_analyze_render_values, build_chapter_rewrite_render_values
-from app.services.generation_service import call_llm_and_record, prepare_llm_call, with_param_overrides
-from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.generation_service import call_llm_and_record, with_param_overrides
+from app.services.llm_task_preset_resolver import resolve_task_llm_config
 from app.services.memory_update_service import propose_chapter_memory_change_set
 from app.services.output_contracts import contract_for_task
 from app.services.plot_analysis_service import apply_chapter_analysis as apply_plot_analysis
@@ -31,6 +30,29 @@ from app.services.prompt_presets import (
 
 router = APIRouter()
 logger = logging.getLogger("ainovel")
+
+
+def _resolve_task_llm_for_call(
+    *,
+    db,
+    project: Project,
+    user_id: str,
+    task_key: str,
+    x_llm_provider: str | None,
+    x_llm_api_key: str | None,
+):
+    resolved = resolve_task_llm_config(
+        db,
+        project=project,
+        user_id=user_id,
+        task_key=task_key,
+        header_api_key=x_llm_api_key,
+    )
+    if resolved is None:
+        raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
+    if x_llm_api_key and x_llm_provider and resolved.llm_call.provider != x_llm_provider:
+        raise AppError(code="LLM_CONFIG_ERROR", message="当前任务 provider 与请求头不一致，请先保存/切换", status_code=400)
+    return resolved
 
 
 @router.post("/chapters/{chapter_id}/analyze")
@@ -61,6 +83,7 @@ def analyze_chapter(
     memupd_prompt_render_log_json: str | None = None
     memupd_prompt_messages = None
     memupd_llm_call = None
+    memupd_api_key = ""
 
     db = SessionLocal()
     try:
@@ -70,12 +93,15 @@ def analyze_chapter(
         if project is None:
             raise AppError.not_found()
 
-        preset = db.get(LLMPreset, project_id)
-        if preset is None:
-            raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-        if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
-            raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
-        resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
+        resolved_analyze = _resolve_task_llm_for_call(
+            db=db,
+            project=project,
+            user_id=user_id,
+            task_key="chapter_analyze",
+            x_llm_provider=x_llm_provider,
+            x_llm_api_key=x_llm_api_key,
+        )
+        resolved_api_key = str(resolved_analyze.api_key)
 
         ensure_default_chapter_analyze_preset(db, project_id=project_id, activate=True)
         values = build_chapter_analyze_render_values(db, project=project, chapter=chapter, body=body)
@@ -86,10 +112,10 @@ def analyze_chapter(
             task="chapter_analyze",
             values=values,  # type: ignore[arg-type]
             macro_seed=f"{request_id}:analyze",
-            provider=preset.provider,
+            provider=resolved_analyze.llm_call.provider,
         )
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
-        llm_call = prepare_llm_call(preset)
+        llm_call = resolved_analyze.llm_call
 
         if auto_memupd:
             # Avoid draft pollution: only run auto-propose against persisted + done chapters.
@@ -106,6 +132,16 @@ def analyze_chapter(
 
             if memupd_skip_reason is None:
                 _ensure_default_preset_from_resource(db, project_id=project_id, resource_key="memory_update_v1", activate=True)
+                resolved_memupd = _resolve_task_llm_for_call(
+                    db=db,
+                    project=project,
+                    user_id=user_id,
+                    task_key="memory_update",
+                    x_llm_provider=x_llm_provider,
+                    x_llm_api_key=x_llm_api_key,
+                )
+                memupd_llm_call = resolved_memupd.llm_call
+                memupd_api_key = str(resolved_memupd.api_key)
                 memupd_values = {
                     "chapter_id": str(chapter.id),
                     "chapter_number": int(chapter.number),
@@ -128,10 +164,9 @@ def analyze_chapter(
                     task="memory_update",
                     values=memupd_values,
                     macro_seed=f"{request_id}:memory_update",
-                    provider=preset.provider,
+                    provider=memupd_llm_call.provider,
                 )
                 memupd_prompt_render_log_json = json.dumps(memupd_render_log, ensure_ascii=False)
-                memupd_llm_call = prepare_llm_call(preset)
     finally:
         db.close()
 
@@ -187,7 +222,7 @@ def analyze_chapter(
                     project_id=project_id,
                     chapter_id=chapter_id,
                     run_type="memory_update_auto_propose",
-                    api_key=str(resolved_api_key),
+                    api_key=str(memupd_api_key or resolved_api_key),
                     prompt_system=memupd_prompt_system,
                     prompt_user=memupd_prompt_user,
                     prompt_messages=memupd_prompt_messages,
@@ -297,12 +332,15 @@ def rewrite_chapter(
         if project is None:
             raise AppError.not_found()
 
-        preset = db.get(LLMPreset, project_id)
-        if preset is None:
-            raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-        if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
-            raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
-        resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
+        resolved_rewrite = _resolve_task_llm_for_call(
+            db=db,
+            project=project,
+            user_id=user_id,
+            task_key="chapter_rewrite",
+            x_llm_provider=x_llm_provider,
+            x_llm_api_key=x_llm_api_key,
+        )
+        resolved_api_key = str(resolved_rewrite.api_key)
 
         ensure_default_chapter_rewrite_preset(db, project_id=project_id, activate=True)
         draft_content_md = body.draft_content_md if body.draft_content_md is not None else (chapter.content_md or "")
@@ -324,10 +362,10 @@ def rewrite_chapter(
             task="chapter_rewrite",
             values=values,  # type: ignore[arg-type]
             macro_seed=f"{request_id}:rewrite",
-            provider=preset.provider,
+            provider=resolved_rewrite.llm_call.provider,
         )
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
-        llm_call = prepare_llm_call(preset)
+        llm_call = resolved_rewrite.llm_call
     finally:
         db.close()
 

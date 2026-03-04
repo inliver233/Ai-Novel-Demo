@@ -9,6 +9,7 @@ from app.core.secrets import SecretCryptoError, encrypt_secret, mask_api_key
 from app.db.utils import new_id
 from app.llm.utils import default_max_tokens, normalize_base_url
 from app.models.llm_preset import LLMPreset
+from app.models.llm_task_preset import LLMTaskPreset
 from app.models.llm_profile import LLMProfile
 from app.models.project import Project
 from app.schemas.llm_profiles import LLMProfileCreate, LLMProfileOut, LLMProfileUpdate
@@ -75,6 +76,12 @@ def _sync_bound_project_presets(db: DbDep, profile: LLMProfile) -> None:
         preset.provider = profile.provider
         preset.base_url = base_url
         preset.model = profile.model
+
+    task_rows = db.execute(select(LLMTaskPreset).where(LLMTaskPreset.llm_profile_id == profile.id)).scalars().all()
+    for row in task_rows:
+        row.provider = profile.provider
+        row.base_url = base_url
+        row.model = profile.model
 
 
 @router.get("/llm_profiles")
@@ -158,6 +165,7 @@ def delete_profile(request: Request, db: DbDep, user_id: UserIdDep, profile_id: 
     row = require_owned_llm_profile(db, profile_id=profile_id, user_id=user_id)
 
     db.execute(update(Project).where(Project.llm_profile_id == profile_id).values(llm_profile_id=None))
+    db.execute(update(LLMTaskPreset).where(LLMTaskPreset.llm_profile_id == profile_id).values(llm_profile_id=None))
     db.delete(row)
     db.commit()
     return ok_payload(request_id=request_id, data={})

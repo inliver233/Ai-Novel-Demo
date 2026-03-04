@@ -80,13 +80,22 @@ def _coerce_text_config(extra: dict[str, Any] | None) -> dict[str, Any] | None:
     if not extra:
         return None
 
+    verbosity = extra.get("text_verbosity") or extra.get("textVerbosity") or extra.get("verbosity")
+    verbosity_value = verbosity.strip() if isinstance(verbosity, str) and verbosity.strip() else None
+
     text = extra.get("text")
     if isinstance(text, dict):
-        return text
+        out = dict(text)
+        if verbosity_value and not isinstance(out.get("verbosity"), str):
+            out["verbosity"] = verbosity_value
+        return out
 
     text_format = extra.get("text_format") or extra.get("textFormat")
     if isinstance(text_format, dict):
-        return {"format": text_format}
+        out: dict[str, Any] = {"format": text_format}
+        if verbosity_value:
+            out["verbosity"] = verbosity_value
+        return out
 
     # Convenience: accept Chat Completions `response_format` and convert common json_schema form.
     response_format = extra.get("response_format") or extra.get("responseFormat")
@@ -101,8 +110,17 @@ def _coerce_text_config(extra: dict[str, Any] | None) -> dict[str, Any] | None:
                 "strict": js.get("strict"),
             }
             fmt = {k: v for k, v in fmt.items() if v is not None}
-            return {"format": fmt}
-        return {"format": response_format}
+            out = {"format": fmt}
+            if verbosity_value:
+                out["verbosity"] = verbosity_value
+            return out
+        out = {"format": response_format}
+        if verbosity_value:
+            out["verbosity"] = verbosity_value
+        return out
+
+    if verbosity_value:
+        return {"verbosity": verbosity_value}
 
     return None
 
@@ -285,9 +303,6 @@ def call_openai_responses(
         seed = extra.get("seed")
         if isinstance(seed, int):
             payload["seed"] = seed
-        verbosity = extra.get("verbosity")
-        if isinstance(verbosity, str) and verbosity.strip():
-            payload["verbosity"] = verbosity.strip()
         reasoning = _coerce_reasoning_config(extra)
         if reasoning is not None:
             payload["reasoning"] = reasoning
@@ -448,9 +463,6 @@ def call_openai_responses_stream(
         seed = extra.get("seed")
         if isinstance(seed, int):
             payload["seed"] = seed
-        verbosity = extra.get("verbosity")
-        if isinstance(verbosity, str) and verbosity.strip():
-            payload["verbosity"] = verbosity.strip()
         reasoning = _coerce_reasoning_config(extra)
         if reasoning is not None:
             payload["reasoning"] = reasoning

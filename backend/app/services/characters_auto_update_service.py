@@ -5,9 +5,10 @@ import logging
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.logging import exception_log_fields, log_event, redact_secrets_text
 from app.db.session import SessionLocal
 from app.db.utils import new_id, utc_now
@@ -26,6 +27,7 @@ from app.schemas.characters_auto_update import (
 from app.services.generation_service import prepare_llm_call
 from app.services.json_repair_service import repair_json_once
 from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_task_preset_resolver import resolve_task_llm_config
 from app.services.llm_retry import (
     LlmRetryExhausted,
     call_llm_and_record_with_retries,
@@ -49,6 +51,42 @@ _MAX_EXISTING_NAMES_IN_PROMPT = 200
 
 def _compact_json_dumps(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _resolve_characters_llm_call(
+    *,
+    db: Session,
+    project: Project,
+    actor_user_id: str,
+) -> tuple[object, str] | None:
+    missing_key_exc: AppError | None = None
+    try:
+        resolved_task = resolve_task_llm_config(
+            db,
+            project=project,
+            user_id=actor_user_id,
+            task_key=CHARACTERS_AUTO_UPDATE_KIND,
+            header_api_key=None,
+        )
+    except OperationalError:
+        resolved_task = None
+    except AppError as exc:
+        if str(exc.code or "") != "LLM_KEY_MISSING":
+            raise
+        missing_key_exc = exc
+        resolved_task = None
+
+    if resolved_task is not None:
+        return resolved_task.llm_call, str(resolved_task.api_key)
+
+    preset = db.get(LLMPreset, project.id)
+    if preset is None:
+        if missing_key_exc is not None:
+            raise missing_key_exc
+        return None
+
+    api_key = resolve_api_key_for_project(db, project=project, user_id=actor_user_id, header_api_key=None)
+    return prepare_llm_call(preset), str(api_key)
 
 
 def _merge_text(old: str | None, new: str | None, mode: str | None) -> str | None:
@@ -292,7 +330,8 @@ def characters_auto_update_v1(
 
     db_read = SessionLocal()
     project: Project | None = None
-    preset: LLMPreset | None = None
+    llm_call = None
+    api_key = ""
     chapter_text = ""
     outline_text = ""
     existing_chars: list[dict[str, str | None]] = []
@@ -301,9 +340,23 @@ def characters_auto_update_v1(
         if project is None:
             return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "project_not_found"}
 
-        preset = db_read.get(LLMPreset, pid)
-        if preset is None:
+        try:
+            resolved = _resolve_characters_llm_call(db=db_read, project=project, actor_user_id=actor)
+        except Exception as exc:
+            safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
+            if not safe_message:
+                safe_message = type(exc).__name__
+            return {
+                "ok": False,
+                "project_id": pid,
+                "chapter_id": cid,
+                "reason": "api_key_missing",
+                "error_type": type(exc).__name__,
+                "error_message": safe_message[:400],
+            }
+        if resolved is None:
             return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "llm_preset_missing"}
+        llm_call, api_key = resolved
 
         chapter = db_read.get(Chapter, cid)
         if chapter is None or str(getattr(chapter, "project_id", "")) != pid:
@@ -333,7 +386,7 @@ def characters_auto_update_v1(
     finally:
         db_read.close()
 
-    if project is None or preset is None:
+    if project is None or llm_call is None:
         return {"ok": False, "project_id": pid, "chapter_id": cid, "reason": "llm_preset_missing"}
 
     system, user = build_characters_auto_update_prompt_v1(
@@ -342,27 +395,6 @@ def characters_auto_update_v1(
         chapter_content_md=chapter_text,
         existing_characters=existing_chars,
     )
-
-    try:
-        db_key = SessionLocal()
-        try:
-            api_key = resolve_api_key_for_project(db_key, project=project, user_id=actor, header_api_key=None)
-        finally:
-            db_key.close()
-    except Exception as exc:
-        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
-        if not safe_message:
-            safe_message = type(exc).__name__
-        return {
-            "ok": False,
-            "project_id": pid,
-            "chapter_id": cid,
-            "reason": "api_key_missing",
-            "error_type": type(exc).__name__,
-            "error_message": safe_message[:400],
-        }
-
-    llm_call = prepare_llm_call(preset)
 
     try:
         base_max_tokens = llm_call.params.get("max_tokens")

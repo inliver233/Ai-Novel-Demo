@@ -32,7 +32,6 @@ from app.llm.redaction import redact_text
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.generation_run import GenerationRun
-from app.models.llm_preset import LLMPreset
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.project_settings import ProjectSettings
@@ -47,7 +46,7 @@ from app.services.generation_pipeline import (
     run_plan_llm_step,
     run_post_edit_step,
 )
-from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_task_preset_resolver import resolve_task_llm_config, resolve_task_preset
 from app.services.llm_retry import (
     compute_backoff_seconds,
     is_retryable_llm_error,
@@ -364,6 +363,29 @@ def _build_memory_run_params_extra_json(
         params["memory_injection_config"] = memory_preparation.memory_injection_config
         params["memory_retrieval_log_json"] = memory_preparation.memory_retrieval_log_json
     return params
+
+
+def _resolve_task_llm_for_call(
+    *,
+    db: Session,
+    project: Project,
+    user_id: str,
+    task_key: str,
+    x_llm_provider: str | None,
+    x_llm_api_key: str | None,
+):
+    resolved = resolve_task_llm_config(
+        db,
+        project=project,
+        user_id=user_id,
+        task_key=task_key,
+        header_api_key=x_llm_api_key,
+    )
+    if resolved is None:
+        raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
+    if x_llm_api_key and x_llm_provider and resolved.llm_call.provider != x_llm_provider:
+        raise AppError(code="LLM_CONFIG_ERROR", message="当前任务 provider 与请求头不一致，请先保存/切换", status_code=400)
+    return resolved
 
 
 def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
@@ -808,12 +830,15 @@ def plan_chapter(
         if project is None:
             raise AppError.not_found()
 
-        preset = db.get(LLMPreset, project_id)
-        if preset is None:
-            raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-        if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
-            raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
-        resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
+        resolved_plan = _resolve_task_llm_for_call(
+            db=db,
+            project=project,
+            user_id=user_id,
+            task_key="plan_chapter",
+            x_llm_provider=x_llm_provider,
+            x_llm_api_key=x_llm_api_key,
+        )
+        resolved_api_key = str(resolved_plan.api_key)
 
         ensure_default_plan_preset(db, project_id=project_id)
 
@@ -899,10 +924,10 @@ def plan_chapter(
             task="plan_chapter",
             values=values,  # type: ignore[arg-type]
             macro_seed=f"{request_id}:plan",
-            provider=preset.provider,
+            provider=resolved_plan.llm_call.provider,
         )
         prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
-        llm_call = prepare_llm_call(preset)
+        llm_call = resolved_plan.llm_call
     finally:
         db.close()
 
@@ -968,11 +993,12 @@ def generate_chapter_precheck(
         if project is None:
             raise AppError.not_found()
 
-        preset = db.get(LLMPreset, project_id)
-        if preset is None:
+        preset_row, _ = resolve_task_preset(db, project_id=project_id, task_key="chapter_generate")
+        if preset_row is None:
             raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-        if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
-            raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
+        chapter_llm_call = prepare_llm_call(preset_row)
+        if x_llm_api_key and x_llm_provider and chapter_llm_call.provider != x_llm_provider:
+            raise AppError(code="LLM_CONFIG_ERROR", message="当前任务 provider 与请求头不一致，请先保存/切换", status_code=400)
 
         values, base_instruction, _, style_resolution = build_chapter_generate_render_values(
             db,
@@ -1020,7 +1046,7 @@ def generate_chapter_precheck(
             task="chapter_generate",
             values=values,  # type: ignore[arg-type]
             macro_seed=macro_seed,
-            provider=preset.provider,
+            provider=chapter_llm_call.provider,
         )
         prompt_system, prompt_user, prompt_messages, override_applied = _apply_prompt_override(
             prompt_system=prompt_system,
@@ -1079,9 +1105,12 @@ def generate_chapter(
     plan_prompt_system = ""
     plan_prompt_user = ""
     plan_prompt_render_log_json: str | None = None
+    plan_prompt_messages: list[ChatMessage] = []
     plan_out: dict[str, object] | None = None
     plan_warnings: list[str] = []
     plan_parse_error: dict[str, object] | None = None
+    plan_llm_call = None
+    plan_api_key = ""
     llm_call = None
     project_id = ""
 
@@ -1107,12 +1136,16 @@ def generate_chapter(
         if project is None:
             raise AppError.not_found()
 
-        preset = db.get(LLMPreset, project_id)
-        if preset is None:
-            raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-        if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
-            raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
-        resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
+        resolved_chapter = _resolve_task_llm_for_call(
+            db=db,
+            project=project,
+            user_id=user_id,
+            task_key="chapter_generate",
+            x_llm_provider=x_llm_provider,
+            x_llm_api_key=x_llm_api_key,
+        )
+        resolved_api_key = str(resolved_chapter.api_key)
+        llm_call = resolved_chapter.llm_call
 
         values, base_instruction, requirements_obj, style_resolution = build_chapter_generate_render_values(
             db,
@@ -1159,6 +1192,16 @@ def generate_chapter(
             )
 
         if body.plan_first:
+            resolved_plan = _resolve_task_llm_for_call(
+                db=db,
+                project=project,
+                user_id=user_id,
+                task_key="plan_chapter",
+                x_llm_provider=x_llm_provider,
+                x_llm_api_key=x_llm_api_key,
+            )
+            plan_llm_call = resolved_plan.llm_call
+            plan_api_key = str(resolved_plan.api_key)
             ensure_default_plan_preset(db, project_id=project_id)
             plan_values = dict(values)
             plan_values["instruction"] = base_instruction
@@ -1169,7 +1212,7 @@ def generate_chapter(
                 task="plan_chapter",
                 values=plan_values,  # type: ignore[arg-type]
                 macro_seed=f"{macro_seed}:plan",
-                provider=preset.provider,
+                provider=plan_llm_call.provider,
             )
             plan_prompt_render_log_json = json.dumps(plan_render_log, ensure_ascii=False)
         else:
@@ -1179,7 +1222,7 @@ def generate_chapter(
                 task="chapter_generate",
                 values=values,  # type: ignore[arg-type]
                 macro_seed=macro_seed,
-                provider=preset.provider,
+                provider=llm_call.provider,
             )
             precheck_prompt_system = prompt_system
             precheck_prompt_user = prompt_user
@@ -1204,7 +1247,6 @@ def generate_chapter(
                 final_prompt_messages=prompt_messages,
             )
 
-        llm_call = prepare_llm_call(preset)
     finally:
         db.close()
 
@@ -1227,8 +1269,8 @@ def generate_chapter(
             actor_user_id=user_id,
             project_id=project_id,
             chapter_id=chapter_id,
-            api_key=str(resolved_api_key),
-            llm_call=llm_call,
+            api_key=str(plan_api_key or resolved_api_key),
+            llm_call=plan_llm_call or llm_call,
             prompt_system=plan_prompt_system,
             prompt_user=plan_prompt_user,
             prompt_messages=plan_prompt_messages,
@@ -1446,6 +1488,8 @@ def generate_chapter_stream(
         plan_out: dict[str, object] | None = None
         plan_warnings: list[str] = []
         plan_parse_error: dict[str, object] | None = None
+        plan_llm_call = None
+        plan_api_key = ""
 
         llm_call = None
         project_id = ""
@@ -1459,14 +1503,16 @@ def generate_chapter_stream(
             if project is None:
                 raise AppError.not_found()
 
-            preset = db.get(LLMPreset, project_id)
-            if preset is None:
-                raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-            if x_llm_api_key and x_llm_provider and preset.provider != x_llm_provider:
-                raise AppError(code="LLM_CONFIG_ERROR", message="当前项目 provider 与请求头不一致，请先保存/切换", status_code=400)
-            resolved_api_key = resolve_api_key_for_project(
-                db, project=project, user_id=user_id, header_api_key=x_llm_api_key
+            resolved_chapter = _resolve_task_llm_for_call(
+                db=db,
+                project=project,
+                user_id=user_id,
+                task_key="chapter_generate",
+                x_llm_provider=x_llm_provider,
+                x_llm_api_key=x_llm_api_key,
             )
+            llm_call = resolved_chapter.llm_call
+            resolved_api_key = str(resolved_chapter.api_key)
 
             values, base_instruction, requirements_obj, style_resolution = build_chapter_generate_render_values(
                 db,
@@ -1513,6 +1559,16 @@ def generate_chapter_stream(
                 )
 
             if body.plan_first:
+                resolved_plan = _resolve_task_llm_for_call(
+                    db=db,
+                    project=project,
+                    user_id=user_id,
+                    task_key="plan_chapter",
+                    x_llm_provider=x_llm_provider,
+                    x_llm_api_key=x_llm_api_key,
+                )
+                plan_llm_call = resolved_plan.llm_call
+                plan_api_key = str(resolved_plan.api_key)
                 ensure_default_plan_preset(db, project_id=project_id)
                 plan_values = dict(values)
                 plan_values["instruction"] = base_instruction
@@ -1523,7 +1579,7 @@ def generate_chapter_stream(
                     task="plan_chapter",
                     values=plan_values,  # type: ignore[arg-type]
                     macro_seed=f"{macro_seed}:plan",
-                    provider=preset.provider,
+                    provider=plan_llm_call.provider,
                 )
                 plan_prompt_render_log_json = json.dumps(plan_render_log, ensure_ascii=False)
             else:
@@ -1533,7 +1589,7 @@ def generate_chapter_stream(
                     task="chapter_generate",
                     values=values,  # type: ignore[arg-type]
                     macro_seed=macro_seed,
-                    provider=preset.provider,
+                    provider=llm_call.provider,
                 )
                 precheck_prompt_system = prompt_system
                 precheck_prompt_user = prompt_user
@@ -1558,7 +1614,6 @@ def generate_chapter_stream(
                     final_prompt_messages=prompt_messages,
                 )
 
-            llm_call = prepare_llm_call(preset)
             run_params_json = build_run_params_json(
                 params_json=llm_call.params_json,
                 memory_retrieval_log_json=None,
@@ -1610,8 +1665,8 @@ def generate_chapter_stream(
                     actor_user_id=user_id,
                     project_id=project_id,
                     chapter_id=chapter_id,
-                    api_key=str(resolved_api_key),
-                    llm_call=llm_call,
+                    api_key=str(plan_api_key or resolved_api_key),
+                    llm_call=plan_llm_call or llm_call,
                     prompt_system=plan_prompt_system,
                     prompt_user=plan_prompt_user,
                     prompt_messages=plan_prompt_messages,

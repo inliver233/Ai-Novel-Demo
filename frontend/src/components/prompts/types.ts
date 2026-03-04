@@ -12,5 +12,26 @@ export type LlmForm = {
   top_k: string;
   stop: string;
   timeout_seconds: string;
+  reasoning_effort: string;
+  text_verbosity: string;
+  anthropic_thinking_enabled: boolean;
+  anthropic_thinking_budget_tokens: string;
+  gemini_thinking_budget: string;
+  gemini_include_thoughts: boolean;
   extra: string;
+};
+
+export type LlmTaskFormDraft = {
+  task_key: string;
+  llm_profile_id: string | null;
+  form: LlmForm;
+  isNew: boolean;
+};
+
+export type LlmModelListState = {
+  loading: boolean;
+  options: Array<{ id: string; display_name: string }>;
+  warning: string | null;
+  error: string | null;
+  requestId: string | null;
 };

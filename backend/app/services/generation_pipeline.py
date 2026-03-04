@@ -6,9 +6,11 @@ from dataclasses import dataclass
 
 from app.services.chapter_context_service import build_post_edit_render_values
 from app.services.generation_service import PreparedLlmCall, call_llm_and_record, with_param_overrides
+from app.models.project import Project
 from app.services.mcp.service import McpResearchConfig, McpToolCallResult, run_mcp_research_and_record
 from app.services.post_edit_validation import validate_content_optimize_output, validate_post_edit_output
 from app.services.output_contracts import contract_for_task
+from app.services.llm_task_preset_resolver import resolve_task_llm_config
 from app.services.prompt_presets import ensure_default_content_optimize_preset, ensure_default_post_edit_preset, render_preset_for_task
 from app.db.session import SessionLocal
 
@@ -109,7 +111,25 @@ def run_post_edit_step(
     post_edit_sanitize: bool = False,
     run_params_extra_json: dict[str, object] | None = None,
 ) -> PostEditStepResult:
+    effective_llm_call = llm_call
+    effective_api_key = str(api_key)
     with SessionLocal() as db:
+        project = db.get(Project, project_id)
+        if project is not None:
+            try:
+                resolved = resolve_task_llm_config(
+                    db,
+                    project=project,
+                    user_id=actor_user_id,
+                    task_key="post_edit",
+                    header_api_key=None,
+                )
+            except Exception:
+                resolved = None
+            if resolved is not None:
+                effective_llm_call = resolved.llm_call
+                effective_api_key = str(resolved.api_key)
+
         ensure_default_post_edit_preset(db, project_id=project_id)
         post_values = build_post_edit_render_values(render_values, raw_content=raw_content)
         post_values["post_edit_sanitize"] = bool(post_edit_sanitize)
@@ -120,11 +140,11 @@ def run_post_edit_step(
             task="post_edit",
             values=post_values,  # type: ignore[arg-type]
             macro_seed=macro_seed,
-            provider=llm_call.provider,
+            provider=effective_llm_call.provider,
         )
     post_render_log_json = json.dumps(post_render_log, ensure_ascii=False)
 
-    post_call = with_param_overrides(llm_call, {"temperature": 0.4})
+    post_call = with_param_overrides(effective_llm_call, {"temperature": 0.4})
     post_result = call_llm_and_record(
         logger=logger,
         request_id=request_id,
@@ -132,7 +152,7 @@ def run_post_edit_step(
         project_id=project_id,
         chapter_id=chapter_id,
         run_type="post_edit_sanitize" if post_edit_sanitize else "post_edit",
-        api_key=api_key,
+        api_key=effective_api_key,
         prompt_system=post_system,
         prompt_user=post_user,
         prompt_messages=post_messages,
@@ -178,7 +198,25 @@ def run_content_optimize_step(
     macro_seed: str,
     run_params_extra_json: dict[str, object] | None = None,
 ) -> ContentOptimizeStepResult:
+    effective_llm_call = llm_call
+    effective_api_key = str(api_key)
     with SessionLocal() as db:
+        project = db.get(Project, project_id)
+        if project is not None:
+            try:
+                resolved = resolve_task_llm_config(
+                    db,
+                    project=project,
+                    user_id=actor_user_id,
+                    task_key="content_optimize",
+                    header_api_key=None,
+                )
+            except Exception:
+                resolved = None
+            if resolved is not None:
+                effective_llm_call = resolved.llm_call
+                effective_api_key = str(resolved.api_key)
+
         ensure_default_content_optimize_preset(db, project_id=project_id)
         values = build_post_edit_render_values(render_values, raw_content=raw_content)
 
@@ -188,11 +226,11 @@ def run_content_optimize_step(
             task="content_optimize",
             values=values,  # type: ignore[arg-type]
             macro_seed=macro_seed,
-            provider=llm_call.provider,
+            provider=effective_llm_call.provider,
         )
     opt_render_log_json = json.dumps(opt_render_log, ensure_ascii=False)
 
-    opt_call = with_param_overrides(llm_call, {"temperature": 0.35})
+    opt_call = with_param_overrides(effective_llm_call, {"temperature": 0.35})
     opt_result = call_llm_and_record(
         logger=logger,
         request_id=request_id,
@@ -200,7 +238,7 @@ def run_content_optimize_step(
         project_id=project_id,
         chapter_id=chapter_id,
         run_type="content_optimize",
-        api_key=api_key,
+        api_key=effective_api_key,
         prompt_system=opt_system,
         prompt_user=opt_user,
         prompt_messages=opt_messages,

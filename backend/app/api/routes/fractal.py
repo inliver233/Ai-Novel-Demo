@@ -10,11 +10,9 @@ from app.api.deps import UserIdDep, require_project_editor, require_project_view
 from app.core.errors import AppError, ok_payload
 from app.core.logging import exception_log_fields, log_event
 from app.db.session import SessionLocal
-from app.models.llm_preset import LLMPreset
 from app.models.project import Project
 from app.services.fractal_memory_service import get_fractal_context, rebuild_fractal_memory, rebuild_fractal_memory_v2
-from app.services.generation_service import prepare_llm_call
-from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_task_preset_resolver import resolve_task_llm_config
 
 router = APIRouter()
 logger = logging.getLogger("ainovel")
@@ -54,15 +52,23 @@ def rebuild_fractal(
             stage = "resolve_project"
             project = db.get(Project, project_id)
             resolved_api_key = ""
+            llm_call = None
             if project is not None:
                 try:
-                    stage = "resolve_api_key"
-                    resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=user_id, header_api_key=x_llm_api_key)
+                    stage = "resolve_llm_task"
+                    resolved = resolve_task_llm_config(
+                        db,
+                        project=project,
+                        user_id=user_id,
+                        task_key="fractal_v2",
+                        header_api_key=x_llm_api_key,
+                    )
+                    if resolved is not None:
+                        resolved_api_key = str(resolved.api_key)
+                        llm_call = resolved.llm_call
                 except AppError:
                     resolved_api_key = ""
-            stage = "load_llm_preset"
-            preset = db.get(LLMPreset, project_id)
-            llm_call = prepare_llm_call(preset) if preset is not None else None
+                    llm_call = None
             stage = "rebuild_v2"
             out = rebuild_fractal_memory_v2(
                 db=db,

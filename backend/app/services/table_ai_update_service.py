@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
@@ -18,9 +18,10 @@ from app.models.llm_preset import LLMPreset
 from app.models.project import Project
 from app.models.project_table import ProjectTable, ProjectTableRow
 from app.models.project_task import ProjectTask
-from app.services.json_repair_service import repair_json_once
 from app.services.generation_service import prepare_llm_call
+from app.services.json_repair_service import repair_json_once
 from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_task_preset_resolver import resolve_task_llm_config
 from app.services.llm_retry import (
     LlmRetryExhausted,
     call_llm_and_record_with_retries,
@@ -48,6 +49,42 @@ _MAX_OPS_AI_RETRY_V1 = 12
 
 def _compact_json_dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _resolve_table_llm_call(
+    *,
+    db: Session,
+    project: Project,
+    actor_user_id: str,
+) -> tuple[object, str] | None:
+    missing_key_exc: AppError | None = None
+    try:
+        resolved_task = resolve_task_llm_config(
+            db,
+            project=project,
+            user_id=actor_user_id,
+            task_key=TABLE_AI_UPDATE_KIND,
+            header_api_key=None,
+        )
+    except OperationalError:
+        resolved_task = None
+    except AppError as exc:
+        if str(exc.code or "") != "LLM_KEY_MISSING":
+            raise
+        missing_key_exc = exc
+        resolved_task = None
+
+    if resolved_task is not None:
+        return resolved_task.llm_call, str(resolved_task.api_key)
+
+    preset = db.get(LLMPreset, project.id)
+    if preset is None:
+        if missing_key_exc is not None:
+            raise missing_key_exc
+        return None
+
+    api_key = resolve_api_key_for_project(db, project=project, user_id=actor_user_id, header_api_key=None)
+    return prepare_llm_call(preset), str(api_key)
 
 
 def _safe_json_loads(value: str | None) -> Any | None:
@@ -381,12 +418,11 @@ def table_ai_update_v1(
         schema_obj = _safe_json_loads(str(getattr(table, "schema_json", "") or ""))
         schema_dict = schema_obj if isinstance(schema_obj, dict) else {}
 
-        preset = db.get(LLMPreset, pid)
-        if preset is None:
+        resolved = _resolve_table_llm_call(db=db, project=project, actor_user_id=actor)
+        if resolved is None:
             return {"ok": False, "project_id": pid, "reason": "llm_preset_missing"}
 
-        resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=actor, header_api_key=None)
-        llm_call = prepare_llm_call(preset)
+        llm_call, resolved_api_key = resolved
         prompt_system, prompt_user = build_table_ai_update_prompt_v1(
             project_id=pid,
             table=table,

@@ -14,7 +14,6 @@ from app.db.utils import new_id
 from app.models.batch_generation_task import BatchGenerationTask, BatchGenerationTaskItem
 from app.models.chapter import Chapter
 from app.models.character import Character
-from app.models.llm_preset import LLMPreset
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.project_settings import ProjectSettings
@@ -25,10 +24,10 @@ from app.services.chapter_context_service import (
     inject_plan_into_render_values,
     load_previous_chapter_context,
 )
-from app.services.generation_service import PreparedLlmCall, prepare_llm_call, with_param_overrides
+from app.services.generation_service import PreparedLlmCall, with_param_overrides
 from app.services.generation_pipeline import run_chapter_generate_llm_step, run_content_optimize_step, run_plan_llm_step, run_post_edit_step
 from app.services.length_control import estimate_max_tokens
-from app.services.llm_key_resolver import resolve_api_key_for_project
+from app.services.llm_task_preset_resolver import resolve_task_llm_config
 from app.services.style_resolution_service import resolve_style_guide
 from app.services.prompt_presets import ensure_default_plan_preset, render_preset_for_task
 from app.services.prompt_store import format_characters
@@ -122,11 +121,18 @@ def _prepare_project_context(
         if project is None:
             raise AppError.not_found()
 
-        preset = db.get(LLMPreset, project_id)
-        if preset is None:
+        resolved_task = resolve_task_llm_config(
+            db,
+            project=project,
+            user_id=actor_user_id,
+            task_key="chapter_generate",
+            header_api_key=None,
+        )
+        if resolved_task is None:
             raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
 
-        resolved_api_key = resolve_api_key_for_project(db, project=project, user_id=actor_user_id, header_api_key=None)
+        llm_call = resolved_task.llm_call
+        resolved_api_key = resolved_task.api_key
 
         settings_row = db.get(ProjectSettings, project_id)
         outline_row = db.get(Outline, outline_id)
@@ -169,7 +175,6 @@ def _prepare_project_context(
             settings_style_guide=style_guide,
         )
 
-        llm_call = prepare_llm_call(preset)
         return (
             project,
             llm_call,
@@ -346,6 +351,18 @@ def run_batch_generation_task(*, task_id: str) -> None:
 
             if params.plan_first:
                 with SessionLocal() as db:
+                    plan_llm_call = llm_call
+                    plan_api_key = resolved_api_key
+                    resolved_plan = resolve_task_llm_config(
+                        db,
+                        project=project,
+                        user_id=actor_user_id,
+                        task_key="plan_chapter",
+                        header_api_key=None,
+                    )
+                    if resolved_plan is not None:
+                        plan_llm_call = resolved_plan.llm_call
+                        plan_api_key = resolved_plan.api_key
                     ensure_default_plan_preset(db, project_id=task.project_id)
                     plan_values = dict(values)
                     plan_values["instruction"] = base_instruction
@@ -356,7 +373,7 @@ def run_batch_generation_task(*, task_id: str) -> None:
                         task="plan_chapter",
                         values=plan_values,  # type: ignore[arg-type]
                         macro_seed=f"{chapter_request_id}:plan",
-                        provider=llm_call.provider,
+                        provider=plan_llm_call.provider,
                     )
                 plan_render_log_json = json.dumps(plan_render_log, ensure_ascii=False)
                 plan_step = run_plan_llm_step(
@@ -365,8 +382,8 @@ def run_batch_generation_task(*, task_id: str) -> None:
                     actor_user_id=actor_user_id,
                     project_id=task.project_id,
                     chapter_id=chapter_id,
-                    api_key=str(resolved_api_key),
-                    llm_call=llm_call,
+                    api_key=str(plan_api_key),
+                    llm_call=plan_llm_call,
                     prompt_system=plan_system,
                     prompt_user=plan_user,
                     prompt_messages=plan_messages,
