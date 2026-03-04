@@ -44,7 +44,9 @@ test("ui: core pages navigate and render", async ({ page, request }) => {
   await expect(page.getByRole("button", { name: "AI 生成大纲", exact: true })).toBeVisible();
 
   await page.getByLabel("模型配置 (nav_prompts)", { exact: true }).click();
-  await expect(page.locator('select[name="provider"]')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/prompts$`));
+  await expect(page.getByRole("heading", { name: "模型配置", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "测试连接", exact: true })).toBeVisible();
 
   await page.getByLabel("提示词工作室 (nav_prompt_studio)", { exact: true }).click();
   await expect(page.getByRole("button", { name: "一键启用推荐预设（大纲/章节）", exact: true })).toBeVisible();
