@@ -35,6 +35,8 @@ type OutlineGenForm = {
 };
 
 type OutlineLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LLMPreset };
+const STREAM_RAW_MAX_CHARS = 36000;
+const STREAM_RAW_PREFIX_RE = /^\[raw 已截断前 \d+ 字符，仅保留最近 \d+ 字符\]\n/;
 
 function extractOutlineChapters(structure: unknown): OutlineGenChapter[] {
   if (!structure || typeof structure !== "object") return [];
@@ -105,6 +107,15 @@ function toFinalPreviewJson(result: OutlineGenResult): string {
     null,
     2,
   );
+}
+
+function appendCappedRawText(prev: string, chunk: string, maxChars = STREAM_RAW_MAX_CHARS): string {
+  if (!chunk) return prev;
+  const previousBody = prev.replace(STREAM_RAW_PREFIX_RE, "");
+  const merged = `${previousBody}${chunk}`;
+  if (merged.length <= maxChars) return merged;
+  const omitted = merged.length - maxChars;
+  return `[raw 已截断前 ${omitted} 字符，仅保留最近 ${maxChars} 字符]\n${merged.slice(-maxChars)}`;
 }
 
 export function OutlinePage() {
@@ -887,7 +898,7 @@ export function OutlinePage() {
                     onChunk: (content) => {
                       genStreamHasChunkRef.current = true;
                       streamRawText += content;
-                      setGenStreamRawText((prev) => prev + content);
+                      setGenStreamRawText((prev) => appendCappedRawText(prev, content));
                     },
                     onResult: (data) => {
                       void applyStreamResult(data, streamRawText);

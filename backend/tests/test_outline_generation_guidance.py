@@ -266,6 +266,26 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         self.assertNotIn("<CHAPTER_TARGET>", user)
         self.assertIn("<SEGMENT_TASK>", user)
         self.assertIn("当前批次缺失章号", user)
+        self.assertIn("当前批次章号数组", user)
+        self.assertIn("已完成章号（禁止输出）", user)
+        self.assertIn("输出前自检", user)
+
+    def test_build_outline_segment_prompts_includes_previous_attempt_feedback(self) -> None:
+        _system, user = _build_outline_segment_prompts(
+            base_prompt_system="sys",
+            base_prompt_user="<REQUIREMENTS_JSON>{\"chapter_count\":120}</REQUIREMENTS_JSON>",
+            target_chapter_count=120,
+            batch_numbers=[11, 12, 13],
+            existing_chapters=[{"number": 1, "title": "第一章", "beats": ["a"]}],
+            existing_outline_md="总纲",
+            attempt=2,
+            max_attempts=5,
+            previous_output_numbers=[1, 2, 3],
+            previous_failure_reason="输出章号与当前批次不匹配",
+        )
+        self.assertIn("<LAST_ATTEMPT_FEEDBACK>", user)
+        self.assertIn("输出章号与当前批次不匹配", user)
+        self.assertIn("上一轮输出章号：1-3", user)
 
     def test_segment_chapter_index_is_budgeted(self) -> None:
         chapters = [

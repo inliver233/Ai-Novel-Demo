@@ -574,18 +574,44 @@ def _build_outline_segment_prompts(
     existing_outline_md: str,
     attempt: int,
     max_attempts: int,
+    previous_output_numbers: list[int] | None = None,
+    previous_failure_reason: str | None = None,
 ) -> tuple[str, str]:
     base_user = _strip_segment_conflicting_prompt_sections(base_prompt_user)
     missing_ranges = _format_chapter_number_ranges(batch_numbers)
+    missing_numbers_json = json.dumps(batch_numbers, ensure_ascii=False)
     detail_rule = _outline_fill_detail_rule(
         target_chapter_count=target_chapter_count,
         existing_chapters=existing_chapters,
     )
+    existing_numbers_set: set[int] = set()
+    for chapter in existing_chapters:
+        try:
+            number = int(chapter.get("number"))
+        except Exception:
+            continue
+        if number > 0:
+            existing_numbers_set.add(number)
+    existing_numbers = sorted(existing_numbers_set)
+    existing_ranges = _format_chapter_number_ranges(existing_numbers)
     chapter_index = _build_outline_segment_chapter_index(existing_chapters)
     recent_window = _build_outline_segment_recent_window(existing_chapters)
     outline_anchor = (existing_outline_md or "").strip()
     if len(outline_anchor) > 3600:
         outline_anchor = outline_anchor[:3600]
+    feedback_block = ""
+    if attempt > 1:
+        prev_numbers_text = _format_chapter_number_ranges(previous_output_numbers or [])
+        if not prev_numbers_text:
+            prev_numbers_text = "（无可识别章号）"
+        failure_reason = (previous_failure_reason or "上一轮输出未满足当前批次约束").strip()
+        feedback_block = (
+            "<LAST_ATTEMPT_FEEDBACK>\n"
+            f"上一轮失败原因：{failure_reason}\n"
+            f"上一轮输出章号：{prev_numbers_text}\n"
+            "本轮必须纠正：只输出当前批次章号数组对应的章节。\n"
+            "</LAST_ATTEMPT_FEEDBACK>\n"
+        )
 
     system = (
         f"{base_prompt_system}\n\n"
@@ -602,16 +628,21 @@ def _build_outline_segment_prompts(
         "<SEGMENT_TASK>\n"
         f"目标总章数：{target_chapter_count}\n"
         f"当前批次缺失章号：{missing_ranges}\n"
+        f"当前批次章号数组（严格按此输出）：{missing_numbers_json}\n"
+        f"已完成章号（禁止输出）：{existing_ranges or '（空）'}\n"
         f"当前尝试：第 {attempt}/{max_attempts} 轮（仅补当前批次缺失章号）\n"
         f"已生成章节标题索引（全量，不可改写）：{chapter_index}\n"
         f"最近章节细节（用于衔接语义）：{recent_window}\n"
         f"全书总纲锚点（不可改写）：{outline_anchor}\n"
         f"每章细节规则：{detail_rule}\n"
+        f"{feedback_block}"
         "输出要求：\n"
         "- chapters 只能包含当前批次缺失章号，且必须全部覆盖。\n"
         "- number 必须严格等于指定章号，不得跳号/重号。\n"
+        "- 若输出任何已完成章号或范围外章号，本轮会被判定失败并重试。\n"
         "- title 简洁明确，beats 使用短句、强调因果推进。\n"
         "- outline_md 可沿用既有总纲，不得输出空对象或额外字段。\n"
+        "- 输出前自检：chapters.number 集合必须与当前批次章号数组完全一致。\n"
         "</SEGMENT_TASK>"
     )
     return system, user
@@ -639,6 +670,12 @@ def _outline_segment_progress_message(progress: dict[str, object] | None) -> str
         return f"长篇分段生成启动：共 {batch_count} 批"
     if event == "batch_attempt_start":
         return f"分段生成 第 {batch_index}/{batch_count} 批（章号 {range_text}），尝试 {attempt}/{max_attempts}"
+    if event == "batch_call_failed":
+        return f"分段生成 第 {batch_index}/{batch_count} 批调用失败，自动重试（{attempt}/{max_attempts}）"
+    if event == "batch_parse_failed":
+        return f"分段生成 第 {batch_index}/{batch_count} 批解析失败，自动重试（{attempt}/{max_attempts}）"
+    if event == "batch_no_progress":
+        return f"分段生成 第 {batch_index}/{batch_count} 批无有效新章，自动重试（{attempt}/{max_attempts}）"
     if event == "batch_applied":
         if target > 0:
             return f"分段生成已完成 {completed}/{target} 章，剩余 {remaining} 章"
@@ -650,6 +687,21 @@ def _outline_segment_progress_message(progress: dict[str, object] | None) -> str
     if target > 0 and completed > 0:
         return f"分段生成中... 已完成 {completed}/{target} 章"
     return "长篇分段生成中..."
+
+
+def _extract_outline_chapter_numbers(chapters: list[dict[str, object]], *, limit: int = 64) -> list[int]:
+    numbers: set[int] = set()
+    for chapter in chapters:
+        try:
+            number = int(chapter.get("number"))
+        except Exception:
+            continue
+        if number <= 0:
+            continue
+        numbers.add(number)
+        if len(numbers) >= limit:
+            break
+    return sorted(numbers)
 
 
 def _merge_segment_chapters(
@@ -726,6 +778,8 @@ def _generate_outline_segmented_with_llm(
         max_attempts = _outline_segment_max_attempts_for_batch(len(batch))
         stagnant_attempts = 0
         attempt = 0
+        last_failure_reason: str | None = None
+        last_output_numbers: list[int] | None = None
 
         while missing_numbers and attempt < max_attempts:
             attempt += 1
@@ -754,6 +808,8 @@ def _generate_outline_segmented_with_llm(
                 existing_outline_md=outline_md,
                 attempt=attempt,
                 max_attempts=max_attempts,
+                previous_output_numbers=last_output_numbers,
+                previous_failure_reason=last_failure_reason,
             )
 
             current_max_tokens = llm_call.params.get("max_tokens")
@@ -793,6 +849,8 @@ def _generate_outline_segmented_with_llm(
                 warnings.append("outline_segment_call_failed")
                 if exc.code == "LLM_TIMEOUT":
                     warnings.append("outline_segment_timeout")
+                last_failure_reason = f"模型调用失败（{exc.code}）"
+                last_output_numbers = None
                 stagnant_attempts += 1
                 _emit_progress(
                     {
@@ -804,6 +862,7 @@ def _generate_outline_segmented_with_llm(
                         "target_chapter_count": target_chapter_count,
                         "completed_count": len(chapters_by_number),
                         "remaining_count": target_chapter_count - len(chapters_by_number),
+                        "failure_reason": last_failure_reason,
                         "progress_percent": 12 + int(min(1.0, len(chapters_by_number) / max(1, target_chapter_count)) * 70),
                     }
                 )
@@ -832,6 +891,8 @@ def _generate_outline_segmented_with_llm(
                 warnings.append("outline_segment_parse_failed")
                 if segment_res.finish_reason == "length":
                     warnings.append("outline_segment_truncated")
+                last_failure_reason = str(parsed_error.get("message") or "输出解析失败")
+                last_output_numbers = None
                 _emit_progress(
                     {
                         "event": "batch_parse_failed",
@@ -845,6 +906,7 @@ def _generate_outline_segmented_with_llm(
                         "remaining_count": target_chapter_count - len(chapters_by_number),
                         "raw_output_preview": segment_raw_preview,
                         "raw_output_chars": segment_raw_chars,
+                        "failure_reason": last_failure_reason,
                         "progress_percent": 12 + int(min(1.0, len(chapters_by_number) / max(1, target_chapter_count)) * 70),
                     }
                 )
@@ -859,6 +921,7 @@ def _generate_outline_segmented_with_llm(
 
             incoming = parsed_data.get("chapters")
             incoming_chapters = incoming if isinstance(incoming, list) else []
+            incoming_numbers = _extract_outline_chapter_numbers(incoming_chapters, limit=120)
             accepted, accepted_numbers = _merge_segment_chapters(
                 by_number=chapters_by_number,
                 incoming=incoming_chapters,
@@ -866,12 +929,42 @@ def _generate_outline_segmented_with_llm(
             )
             if accepted <= 0:
                 warnings.append("outline_segment_no_progress")
+                missing_set = set(missing_numbers)
+                overlap_numbers = [n for n in incoming_numbers if n in missing_set]
+                if incoming_numbers and not overlap_numbers:
+                    last_failure_reason = "输出章号与当前批次不匹配（疑似重复旧章节）"
+                elif incoming_numbers:
+                    last_failure_reason = "输出章号包含目标范围，但未形成可采纳新章节"
+                else:
+                    last_failure_reason = "未输出可识别章节"
+                last_output_numbers = incoming_numbers
+                _emit_progress(
+                    {
+                        "event": "batch_no_progress",
+                        "batch_index": batch_index,
+                        "batch_count": batch_count,
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "range": range_text,
+                        "incoming_numbers": incoming_numbers,
+                        "incoming_numbers_text": _format_chapter_number_ranges(incoming_numbers),
+                        "target_chapter_count": target_chapter_count,
+                        "completed_count": len(chapters_by_number),
+                        "remaining_count": target_chapter_count - len(chapters_by_number),
+                        "raw_output_preview": segment_raw_preview,
+                        "raw_output_chars": segment_raw_chars,
+                        "failure_reason": last_failure_reason,
+                        "progress_percent": 12 + int(min(1.0, len(chapters_by_number) / max(1, target_chapter_count)) * 70),
+                    }
+                )
                 stagnant_attempts += 1
                 if stagnant_attempts >= OUTLINE_SEGMENT_STAGNANT_ATTEMPTS_LIMIT:
                     break
                 continue
 
             warnings.append("outline_segment_applied")
+            last_failure_reason = None
+            last_output_numbers = None
             stagnant_attempts = 0
             missing_numbers = [n for n in batch if n not in chapters_by_number]
             chapters_snapshot = _clone_outline_chapters([chapters_by_number[n] for n in sorted(chapters_by_number.keys())])
@@ -1864,6 +1957,7 @@ def generate_outline_stream(
                 if not isinstance(update, dict):
                     return
                 with segment_progress_lock:
+                    segment_progress.clear()
                     segment_progress.update(update)
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -2126,6 +2220,7 @@ def generate_outline_stream(
                     if not isinstance(update, dict):
                         return
                     with fill_progress_lock:
+                        fill_progress.clear()
                         fill_progress.update(update)
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
