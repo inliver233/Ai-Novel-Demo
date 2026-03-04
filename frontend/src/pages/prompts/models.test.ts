@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { LLMPreset } from "../../types";
-import { buildPresetPayload, DEFAULT_LLM_FORM, formFromPreset, payloadEquals, payloadFromPreset } from "./models";
+import type { LLMProfile, LLMPreset } from "../../types";
+import {
+  buildPresetPayload,
+  DEFAULT_LLM_FORM,
+  formFromPreset,
+  formFromProfile,
+  payloadEquals,
+  payloadFromPreset,
+} from "./models";
 
 describe("prompts/models", () => {
   it("parses responses reasoning/text verbosity from extra", () => {
@@ -80,5 +87,35 @@ describe("prompts/models", () => {
     expect(payloadB.ok).toBe(true);
     if (!payloadB.ok) return;
     expect(payloadEquals(payloadA, payloadB.payload)).toBe(true);
+  });
+
+  it("maps profile template to form for fast switching", () => {
+    const profile: LLMProfile = {
+      id: "prof-1",
+      owner_user_id: "u1",
+      name: "模板A",
+      provider: "openai_compatible",
+      base_url: "https://api.example.com/v1",
+      model: "x-model",
+      temperature: 0.25,
+      top_p: 0.95,
+      max_tokens: 4096,
+      presence_penalty: 0,
+      frequency_penalty: 0.1,
+      top_k: null,
+      stop: ["END"],
+      timeout_seconds: 222,
+      extra: { reasoning_effort: "low" },
+      has_api_key: true,
+      masked_api_key: "sk-****1234",
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+    const form = formFromProfile(profile);
+    expect(form.provider).toBe("openai_compatible");
+    expect(form.model).toBe("x-model");
+    expect(form.timeout_seconds).toBe("222");
+    expect(form.stop).toContain("END");
+    expect(form.reasoning_effort).toBe("low");
   });
 });

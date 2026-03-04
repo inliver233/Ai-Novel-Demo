@@ -1,5 +1,5 @@
 import type { LlmForm } from "../../components/prompts/types";
-import type { LLMPreset, LLMProvider, LLMTaskPreset, ProjectSettings } from "../../types";
+import type { LLMProfile, LLMPreset, LLMProvider, LLMTaskPreset, ProjectSettings } from "../../types";
 
 export type LlmCapabilities = {
   provider: string;
@@ -338,6 +338,25 @@ export function formFromPreset(preset: LLMPreset | LLMTaskPreset): LlmForm {
     gemini_include_thoughts: Boolean(thinkingConfig.includeThoughts),
     extra: JSON.stringify(extra, null, 2),
   };
+}
+
+export function formFromProfile(profile: LLMProfile): LlmForm {
+  const syntheticPreset: LLMPreset = {
+    project_id: "",
+    provider: profile.provider,
+    base_url: profile.base_url ?? "",
+    model: profile.model,
+    temperature: profile.temperature ?? null,
+    top_p: profile.top_p ?? null,
+    max_tokens: profile.max_tokens ?? null,
+    presence_penalty: profile.presence_penalty ?? null,
+    frequency_penalty: profile.frequency_penalty ?? null,
+    top_k: profile.top_k ?? null,
+    stop: profile.stop ?? [],
+    timeout_seconds: profile.timeout_seconds ?? null,
+    extra: profile.extra ?? {},
+  };
+  return formFromPreset(syntheticPreset);
 }
 
 export function payloadFromPreset(preset: LLMPreset | LLMTaskPreset): LlmPresetPayload {

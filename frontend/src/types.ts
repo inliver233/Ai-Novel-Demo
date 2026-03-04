@@ -211,6 +211,15 @@ export interface LLMProfile {
   provider: LLMProvider;
   base_url?: string | null;
   model: string;
+  temperature?: number | null;
+  top_p?: number | null;
+  max_tokens?: number | null;
+  presence_penalty?: number | null;
+  frequency_penalty?: number | null;
+  top_k?: number | null;
+  stop?: string[];
+  timeout_seconds?: number | null;
+  extra?: Record<string, unknown>;
   has_api_key: boolean;
   masked_api_key?: string | null;
   created_at: string;

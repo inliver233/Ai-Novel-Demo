@@ -30,6 +30,7 @@ import {
   buildPresetPayload,
   DEFAULT_LLM_FORM,
   DEFAULT_VECTOR_RAG_FORM,
+  formFromProfile,
   formFromPreset,
   mapVectorFormFromSettings,
   payloadEquals,
@@ -499,20 +500,26 @@ export function PromptsPage() {
     });
   }, []);
 
-  const updateTaskProfile = useCallback((taskKey: string, profileId: string | null) => {
-    setTaskDrafts((prev) => {
-      const current = prev[taskKey];
-      if (!current) return prev;
-      return {
-        ...prev,
-        [taskKey]: {
-          ...current,
-          llm_profile_id: profileId,
-        },
-      };
-    });
-    setTaskApiKeyDrafts((prev) => ({ ...prev, [taskKey]: "" }));
-  }, []);
+  const updateTaskProfile = useCallback(
+    (taskKey: string, profileId: string | null) => {
+      const targetProfile = profileId ? (profiles.find((item) => item.id === profileId) ?? null) : null;
+      const nextForm = targetProfile ? formFromProfile(targetProfile) : { ...llmForm };
+      setTaskDrafts((prev) => {
+        const current = prev[taskKey];
+        if (!current) return prev;
+        return {
+          ...prev,
+          [taskKey]: {
+            ...current,
+            llm_profile_id: profileId,
+            form: nextForm,
+          },
+        };
+      });
+      setTaskApiKeyDrafts((prev) => ({ ...prev, [taskKey]: "" }));
+    },
+    [llmForm, profiles],
+  );
 
   const updateTaskApiKeyDraft = useCallback((taskKey: string, value: string) => {
     setTaskApiKeyDrafts((prev) => ({ ...prev, [taskKey]: value }));
@@ -1109,19 +1116,31 @@ export function PromptsPage() {
       toast.toastError("请先填写“新建配置名”");
       return;
     }
+    const payload = buildPresetPayload(llmForm);
+    if (!payload.ok) {
+      toast.toastError(payload.message);
+      return;
+    }
 
     setProfileBusy(true);
     try {
       const apiKeyInput = apiKey.trim();
-      const model = llmForm.model.trim();
-      const baseUrl = llmForm.base_url.trim();
       const res = await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles`, {
         method: "POST",
         body: JSON.stringify({
           name,
-          provider: llmForm.provider,
-          base_url: baseUrl ? baseUrl : null,
-          model,
+          provider: payload.payload.provider,
+          base_url: payload.payload.base_url,
+          model: payload.payload.model,
+          temperature: payload.payload.temperature,
+          top_p: payload.payload.top_p,
+          max_tokens: payload.payload.max_tokens,
+          presence_penalty: payload.payload.presence_penalty,
+          frequency_penalty: payload.payload.frequency_penalty,
+          top_k: payload.payload.top_k,
+          stop: payload.payload.stop,
+          timeout_seconds: payload.payload.timeout_seconds,
+          extra: payload.payload.extra,
           api_key: apiKeyInput ? apiKeyInput : undefined,
         }),
       });
@@ -1139,18 +1158,7 @@ export function PromptsPage() {
     } finally {
       setProfileBusy(false);
     }
-  }, [
-    apiKey,
-    llmForm.base_url,
-    llmForm.model,
-    llmForm.provider,
-    profileBusy,
-    profileName,
-    projectId,
-    reloadAll,
-    refreshWizard,
-    toast,
-  ]);
+  }, [apiKey, llmForm, profileBusy, profileName, projectId, reloadAll, refreshWizard, toast]);
 
   const updateProfile = useCallback(async () => {
     if (!projectId) return;
@@ -1163,18 +1171,30 @@ export function PromptsPage() {
       const ok = await saveAllDirtyModules();
       if (!ok) return;
     }
+    const payload = buildPresetPayload(llmForm);
+    if (!payload.ok) {
+      toast.toastError(payload.message);
+      return;
+    }
     const name = profileName.trim();
     setProfileBusy(true);
     try {
-      const model = llmForm.model.trim();
-      const baseUrl = llmForm.base_url.trim();
       await apiJson<{ profile: LLMProfile }>(`/api/llm_profiles/${selectedProfileId}`, {
         method: "PUT",
         body: JSON.stringify({
           name: name ? name : undefined,
-          provider: llmForm.provider,
-          base_url: baseUrl ? baseUrl : null,
-          model,
+          provider: payload.payload.provider,
+          base_url: payload.payload.base_url,
+          model: payload.payload.model,
+          temperature: payload.payload.temperature,
+          top_p: payload.payload.top_p,
+          max_tokens: payload.payload.max_tokens,
+          presence_penalty: payload.payload.presence_penalty,
+          frequency_penalty: payload.payload.frequency_penalty,
+          top_k: payload.payload.top_k,
+          stop: payload.payload.stop,
+          timeout_seconds: payload.payload.timeout_seconds,
+          extra: payload.payload.extra,
         }),
       });
       await reloadAll();
@@ -1185,19 +1205,7 @@ export function PromptsPage() {
     } finally {
       setProfileBusy(false);
     }
-  }, [
-    dirty,
-    llmForm.base_url,
-    llmForm.model,
-    llmForm.provider,
-    profileBusy,
-    profileName,
-    projectId,
-    reloadAll,
-    saveAllDirtyModules,
-    selectedProfileId,
-    toast,
-  ]);
+  }, [dirty, llmForm, profileBusy, profileName, projectId, reloadAll, saveAllDirtyModules, selectedProfileId, toast]);
 
   const deleteProfile = useCallback(async () => {
     if (!selectedProfileId) {

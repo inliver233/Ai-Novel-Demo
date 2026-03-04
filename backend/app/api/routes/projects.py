@@ -10,7 +10,7 @@ from app.api.deps import DbDep, UserIdDep, require_outline_viewer, require_owned
 from app.core.errors import AppError, ok_payload
 from app.core.logging import exception_log_fields, log_event
 from app.db.utils import new_id
-from app.llm.utils import default_max_tokens, normalize_base_url
+from app.llm.utils import default_max_tokens
 from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.knowledge_base import KnowledgeBase
@@ -24,6 +24,7 @@ from app.models.user import User
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
 from app.schemas.base import RequestModel
 from app.services.import_export_service import import_project_bundle
+from app.services.llm_profile_template import apply_profile_template_to_llm_row, normalize_base_url_for_provider
 from app.services.prompt_presets import ensure_default_chapter_preset, ensure_default_outline_preset
 from app.services.project_seed_service import ensure_default_numeric_tables
 from app.services.vector_rag_service import purge_project_vectors
@@ -399,7 +400,7 @@ def update_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
                 preset = LLMPreset(
                     project_id=project_id,
                     provider=profile.provider,
-                    base_url=None,
+                    base_url=normalize_base_url_for_provider(profile.provider, profile.base_url),
                     model=profile.model,
                     temperature=0.7,
                     top_p=1.0,
@@ -413,18 +414,7 @@ def update_project(request: Request, db: DbDep, user_id: UserIdDep, project_id: 
                 )
                 db.add(preset)
 
-            preset.provider = profile.provider
-            preset.model = profile.model
-            if profile.provider in ("openai", "openai_responses"):
-                preset.base_url = normalize_base_url(profile.base_url or "https://api.openai.com/v1")
-            elif profile.provider in ("openai_compatible", "openai_responses_compatible"):
-                if not profile.base_url:
-                    raise AppError(code="LLM_CONFIG_ERROR", message=f"{profile.provider} 配置必须填写 base_url", status_code=400)
-                preset.base_url = normalize_base_url(profile.base_url)
-            elif profile.provider == "anthropic":
-                preset.base_url = normalize_base_url(profile.base_url or "https://api.anthropic.com")
-            elif profile.provider == "gemini":
-                preset.base_url = normalize_base_url(profile.base_url or "https://generativelanguage.googleapis.com")
+            apply_profile_template_to_llm_row(row=preset, profile=profile)
 
     db.commit()
     db.refresh(project)
