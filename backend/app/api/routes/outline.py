@@ -1951,14 +1951,13 @@ def generate_outline_stream(
                 return
             yield sse_progress(message="长篇模式：分段生成中...", progress=10)
             segment_progress_lock = threading.Lock()
-            segment_progress: dict[str, object] = {}
+            segment_progress_events: list[dict[str, object]] = []
 
             def _on_segment_progress(update: dict[str, object]) -> None:
                 if not isinstance(update, dict):
                     return
                 with segment_progress_lock:
-                    segment_progress.clear()
-                    segment_progress.update(update)
+                    segment_progress_events.append(dict(update))
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(
@@ -1979,12 +1978,15 @@ def generate_outline_stream(
                 last_message = ""
                 last_snapshot_key: tuple[str, int, int, int] | None = None
                 last_raw_preview_key: tuple[str, int, int, int] | None = None
-                while not future.done():
+                while True:
                     now = time.monotonic()
                     if now - last_ping >= OUTLINE_FILL_HEARTBEAT_INTERVAL_SECONDS:
                         yield sse_heartbeat()
-                        with segment_progress_lock:
-                            snapshot = dict(segment_progress)
+                        last_ping = now
+                    with segment_progress_lock:
+                        pending_snapshots = list(segment_progress_events)
+                        segment_progress_events.clear()
+                    for snapshot in pending_snapshots:
                         event_name = str(snapshot.get("event") or "")
                         batch_idx = int(snapshot.get("batch_index") or 0)
                         attempt = int(snapshot.get("attempt") or 0)
@@ -2021,13 +2023,16 @@ def generate_outline_stream(
                                 yield sse_chunk(f"\n\n[{title}]\n{raw_preview}\n")
                                 last_raw_preview_key = raw_key
                         progress_percent = snapshot.get("progress_percent")
-                        progress_num = int(progress_percent) if isinstance(progress_percent, int) else 10
-                        progress_num = max(10, min(98, progress_num))
+                        if isinstance(progress_percent, int):
+                            progress_num = max(10, min(98, progress_percent))
+                        else:
+                            progress_num = 10
                         message = _outline_segment_progress_message(snapshot)
                         if message != last_message:
                             yield sse_progress(message=message, progress=progress_num)
                             last_message = message
-                        last_ping = now
+                    if future.done():
+                        break
                     time.sleep(OUTLINE_FILL_POLL_INTERVAL_SECONDS)
 
                 segmented = future.result()
@@ -2214,14 +2219,13 @@ def generate_outline_stream(
                 if target_chapter_count:
                     yield sse_progress(message="补全缺失章节...", progress=94)
                 fill_progress_lock = threading.Lock()
-                fill_progress: dict[str, object] = {}
+                fill_progress_events: list[dict[str, object]] = []
 
                 def _on_fill_progress(update: dict[str, object]) -> None:
                     if not isinstance(update, dict):
                         return
                     with fill_progress_lock:
-                        fill_progress.clear()
-                        fill_progress.update(update)
+                        fill_progress_events.append(dict(update))
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                     fill_future = executor.submit(
@@ -2240,12 +2244,15 @@ def generate_outline_stream(
                     last_ping = 0.0
                     last_message = ""
                     last_snapshot_attempt = -1
-                    while not fill_future.done():
+                    while True:
                         now = time.monotonic()
                         if now - last_ping >= OUTLINE_FILL_HEARTBEAT_INTERVAL_SECONDS:
                             yield sse_heartbeat()
-                            with fill_progress_lock:
-                                snapshot = dict(fill_progress)
+                            last_ping = now
+                        with fill_progress_lock:
+                            pending_fill_snapshots = list(fill_progress_events)
+                            fill_progress_events.clear()
+                        for snapshot in pending_fill_snapshots:
                             snapshot_event = str(snapshot.get("event") or "")
                             snapshot_attempt_raw = snapshot.get("attempt")
                             if isinstance(snapshot_attempt_raw, int):
@@ -2267,7 +2274,8 @@ def generate_outline_stream(
                             if message != last_message:
                                 yield sse_progress(message=message, progress=94)
                                 last_message = message
-                            last_ping = now
+                        if fill_future.done():
+                            break
                         time.sleep(OUTLINE_FILL_POLL_INTERVAL_SECONDS)
 
                     data, fill_warnings, fill_run_ids = fill_future.result()
