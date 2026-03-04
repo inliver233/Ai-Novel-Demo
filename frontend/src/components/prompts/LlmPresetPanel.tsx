@@ -541,7 +541,11 @@ export function LlmPresetPanel(props: Props) {
               const boundProfile = task.llm_profile_id
                 ? (props.profiles.find((p) => p.id === task.llm_profile_id) ?? null)
                 : null;
+              const effectiveProfile = boundProfile ?? (!task.llm_profile_id ? selectedProfile : null);
               const profileMismatch = Boolean(boundProfile && boundProfile.provider !== task.form.provider);
+              const fallbackProfileMismatch = Boolean(
+                !boundProfile && selectedProfile && selectedProfile.provider !== task.form.provider,
+              );
               const testing = Boolean(props.taskTesting[task.task_key]);
               const profileBusy = Boolean(props.taskProfileBusy[task.task_key]);
               const taskBusy = task.saving || task.deleting || profileBusy;
@@ -618,19 +622,29 @@ export function LlmPresetPanel(props: Props) {
                         所选配置库 provider 与当前模块 provider 不一致，保存会失败。
                       </div>
                     ) : null}
-                    {boundProfile ? (
+                    {fallbackProfileMismatch ? (
+                      <div className="text-[11px] text-warning">
+                        当前未绑定任务配置，回退主配置 provider 与模块 provider 不一致，测试连接会失败。
+                      </div>
+                    ) : null}
+                    {effectiveProfile ? (
                       <>
                         <div className="text-[11px] text-subtext">
-                          当前绑定配置：{boundProfile.name}（{boundProfile.provider}/{boundProfile.model}）
-                          {boundProfile.has_api_key
-                            ? `，已保存 Key：${boundProfile.masked_api_key ?? "（已保存）"}`
+                          当前生效配置：{effectiveProfile.name}（{effectiveProfile.provider}/{effectiveProfile.model}）
+                          {!boundProfile ? "，来源：主配置回退" : "，来源：任务绑定配置"}
+                          {effectiveProfile.has_api_key
+                            ? `，已保存 Key：${effectiveProfile.masked_api_key ?? "（已保存）"}`
                             : "，尚未保存 Key"}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-2">
                           <input
                             className="input flex-1 min-w-[220px]"
                             disabled={taskUiLocked}
-                            placeholder="输入该配置库的新 Key（共享给复用该配置库的模块）"
+                            placeholder={
+                              boundProfile
+                                ? "输入该任务绑定配置库的新 Key（共享给复用该配置库的模块）"
+                                : "输入主配置的新 Key（将影响回退到主配置的任务）"
+                            }
                             type="password"
                             value={props.taskApiKeyDrafts[task.task_key] ?? ""}
                             onChange={(e) => props.onTaskApiKeyDraftChange(task.task_key, e.target.value)}
@@ -645,7 +659,7 @@ export function LlmPresetPanel(props: Props) {
                           </button>
                           <button
                             className="btn btn-secondary btn-sm"
-                            disabled={taskUiLocked || !boundProfile.has_api_key}
+                            disabled={taskUiLocked || !effectiveProfile.has_api_key}
                             onClick={() => props.onClearTaskApiKey(task.task_key)}
                             type="button"
                           >
@@ -654,7 +668,9 @@ export function LlmPresetPanel(props: Props) {
                         </div>
                       </>
                     ) : (
-                      <div className="text-[11px] text-subtext">当前未绑定任务专属配置库，Key 将继承主配置。</div>
+                      <div className="text-[11px] text-subtext">
+                        当前未绑定任务配置且项目主配置为空，请先绑定配置库或设置主配置。
+                      </div>
                     )}
                   </div>
 

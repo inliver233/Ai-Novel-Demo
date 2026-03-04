@@ -1300,9 +1300,14 @@ export function PromptsPage() {
     async (taskKey: string): Promise<boolean> => {
       const draft = taskDrafts[taskKey];
       if (!draft) return false;
-      const profileId = (draft.llm_profile_id ?? "").trim();
+      const profileId = (draft.llm_profile_id ?? selectedProfileId ?? "").trim();
       if (!profileId) {
-        toast.toastError("请先为该任务模块绑定一个 API 配置库");
+        toast.toastError("请先为该任务绑定配置库，或先设置主配置");
+        return false;
+      }
+      const profile = profiles.find((item) => item.id === profileId) ?? null;
+      if (!profile) {
+        toast.toastError("生效配置库不存在，请刷新后重试");
         return false;
       }
 
@@ -1323,7 +1328,7 @@ export function PromptsPage() {
         setTaskApiKeyDrafts((prev) => ({ ...prev, [taskKey]: "" }));
         await refreshWizard();
         bumpWizardLocal();
-        toast.toastSuccess("任务模块绑定配置的 Key 已保存", res.request_id);
+        toast.toastSuccess(`配置库「${profile.name}」Key 已保存`, res.request_id);
         return true;
       } catch (e) {
         const err = e as ApiError;
@@ -1333,19 +1338,33 @@ export function PromptsPage() {
         setTaskProfileBusy((prev) => ({ ...prev, [taskKey]: false }));
       }
     },
-    [bumpWizardLocal, refreshWizard, taskApiKeyDrafts, taskDrafts, taskProfileBusy, toast, upsertProfile],
+    [
+      bumpWizardLocal,
+      profiles,
+      refreshWizard,
+      selectedProfileId,
+      taskApiKeyDrafts,
+      taskDrafts,
+      taskProfileBusy,
+      toast,
+      upsertProfile,
+    ],
   );
 
   const clearTaskApiKey = useCallback(
     async (taskKey: string): Promise<boolean> => {
       const draft = taskDrafts[taskKey];
       if (!draft) return false;
-      const profileId = (draft.llm_profile_id ?? "").trim();
+      const profileId = (draft.llm_profile_id ?? selectedProfileId ?? "").trim();
       if (!profileId) {
-        toast.toastError("请先为该任务模块绑定一个 API 配置库");
+        toast.toastError("请先为该任务绑定配置库，或先设置主配置");
         return false;
       }
       const profile = profiles.find((item) => item.id === profileId) ?? null;
+      if (!profile) {
+        toast.toastError("生效配置库不存在，请刷新后重试");
+        return false;
+      }
       if (!profile?.has_api_key) return true;
       if (taskProfileBusy[taskKey]) return false;
 
@@ -1384,6 +1403,7 @@ export function PromptsPage() {
       confirm,
       profiles,
       refreshWizard,
+      selectedProfileId,
       taskCatalogByKey,
       taskDrafts,
       taskProfileBusy,
