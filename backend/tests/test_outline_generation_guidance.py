@@ -424,6 +424,82 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         coverage = out.get("chapter_coverage") or {}
         self.assertGreater(int(coverage.get("missing_count") or 0), 0)
 
+    def test_fill_missing_chapters_final_sweep_repairs_remaining_gaps(self) -> None:
+        llm_call = PreparedLlmCall(
+            provider="openai",
+            model="gpt-4o-mini",
+            base_url="",
+            timeout_seconds=180,
+            params={"max_tokens": 12000},
+            params_json=json.dumps({"max_tokens": 12000}, ensure_ascii=False),
+            extra={},
+        )
+        data = {
+            "outline_md": "x",
+            "chapters": [{"number": i, "title": f"第{i}章", "beats": ["a"]} for i in range(1, 11)],
+        }
+        call_count = {"value": 0}
+        progress_events: list[dict[str, object]] = []
+
+        def _parse_missing_json(prompt_user: str) -> list[int]:
+            m = re.search(r"缺失章号数组（严格按此输出）：(\[[^\n]+\])", prompt_user)
+            if not m:
+                return []
+            try:
+                raw = json.loads(m.group(1))
+            except Exception:
+                return []
+            out: list[int] = []
+            if isinstance(raw, list):
+                for item in raw:
+                    try:
+                        value = int(item)
+                    except Exception:
+                        continue
+                    if value > 0:
+                        out.append(value)
+            return out
+
+        def _fake_call_llm_and_record(**kwargs):  # type: ignore[no-untyped-def]
+            call_count["value"] += 1
+            run_type = str(kwargs.get("run_type") or "")
+            prompt_user = str(kwargs.get("prompt_user") or "")
+            missing = _parse_missing_json(prompt_user)
+            if run_type in ("outline_fill_missing", "outline_gap_repair"):
+                # Force regular补全阶段停滞，触发终检兜底。
+                text = json.dumps({"chapters": [{"number": 1, "title": "重复章节", "beats": ["x"]}]}, ensure_ascii=False)
+            elif run_type == "outline_gap_repair_final_sweep":
+                number = missing[0] if missing else 0
+                chapter = {"number": number, "title": f"兜底补全{number}", "beats": [f"事件{number}"]} if number > 0 else {}
+                text = json.dumps({"chapters": [chapter] if chapter else []}, ensure_ascii=False)
+            else:
+                raise AssertionError(f"unexpected run_type: {run_type}")
+            return SimpleNamespace(text=text, finish_reason="stop", run_id=f"run-{call_count['value']}")
+
+        with patch("app.api.routes.outline.call_llm_and_record", side_effect=_fake_call_llm_and_record):
+            out, warnings, run_ids = _fill_outline_missing_chapters_with_llm(
+                data=data,
+                target_chapter_count=20,
+                request_id="rid-test",
+                actor_user_id="u1",
+                project_id="p1",
+                api_key="k",
+                llm_call=llm_call,
+                run_params_extra_json={},
+                progress_hook=lambda update: progress_events.append(dict(update)),
+            )
+
+        chapters = out.get("chapters") or []
+        self.assertEqual(len(chapters), 20)
+        self.assertEqual([int(chapters[0]["number"]), int(chapters[-1]["number"])], [1, 20])
+        coverage = out.get("chapter_coverage") or {}
+        self.assertEqual(int(coverage.get("missing_count") or 0), 0)
+        self.assertIn("outline_gap_repair_final_sweep_applied", warnings)
+        self.assertIn("outline_gap_repair_final_sweep_resolved", warnings)
+        self.assertTrue(any("outline_gap_repair_final_sweep" in rid for rid in run_ids) or len(run_ids) > 0)
+        applied_events = [e for e in progress_events if e.get("event") == "gap_repair_final_sweep_applied"]
+        self.assertTrue(applied_events)
+
     def test_segmented_generation_recovers_sparse_batch_outputs(self) -> None:
         llm_call = PreparedLlmCall(
             provider="openai",
