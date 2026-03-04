@@ -37,6 +37,8 @@ type OutlineGenForm = {
 type OutlineLoaded = { outlines: OutlineListItem[]; outline: Outline; preset: LLMPreset };
 const STREAM_RAW_MAX_CHARS = 36000;
 const STREAM_RAW_PREFIX_RE = /^\[raw 已截断前 \d+ 字符，仅保留最近 \d+ 字符\]\n/;
+const STREAM_CONNECT_MAX_RETRIES = 2;
+const STREAM_CONNECT_RETRY_BASE_DELAY_MS = 1200;
 
 function extractOutlineChapters(structure: unknown): OutlineGenChapter[] {
   if (!structure || typeof structure !== "object") return [];
@@ -116,6 +118,12 @@ function appendCappedRawText(prev: string, chunk: string, maxChars = STREAM_RAW_
   if (merged.length <= maxChars) return merged;
   const omitted = merged.length - maxChars;
   return `[raw 已截断前 ${omitted} 字符，仅保留最近 ${maxChars} 字符]\n${merged.slice(-maxChars)}`;
+}
+
+function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
 }
 
 export function OutlinePage() {
@@ -880,6 +888,7 @@ export function OutlinePage() {
                   setGenStreamProgress({ message: "开始生成...", progress: 0, status: "processing" });
                   let streamRawText = "";
                   let streamResult: OutlineGenResult | null = null;
+                  let streamConnectRetryCount = 0;
 
                   const applyStreamResult = (candidate: unknown, fallbackRaw = ""): boolean => {
                     const normalized = normalizeOutlineGenResult(candidate, fallbackRaw);
@@ -890,24 +899,53 @@ export function OutlinePage() {
                     return true;
                   };
 
-                  const client = new SSEPostClient(`/api/projects/${projectId}/outline/generate-stream`, payload, {
-                    headers,
-                    onProgress: ({ message, progress, status }) => {
-                      setGenStreamProgress({ message, progress, status });
-                    },
-                    onChunk: (content) => {
-                      genStreamHasChunkRef.current = true;
-                      streamRawText += content;
-                      setGenStreamRawText((prev) => appendCappedRawText(prev, content));
-                    },
-                    onResult: (data) => {
-                      void applyStreamResult(data, streamRawText);
-                    },
-                  });
-                  genStreamClientRef.current = client;
+                  const isTransientStreamError = (err: unknown): err is SSEError =>
+                    err instanceof SSEError && err.code !== "SSE_SERVER_ERROR" && err.code !== "ABORTED";
 
                   try {
-                    const done = await client.connect();
+                    let done: { requestId?: string; result?: unknown; accumulatedContent: string } | null = null;
+
+                    while (streamConnectRetryCount <= STREAM_CONNECT_MAX_RETRIES) {
+                      const client = new SSEPostClient(`/api/projects/${projectId}/outline/generate-stream`, payload, {
+                        headers,
+                        onProgress: ({ message, progress, status }) => {
+                          setGenStreamProgress({ message, progress, status });
+                        },
+                        onChunk: (content) => {
+                          genStreamHasChunkRef.current = true;
+                          streamRawText += content;
+                          setGenStreamRawText((prev) => appendCappedRawText(prev, content));
+                        },
+                        onResult: (data) => {
+                          void applyStreamResult(data, streamRawText);
+                        },
+                      });
+                      genStreamClientRef.current = client;
+                      try {
+                        done = await client.connect();
+                        break;
+                      } catch (connectErr) {
+                        if (
+                          isTransientStreamError(connectErr) &&
+                          !genStreamHasChunkRef.current &&
+                          streamConnectRetryCount < STREAM_CONNECT_MAX_RETRIES
+                        ) {
+                          streamConnectRetryCount += 1;
+                          const delayMs = STREAM_CONNECT_RETRY_BASE_DELAY_MS * streamConnectRetryCount;
+                          setGenStreamProgress((prev) => ({
+                            message: `流式连接中断，${Math.ceil(delayMs / 1000)} 秒后自动重连（${streamConnectRetryCount}/${STREAM_CONNECT_MAX_RETRIES}）...`,
+                            progress: prev?.progress ?? 0,
+                            status: "processing",
+                          }));
+                          await waitMs(delayMs);
+                          continue;
+                        }
+                        throw connectErr;
+                      }
+                    }
+                    if (!done) {
+                      throw new SSEError({ code: "SSE_STREAM_ERROR", message: "流式重连后仍失败" });
+                    }
                     if (!streamResult) {
                       const doneApplied = applyStreamResult(done.result, done.accumulatedContent || streamRawText);
                       if (!doneApplied) {

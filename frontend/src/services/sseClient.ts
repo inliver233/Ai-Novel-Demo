@@ -245,6 +245,11 @@ export class SSEPostClient {
       throw new SSEError({ code: "ABORTED", message: "已取消生成", requestId: this.requestId });
     }
     if (!doneReceived) {
+      if (this.resultData !== undefined) {
+        // Some proxies may drop the terminal done event while result is already delivered.
+        this.options.onDone?.();
+        return { requestId: this.requestId, result: this.resultData, accumulatedContent: this.accumulatedContent };
+      }
       throw new SSEError({ code: "SSE_EARLY_CLOSE", message: "SSE 连接提前结束", requestId: this.requestId });
     }
     return { requestId: this.requestId, result: this.resultData, accumulatedContent: this.accumulatedContent };
