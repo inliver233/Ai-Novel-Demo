@@ -365,6 +365,8 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         latest = applied[-1]
         self.assertIsInstance(latest.get("chapters_snapshot"), list)
         self.assertEqual(int(latest.get("chapter_count") or 0), 50)
+        self.assertGreater(int(latest.get("raw_output_chars") or 0), 0)
+        self.assertGreater(len(str(latest.get("raw_output_preview") or "")), 0)
 
     def test_fill_missing_chapters_fail_soft_on_llm_error(self) -> None:
         llm_call = PreparedLlmCall(
@@ -454,7 +456,10 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         self.assertEqual(chapters[-1]["number"], 26)
         self.assertGreater(call_count["value"], 5)
         self.assertIn("outline_segment_applied", res.warnings)
-        self.assertTrue(any(evt.get("event") == "batch_applied" for evt in progress_events))
+        applied_events = [evt for evt in progress_events if evt.get("event") == "batch_applied"]
+        self.assertTrue(applied_events)
+        self.assertGreater(int(applied_events[0].get("raw_output_chars") or 0), 0)
+        self.assertGreater(len(str(applied_events[0].get("raw_output_preview") or "")), 0)
 
 
 if __name__ == "__main__":

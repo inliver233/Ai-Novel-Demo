@@ -134,7 +134,8 @@ export function OutlinePage() {
     progress: number;
     status: string;
   } | null>(null);
-  const [genStreamText, setGenStreamText] = useState("");
+  const [genStreamRawText, setGenStreamRawText] = useState("");
+  const [genStreamPreviewJson, setGenStreamPreviewJson] = useState("");
   const genStreamClientRef = useRef<SSEPostClient | null>(null);
   const genStreamHasChunkRef = useRef(false);
   const wizardRefreshTimerRef = useRef<number | null>(null);
@@ -782,15 +783,33 @@ export function OutlinePage() {
               </div>
             ) : null}
 
-            {genStreamText ? (
-              <details className="panel p-3" open={generating}>
+            {genStreamPreviewJson ? (
+              <details className="panel p-3" open>
                 <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
-                  流式输出预览（raw）
+                  实时章节预览（JSON）
+                  {genPreview ? ` · 已解析 ${genPreview.chapters.length} 章` : ""}
                 </summary>
                 <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs text-ink">
-                  {genStreamText}
+                  {genStreamPreviewJson}
                 </pre>
               </details>
+            ) : generating ? (
+              <div className="panel p-3 text-xs text-subtext">实时章节预览（JSON）：等待首批章节返回...</div>
+            ) : null}
+
+            {genStreamRawText ? (
+              <details className="panel p-3" open={generating}>
+                <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
+                  流式原始片段（raw）
+                </summary>
+                <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs text-ink">
+                  {genStreamRawText}
+                </pre>
+              </details>
+            ) : generating ? (
+              <div className="panel p-3 text-xs text-subtext">
+                流式原始片段（raw）：暂未收到输出，等待当前分段完成...
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -828,7 +847,9 @@ export function OutlinePage() {
               setGenerating(true);
               genStreamClientRef.current = null;
               genStreamHasChunkRef.current = false;
-              setGenStreamText("");
+              setGenPreview(null);
+              setGenStreamRawText("");
+              setGenStreamPreviewJson("");
               setGenStreamProgress(null);
               try {
                 const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
@@ -854,7 +875,7 @@ export function OutlinePage() {
                     if (!normalized) return false;
                     streamResult = normalized;
                     setGenPreview(normalized);
-                    setGenStreamText(toFinalPreviewJson(normalized));
+                    setGenStreamPreviewJson(toFinalPreviewJson(normalized));
                     return true;
                   };
 
@@ -866,7 +887,7 @@ export function OutlinePage() {
                     onChunk: (content) => {
                       genStreamHasChunkRef.current = true;
                       streamRawText += content;
-                      setGenStreamText((prev) => prev + content);
+                      setGenStreamRawText((prev) => prev + content);
                     },
                     onResult: (data) => {
                       void applyStreamResult(data, streamRawText);
@@ -883,7 +904,7 @@ export function OutlinePage() {
                         if (parsedFromRaw) {
                           streamResult = parsedFromRaw;
                           setGenPreview(parsedFromRaw);
-                          setGenStreamText(toFinalPreviewJson(parsedFromRaw));
+                          setGenStreamPreviewJson(toFinalPreviewJson(parsedFromRaw));
                         }
                       }
                     }
@@ -914,7 +935,7 @@ export function OutlinePage() {
                         const normalized = normalizeOutlineGenResult(res.data, "");
                         setGenPreview(normalized ?? res.data);
                         if (normalized) {
-                          setGenStreamText(toFinalPreviewJson(normalized));
+                          setGenStreamPreviewJson(toFinalPreviewJson(normalized));
                         }
                         setGenStreamProgress(null);
                         toast.toastSuccess("生成完成");

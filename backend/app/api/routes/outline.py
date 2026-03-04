@@ -68,6 +68,7 @@ OUTLINE_SEGMENT_RECENT_CONTEXT_WINDOW = 24
 OUTLINE_SEGMENT_INDEX_MAX_ITEMS = 140
 OUTLINE_SEGMENT_INDEX_MAX_CHARS = 6000
 OUTLINE_SEGMENT_RECENT_WINDOW_MAX_CHARS = 2800
+OUTLINE_STREAM_RAW_PREVIEW_MAX_CHARS = 1800
 
 OutlineFillProgressHook = Callable[[dict[str, object]], None]
 OutlineSegmentProgressHook = Callable[[dict[str, object]], None]
@@ -510,6 +511,22 @@ def _recommend_outline_segment_max_tokens(
     return wanted if wanted > 0 else None
 
 
+def _build_outline_stream_raw_preview(
+    text: object,
+    *,
+    max_chars: int = OUTLINE_STREAM_RAW_PREVIEW_MAX_CHARS,
+) -> str:
+    if not isinstance(text, str):
+        return ""
+    cleaned = text.strip()
+    if not cleaned:
+        return ""
+    if len(cleaned) <= max_chars:
+        return cleaned
+    omitted = len(cleaned) - max_chars
+    return f"{cleaned[:max_chars]}\n...(已截断 {omitted} 字符)"
+
+
 def _parse_outline_batch_output(
     *,
     text: str,
@@ -802,6 +819,8 @@ def _generate_outline_segmented_with_llm(
             for item in segment_res.dropped_params:
                 if item not in dropped_params:
                     dropped_params.append(item)
+            segment_raw_preview = _build_outline_stream_raw_preview(segment_res.text)
+            segment_raw_chars = len(segment_res.text or "")
 
             parsed_data, parsed_warnings, parsed_error = _parse_outline_batch_output(
                 text=segment_res.text,
@@ -813,6 +832,22 @@ def _generate_outline_segmented_with_llm(
                 warnings.append("outline_segment_parse_failed")
                 if segment_res.finish_reason == "length":
                     warnings.append("outline_segment_truncated")
+                _emit_progress(
+                    {
+                        "event": "batch_parse_failed",
+                        "batch_index": batch_index,
+                        "batch_count": batch_count,
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "range": range_text,
+                        "target_chapter_count": target_chapter_count,
+                        "completed_count": len(chapters_by_number),
+                        "remaining_count": target_chapter_count - len(chapters_by_number),
+                        "raw_output_preview": segment_raw_preview,
+                        "raw_output_chars": segment_raw_chars,
+                        "progress_percent": 12 + int(min(1.0, len(chapters_by_number) / max(1, target_chapter_count)) * 70),
+                    }
+                )
                 stagnant_attempts += 1
                 if stagnant_attempts >= OUTLINE_SEGMENT_STAGNANT_ATTEMPTS_LIMIT:
                     break
@@ -855,6 +890,8 @@ def _generate_outline_segmented_with_llm(
                     "target_chapter_count": target_chapter_count,
                     "completed_count": len(chapters_snapshot),
                     "remaining_count": target_chapter_count - len(chapters_snapshot),
+                    "raw_output_preview": segment_raw_preview,
+                    "raw_output_chars": segment_raw_chars,
                     "progress_percent": 12 + int(min(1.0, len(chapters_snapshot) / max(1, target_chapter_count)) * 80),
                 }
             )
@@ -1380,6 +1417,8 @@ def _fill_outline_missing_chapters_with_llm(
                 break
             continue
         continue_run_ids.append(filled.run_id)
+        fill_raw_preview = _build_outline_stream_raw_preview(filled.text)
+        fill_raw_chars = len(filled.text or "")
         filled_parsed = contract.parse(filled.text, finish_reason=filled.finish_reason)
         filled_data, filled_warnings, filled_error = filled_parsed.data, filled_parsed.warnings, filled_parsed.parse_error
         warnings.extend(filled_warnings)
@@ -1395,6 +1434,8 @@ def _fill_outline_missing_chapters_with_llm(
                         "attempt": attempt,
                         "max_attempts": max_attempts,
                         "remaining_count": len(missing_numbers),
+                        "raw_output_preview": fill_raw_preview,
+                        "raw_output_chars": fill_raw_chars,
                     }
                 )
             if stagnant_rounds >= OUTLINE_FILL_STAGNANT_ROUNDS_LIMIT:
@@ -1468,6 +1509,8 @@ def _fill_outline_missing_chapters_with_llm(
                     "chapters_snapshot": chapter_snapshot,
                     "chapter_count": len(chapter_snapshot),
                     "remaining_count": remaining,
+                    "raw_output_preview": fill_raw_preview,
+                    "raw_output_chars": fill_raw_chars,
                 }
             )
 
@@ -1841,6 +1884,7 @@ def generate_outline_stream(
                 last_ping = 0.0
                 last_message = ""
                 last_snapshot_key: tuple[str, int, int, int] | None = None
+                last_raw_preview_key: tuple[str, int, int, int] | None = None
                 while not future.done():
                     now = time.monotonic()
                     if now - last_ping >= OUTLINE_FILL_HEARTBEAT_INTERVAL_SECONDS:
@@ -1858,6 +1902,30 @@ def generate_outline_stream(
                             if snapshot_key != last_snapshot_key:
                                 yield sse_result({"outline_md": snapshot_outline_md, "chapters": snapshot_chapters})
                                 last_snapshot_key = snapshot_key
+                        raw_preview = str(snapshot.get("raw_output_preview") or "").strip()
+                        raw_chars_raw = snapshot.get("raw_output_chars")
+                        try:
+                            raw_chars = int(raw_chars_raw) if raw_chars_raw is not None else len(raw_preview)
+                        except Exception:
+                            raw_chars = len(raw_preview)
+                        if raw_preview:
+                            raw_key = (event_name, batch_idx, attempt, raw_chars)
+                            if raw_key != last_raw_preview_key:
+                                batch_count_raw = snapshot.get("batch_count")
+                                try:
+                                    batch_count = int(batch_count_raw) if batch_count_raw is not None else 0
+                                except Exception:
+                                    batch_count = 0
+                                title_parts = [event_name or "segment"]
+                                if batch_idx > 0 and batch_count > 0:
+                                    title_parts.append(f"batch {batch_idx}/{batch_count}")
+                                elif batch_idx > 0:
+                                    title_parts.append(f"batch {batch_idx}")
+                                if attempt > 0:
+                                    title_parts.append(f"attempt {attempt}")
+                                title = " | ".join(title_parts)
+                                yield sse_chunk(f"\n\n[{title}]\n{raw_preview}\n")
+                                last_raw_preview_key = raw_key
                         progress_percent = snapshot.get("progress_percent")
                         progress_num = int(progress_percent) if isinstance(progress_percent, int) else 10
                         progress_num = max(10, min(98, progress_num))
