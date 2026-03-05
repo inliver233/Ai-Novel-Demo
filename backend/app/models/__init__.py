@@ -33,7 +33,9 @@ from app.models.structured_memory import (
 )
 from app.models.auth_external_account import AuthExternalAccount
 from app.models.user import User
+from app.models.user_activity_stat import UserActivityStat
 from app.models.user_password import UserPassword
+from app.models.user_usage_stat import UserUsageStat
 from app.models.writing_style import WritingStyle
 from app.models.worldbook_entry import WorldBookEntry
 
@@ -74,7 +76,9 @@ __all__ = [
     "StoryMemory",
     "AuthExternalAccount",
     "User",
+    "UserActivityStat",
     "UserPassword",
+    "UserUsageStat",
     "WritingStyle",
     "WorldBookEntry",
 ]

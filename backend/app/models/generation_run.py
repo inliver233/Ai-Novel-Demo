@@ -30,3 +30,4 @@ class GenerationRun(Base):
 
 
 Index("ix_generation_runs_project_id", GenerationRun.project_id)
+Index("ix_generation_runs_actor_user_id_created_at", GenerationRun.actor_user_id, GenerationRun.created_at)

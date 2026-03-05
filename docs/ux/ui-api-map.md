@@ -22,7 +22,7 @@
 | --- | --- | --- | --- | --- |
 | `/login` | `frontend/src/pages/LoginPage.tsx` | 间接：`/api/auth/local/login`、`/api/auth/user`、`/api/auth/refresh`、`/api/auth/logout` | `backend/app/api/routes/auth.py` | `backend/app/services/auth_service.py` |
 | `/`（index） | `frontend/src/pages/DashboardPage.tsx` | `/api/projects/summary`、`/api/projects`、`/api/projects/{project_id}` | `backend/app/api/routes/projects.py` | `backend/app/services/prompt_presets.py`（默认 preset ensure）、`backend/app/services/vector_rag_service.py`（purge） |
-| `/admin/users` | `frontend/src/pages/AdminUsersPage.tsx` | `/api/auth/admin/users`、`/api/auth/admin/users/{id}/password/reset`、`/api/auth/admin/users/{id}/disable` | `backend/app/api/routes/auth.py` | `backend/app/services/auth_service.py` |
+| `/admin/users` | `frontend/src/pages/AdminUsersPage.tsx` | `/api/auth/admin/users?limit&cursor&q&online_only`、`/api/auth/admin/users/{id}/password/reset`、`/api/auth/admin/users/{id}/disable` | `backend/app/api/routes/auth.py` | `backend/app/services/auth_service.py`、`backend/app/services/user_activity_service.py`、`backend/app/services/user_usage_service.py` |
 | `/projects/:projectId/wizard` | `frontend/src/pages/ProjectWizardPage.tsx` | `/api/projects/{id}/settings`、`/api/projects/{id}/characters`、`/api/projects/{id}/outline`、`/api/projects/{id}/outlines`、`/api/projects/{id}/chapters`、`/api/projects/{id}/outline/generate`、`/api/llm_profiles` | `settings.py`、`characters.py`、`outline.py`、`outlines.py`、`chapters.py`、`llm_profiles.py` | `generation_service.py` / `prompt_presets.py` / `outline_store.py`（outline）、（CRUD routes 无 services） |
 | `/projects/:projectId/settings` | `frontend/src/pages/SettingsPage.tsx` | `/api/projects/{id}`、`/api/projects/{id}/settings`、`/api/projects/{id}/memberships`、`/api/projects/{id}/graph/query` | `projects.py`、`settings.py`、`graph.py` | `embedding_service.py`（settings）、`graph_context_service.py`（graph）、`memory_query_service.py`（graph query normalize） |
 | `/projects/:projectId/characters` | `frontend/src/pages/CharactersPage.tsx` | `/api/projects/{id}/characters`、`/api/characters/{character_id}` | `backend/app/api/routes/characters.py` | （routes 内 CRUD；无 services） |
@@ -66,7 +66,7 @@
 
 | Routes file | 关键 endpoints（示例） | Owning services（直接引用） |
 | --- | --- | --- |
-| `backend/app/api/routes/auth.py` | `/auth/user`、`/auth/local/login`、`/auth/refresh`、`/auth/logout`、`/auth/admin/users*` | `auth_service.py` |
+| `backend/app/api/routes/auth.py` | `/auth/user`、`/auth/local/login`、`/auth/refresh`、`/auth/logout`、`/auth/admin/users*` | `auth_service.py`、`user_activity_service.py`、`user_usage_service.py` |
 | `backend/app/api/routes/projects.py` | `/projects`、`/projects/summary`、`/projects/{project_id}`、`/projects/{project_id}/memberships*` | `prompt_presets.py`、`vector_rag_service.py` |
 | `backend/app/api/routes/settings.py` | `/projects/{project_id}/settings` | `embedding_service.py` |
 | `backend/app/api/routes/characters.py` | `/projects/{project_id}/characters`、`/characters/{character_id}` | （routes 内实现；无 services） |
@@ -90,4 +90,3 @@
 | `backend/app/api/routes/writing_styles.py` | `/writing_styles*`、`/projects/{project_id}/writing_style_default` | （routes 内实现；无 services） |
 | `backend/app/api/routes/health.py` | `/health` | （routes 内实现；无 services） |
 | `backend/app/api/routes/__init__.py` | N/A | N/A |
-

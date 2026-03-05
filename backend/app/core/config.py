@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     auth_dev_fallback_user_id: str | None = "local-user"
     auth_session_ttl_seconds: int = 60 * 60 * 24 * 7
     auth_refresh_threshold_seconds: int = 60 * 15
+    auth_activity_touch_interval_seconds: int = 30
+    auth_online_window_seconds: int = 60 * 5
     auth_cookie_user_id_name: str = "user_id"
     auth_cookie_expire_at_name: str = "session_expire_at"
     auth_cookie_samesite: CookieSameSite = "lax"
@@ -262,6 +264,28 @@ class Settings(BaseSettings):
         if raw <= 0:
             return 60 * 15
         return raw
+
+    @field_validator("auth_activity_touch_interval_seconds", mode="before")
+    @classmethod
+    def _normalize_auth_activity_touch_interval_seconds(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 30
+        return min(raw, 3600)
+
+    @field_validator("auth_online_window_seconds", mode="before")
+    @classmethod
+    def _normalize_auth_online_window_seconds(cls, value: object) -> int:
+        try:
+            raw = int(str(value or "").strip() or 0)
+        except Exception:
+            raw = 0
+        if raw <= 0:
+            return 60 * 5
+        return min(raw, 24 * 60 * 60)
 
     @field_validator("auth_cookie_user_id_name", mode="before")
     @classmethod

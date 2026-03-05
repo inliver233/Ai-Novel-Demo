@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.db.session import SessionLocal
 from app.db.utils import new_id
 from app.models.generation_run import GenerationRun
+from app.services.user_usage_service import bump_user_generation_usage, count_generated_chars
 
 
 def write_generation_run(
@@ -29,6 +30,8 @@ def write_generation_run(
     Writing runs in a separate short-lived session avoids coupling the audit trail to the request session lifecycle.
     """
     rid = run_id or new_id()
+    generated_chars = count_generated_chars(output_text)
+    had_error = bool(str(error_json or "").strip())
     with SessionLocal() as db:
         db.add(
             GenerationRun(
@@ -47,6 +50,12 @@ def write_generation_run(
                 output_text=output_text,
                 error_json=error_json,
             )
+        )
+        bump_user_generation_usage(
+            db,
+            user_id=actor_user_id,
+            generated_chars=generated_chars,
+            had_error=had_error,
         )
         try:
             db.commit()

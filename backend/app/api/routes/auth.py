@@ -5,13 +5,13 @@ import hashlib
 import logging
 import re
 import secrets
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import Field
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import AuthenticatedUserIdDep, DbDep
@@ -22,7 +22,9 @@ from app.core.logging import log_event
 from app.db.utils import new_id, utc_now
 from app.models.auth_external_account import AuthExternalAccount
 from app.models.user import User
+from app.models.user_activity_stat import UserActivityStat
 from app.models.user_password import UserPassword
+from app.models.user_usage_stat import UserUsageStat
 from app.schemas.base import RequestModel
 from app.services.auth_service import hash_password, verify_password
 
@@ -36,6 +38,14 @@ _LINUXDO_OIDC_NEXT_COOKIE = "oidc_linuxdo_next"
 _LINUXDO_OIDC_COOKIE_MAX_AGE_SECONDS = 10 * 60
 
 _USER_ID_SANITIZE_RE = re.compile(r"[^a-z0-9_-]+")
+
+
+def _to_utc_epoch(value: datetime | None) -> float | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc).timestamp()
+    return value.astimezone(timezone.utc).timestamp()
 
 
 def _linuxdo_oidc_enabled() -> bool:
@@ -203,7 +213,20 @@ def _require_admin(db: DbDep, *, user_id: str) -> User:
     return actor
 
 
-def _user_admin_public(*, user: User, pwd: UserPassword | None) -> dict:
+def _user_admin_public(
+    *,
+    user: User,
+    pwd: UserPassword | None,
+    activity: UserActivityStat | None = None,
+    usage: UserUsageStat | None = None,
+    online_cutoff=None,
+) -> dict:
+    last_seen_at = getattr(activity, "last_seen_at", None)
+    online = False
+    if isinstance(last_seen_at, datetime) and isinstance(online_cutoff, datetime):
+        last_seen_epoch = _to_utc_epoch(last_seen_at)
+        cutoff_epoch = _to_utc_epoch(online_cutoff)
+        online = bool(last_seen_epoch is not None and cutoff_epoch is not None and last_seen_epoch >= cutoff_epoch)
     return {
         "id": user.id,
         "email": user.email,
@@ -213,6 +236,20 @@ def _user_admin_public(*, user: User, pwd: UserPassword | None) -> dict:
         "password_updated_at": getattr(pwd, "password_updated_at", None),
         "created_at": user.created_at,
         "updated_at": user.updated_at,
+        "activity": {
+            "online": online,
+            "last_seen_at": last_seen_at,
+            "last_seen_request_id": getattr(activity, "last_seen_request_id", None),
+            "last_seen_path": getattr(activity, "last_seen_path", None),
+            "last_seen_method": getattr(activity, "last_seen_method", None),
+            "last_seen_status": getattr(activity, "last_seen_status", None),
+        },
+        "usage": {
+            "total_generation_calls": int(getattr(usage, "total_generation_calls", 0) or 0),
+            "total_generation_error_calls": int(getattr(usage, "total_generation_error_calls", 0) or 0),
+            "total_generated_chars": int(getattr(usage, "total_generated_chars", 0) or 0),
+            "last_generation_at": getattr(usage, "last_generation_at", None),
+        },
     }
 
 class LocalLoginRequest(RequestModel):
@@ -588,14 +625,116 @@ def set_user_disabled(
 
 
 @router.get("/auth/admin/users")
-def list_users(request: Request, db: DbDep, user_id: AuthenticatedUserIdDep) -> dict:
+def list_users(
+    request: Request,
+    db: DbDep,
+    user_id: AuthenticatedUserIdDep,
+    limit: int = Query(default=50, ge=1, le=200),
+    cursor: str | None = Query(default=None, max_length=64),
+    q: str | None = Query(default=None, max_length=128),
+    online_only: bool = Query(default=False),
+) -> dict:
     request_id = request.state.request_id
     _require_admin(db, user_id=user_id)
 
-    rows = db.execute(select(User, UserPassword).join(UserPassword, UserPassword.user_id == User.id, isouter=True)).all()
-    users = [_user_admin_public(user=u, pwd=p) for u, p in rows]
-    users.sort(key=lambda x: str(x.get("id") or ""))
-    return ok_payload(request_id=request_id, data={"users": users})
+    now = utc_now()
+    online_cutoff = now - timedelta(seconds=int(settings.auth_online_window_seconds or 300))
+    cursor_value = str(cursor or "").strip() or None
+    q_value = str(q or "").strip().lower()
+    search_pattern = f"%{q_value}%"
+
+    filters = []
+    if q_value:
+        filters.append(
+            or_(
+                func.lower(User.id).like(search_pattern),
+                func.lower(func.coalesce(User.display_name, "")).like(search_pattern),
+                func.lower(func.coalesce(User.email, "")).like(search_pattern),
+            )
+        )
+    if online_only:
+        filters.append(UserActivityStat.last_seen_at.is_not(None))
+        filters.append(UserActivityStat.last_seen_at >= online_cutoff)
+
+    list_stmt = (
+        select(User, UserPassword, UserActivityStat, UserUsageStat)
+        .join(UserPassword, UserPassword.user_id == User.id, isouter=True)
+        .join(UserActivityStat, UserActivityStat.user_id == User.id, isouter=True)
+        .join(UserUsageStat, UserUsageStat.user_id == User.id, isouter=True)
+    )
+    if filters:
+        list_stmt = list_stmt.where(*filters)
+    if cursor_value:
+        list_stmt = list_stmt.where(User.id > cursor_value)
+    rows = db.execute(list_stmt.order_by(User.id.asc()).limit(limit + 1)).all()
+
+    has_more = len(rows) > limit
+    paged_rows = rows[:limit]
+    users = [
+        _user_admin_public(
+            user=u,
+            pwd=p,
+            activity=a,
+            usage=usg,
+            online_cutoff=online_cutoff,
+        )
+        for u, p, a, usg in paged_rows
+    ]
+
+    next_cursor = None
+    if has_more and users:
+        next_cursor = str(users[-1].get("id") or "")
+
+    filtered_count_stmt = select(func.count(User.id)).select_from(User).join(
+        UserActivityStat, UserActivityStat.user_id == User.id, isouter=True
+    )
+    if filters:
+        filtered_count_stmt = filtered_count_stmt.where(*filters)
+    filtered_total_users = int(db.execute(filtered_count_stmt).scalar() or 0)
+
+    total_users = int(db.execute(select(func.count(User.id))).scalar() or 0)
+    total_admin_users = int(db.execute(select(func.count(User.id)).where(User.is_admin.is_(True))).scalar() or 0)
+    total_disabled_users = int(
+        db.execute(select(func.count(UserPassword.user_id)).where(UserPassword.disabled_at.is_not(None))).scalar() or 0
+    )
+    total_online_users = int(
+        db.execute(select(func.count(UserActivityStat.user_id)).where(UserActivityStat.last_seen_at >= online_cutoff)).scalar() or 0
+    )
+    usage_sums = db.execute(
+        select(
+            func.coalesce(func.sum(UserUsageStat.total_generation_calls), 0),
+            func.coalesce(func.sum(UserUsageStat.total_generation_error_calls), 0),
+            func.coalesce(func.sum(UserUsageStat.total_generated_chars), 0),
+        )
+    ).one()
+    total_generation_calls = int(usage_sums[0] or 0)
+    total_generation_error_calls = int(usage_sums[1] or 0)
+    total_generated_chars = int(usage_sums[2] or 0)
+
+    return ok_payload(
+        request_id=request_id,
+        data={
+            "users": users,
+            "pagination": {
+                "limit": int(limit),
+                "cursor": cursor_value,
+                "next_cursor": next_cursor,
+                "has_more": has_more,
+            },
+            "summary": {
+                "generated_at": now,
+                "online_window_seconds": int(settings.auth_online_window_seconds or 300),
+                "total_users": total_users,
+                "total_admin_users": total_admin_users,
+                "total_disabled_users": total_disabled_users,
+                "total_online_users": total_online_users,
+                "filtered_total_users": filtered_total_users,
+                "total_generation_calls": total_generation_calls,
+                "total_generation_error_calls": total_generation_error_calls,
+                "total_generated_chars": total_generated_chars,
+            },
+        },
+    )
 
 
 @router.post("/auth/admin/users")

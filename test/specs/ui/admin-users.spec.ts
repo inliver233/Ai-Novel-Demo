@@ -12,6 +12,8 @@ test("ui: admin users page copy-once password flow is safe", async ({
 
   await expect(page.getByText("管理员用户管理", { exact: true })).toBeVisible();
   await expect(page.getByText("创建用户", { exact: true })).toBeVisible();
+  await expect(page.getByText("在线用户", { exact: true })).toBeVisible();
+  await expect(page.getByText("累计调用次数（LLM API）", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("columnheader", { name: "一次性密码", exact: true }),
   ).toBeVisible();

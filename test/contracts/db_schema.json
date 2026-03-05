@@ -1378,6 +1378,17 @@
       "indexes": [
         {
           "columns": [
+            "actor_user_id",
+            "created_at"
+          ],
+          "name": "ix_generation_runs_actor_user_id_created_at",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_generation_runs_actor_user_id_created_at ON generation_runs (actor_user_id, created_at)",
+          "unique": 0
+        },
+        {
+          "columns": [
             "project_id"
           ],
           "name": "ix_generation_runs_project_id",
@@ -4939,6 +4950,98 @@
         }
       ]
     },
+    "user_activity_stats": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "last_seen_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "last_seen_method",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(16)"
+        },
+        {
+          "dflt_value": null,
+          "name": "last_seen_path",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(255)"
+        },
+        {
+          "dflt_value": null,
+          "name": "last_seen_request_id",
+          "notnull": 0,
+          "pk": 0,
+          "type": "VARCHAR(64)"
+        },
+        {
+          "dflt_value": null,
+          "name": "last_seen_status",
+          "notnull": 0,
+          "pk": 0,
+          "type": "INTEGER"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "user_id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(64)"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "user_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "users",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "last_seen_at"
+          ],
+          "name": "ix_user_activity_stats_last_seen_at",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_user_activity_stats_last_seen_at ON user_activity_stats (last_seen_at)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "name": "sqlite_autoindex_user_activity_stats_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
     "user_passwords": {
       "checks": [],
       "columns": [
@@ -5000,6 +5103,91 @@
             "user_id"
           ],
           "name": "sqlite_autoindex_user_passwords_1",
+          "origin": "pk",
+          "partial": 0,
+          "sql": null,
+          "unique": 1
+        }
+      ]
+    },
+    "user_usage_stats": {
+      "checks": [],
+      "columns": [
+        {
+          "dflt_value": null,
+          "name": "created_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "last_generation_at",
+          "notnull": 0,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": "'0'",
+          "name": "total_generated_chars",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BIGINT"
+        },
+        {
+          "dflt_value": "'0'",
+          "name": "total_generation_calls",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BIGINT"
+        },
+        {
+          "dflt_value": "'0'",
+          "name": "total_generation_error_calls",
+          "notnull": 1,
+          "pk": 0,
+          "type": "BIGINT"
+        },
+        {
+          "dflt_value": null,
+          "name": "updated_at",
+          "notnull": 1,
+          "pk": 0,
+          "type": "DATETIME"
+        },
+        {
+          "dflt_value": null,
+          "name": "user_id",
+          "notnull": 1,
+          "pk": 1,
+          "type": "VARCHAR(64)"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "from": "user_id",
+          "on_delete": "CASCADE",
+          "on_update": "NO ACTION",
+          "table": "users",
+          "to": "id"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "last_generation_at"
+          ],
+          "name": "ix_user_usage_stats_last_generation_at",
+          "origin": "c",
+          "partial": 0,
+          "sql": "CREATE INDEX ix_user_usage_stats_last_generation_at ON user_usage_stats (last_generation_at)",
+          "unique": 0
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "name": "sqlite_autoindex_user_usage_stats_1",
           "origin": "pk",
           "partial": 0,
           "sql": null,

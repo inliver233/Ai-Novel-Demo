@@ -23,6 +23,7 @@ from app.db.session import SessionLocal
 from app.llm.http_client import close_llm_http_client
 from app.models.user import User
 from app.services.auth_service import ensure_admin_user
+from app.services.user_activity_service import touch_user_activity
 
 logger = logging.getLogger("ainovel")
 
@@ -199,6 +200,32 @@ async def request_id_and_logging_middleware(request: Request, call_next):  # typ
                 status_code=response.status_code,
                 latency_ms=latency_ms,
             )
+
+        authenticated_user_id = getattr(request.state, "authenticated_user_id", None)
+        if (
+            isinstance(authenticated_user_id, str)
+            and authenticated_user_id
+            and request.url.path.startswith("/api/")
+            and request.url.path != "/api/health"
+            and request.method.upper() != "OPTIONS"
+        ):
+            try:
+                touch_user_activity(
+                    user_id=authenticated_user_id,
+                    request_id=rid,
+                    path=request.url.path,
+                    method=request.method,
+                    status_code=response.status_code,
+                )
+            except Exception as exc:
+                log_event(
+                    logger,
+                    "warning",
+                    event="USER_ACTIVITY",
+                    action="touch_failed",
+                    exception_type=type(exc).__name__,
+                )
+
         response.headers["X-Request-Id"] = rid
         return response
     finally:
