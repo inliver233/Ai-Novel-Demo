@@ -162,45 +162,47 @@ export function LoginPage() {
                   <div>或</div>
                   <div className="h-px flex-1 bg-border" />
                 </div>
-                <button
-                  className="btn btn-secondary w-full"
-                  onClick={() => {
-                    void (async () => {
-                      try {
-                        const providers = await fetchAuthProviders();
-                        const enabled = Boolean(providers.linuxdo?.enabled);
-                        if (!enabled) {
-                          toast.toastWarning(UI_COPY.auth.linuxdoNotEnabledHint);
-                          return;
+                <div className="mb-2 text-center text-xs text-subtext">
+                  {UI_COPY.auth.noAccountHint} 也可直接选择以下方式
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Link
+                    className="btn btn-secondary w-full border-accent/35 bg-accent/10 text-accent hover:bg-accent/15"
+                    to={`/register?next=${encodeURIComponent(nextPath)}`}
+                  >
+                    {UI_COPY.auth.goRegister}
+                  </Link>
+                  <button
+                    className="btn btn-secondary w-full border-info/35 bg-info/10 text-info hover:bg-info/15"
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          const providers = await fetchAuthProviders();
+                          const enabled = Boolean(providers.linuxdo?.enabled);
+                          if (!enabled) {
+                            toast.toastWarning(UI_COPY.auth.linuxdoNotEnabledHint);
+                            return;
+                          }
+                          const url = `/api/auth/oidc/linuxdo/start?next=${encodeURIComponent(nextPath)}`;
+                          window.location.assign(url);
+                        } catch (e) {
+                          const err = e as ApiError;
+                          toast.toastError(
+                            `${UI_COPY.auth.linuxdoCheckFailedPrefix}${err.message} (${err.code})`,
+                            err.requestId,
+                          );
                         }
-                        const url = `/api/auth/oidc/linuxdo/start?next=${encodeURIComponent(nextPath)}`;
-                        window.location.assign(url);
-                      } catch (e) {
-                        const err = e as ApiError;
-                        toast.toastError(
-                          `${UI_COPY.auth.linuxdoCheckFailedPrefix}${err.message} (${err.code})`,
-                          err.requestId,
-                        );
-                      }
-                    })();
-                  }}
-                  type="button"
-                >
-                  {UI_COPY.auth.linuxdoLogin}
-                </button>
+                      })();
+                    }}
+                    type="button"
+                  >
+                    {UI_COPY.auth.linuxdoLogin}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
           <div className="mt-4 text-center text-xs text-subtext">
-            <div className="flex flex-wrap items-center justify-center gap-1">
-              <span>{UI_COPY.auth.noAccountHint}</span>
-              <Link
-                className="text-ink underline decoration-border hover:decoration-ink"
-                to={`/register?next=${encodeURIComponent(nextPath)}`}
-              >
-                {UI_COPY.auth.goRegister}
-              </Link>
-            </div>
             <div>{UI_COPY.auth.loginFooterHint}</div>
             <div className="mt-1">忘记密码？当前版本请联系管理员重置（MVP 暂不支持自助找回）。</div>
           </div>
