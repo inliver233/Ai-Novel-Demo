@@ -27,11 +27,11 @@ class TestUserUsageStats(unittest.TestCase):
             db.add(User(id="u1", display_name="u1", is_admin=False))
             db.commit()
 
-    def test_count_generated_chars_ignores_whitespace(self) -> None:
+    def test_count_generated_chars_uses_raw_text_length(self) -> None:
         self.assertEqual(count_generated_chars(None), 0)
         self.assertEqual(count_generated_chars(""), 0)
-        self.assertEqual(count_generated_chars(" a b \n c "), 3)
-        self.assertEqual(count_generated_chars("中文 空 格"), 4)
+        self.assertEqual(count_generated_chars(" a b \n c "), 9)
+        self.assertEqual(count_generated_chars("中文 空 格"), 6)
 
     def test_bump_user_generation_usage_accumulates(self) -> None:
         with self.SessionLocal() as db:

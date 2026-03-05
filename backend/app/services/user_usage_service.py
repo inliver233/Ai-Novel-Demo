@@ -10,9 +10,7 @@ from app.models.user_usage_stat import UserUsageStat
 
 def count_generated_chars(text: str | None) -> int:
     value = str(text or "")
-    if not value:
-        return 0
-    return sum(1 for ch in value if not ch.isspace())
+    return len(value)
 
 
 def bump_user_generation_usage(
