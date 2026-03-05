@@ -8,144 +8,146 @@ import { ConfirmProvider } from "./components/ui/ConfirmProvider";
 import { ToastProvider } from "./components/ui/ToastProvider";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProjectsProvider } from "./contexts/ProjectsContext";
+import { importWithChunkRetry } from "./lib/lazyImportRetry";
+import { RouteErrorPage } from "./pages/RouteErrorPage";
 
 const LoginPage = lazy(async () => {
-  const mod = await import("./pages/LoginPage");
+  const mod = await importWithChunkRetry(() => import("./pages/LoginPage"));
   return { default: mod.LoginPage };
 });
 
 const RegisterPage = lazy(async () => {
-  const mod = await import("./pages/RegisterPage");
+  const mod = await importWithChunkRetry(() => import("./pages/RegisterPage"));
   return { default: mod.RegisterPage };
 });
 
 const DashboardPage = lazy(async () => {
-  const mod = await import("./pages/DashboardPage");
+  const mod = await importWithChunkRetry(() => import("./pages/DashboardPage"));
   return { default: mod.DashboardPage };
 });
 
 const AdminUsersPage = lazy(async () => {
-  const mod = await import("./pages/AdminUsersPage");
+  const mod = await importWithChunkRetry(() => import("./pages/AdminUsersPage"));
   return { default: mod.AdminUsersPage };
 });
 
 const ProjectWizardPage = lazy(async () => {
-  const mod = await import("./pages/ProjectWizardPage");
+  const mod = await importWithChunkRetry(() => import("./pages/ProjectWizardPage"));
   return { default: mod.ProjectWizardPage };
 });
 
 const SettingsPage = lazy(async () => {
-  const mod = await import("./pages/SettingsPage");
+  const mod = await importWithChunkRetry(() => import("./pages/SettingsPage"));
   return { default: mod.SettingsPage };
 });
 
 const CharactersPage = lazy(async () => {
-  const mod = await import("./pages/CharactersPage");
+  const mod = await importWithChunkRetry(() => import("./pages/CharactersPage"));
   return { default: mod.CharactersPage };
 });
 
 const OutlinePage = lazy(async () => {
-  const mod = await import("./pages/OutlinePage");
+  const mod = await importWithChunkRetry(() => import("./pages/OutlinePage"));
   return { default: mod.OutlinePage };
 });
 
 const WritingPage = lazy(async () => {
-  const mod = await import("./pages/WritingPage");
+  const mod = await importWithChunkRetry(() => import("./pages/WritingPage"));
   return { default: mod.WritingPage };
 });
 
 const TaskCenterPage = lazy(async () => {
-  const mod = await import("./pages/TaskCenterPage");
+  const mod = await importWithChunkRetry(() => import("./pages/TaskCenterPage"));
   return { default: mod.TaskCenterPage };
 });
 
 const StructuredMemoryPage = lazy(async () => {
-  const mod = await import("./pages/StructuredMemoryPage");
+  const mod = await importWithChunkRetry(() => import("./pages/StructuredMemoryPage"));
   return { default: mod.StructuredMemoryPage };
 });
 
 const NumericTablesPage = lazy(async () => {
-  const mod = await import("./pages/NumericTablesPage");
+  const mod = await importWithChunkRetry(() => import("./pages/NumericTablesPage"));
   return { default: mod.NumericTablesPage };
 });
 
 const ForeshadowsPage = lazy(async () => {
-  const mod = await import("./pages/ForeshadowsPage");
+  const mod = await importWithChunkRetry(() => import("./pages/ForeshadowsPage"));
   return { default: mod.ForeshadowsPage };
 });
 
 const ChapterAnalysisPage = lazy(async () => {
-  const mod = await import("./pages/ChapterAnalysisPage");
+  const mod = await importWithChunkRetry(() => import("./pages/ChapterAnalysisPage"));
   return { default: mod.ChapterAnalysisPage };
 });
 
 const PreviewPage = lazy(async () => {
-  const mod = await import("./pages/PreviewPage");
+  const mod = await importWithChunkRetry(() => import("./pages/PreviewPage"));
   return { default: mod.PreviewPage };
 });
 
 const ChapterReaderPage = lazy(async () => {
-  const mod = await import("./pages/ChapterReaderPage");
+  const mod = await importWithChunkRetry(() => import("./pages/ChapterReaderPage"));
   return { default: mod.ChapterReaderPage };
 });
 
 const PromptsPage = lazy(async () => {
-  const mod = await import("./pages/PromptsPage");
+  const mod = await importWithChunkRetry(() => import("./pages/PromptsPage"));
   return { default: mod.PromptsPage };
 });
 
 const PromptStudioPage = lazy(async () => {
-  const mod = await import("./pages/PromptStudioPage");
+  const mod = await importWithChunkRetry(() => import("./pages/PromptStudioPage"));
   return { default: mod.PromptStudioPage };
 });
 
 const PromptTemplatesPage = lazy(async () => {
-  const mod = await import("./pages/PromptTemplatesPage");
+  const mod = await importWithChunkRetry(() => import("./pages/PromptTemplatesPage"));
   return { default: mod.PromptTemplatesPage };
 });
 
 const ExportPage = lazy(async () => {
-  const mod = await import("./pages/ExportPage");
+  const mod = await importWithChunkRetry(() => import("./pages/ExportPage"));
   return { default: mod.ExportPage };
 });
 
 const WorldBookPage = lazy(async () => {
-  const mod = await import("./pages/WorldBookPage");
+  const mod = await importWithChunkRetry(() => import("./pages/WorldBookPage"));
   return { default: mod.WorldBookPage };
 });
 
 const GraphPage = lazy(async () => {
-  const mod = await import("./pages/GraphPage");
+  const mod = await importWithChunkRetry(() => import("./pages/GraphPage"));
   return { default: mod.GraphPage };
 });
 
 const FractalPage = lazy(async () => {
-  const mod = await import("./pages/FractalPage");
+  const mod = await importWithChunkRetry(() => import("./pages/FractalPage"));
   return { default: mod.FractalPage };
 });
 
 const StylesPage = lazy(async () => {
-  const mod = await import("./pages/StylesPage");
+  const mod = await importWithChunkRetry(() => import("./pages/StylesPage"));
   return { default: mod.StylesPage };
 });
 
 const RagPage = lazy(async () => {
-  const mod = await import("./pages/RagPage");
+  const mod = await importWithChunkRetry(() => import("./pages/RagPage"));
   return { default: mod.RagPage };
 });
 
 const ImportPage = lazy(async () => {
-  const mod = await import("./pages/ImportPage");
+  const mod = await importWithChunkRetry(() => import("./pages/ImportPage"));
   return { default: mod.ImportPage };
 });
 
 const SearchPage = lazy(async () => {
-  const mod = await import("./pages/SearchPage");
+  const mod = await importWithChunkRetry(() => import("./pages/SearchPage"));
   return { default: mod.SearchPage };
 });
 
 const NotFoundPage = lazy(async () => {
-  const mod = await import("./pages/NotFoundPage");
+  const mod = await importWithChunkRetry(() => import("./pages/NotFoundPage"));
   return { default: mod.NotFoundPage };
 });
 
@@ -153,13 +155,16 @@ const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />,
+    errorElement: <RouteErrorPage />,
   },
   {
     path: "/register",
     element: <RegisterPage />,
+    errorElement: <RouteErrorPage />,
   },
   {
     element: <AuthGuard />,
+    errorElement: <RouteErrorPage />,
     children: [
       {
         path: "/",
@@ -168,6 +173,7 @@ const router = createBrowserRouter([
             <AppShell />
           </ProjectsProvider>
         ),
+        errorElement: <RouteErrorPage />,
         children: [
           {
             index: true,
