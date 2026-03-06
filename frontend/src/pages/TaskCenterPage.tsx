@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { Drawer } from "../components/ui/Drawer";
 import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
+import { useProjectTaskEvents } from "../hooks/useProjectTaskEvents";
 import { copyText } from "../lib/copyText";
 import { humanizeChangeSetStatus, humanizeTaskStatus } from "../lib/humanize";
 import { ApiError, apiJson } from "../services/apiClient";
@@ -90,6 +91,7 @@ export function TaskCenterPage() {
   const [taskStatus, setTaskStatus] = useState<string>("all");
   const [projectTaskStatus, setProjectTaskStatus] = useState<string>("all");
   const [autoOpenedProjectTask, setAutoOpenedProjectTask] = useState<boolean>(false);
+  const projectTaskRefreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -241,6 +243,70 @@ export function TaskCenterPage() {
     void refreshTasks();
     void refreshProjectTasks();
   }, [refreshChangeSets, refreshProjectTasks, refreshTasks]);
+
+  const refreshSelectedProjectTask = useCallback(async (taskId: string) => {
+    const targetId = String(taskId || "").trim();
+    if (!targetId) return;
+    try {
+      const res = await apiJson<ProjectTaskSummary>(`/api/tasks/${encodeURIComponent(targetId)}`);
+      setSelected((prev) =>
+        prev?.kind === "project_task" && prev.item.id === targetId ? { kind: "project_task", item: res.data } : prev,
+      );
+    } catch {
+      return;
+    }
+  }, []);
+
+  const scheduleProjectTaskRefresh = useCallback(
+    (taskId?: string | null) => {
+      if (projectTaskRefreshTimerRef.current !== null) {
+        window.clearTimeout(projectTaskRefreshTimerRef.current);
+      }
+      projectTaskRefreshTimerRef.current = window.setTimeout(() => {
+        projectTaskRefreshTimerRef.current = null;
+        void refreshProjectTasks();
+        if (taskId && selected?.kind === "project_task" && selected.item.id === taskId) {
+          void refreshSelectedProjectTask(taskId);
+        }
+      }, 120);
+    },
+    [refreshProjectTasks, refreshSelectedProjectTask, selected],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (projectTaskRefreshTimerRef.current !== null) {
+        window.clearTimeout(projectTaskRefreshTimerRef.current);
+      }
+    };
+  }, []);
+
+  const projectTaskEvents = useProjectTaskEvents({
+    projectId,
+    enabled: Boolean(projectId),
+    onSnapshot: (snapshot) => {
+      if ((snapshot.active_tasks || []).length > 0) {
+        scheduleProjectTaskRefresh(snapshot.active_tasks[0]?.id);
+      }
+    },
+    onEvent: (event) => {
+      scheduleProjectTaskRefresh(event.task_id);
+    },
+  });
+
+  useEffect(() => {
+    if (!projectId) return;
+    if (projectTaskEvents.status === "open") return;
+    const id = window.setInterval(() => void refreshProjectTasks(), 8000);
+    return () => window.clearInterval(id);
+  }, [projectId, projectTaskEvents.status, refreshProjectTasks]);
+
+  const projectTaskLiveStatusLabel = useMemo(() => {
+    if (projectTaskEvents.status === "open") return "connected";
+    if (projectTaskEvents.status === "connecting") return "reconnecting";
+    if (projectTaskEvents.status === "error") return "fallback polling";
+    return "idle";
+  }, [projectTaskEvents.status]);
 
   const copyDebugInfo = useCallback(async () => {
     if (!selected) return;
@@ -728,6 +794,9 @@ export function TaskCenterPage() {
                 用于 worldbook/search/vector/graph 等自动化后台更新；点击条目查看详情（params/result/error 已脱敏）
               </div>
               <div className="mt-1 text-[11px] text-subtext">状态说明：排队中→运行中→完成/失败</div>
+              <div className="mt-1 text-[11px] text-subtext" aria-label="taskcenter_projecttask_live_status">
+                Project SSE: {projectTaskLiveStatusLabel}
+              </div>
               <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-subtext">
                 <span>总计 {projectTaskSummary.all}</span>
                 <span>排队中 {projectTaskSummary.queued}</span>
