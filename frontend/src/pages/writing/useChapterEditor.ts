@@ -6,8 +6,9 @@ import { useAutoSave } from "../../hooks/useAutoSave";
 import { useSaveHotkey } from "../../hooks/useSaveHotkey";
 import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../../services/apiClient";
+import { chapterDetailToListItem, fetchAllChapterMeta, fetchChapterDetail } from "../../services/chaptersApi";
 import { markWizardProjectChanged } from "../../services/wizard";
-import type { Chapter } from "../../types";
+import type { Chapter, ChapterListItem } from "../../types";
 import { chapterToForm } from "./writingUtils";
 import type { ChapterForm } from "./writingUtils";
 
@@ -33,7 +34,7 @@ export function useChapterEditor(args: {
   } = args;
 
   const [loading, setLoading] = useState(true);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [chapters, setChapters] = useState<ChapterListItem[]>([]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeChapter, setActiveChapter] = useState<Chapter | null>(null);
@@ -92,12 +93,12 @@ export function useChapterEditor(args: {
     const seq = chapterListGuardRef.current.next();
     setLoading(true);
     try {
-      const res = await apiJson<{ chapters: Chapter[] }>(`/api/projects/${projectId}/chapters`);
+      const chapters = await fetchAllChapterMeta(projectId);
       if (!chapterListGuardRef.current.isLatest(seq)) return;
-      setChapters(res.data.chapters);
+      setChapters(chapters);
       setActiveId((prev) => {
-        if (prev && res.data.chapters.some((c) => c.id === prev)) return prev;
-        return res.data.chapters[0]?.id ?? null;
+        if (prev && chapters.some((c) => c.id === prev)) return prev;
+        return chapters[0]?.id ?? null;
       });
     } catch (e) {
       if (!chapterListGuardRef.current.isLatest(seq)) return;
@@ -135,13 +136,16 @@ export function useChapterEditor(args: {
       return;
     }
     const seq = chapterLoadGuardRef.current.next();
+    setActiveChapter(null);
+    setBaseline(null);
+    setForm(null);
     setLoadingChapter(true);
     void (async () => {
       try {
-        const res = await apiJson<{ chapter: Chapter }>(`/api/chapters/${activeId}`);
+        const chapter = await fetchChapterDetail(activeId);
         if (!chapterLoadGuardRef.current.isLatest(seq)) return;
-        setActiveChapter(res.data.chapter);
-        const next = chapterToForm(res.data.chapter);
+        setActiveChapter(chapter);
+        const next = chapterToForm(chapter);
         setBaseline(next);
         setForm(next);
       } catch (e) {
@@ -227,7 +231,9 @@ export function useChapterEditor(args: {
             }
             return prev;
           });
-          setChapters((prev) => prev.map((c) => (c.id === res.data.chapter.id ? res.data.chapter : c)));
+          setChapters((prev) =>
+            prev.map((c) => (c.id === res.data.chapter.id ? chapterDetailToListItem(res.data.chapter) : c)),
+          );
           markWizardProjectChanged(latestChapter.project_id);
           bumpWizardLocal();
           if (nextSilent) scheduleWizardRefresh();

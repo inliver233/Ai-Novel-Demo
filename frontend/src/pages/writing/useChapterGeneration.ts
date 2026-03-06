@@ -10,7 +10,7 @@ import { createChapterMarkerStreamParser } from "../../services/chapterMarkerStr
 import { getCurrentUserId } from "../../services/currentUser";
 import { SSEError, SSEPostClient } from "../../services/sseClient";
 import { writingMemoryInjectionEnabledStorageKey } from "../../services/uiState";
-import type { Chapter, LLMPreset } from "../../types";
+import type { Chapter, ChapterListItem, LLMPreset } from "../../types";
 import { extractMissingNumbers } from "./writingErrorUtils";
 import { appendMarkdown } from "./writingUtils";
 import type { ChapterForm } from "./writingUtils";
@@ -101,7 +101,7 @@ function loadMemoryInjectionEnabled(projectId: string | undefined): boolean {
 export function useChapterGeneration(args: {
   projectId?: string;
   activeChapter: Chapter | null;
-  chapters: Chapter[];
+  chapters: ChapterListItem[];
   form: ChapterForm | null;
   setForm: Dispatch<SetStateAction<ChapterForm | null>>;
   preset: LLMPreset | null;

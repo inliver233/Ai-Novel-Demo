@@ -1,8 +1,8 @@
 import { humanizeChapterStatus } from "../../lib/humanize";
-import type { Chapter } from "../../types";
+import type { ChapterListItem } from "../../types";
 
 export function ChapterListPanel(props: {
-  chapters: Chapter[];
+  chapters: ChapterListItem[];
   activeId: string | null;
   onSelectChapter: (chapterId: string) => void;
   containerClassName?: string;

@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { BookOpen, ChevronLeft, Edit3, List, StickyNote } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useNavigate, useParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
@@ -8,15 +8,18 @@ import remarkGfm from "remark-gfm";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { PaperContent } from "../components/layout/AppShell";
 import { Drawer } from "../components/ui/Drawer";
+import { useToast } from "../components/ui/toast";
 import { useProjectData } from "../hooks/useProjectData";
 import { useWizardProgress } from "../hooks/useWizardProgress";
-import { apiJson } from "../services/apiClient";
+import { createRequestSeqGuard } from "../lib/requestSeqGuard";
+import { ApiError } from "../services/apiClient";
+import { fetchAllChapterMeta, fetchChapterDetail } from "../services/chaptersApi";
 import { markWizardPreviewSeen } from "../services/wizard";
-import type { Chapter } from "../types";
+import type { Chapter, ChapterListItem } from "../types";
 
-type PreviewLoaded = { chapters: Chapter[] };
+type PreviewLoaded = { chapters: ChapterListItem[] };
 
-const EMPTY_CHAPTERS: Chapter[] = [];
+const EMPTY_CHAPTERS: ChapterListItem[] = [];
 
 function humanizeChapterStatusZh(status: string): string {
   const s = String(status || "").trim();
@@ -29,12 +32,16 @@ function humanizeChapterStatusZh(status: string): string {
 export function PreviewPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
   const { bumpLocal, loading: wizardLoading, progress: wizardProgress } = useWizardProgress(projectId);
 
+  const activeChapterGuardRef = useRef(createRequestSeqGuard());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [onlyDone, setOnlyDone] = useState(false);
+  const [activeChapter, setActiveChapter] = useState<Chapter | null>(null);
+  const [loadingChapter, setLoadingChapter] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -42,10 +49,9 @@ export function PreviewPage() {
     bumpLocal();
   }, [bumpLocal, projectId]);
 
-  const previewQuery = useProjectData<PreviewLoaded>(projectId, async (id) => {
-    const res = await apiJson<{ chapters: Chapter[] }>(`/api/projects/${id}/chapters`);
-    return { chapters: res.data.chapters };
-  });
+  const previewQuery = useProjectData<PreviewLoaded>(projectId, async (id) => ({
+    chapters: await fetchAllChapterMeta(id),
+  }));
 
   const chapters = previewQuery.data?.chapters ?? EMPTY_CHAPTERS;
   const sortedChapters = useMemo(() => [...chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)), [chapters]);
@@ -68,10 +74,12 @@ export function PreviewPage() {
     return visibleChapters.findIndex((c) => c.id === effectiveActiveId);
   }, [effectiveActiveId, visibleChapters]);
 
-  const activeChapter = useMemo(() => {
+  const activeChapterMeta = useMemo(() => {
     if (activeIndex < 0) return null;
     return visibleChapters[activeIndex] ?? null;
   }, [activeIndex, visibleChapters]);
+
+  const activeChapterSummary = activeChapter ?? activeChapterMeta;
 
   const prevChapter = useMemo(() => {
     if (activeIndex <= 0) return null;
@@ -98,6 +106,43 @@ export function PreviewPage() {
     setActiveId(chapterId);
     setMobileListOpen(false);
   }, []);
+
+  useEffect(() => {
+    const guard = activeChapterGuardRef.current;
+    return () => {
+      guard.invalidate();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!effectiveActiveId) {
+      activeChapterGuardRef.current.invalidate();
+      void Promise.resolve().then(() => {
+        setActiveChapter(null);
+        setLoadingChapter(false);
+      });
+      return;
+    }
+    const seq = activeChapterGuardRef.current.next();
+    void (async () => {
+      setActiveChapter(null);
+      setLoadingChapter(true);
+      try {
+        const chapter = await fetchChapterDetail(effectiveActiveId);
+        if (!activeChapterGuardRef.current.isLatest(seq)) return;
+        setActiveChapter(chapter);
+      } catch (e) {
+        if (!activeChapterGuardRef.current.isLatest(seq)) return;
+        const err = e as ApiError;
+        toast.toastError(`${err.message} (${err.code})`, err.requestId);
+        setActiveChapter(null);
+      } finally {
+        if (activeChapterGuardRef.current.isLatest(seq)) {
+          setLoadingChapter(false);
+        }
+      }
+    })();
+  }, [effectiveActiveId, toast]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -234,16 +279,16 @@ export function PreviewPage() {
         </div>
 
         <div className="min-w-0 truncate text-xs text-subtext">
-          {activeChapter ? `正在预览：第 ${activeChapter.number} 章` : "请选择章节"}
+          {activeChapterSummary ? `正在预览：第 ${activeChapterSummary.number} 章` : "请选择章节"}
         </div>
 
-        {activeChapter ? (
+        {activeChapterSummary ? (
           <div className="flex flex-wrap items-center gap-2">
-            <button className="btn btn-secondary" onClick={() => openReader(activeChapter.id)} type="button">
+            <button className="btn btn-secondary" onClick={() => openReader(activeChapterSummary.id)} type="button">
               <StickyNote size={16} />
               阅读标注
             </button>
-            <button className="btn btn-secondary" onClick={() => openEditor(activeChapter.id)} type="button">
+            <button className="btn btn-secondary" onClick={() => openEditor(activeChapterSummary.id)} type="button">
               <Edit3 size={16} />
               编辑
             </button>
@@ -260,21 +305,24 @@ export function PreviewPage() {
 
         <section className="min-w-0 flex-1">
           <div className="panel p-8">
-            {activeChapter ? (
+            {activeChapterSummary ? (
               <>
                 <div className="mb-4">
                   <div className="font-content text-2xl text-ink">
-                    第 {activeChapter.number} 章{activeChapter.title?.trim() ? ` · ${activeChapter.title}` : ""}
+                    第 {activeChapterSummary.number} 章
+                    {activeChapterSummary.title?.trim() ? ` · ${activeChapterSummary.title}` : ""}
                   </div>
-                  {activeChapter.status !== "done" ? (
+                  {activeChapterSummary.status !== "done" ? (
                     <div className="mt-1 text-xs text-subtext">
-                      提示：本章状态为 {humanizeChapterStatusZh(activeChapter.status)}，向导会以{" "}
+                      提示：本章状态为 {humanizeChapterStatusZh(activeChapterSummary.status)}，向导会以{" "}
                       {humanizeChapterStatusZh("done")} 作为“写完”判定。
                     </div>
                   ) : null}
                 </div>
                 <div className="atelier-content mx-auto max-w-4xl text-ink">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{activeChapter.content_md || "_（空）_"}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {loadingChapter ? "_(loading...)_" : activeChapter?.content_md || "_（空）_"}
+                  </ReactMarkdown>
                 </div>
               </>
             ) : (

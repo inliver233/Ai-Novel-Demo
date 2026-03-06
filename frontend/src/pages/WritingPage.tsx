@@ -337,7 +337,7 @@ export function WritingPage() {
       return;
     }
 
-    const nextHasContent = Boolean((next.content_md ?? "").trim() || (next.summary ?? "").trim());
+    const nextHasContent = Boolean(next.has_content || next.has_summary);
     if (nextHasContent) {
       const replaceOk = await confirm.confirm({
         title: `下一章（第 ${next.number} 章）已有内容，仍要开始生成？`,

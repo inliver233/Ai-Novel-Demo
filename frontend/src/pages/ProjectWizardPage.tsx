@@ -14,8 +14,9 @@ import { useProjectData } from "../hooks/useProjectData";
 import { duration, transition } from "../lib/motion";
 import { UI_COPY } from "../lib/uiCopy";
 import { ApiError, apiJson } from "../services/apiClient";
+import { fetchAllChapterMeta } from "../services/chaptersApi";
 import { computeWizardProgress, setWizardStepSkipped, type WizardStep, type WizardStepKey } from "../services/wizard";
-import type { Chapter, Character, LLMPreset, LLMProfile, Outline, ProjectSettings } from "../types";
+import type { Chapter, ChapterListItem, Character, LLMPreset, LLMProfile, Outline, ProjectSettings } from "../types";
 
 type OutlineGenChapter = { number: number; title: string; beats: string[] };
 type OutlineGenResult = {
@@ -29,13 +30,13 @@ type WizardLoaded = {
   settings: ProjectSettings;
   characters: Character[];
   outline: Outline;
-  chapters: Chapter[];
+  chapters: ChapterListItem[];
   llmPreset: LLMPreset;
   profiles: LLMProfile[];
 };
 
 const EMPTY_CHARACTERS: Character[] = [];
-const EMPTY_CHAPTERS: Chapter[] = [];
+const EMPTY_CHAPTERS: ChapterListItem[] = [];
 const EMPTY_PROFILES: LLMProfile[] = [];
 
 export function ProjectWizardPage() {
@@ -59,12 +60,12 @@ export function ProjectWizardPage() {
       apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${id}/llm_preset`),
       apiJson<{ profiles: LLMProfile[] }>(`/api/llm_profiles`),
     ]);
-    const chaptersRes = await apiJson<{ chapters: Chapter[] }>(`/api/projects/${id}/chapters`);
+    const chapters = await fetchAllChapterMeta(id);
     return {
       settings: settingsRes.data.settings,
       characters: charsRes.data.characters,
       outline: outlineRes.data.outline,
-      chapters: chaptersRes.data.chapters,
+      chapters,
       llmPreset: presetRes.data.llm_preset,
       profiles: profilesRes.data.profiles,
     };

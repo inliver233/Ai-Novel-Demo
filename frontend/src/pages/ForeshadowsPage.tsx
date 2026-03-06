@@ -7,7 +7,8 @@ import { useToast } from "../components/ui/toast";
 import { RequestIdBadge } from "../components/ui/RequestIdBadge";
 import { createRequestSeqGuard } from "../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../services/apiClient";
-import type { Chapter } from "../types";
+import { fetchAllChapterMeta } from "../services/chaptersApi";
+import type { ChapterListItem } from "../types";
 
 type ForeshadowOpenLoop = {
   id: string;
@@ -30,7 +31,7 @@ const OPEN_LOOPS_LIMIT_INITIAL = 80;
 const OPEN_LOOPS_LIMIT_STEP = 80;
 const OPEN_LOOPS_LIMIT_MAX = 200;
 
-function labelForChapter(chapter: Chapter): string {
+function labelForChapter(chapter: ChapterListItem): string {
   const title = String(chapter.title || "").trim();
   return title ? `第${chapter.number}章：${title}` : `第${chapter.number}章`;
 }
@@ -55,7 +56,7 @@ export function ForeshadowsPage() {
   const [queryText, setQueryText] = useState("");
   const [order, setOrder] = useState<OrderKey>("timeline_desc");
 
-  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [chapters, setChapters] = useState<ChapterListItem[]>([]);
   const [loadingChapters, setLoadingChapters] = useState(false);
   const [resolvedAtChapterId, setResolvedAtChapterId] = useState<string>("");
 
@@ -67,9 +68,9 @@ export function ForeshadowsPage() {
     const seq = chaptersGuard.next();
     setLoadingChapters(true);
     try {
-      const res = await apiJson<{ chapters: Chapter[] }>(`/api/projects/${projectId}/chapters`);
+      const chapters = await fetchAllChapterMeta(projectId);
       if (!chaptersGuard.isLatest(seq)) return;
-      setChapters(res.data.chapters ?? []);
+      setChapters(chapters);
     } catch (e) {
       if (!chaptersGuard.isLatest(seq)) return;
       const err =

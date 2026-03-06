@@ -130,6 +130,23 @@ export interface Chapter {
   summary?: string | null;
   status: ChapterStatus;
   updated_at: string;
+  has_plan?: boolean;
+  has_summary?: boolean;
+  has_content?: boolean;
+}
+
+export interface ChapterListItem extends Chapter {
+  has_plan: boolean;
+  has_summary: boolean;
+  has_content: boolean;
+}
+
+export interface ChapterMetaPage {
+  chapters: ChapterListItem[];
+  next_cursor: string | null;
+  has_more: boolean;
+  returned: number;
+  total: number;
 }
 
 export interface PromptPreset {

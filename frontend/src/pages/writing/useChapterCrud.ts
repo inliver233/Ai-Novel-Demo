@@ -5,14 +5,15 @@ import type { ConfirmApi } from "../../components/ui/confirm";
 import type { ToastApi } from "../../components/ui/toast";
 import type { CreateChapterForm } from "../../components/writing/types";
 import { ApiError, apiJson } from "../../services/apiClient";
+import { chapterDetailToListItem } from "../../services/chaptersApi";
 import { markWizardProjectChanged } from "../../services/wizard";
-import type { Chapter } from "../../types";
+import type { Chapter, ChapterListItem } from "../../types";
 import { nextChapterNumber } from "./writingUtils";
 
 export function useChapterCrud(args: {
   projectId: string | undefined;
-  chapters: Chapter[];
-  setChapters: Dispatch<SetStateAction<Chapter[]>>;
+  chapters: ChapterListItem[];
+  setChapters: Dispatch<SetStateAction<ChapterListItem[]>>;
   activeChapter: Chapter | null;
   setActiveId: (next: string | null) => void;
   refreshChapters: () => Promise<void>;
@@ -63,7 +64,7 @@ export function useChapterCrud(args: {
           status: "planned",
         }),
       });
-      setChapters((prev) => [...prev, res.data.chapter].sort((a, b) => a.number - b.number));
+      setChapters((prev) => [...prev, chapterDetailToListItem(res.data.chapter)].sort((a, b) => a.number - b.number));
       markWizardProjectChanged(projectId);
       bumpWizardLocal();
       void refreshWizard();

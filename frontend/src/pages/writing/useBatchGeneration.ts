@@ -3,14 +3,14 @@ import type { SetURLSearchParams } from "react-router-dom";
 
 import type { BatchGenerationTask, BatchGenerationTaskItem, GenerateForm } from "../../components/writing/types";
 import { ApiError, apiJson } from "../../services/apiClient";
-import type { Chapter, LLMPreset } from "../../types";
+import type { Chapter, ChapterListItem, LLMPreset } from "../../types";
 import { extractMissingNumbers } from "./writingErrorUtils";
 
 export function useBatchGeneration(args: {
   projectId: string | undefined;
   preset: LLMPreset | null;
   activeChapter: Chapter | null;
-  chapters: Chapter[];
+  chapters: ChapterListItem[];
   genForm: GenerateForm;
   searchParams: URLSearchParams;
   setSearchParams: SetURLSearchParams;

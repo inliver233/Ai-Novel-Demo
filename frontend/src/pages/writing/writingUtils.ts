@@ -20,7 +20,7 @@ export function appendMarkdown(base: string, fragment: string): string {
   return `${a}\n\n${b}`;
 }
 
-export function nextChapterNumber(chapters: Chapter[]): number {
+export function nextChapterNumber(chapters: Array<Pick<Chapter, "number">>): number {
   const max = chapters.reduce((acc, c) => Math.max(acc, c.number ?? 0), 0);
   return max + 1;
 }

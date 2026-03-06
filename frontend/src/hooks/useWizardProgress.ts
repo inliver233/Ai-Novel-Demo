@@ -2,21 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useProjectData } from "./useProjectData";
 import { apiJson } from "../services/apiClient";
+import { fetchAllChapterMeta } from "../services/chaptersApi";
 import { computeWizardProgress, onWizardProgressInvalidated, type WizardProgress } from "../services/wizard";
-import type { Chapter, Character, LLMPreset, LLMProfile, Outline, Project, ProjectSettings } from "../types";
+import type { ChapterListItem, Character, LLMPreset, LLMProfile, Outline, Project, ProjectSettings } from "../types";
 
 type WizardLoaded = {
   project: Project;
   settings: ProjectSettings;
   characters: Character[];
   outline: Outline;
-  chapters: Chapter[];
+  chapters: ChapterListItem[];
   llmPreset: LLMPreset;
   profiles: LLMProfile[];
 };
 
 const EMPTY_CHARACTERS: Character[] = [];
-const EMPTY_CHAPTERS: Chapter[] = [];
+const EMPTY_CHAPTERS: ChapterListItem[] = [];
 
 export function useWizardProgress(projectId: string | undefined): {
   loading: boolean;
@@ -35,13 +36,13 @@ export function useWizardProgress(projectId: string | undefined): {
       apiJson<{ llm_preset: LLMPreset }>(`/api/projects/${id}/llm_preset`),
       apiJson<{ profiles: LLMProfile[] }>(`/api/llm_profiles`),
     ]);
-    const chaptersRes = await apiJson<{ chapters: Chapter[] }>(`/api/projects/${id}/chapters`);
+    const chapters = await fetchAllChapterMeta(id);
     return {
       project: pRes.data.project,
       settings: settingsRes.data.settings,
       characters: charsRes.data.characters,
       outline: outlineRes.data.outline,
-      chapters: chaptersRes.data.chapters,
+      chapters,
       llmPreset: presetRes.data.llm_preset,
       profiles: profilesRes.data.profiles,
     };
