@@ -266,6 +266,14 @@ cd backend
 - 运行仓库卫生 guard：`cd backend && .\.venv\Scripts\python.exe ..\scripts\guards\run.py no-secrets-in-repo db-artifacts-guard`
 - 说明：guard 会检查 Git 已跟踪文件 + 未忽略的新文件，优先在提交前挡住敏感文件、数据库产物、测试产物和临时截图/日志。
 
+### backend 质量入口（Wave A）
+
+- 安装 dev 检查依赖：`cd backend && .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`
+- 一键运行 backend 基线：`cd backend && .\.venv\Scripts\python.exe scripts\run_quality_gate.py`
+- 当前基线包含：`compileall`、`ruff check`、`scripts/guards/run.py`
+- 当前 guard 集合：`no-secrets-in-repo`、`db-artifacts-guard`、`backend-no-print-guard`、`no-direct-llm-call-in-api`、`file-line-count-guard`
+- 说明：`file-line-count-guard` 与 `no-direct-llm-call-in-api` 当前采用 audit-first 策略，先以 warning 暴露历史热点，避免第一版直接把老仓库卡死。
+
 ## 环境变量（后端）
 
 见 `backend/.env.example`：
