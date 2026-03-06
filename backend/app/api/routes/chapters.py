@@ -9,7 +9,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Header, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,15 @@ from app.models.generation_run import GenerationRun
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.project_settings import ProjectSettings
-from app.schemas.chapters import BulkCreateRequest, ChapterCreate, ChapterOut, ChapterUpdate
+from app.schemas.chapters import (
+    BulkCreateRequest,
+    ChapterCreate,
+    ChapterDetailOut,
+    ChapterListItemOut,
+    ChapterMetaPageOut,
+    ChapterOut,
+    ChapterUpdate,
+)
 from app.schemas.chapter_generate import ChapterGenerateRequest
 from app.schemas.chapter_plan import ChapterPlanRequest
 from app.services.generation_service import build_run_params_json, call_llm_and_record, prepare_llm_call, with_param_overrides
@@ -89,6 +97,8 @@ logger = logging.getLogger("ainovel")
 PREVIOUS_CHAPTER_ENDING_CHARS = 1000
 CURRENT_DRAFT_TAIL_CHARS = 1200
 _MAX_MACRO_SEED_CHARS = 256
+DEFAULT_CHAPTER_META_LIMIT = 200
+MAX_CHAPTER_META_LIMIT = 500
 
 
 class ChapterPostEditAdoption(BaseModel):
@@ -475,6 +485,73 @@ def _resolve_current_draft_tail(*, chapter: Chapter, request_tail: str | None) -
     return raw[-CURRENT_DRAFT_TAIL_CHARS:].lstrip()
 
 
+def _resolve_target_outline_id(*, db: Session, project_id: str, user_id: str, outline_id: str | None) -> str | None:
+    project = require_project_viewer(db, project_id=project_id, user_id=user_id)
+    if outline_id:
+        outline = require_outline_viewer(db, outline_id=outline_id, user_id=user_id)
+        if outline.project_id != project_id:
+            raise AppError.validation("outline_id 不属于当前项目")
+        return str(outline.id)
+    if project.active_outline_id:
+        return str(project.active_outline_id)
+    return None
+
+
+def _chapter_query(*, project_id: str, outline_id: str):
+    return select(Chapter).where(Chapter.project_id == project_id, Chapter.outline_id == outline_id)
+
+
+def _chapter_meta_payload(row: Chapter) -> dict:
+    return ChapterListItemOut(
+        id=str(row.id),
+        project_id=str(row.project_id),
+        outline_id=str(row.outline_id),
+        number=int(row.number),
+        title=row.title,
+        status=str(row.status),
+        updated_at=row.updated_at,
+        has_plan=bool(str(row.plan or "").strip()),
+        has_summary=bool(str(row.summary or "").strip()),
+        has_content=bool(str(row.content_md or "").strip()),
+    ).model_dump()
+
+
+@router.get("/projects/{project_id}/chapters/meta")
+def list_chapter_meta(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    project_id: str,
+    outline_id: str | None = Query(default=None),
+    cursor: int | None = Query(default=None, ge=0),
+    limit: int = Query(default=DEFAULT_CHAPTER_META_LIMIT, ge=1, le=MAX_CHAPTER_META_LIMIT),
+) -> dict:
+    request_id = request.state.request_id
+    target_outline_id = _resolve_target_outline_id(db=db, project_id=project_id, user_id=user_id, outline_id=outline_id)
+    if target_outline_id is None:
+        empty = ChapterMetaPageOut(chapters=[]).model_dump()
+        return ok_payload(request_id=request_id, data=empty)
+
+    filters = (Chapter.project_id == project_id, Chapter.outline_id == target_outline_id)
+    total = int(db.execute(select(func.count(Chapter.id)).where(*filters)).scalar_one())
+
+    query = select(Chapter).where(*filters)
+    if cursor is not None:
+        query = query.where(Chapter.number > cursor)
+    rows = db.execute(query.order_by(Chapter.number.asc()).limit(limit + 1)).scalars().all()
+    has_more = len(rows) > limit
+    page_rows = rows[:limit]
+    next_cursor = page_rows[-1].number if has_more and page_rows else None
+    data = ChapterMetaPageOut(
+        chapters=[ChapterListItemOut.model_validate(_chapter_meta_payload(row)).model_dump() for row in page_rows],
+        next_cursor=next_cursor,
+        has_more=has_more,
+        returned=len(page_rows),
+        total=total,
+    ).model_dump()
+    return ok_payload(request_id=request_id, data=data)
+
+
 @router.get("/projects/{project_id}/chapters")
 def list_chapters(
     request: Request,
@@ -484,22 +561,13 @@ def list_chapters(
     outline_id: str | None = Query(default=None),
 ) -> dict:
     request_id = request.state.request_id
-    project = require_project_viewer(db, project_id=project_id, user_id=user_id)
-    if outline_id:
-        outline = require_outline_viewer(db, outline_id=outline_id, user_id=user_id)
-        if outline.project_id != project_id:
-            raise AppError.validation("outline_id 不属于当前项目")
-        target_outline_id = outline.id
-    elif project.active_outline_id:
-        target_outline_id = project.active_outline_id
-    else:
+    target_outline_id = _resolve_target_outline_id(db=db, project_id=project_id, user_id=user_id, outline_id=outline_id)
+    if target_outline_id is None:
         return ok_payload(request_id=request_id, data={"chapters": []})
 
     rows = (
         db.execute(
-            select(Chapter)
-            .where(Chapter.project_id == project_id, Chapter.outline_id == target_outline_id)
-            .order_by(Chapter.number.asc())
+            _chapter_query(project_id=project_id, outline_id=target_outline_id).order_by(Chapter.number.asc())
         )
         .scalars()
         .all()
@@ -646,7 +714,7 @@ def bulk_create(
 def get_chapter(request: Request, db: DbDep, user_id: UserIdDep, chapter_id: str) -> dict:
     request_id = request.state.request_id
     row = require_chapter_viewer(db, chapter_id=chapter_id, user_id=user_id)
-    return ok_payload(request_id=request_id, data={"chapter": ChapterOut.model_validate(row).model_dump()})
+    return ok_payload(request_id=request_id, data={"chapter": ChapterDetailOut.model_validate(row).model_dump()})
 
 
 @router.put("/chapters/{chapter_id}")

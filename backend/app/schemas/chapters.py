@@ -48,3 +48,28 @@ class ChapterOut(ORMModel):
     summary: str | None = None
     status: ChapterStatus
     updated_at: datetime
+
+
+class ChapterDetailOut(ChapterOut):
+    pass
+
+
+class ChapterListItemOut(ORMModel):
+    id: str
+    project_id: str
+    outline_id: str
+    number: int
+    title: str | None = None
+    status: ChapterStatus
+    updated_at: datetime
+    has_plan: bool
+    has_summary: bool
+    has_content: bool
+
+
+class ChapterMetaPageOut(BaseModel):
+    chapters: list[ChapterListItemOut]
+    next_cursor: int | None = None
+    has_more: bool = False
+    returned: int = 0
+    total: int = 0

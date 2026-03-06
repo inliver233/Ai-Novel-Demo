@@ -284,6 +284,14 @@ cd backend
 - `AUTH_DEV_FALLBACK_USER_ID`：仅 `APP_ENV=dev` 生效（dev 免登录本地用户）。生产环境务必 `APP_ENV=prod`，并建议将该值置空/不设置；若生产误以 `APP_ENV=dev` 启动会造成鉴权绕过（high）。
 - `SECRET_ENCRYPTION_KEY`：prod 必填（用于可迁移的 `enc:` 加密）。升级旧数据库时可先运行 `backend/scripts/migrate_llm_profile_secrets.py` 迁移历史 API Key。
 
+## 章节 API（Wave A）
+
+- 兼容旧接口：`GET /api/projects/{project_id}/chapters` 仍返回完整章节对象（含 `plan` / `summary` / `content_md`），用于兼容窗口内的旧调用方。
+- 新列表合同：`GET /api/projects/{project_id}/chapters/meta?limit=<n>&cursor=<last_number>` 返回轻量 `ChapterListItem`，只包含章节元数据与 `has_plan` / `has_summary` / `has_content` 标记，不再返回全文内容。
+- 详情合同：`GET /api/chapters/{chapter_id}` 返回单章完整 `ChapterDetail`；Preview / Reader / Writing 等读路径应优先使用 “meta 列表 + detail 按需读取”。
+- cursor 说明：`cursor` 取上一页最后一章的 `number`，服务端按 `number > cursor` 继续返回后续章节；返回值包含 `next_cursor`、`has_more`、`returned`、`total`。
+- 后续迁移建议：Wave A 先迁移 Preview / Reader / Writing / Wizard / Foreshadows 的列表读路径；更完整的数据层缓存与失效策略留给 `T05/T06`。
+
 ## SQLite 约束（MVP 口径）
 
 - SQLite 模式仅支持 **单 worker**（例如 `uvicorn ... --workers 1`）

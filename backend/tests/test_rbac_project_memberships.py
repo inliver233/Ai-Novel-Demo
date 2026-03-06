@@ -130,6 +130,13 @@ class TestProjectMembershipRbac(unittest.TestCase):
         self.assertEqual(len(chapters), 1)
         self.assertEqual(chapters[0]["number"], 1)
 
+        resp_meta = client.get("/api/projects/p1/chapters/meta", headers={"X-Test-User": "u_viewer"})
+        self.assertEqual(resp_meta.status_code, 200)
+        meta_chapters = resp_meta.json()["data"]["chapters"]
+        self.assertEqual(len(meta_chapters), 1)
+        self.assertEqual(meta_chapters[0]["number"], 1)
+        self.assertNotIn("content_md", meta_chapters[0])
+
     def test_editor_cannot_delete_project(self) -> None:
         client = TestClient(self.app)
         resp = client.delete("/api/projects/p1", headers={"X-Test-User": "u_editor"})
