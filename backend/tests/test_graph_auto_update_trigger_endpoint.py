@@ -18,6 +18,7 @@ from app.models.chapter import Chapter
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.project_task import ProjectTask
+from app.models.project_task_event import ProjectTaskEvent
 from app.models.user import User
 
 
@@ -63,6 +64,7 @@ class TestGraphAutoUpdateTriggerEndpoint(unittest.TestCase):
                 Outline.__table__,
                 Chapter.__table__,
                 ProjectTask.__table__,
+                ProjectTaskEvent.__table__,
             ],
         )
 

@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.models.project_task import ProjectTask
+from app.models.project_task_event import ProjectTaskEvent
 from app.services.project_task_service import schedule_worldbook_auto_update_task
 
 
@@ -36,6 +37,7 @@ class TestWorldbookAutoUpdateTaskScheduling(unittest.TestCase):
             conn.exec_driver_sql("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY)")
             conn.exec_driver_sql("INSERT INTO users (id) VALUES ('user-1')")
         ProjectTask.__table__.create(engine)
+        ProjectTaskEvent.__table__.create(engine)
         SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
         return SessionLocal
 

@@ -19,6 +19,7 @@ from app.db.session import get_db
 from app.main import app_error_handler, validation_error_handler
 from app.models.project import Project
 from app.models.project_task import ProjectTask
+from app.models.project_task_event import ProjectTaskEvent
 from app.models.user import User
 
 
@@ -65,6 +66,7 @@ class TestProjectTasksEndpoints(unittest.TestCase):
                 User.__table__,
                 Project.__table__,
                 ProjectTask.__table__,
+                ProjectTaskEvent.__table__,
             ],
         )
         self.SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

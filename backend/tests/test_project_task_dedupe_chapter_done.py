@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.models.project import Project
 from app.models.project_settings import ProjectSettings
 from app.models.project_task import ProjectTask
+from app.models.project_task_event import ProjectTaskEvent
 from app.models.user import User
 from app.services.project_task_service import schedule_chapter_done_tasks
 
@@ -39,6 +40,7 @@ class TestProjectTaskDedupeChapterDone(unittest.TestCase):
                 Project.__table__,
                 ProjectSettings.__table__,
                 ProjectTask.__table__,
+                ProjectTaskEvent.__table__,
             ],
         )
         SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

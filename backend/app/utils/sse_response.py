@@ -6,17 +6,27 @@ from typing import Any, Iterable, Iterator
 from fastapi.responses import StreamingResponse
 
 
-def format_sse(data: dict[str, Any], event: str | None = None) -> str:
-    message = ""
+def format_sse(
+    data: dict[str, Any],
+    event: str | None = None,
+    *,
+    event_id: str | int | None = None,
+    retry: int | None = None,
+) -> str:
+    parts: list[str] = []
+    if event_id is not None:
+        parts.append(f"id: {event_id}")
     if event:
-        message += f"event: {event}\n"
-    message += f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-    return message
+        parts.append(f"event: {event}")
+    if retry is not None:
+        parts.append(f"retry: {int(retry)}")
+    parts.append(f"data: {json.dumps(data, ensure_ascii=False)}")
+    return "\n".join(parts) + "\n\n"
 
 
 def sse_start(
     *,
-    message: str = "开始生成...",
+    message: str = "????...",
     progress: int = 0,
     status: str = "processing",
 ) -> str:
