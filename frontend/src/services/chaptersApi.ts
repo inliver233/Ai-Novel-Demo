@@ -1,9 +1,16 @@
 import { apiJson } from "./apiClient";
-import type { Chapter, ChapterListItem, ChapterMetaPage } from "../types";
+import type {
+  BulkCreateChapterInput,
+  ChapterDetail,
+  ChapterListItem,
+  ChapterMetaPage,
+  CreateChapterInput,
+  UpdateChapterInput,
+} from "../types";
 
 type FetchChapterMetaOptions = {
   outlineId?: string | null;
-  cursor?: string | null;
+  cursor?: number | null;
   limit?: number;
 };
 
@@ -12,7 +19,9 @@ function buildMetaQuery(options: FetchChapterMetaOptions): string {
   if (typeof options.limit === "number" && Number.isFinite(options.limit) && options.limit > 0) {
     params.set("limit", String(Math.floor(options.limit)));
   }
-  if (options.cursor) params.set("cursor", options.cursor);
+  if (typeof options.cursor === "number" && Number.isFinite(options.cursor) && options.cursor >= 0) {
+    params.set("cursor", String(Math.floor(options.cursor)));
+  }
   if (options.outlineId) params.set("outline_id", options.outlineId);
   const query = params.toString();
   return query ? `?${query}` : "";
@@ -22,7 +31,7 @@ function hasText(value: string | null | undefined): boolean {
   return Boolean(value && value.trim());
 }
 
-export function chapterDetailToListItem(chapter: Chapter): ChapterListItem {
+export function chapterDetailToListItem(chapter: ChapterDetail): ChapterListItem {
   return {
     ...chapter,
     has_plan: hasText(chapter.plan),
@@ -44,7 +53,7 @@ export async function fetchAllChapterMeta(
   options: Omit<FetchChapterMetaOptions, "cursor"> = {},
 ): Promise<ChapterListItem[]> {
   const chapters: ChapterListItem[] = [];
-  let cursor: string | null = null;
+  let cursor: number | null = null;
   let pageCount = 0;
 
   while (pageCount < 50) {
@@ -58,7 +67,45 @@ export async function fetchAllChapterMeta(
   return chapters.sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
 }
 
-export async function fetchChapterDetail(chapterId: string): Promise<Chapter> {
-  const res = await apiJson<{ chapter: Chapter }>(`/api/chapters/${chapterId}`);
+export async function fetchChapterDetail(chapterId: string): Promise<ChapterDetail> {
+  const res = await apiJson<{ chapter: ChapterDetail }>(`/api/chapters/${chapterId}`);
   return res.data.chapter;
+}
+
+export async function createChapter(projectId: string, payload: CreateChapterInput): Promise<ChapterDetail> {
+  const res = await apiJson<{ chapter: ChapterDetail }>(`/api/projects/${projectId}/chapters`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.data.chapter;
+}
+
+export async function updateChapter(chapterId: string, payload: UpdateChapterInput): Promise<ChapterDetail> {
+  const res = await apiJson<{ chapter: ChapterDetail }>(`/api/chapters/${chapterId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return res.data.chapter;
+}
+
+export async function deleteChapter(chapterId: string): Promise<void> {
+  await apiJson<Record<string, never>>(`/api/chapters/${chapterId}`, { method: "DELETE" });
+}
+
+export async function bulkCreateChapters(
+  projectId: string,
+  payload: BulkCreateChapterInput,
+  options: { replace?: boolean } = {},
+): Promise<ChapterDetail[]> {
+  const params = new URLSearchParams();
+  if (options.replace) params.set("replace", "true");
+  const query = params.toString();
+  const res = await apiJson<{ chapters: ChapterDetail[] }>(
+    `/api/projects/${projectId}/chapters/bulk_create${query ? `?${query}` : ""}`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+  return res.data.chapters ?? [];
 }
