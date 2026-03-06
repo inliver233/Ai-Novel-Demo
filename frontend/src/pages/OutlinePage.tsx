@@ -20,9 +20,10 @@ import {
   type OutlineGenResult,
 } from "./outlineParsing";
 import { ApiError, apiJson } from "../services/apiClient";
+import { chapterStore } from "../services/chapterStore";
 import { SSEError, SSEPostClient } from "../services/sseClient";
 import { markWizardProjectChanged } from "../services/wizard";
-import type { Chapter, LLMPreset, Outline, OutlineListItem, Project } from "../types";
+import type { LLMPreset, Outline, OutlineListItem, Project } from "../types";
 
 type OutlineGenForm = {
   chapter_count: number;
@@ -276,10 +277,7 @@ export function OutlinePage() {
     };
 
     try {
-      await apiJson<{ chapters: Chapter[] }>(`/api/projects/${projectId}/chapters/bulk_create`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+      await chapterStore.bulkCreateProjectChapters(projectId, payload);
       toast.toastSuccess(`已创建 ${chaptersForSkeleton.length} 个章节`);
       markWizardProjectChanged(projectId);
       bumpWizardLocal();
@@ -295,10 +293,7 @@ export function OutlinePage() {
         });
         if (!replaceOk) return;
         try {
-          await apiJson<{ chapters: Chapter[] }>(`/api/projects/${projectId}/chapters/bulk_create?replace=true`, {
-            method: "POST",
-            body: JSON.stringify(payload),
-          });
+          await chapterStore.bulkCreateProjectChapters(projectId, payload, { replace: true });
           toast.toastSuccess(`已覆盖创建 ${chaptersForSkeleton.length} 个章节`);
           markWizardProjectChanged(projectId);
           bumpWizardLocal();

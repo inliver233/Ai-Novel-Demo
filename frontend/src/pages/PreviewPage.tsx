@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { BookOpen, ChevronLeft, Edit3, List, StickyNote } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useNavigate, useParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
@@ -8,18 +8,12 @@ import remarkGfm from "remark-gfm";
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { PaperContent } from "../components/layout/AppShell";
 import { Drawer } from "../components/ui/Drawer";
-import { useToast } from "../components/ui/toast";
-import { useProjectData } from "../hooks/useProjectData";
+import { useChapterDetail } from "../hooks/useChapterDetail";
+import { useChapterMetaList } from "../hooks/useChapterMetaList";
 import { useWizardProgress } from "../hooks/useWizardProgress";
-import { createRequestSeqGuard } from "../lib/requestSeqGuard";
-import { ApiError } from "../services/apiClient";
-import { fetchAllChapterMeta, fetchChapterDetail } from "../services/chaptersApi";
+import { chapterStore } from "../services/chapterStore";
 import { markWizardPreviewSeen } from "../services/wizard";
-import type { Chapter, ChapterListItem } from "../types";
-
-type PreviewLoaded = { chapters: ChapterListItem[] };
-
-const EMPTY_CHAPTERS: ChapterListItem[] = [];
+import type { ChapterListItem } from "../types";
 
 function humanizeChapterStatusZh(status: string): string {
   const s = String(status || "").trim();
@@ -32,16 +26,12 @@ function humanizeChapterStatusZh(status: string): string {
 export function PreviewPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const toast = useToast();
   const { bumpLocal, loading: wizardLoading, progress: wizardProgress } = useWizardProgress(projectId);
 
-  const activeChapterGuardRef = useRef(createRequestSeqGuard());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [onlyDone, setOnlyDone] = useState(false);
-  const [activeChapter, setActiveChapter] = useState<Chapter | null>(null);
-  const [loadingChapter, setLoadingChapter] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -49,11 +39,8 @@ export function PreviewPage() {
     bumpLocal();
   }, [bumpLocal, projectId]);
 
-  const previewQuery = useProjectData<PreviewLoaded>(projectId, async (id) => ({
-    chapters: await fetchAllChapterMeta(id),
-  }));
-
-  const chapters = previewQuery.data?.chapters ?? EMPTY_CHAPTERS;
+  const chapterListQuery = useChapterMetaList(projectId);
+  const chapters = chapterListQuery.chapters as ChapterListItem[];
   const sortedChapters = useMemo(() => [...chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)), [chapters]);
   const doneCount = useMemo(
     () => sortedChapters.reduce((acc, c) => acc + (c.status === "done" ? 1 : 0), 0),
@@ -78,8 +65,6 @@ export function PreviewPage() {
     if (activeIndex < 0) return null;
     return visibleChapters[activeIndex] ?? null;
   }, [activeIndex, visibleChapters]);
-
-  const activeChapterSummary = activeChapter ?? activeChapterMeta;
 
   const prevChapter = useMemo(() => {
     if (activeIndex <= 0) return null;
@@ -107,42 +92,15 @@ export function PreviewPage() {
     setMobileListOpen(false);
   }, []);
 
-  useEffect(() => {
-    const guard = activeChapterGuardRef.current;
-    return () => {
-      guard.invalidate();
-    };
-  }, []);
+  const { chapter: activeChapter, loading: loadingChapter } = useChapterDetail(effectiveActiveId, {
+    enabled: Boolean(effectiveActiveId),
+  });
+  const activeChapterSummary = activeChapter ?? activeChapterMeta;
 
   useEffect(() => {
-    if (!effectiveActiveId) {
-      activeChapterGuardRef.current.invalidate();
-      void Promise.resolve().then(() => {
-        setActiveChapter(null);
-        setLoadingChapter(false);
-      });
-      return;
-    }
-    const seq = activeChapterGuardRef.current.next();
-    void (async () => {
-      setActiveChapter(null);
-      setLoadingChapter(true);
-      try {
-        const chapter = await fetchChapterDetail(effectiveActiveId);
-        if (!activeChapterGuardRef.current.isLatest(seq)) return;
-        setActiveChapter(chapter);
-      } catch (e) {
-        if (!activeChapterGuardRef.current.isLatest(seq)) return;
-        const err = e as ApiError;
-        toast.toastError(`${err.message} (${err.code})`, err.requestId);
-        setActiveChapter(null);
-      } finally {
-        if (activeChapterGuardRef.current.isLatest(seq)) {
-          setLoadingChapter(false);
-        }
-      }
-    })();
-  }, [effectiveActiveId, toast]);
+    if (prevChapter) void chapterStore.prefetchChapterDetail(prevChapter.id);
+    if (nextChapter) void chapterStore.prefetchChapterDetail(nextChapter.id);
+  }, [nextChapter, prevChapter]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -227,7 +185,7 @@ export function PreviewPage() {
     </div>
   );
 
-  if (previewQuery.loading) return <div className="text-subtext">加载中...</div>;
+  if (!chapterListQuery.hasLoaded && chapterListQuery.loading) return <div className="text-subtext">加载中...</div>;
 
   return (
     <PaperContent className="grid gap-4 pb-24">

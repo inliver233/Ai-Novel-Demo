@@ -5,9 +5,9 @@ import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShe
 import { useConfirm } from "../components/ui/confirm";
 import { useToast } from "../components/ui/toast";
 import { RequestIdBadge } from "../components/ui/RequestIdBadge";
+import { useChapterMetaList } from "../hooks/useChapterMetaList";
 import { createRequestSeqGuard } from "../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../services/apiClient";
-import { fetchAllChapterMeta } from "../services/chaptersApi";
 import type { ChapterListItem } from "../types";
 
 type ForeshadowOpenLoop = {
@@ -56,35 +56,12 @@ export function ForeshadowsPage() {
   const [queryText, setQueryText] = useState("");
   const [order, setOrder] = useState<OrderKey>("timeline_desc");
 
-  const [chapters, setChapters] = useState<ChapterListItem[]>([]);
-  const [loadingChapters, setLoadingChapters] = useState(false);
   const [resolvedAtChapterId, setResolvedAtChapterId] = useState<string>("");
 
   const listGuard = useMemo(() => createRequestSeqGuard(), []);
-  const chaptersGuard = useMemo(() => createRequestSeqGuard(), []);
-
-  const fetchChapters = useCallback(async () => {
-    if (!projectId) return;
-    const seq = chaptersGuard.next();
-    setLoadingChapters(true);
-    try {
-      const chapters = await fetchAllChapterMeta(projectId);
-      if (!chaptersGuard.isLatest(seq)) return;
-      setChapters(chapters);
-    } catch (e) {
-      if (!chaptersGuard.isLatest(seq)) return;
-      const err =
-        e instanceof ApiError
-          ? e
-          : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
-      setRequestId((prev) => prev ?? err.requestId ?? null);
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    } finally {
-      if (chaptersGuard.isLatest(seq)) {
-        setLoadingChapters(false);
-      }
-    }
-  }, [chaptersGuard, projectId, toast]);
+  const chapterListQuery = useChapterMetaList(projectId);
+  const chapters = chapterListQuery.chapters as ChapterListItem[];
+  const loadingChapters = !chapterListQuery.hasLoaded && chapterListQuery.loading;
 
   const fetchOpenLoops = useCallback(async () => {
     if (!projectId) return;
@@ -119,16 +96,10 @@ export function ForeshadowsPage() {
 
   useEffect(() => {
     const guard1 = listGuard;
-    const guard2 = chaptersGuard;
     return () => {
       guard1.invalidate();
-      guard2.invalidate();
     };
-  }, [chaptersGuard, listGuard]);
-
-  useEffect(() => {
-    void fetchChapters();
-  }, [fetchChapters]);
+  }, [listGuard]);
 
   useEffect(() => {
     void fetchOpenLoops();

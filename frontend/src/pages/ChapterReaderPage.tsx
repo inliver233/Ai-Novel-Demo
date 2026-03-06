@@ -7,17 +7,12 @@ import remarkGfm from "remark-gfm";
 
 import { ToolContent } from "../components/layout/AppShell";
 import { Drawer } from "../components/ui/Drawer";
-import { useToast } from "../components/ui/toast";
-import { useProjectData } from "../hooks/useProjectData";
-import { createRequestSeqGuard } from "../lib/requestSeqGuard";
+import { useChapterDetail } from "../hooks/useChapterDetail";
+import { useChapterMetaList } from "../hooks/useChapterMetaList";
 import { ApiError, apiJson } from "../services/apiClient";
-import { fetchAllChapterMeta, fetchChapterDetail } from "../services/chaptersApi";
+import { chapterStore } from "../services/chapterStore";
 import type { Chapter, ChapterListItem } from "../types";
 import type { MemoryContextPack } from "../components/writing/types";
-
-type PreviewLoaded = { chapters: ChapterListItem[] };
-
-const EMPTY_CHAPTERS: ChapterListItem[] = [];
 const EMPTY_PACK: MemoryContextPack = {
   worldbook: {},
   story_memory: {},
@@ -113,11 +108,9 @@ function sectionTextMd(section: Record<string, unknown> | null): string {
 export function ChapterReaderPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const toast = useToast();
   const [searchParams] = useSearchParams();
   const requestedChapterId = searchParams.get("chapterId");
 
-  const activeChapterGuardRef = useRef(createRequestSeqGuard());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const [mobileMemoryOpen, setMobileMemoryOpen] = useState(false);
@@ -128,14 +121,10 @@ export function ChapterReaderPage() {
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [memoryError, setMemoryError] = useState<ApiError | null>(null);
   const [memoryPack, setMemoryPack] = useState<MemoryContextPack>(EMPTY_PACK);
-  const [activeChapter, setActiveChapter] = useState<Chapter | null>(null);
-  const [loadingChapter, setLoadingChapter] = useState(false);
+  const memoryCacheRef = useRef(new Map<string, MemoryContextPack>());
 
-  const previewQuery = useProjectData<PreviewLoaded>(projectId, async (id) => ({
-    chapters: await fetchAllChapterMeta(id),
-  }));
-
-  const chapters = previewQuery.data?.chapters ?? EMPTY_CHAPTERS;
+  const chapterListQuery = useChapterMetaList(projectId);
+  const chapters = chapterListQuery.chapters as ChapterListItem[];
   const sortedChapters = useMemo(() => [...chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)), [chapters]);
   const doneCount = useMemo(
     () => sortedChapters.reduce((acc, c) => acc + (c.status === "done" ? 1 : 0), 0),
@@ -164,8 +153,6 @@ export function ChapterReaderPage() {
     return visibleChapters[activeIndex] ?? null;
   }, [activeIndex, visibleChapters]);
 
-  const activeChapterSummary = activeChapter ?? activeChapterMeta;
-
   const prevChapter = useMemo(() => {
     if (activeIndex <= 0) return null;
     return visibleChapters[activeIndex - 1] ?? null;
@@ -187,42 +174,15 @@ export function ChapterReaderPage() {
     setMobileListOpen(false);
   }, []);
 
-  useEffect(() => {
-    const guard = activeChapterGuardRef.current;
-    return () => {
-      guard.invalidate();
-    };
-  }, []);
+  const { chapter: activeChapter, loading: loadingChapter } = useChapterDetail(resolvedActiveId, {
+    enabled: Boolean(resolvedActiveId),
+  });
+  const activeChapterSummary = activeChapter ?? activeChapterMeta;
 
   useEffect(() => {
-    if (!resolvedActiveId) {
-      activeChapterGuardRef.current.invalidate();
-      void Promise.resolve().then(() => {
-        setActiveChapter(null);
-        setLoadingChapter(false);
-      });
-      return;
-    }
-    const seq = activeChapterGuardRef.current.next();
-    void (async () => {
-      setActiveChapter(null);
-      setLoadingChapter(true);
-      try {
-        const chapter = await fetchChapterDetail(resolvedActiveId);
-        if (!activeChapterGuardRef.current.isLatest(seq)) return;
-        setActiveChapter(chapter);
-      } catch (e) {
-        if (!activeChapterGuardRef.current.isLatest(seq)) return;
-        const err = e as ApiError;
-        toast.toastError(`${err.message} (${err.code})`, err.requestId);
-        setActiveChapter(null);
-      } finally {
-        if (activeChapterGuardRef.current.isLatest(seq)) {
-          setLoadingChapter(false);
-        }
-      }
-    })();
-  }, [resolvedActiveId, toast]);
+    if (prevChapter) void chapterStore.prefetchChapterDetail(prevChapter.id);
+    if (nextChapter) void chapterStore.prefetchChapterDetail(nextChapter.id);
+  }, [nextChapter, prevChapter]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -253,16 +213,23 @@ export function ChapterReaderPage() {
     if (!projectId) return;
     if (!activeChapter) return;
 
-    let cancelled = false;
-    void Promise.resolve().then(() => {
-      if (cancelled) return;
-      setMemoryLoading(true);
+    const cacheKey = `${activeChapter.id}:${activeChapter.updated_at}`;
+    const cachedPack = memoryCacheRef.current.get(cacheKey);
+    if (cachedPack) {
+      setMemoryPack(cachedPack);
       setMemoryError(null);
-    });
+      setMemoryLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setMemoryLoading(true);
+    setMemoryError(null);
     const queryText = buildMemoryQueryText(activeChapter);
 
     apiJson<MemoryContextPack>(`/api/projects/${projectId}/memory/preview`, {
       method: "POST",
+      signal: controller.signal,
       body: JSON.stringify({
         query_text: queryText,
         section_enabled: {
@@ -278,25 +245,28 @@ export function ChapterReaderPage() {
       }),
     })
       .then((res) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
+        memoryCacheRef.current.set(cacheKey, res.data);
         setMemoryPack(res.data);
+        setMemoryError(null);
       })
       .catch((e) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const err =
           e instanceof ApiError
             ? e
             : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
+        if (err.code === "REQUEST_ABORTED") return;
         setMemoryError(err);
         setMemoryPack(EMPTY_PACK);
       })
       .finally(() => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setMemoryLoading(false);
       });
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [activeChapter, projectId]);
 
@@ -523,7 +493,7 @@ export function ChapterReaderPage() {
     </div>
   );
 
-  if (previewQuery.loading) return <div className="text-subtext">加载中...</div>;
+  if (!chapterListQuery.hasLoaded && chapterListQuery.loading) return <div className="text-subtext">加载中...</div>;
 
   return (
     <ToolContent className="grid gap-4">
