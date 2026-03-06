@@ -49,6 +49,7 @@ from app.utils.sse_response import (
 )
 from app.models.outline import Outline
 from app.schemas.outline import OutlineOut, OutlineUpdate
+from app.services.outline_payload_normalizer import normalize_outline_content_and_structure, parse_outline_structure_json
 
 router = APIRouter()
 logger = logging.getLogger("ainovel")
@@ -77,6 +78,20 @@ OUTLINE_STREAM_RAW_PREVIEW_MAX_CHARS = 1800
 
 OutlineFillProgressHook = Callable[[dict[str, object]], None]
 OutlineSegmentProgressHook = Callable[[dict[str, object]], None]
+
+
+def _outline_out(row: Outline) -> dict[str, object]:
+    parsed_structure = parse_outline_structure_json(row.structure_json)
+    content_md, structure, _ = normalize_outline_content_and_structure(content_md=row.content_md or "", structure=parsed_structure)
+    return OutlineOut(
+        id=row.id,
+        project_id=row.project_id,
+        title=row.title,
+        content_md=content_md,
+        structure=structure,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    ).model_dump()
 
 
 @dataclass(frozen=True, slots=True)
@@ -2326,21 +2341,7 @@ def get_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str
         )
     if row is None:
         row = ensure_active_outline(db, project=project)
-    structure = None
-    if row.structure_json:
-        try:
-            structure = json.loads(row.structure_json)
-        except Exception:
-            structure = None
-    payload = OutlineOut(
-        id=row.id,
-        project_id=row.project_id,
-        title=row.title,
-        content_md=row.content_md or "",
-        structure=structure,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    ).model_dump()
+    payload = _outline_out(row)
     return ok_payload(request_id=request_id, data={"outline": payload})
 
 
@@ -2353,8 +2354,14 @@ def put_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str
     if body.title is not None:
         row.title = body.title
     if body.content_md is not None:
-        row.content_md = body.content_md
-    if body.structure is not None:
+        content_md, structure, normalized = normalize_outline_content_and_structure(
+            content_md=body.content_md,
+            structure=body.structure,
+        )
+        row.content_md = content_md
+        if body.structure is not None or normalized:
+            row.structure_json = json.dumps(structure, ensure_ascii=False) if structure is not None else None
+    elif body.structure is not None:
         row.structure_json = json.dumps(body.structure, ensure_ascii=False)
 
     _mark_vector_index_dirty(db, project_id=project_id)
@@ -2362,21 +2369,7 @@ def put_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str
     db.refresh(row)
     schedule_vector_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="outline_update")
     schedule_search_rebuild_task(db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="outline_update")
-    structure = None
-    if row.structure_json:
-        try:
-            structure = json.loads(row.structure_json)
-        except Exception:
-            structure = None
-    payload = OutlineOut(
-        id=row.id,
-        project_id=row.project_id,
-        title=row.title,
-        content_md=row.content_md or "",
-        structure=structure,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    ).model_dump()
+    payload = _outline_out(row)
     return ok_payload(request_id=request_id, data={"outline": payload})
 
 

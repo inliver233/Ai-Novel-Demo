@@ -19,6 +19,7 @@ from app.models.chapter import Chapter
 from app.models.outline import Outline
 from app.models.project_settings import ProjectSettings
 from app.schemas.outline import OutlineCreate, OutlineListItem, OutlineOut, OutlineUpdate
+from app.services.outline_payload_normalizer import normalize_outline_content_and_structure, parse_outline_structure_json
 from app.services.search_index_service import schedule_search_rebuild_task
 from app.services.vector_rag_service import schedule_vector_rebuild_task
 
@@ -33,23 +34,15 @@ def _mark_vector_index_dirty(db: DbDep, *, project_id: str) -> None:
         db.flush()
     row.vector_index_dirty = True
 
-
-def _parse_structure(value: str | None) -> object | None:
-    if not value:
-        return None
-    try:
-        return json.loads(value)
-    except Exception:
-        return None
-
-
 def _outline_out(row: Outline) -> dict:
+    parsed_structure = parse_outline_structure_json(row.structure_json)
+    content_md, structure, _ = normalize_outline_content_and_structure(content_md=row.content_md or "", structure=parsed_structure)
     return OutlineOut(
         id=row.id,
         project_id=row.project_id,
         title=row.title,
-        content_md=row.content_md or "",
-        structure=_parse_structure(row.structure_json),
+        content_md=content_md,
+        structure=structure,
         created_at=row.created_at,
         updated_at=row.updated_at,
     ).model_dump()
@@ -87,13 +80,14 @@ def list_outlines(request: Request, db: DbDep, user_id: UserIdDep, project_id: s
 def create_outline(request: Request, db: DbDep, user_id: UserIdDep, project_id: str, body: OutlineCreate) -> dict:
     request_id = request.state.request_id
     project = require_project_editor(db, project_id=project_id, user_id=user_id)
+    content_md, structure, _ = normalize_outline_content_and_structure(content_md=body.content_md, structure=body.structure)
 
     row = Outline(
         id=new_id(),
         project_id=project_id,
         title=body.title,
-        content_md=body.content_md or "",
-        structure_json=json.dumps(body.structure, ensure_ascii=False) if body.structure is not None else None,
+        content_md=content_md or "",
+        structure_json=json.dumps(structure, ensure_ascii=False) if structure is not None else None,
     )
     db.add(row)
     project.active_outline_id = row.id
@@ -131,8 +125,14 @@ def update_outline_item(
     if body.title is not None:
         row.title = body.title
     if body.content_md is not None:
-        row.content_md = body.content_md
-    if body.structure is not None:
+        content_md, structure, normalized = normalize_outline_content_and_structure(
+            content_md=body.content_md,
+            structure=body.structure,
+        )
+        row.content_md = content_md
+        if body.structure is not None or normalized:
+            row.structure_json = json.dumps(structure, ensure_ascii=False) if structure is not None else None
+    elif body.structure is not None:
         row.structure_json = json.dumps(body.structure, ensure_ascii=False)
 
     _mark_vector_index_dirty(db, project_id=project_id)
