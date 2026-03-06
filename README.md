@@ -292,6 +292,13 @@ cd backend
 - cursor 说明：`cursor` 取上一页最后一章的 `number`，服务端按 `number > cursor` 继续返回后续章节；返回值包含 `next_cursor`、`has_more`、`returned`、`total`。
 - 后续迁移建议：Wave A 先迁移 Preview / Reader / Writing / Wizard / Foreshadows 的列表读路径；更完整的数据层缓存与失效策略留给 `T05/T06`。
 
+## Chapter frontend data layer (Wave B)
+- `frontend/src/services/chaptersApi.ts` remains the transport layer and should not grow page-level cache semantics.
+- `frontend/src/services/chapterStore.ts` owns project-scoped chapter `meta/detail` caching, invalidation, neighbor-detail prefetch, and cross-page sharing.
+- List/navigation views should read `ChapterListItem` from `/chapters/meta`; full content (`content_md`, `summary`, `plan`) should be loaded on demand via `ChapterDetail` from `/api/chapters/{chapter_id}`.
+- Any mutation that changes the chapter set (`create / update / delete / bulk_create / outline switch`) should go through `chapterStore` or trigger explicit invalidation instead of syncing from the legacy full-list endpoint.
+- `Writing / Preview / Reader` now use `frontend/src/components/writing/ChapterVirtualList.tsx` for windowed rendering; new directory/list features should reuse it instead of falling back to full DOM rendering.
+
 ## SQLite 约束（MVP 口径）
 
 - SQLite 模式仅支持 **单 worker**（例如 `uvicorn ... --workers 1`）
