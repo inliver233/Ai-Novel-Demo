@@ -105,7 +105,6 @@ export function WritingPage() {
   const {
     loading,
     chapters,
-    setChapters,
     refreshChapters,
     activeId,
     setActiveId,
@@ -184,10 +183,8 @@ export function WritingPage() {
   const chapterCrud = useChapterCrud({
     projectId,
     chapters,
-    setChapters,
     activeChapter,
     setActiveId,
-    refreshChapters,
     requestSelectChapter,
     toast,
     confirm,

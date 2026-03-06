@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import type { ConfirmApi } from "../../components/ui/confirm";
 import type { ToastApi } from "../../components/ui/toast";
 import { ApiError, apiJson } from "../../services/apiClient";
+import { chapterStore } from "../../services/chapterStore";
 import { markWizardProjectChanged } from "../../services/wizard";
 import type { Project } from "../../types";
 
@@ -15,7 +16,7 @@ export function useOutlineSwitcher(args: {
   saveChapter: () => Promise<boolean>;
   bumpWizardLocal: () => void;
   refreshWizard: () => Promise<void>;
-  refreshChapters: () => Promise<void>;
+  refreshChapters: () => Promise<unknown>;
   refreshWriting: () => Promise<void>;
 }) {
   const {
@@ -58,6 +59,7 @@ export function useOutlineSwitcher(args: {
         });
         markWizardProjectChanged(projectId);
         bumpWizardLocal();
+        chapterStore.invalidateProjectChapters(projectId, { dropDetails: true });
         await refreshWriting();
         await refreshChapters();
         await refreshWizard();

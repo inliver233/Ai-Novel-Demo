@@ -3,10 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConfirmApi } from "../../components/ui/confirm";
 import type { ToastApi } from "../../components/ui/toast";
 import { useAutoSave } from "../../hooks/useAutoSave";
+import { useChapterMetaList } from "../../hooks/useChapterMetaList";
 import { useSaveHotkey } from "../../hooks/useSaveHotkey";
 import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
-import { ApiError, apiJson } from "../../services/apiClient";
-import { chapterDetailToListItem, fetchAllChapterMeta, fetchChapterDetail } from "../../services/chaptersApi";
+import { ApiError } from "../../services/apiClient";
+import { chapterStore } from "../../services/chapterStore";
 import { markWizardProjectChanged } from "../../services/wizard";
 import type { Chapter, ChapterListItem } from "../../types";
 import { chapterToForm } from "./writingUtils";
@@ -33,9 +34,6 @@ export function useChapterEditor(args: {
     bumpWizardLocal,
   } = args;
 
-  const [loading, setLoading] = useState(true);
-  const [chapters, setChapters] = useState<ChapterListItem[]>([]);
-
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeChapter, setActiveChapter] = useState<Chapter | null>(null);
   const [baseline, setBaseline] = useState<ChapterForm | null>(null);
@@ -43,7 +41,6 @@ export function useChapterEditor(args: {
   const [loadingChapter, setLoadingChapter] = useState(false);
   const [saving, setSaving] = useState(false);
   const requestedChapterHandledRef = useRef(false);
-  const chapterListGuardRef = useRef(createRequestSeqGuard());
   const chapterLoadGuardRef = useRef(createRequestSeqGuard());
   const saveGuardRef = useRef(createRequestSeqGuard());
   const refreshWizardDebounceRef = useRef<number | null>(null);
@@ -56,13 +53,15 @@ export function useChapterEditor(args: {
   const queuedPromiseRef = useRef<Promise<boolean> | null>(null);
   const queuedPromiseResolveRef = useRef<((ok: boolean) => void) | null>(null);
   const queuedToastShownRef = useRef(false);
+  const chaptersQuery = useChapterMetaList(projectId);
+  const chapters = chaptersQuery.chapters as ChapterListItem[];
+  const refreshChapters = chaptersQuery.refresh;
+  const loading = !chaptersQuery.hasLoaded && chaptersQuery.loading;
 
   useEffect(() => {
-    const listGuard = chapterListGuardRef.current;
     const loadGuard = chapterLoadGuardRef.current;
     const saveGuard = saveGuardRef.current;
     return () => {
-      listGuard.invalidate();
       loadGuard.invalidate();
       saveGuard.invalidate();
       if (refreshWizardDebounceRef.current !== null) {
@@ -88,32 +87,12 @@ export function useChapterEditor(args: {
     );
   }, [baseline, form]);
 
-  const refreshChapters = useCallback(async () => {
-    if (!projectId) return;
-    const seq = chapterListGuardRef.current.next();
-    setLoading(true);
-    try {
-      const chapters = await fetchAllChapterMeta(projectId);
-      if (!chapterListGuardRef.current.isLatest(seq)) return;
-      setChapters(chapters);
-      setActiveId((prev) => {
-        if (prev && chapters.some((c) => c.id === prev)) return prev;
-        return chapters[0]?.id ?? null;
-      });
-    } catch (e) {
-      if (!chapterListGuardRef.current.isLatest(seq)) return;
-      const err = e as ApiError;
-      toast.toastError(`${err.message} (${err.code})`, err.requestId);
-    } finally {
-      if (chapterListGuardRef.current.isLatest(seq)) {
-        setLoading(false);
-      }
-    }
-  }, [projectId, toast]);
-
   useEffect(() => {
-    void refreshChapters();
-  }, [refreshChapters]);
+    setActiveId((prev) => {
+      if (prev && chapters.some((chapter) => chapter.id === prev)) return prev;
+      return chapters[0]?.id ?? null;
+    });
+  }, [chapters]);
 
   useEffect(() => {
     if (requestedChapterHandledRef.current) return;
@@ -142,7 +121,7 @@ export function useChapterEditor(args: {
     setLoadingChapter(true);
     void (async () => {
       try {
-        const chapter = await fetchChapterDetail(activeId);
+        const chapter = await chapterStore.loadChapterDetail(activeId);
         if (!chapterLoadGuardRef.current.isLatest(seq)) return;
         setActiveChapter(chapter);
         const next = chapterToForm(chapter);
@@ -204,19 +183,16 @@ export function useChapterEditor(args: {
         savingRef.current = true;
         setSaving(true);
         try {
-          const res = await apiJson<{ chapter: Chapter }>(`/api/chapters/${latestChapter.id}`, {
-            method: "PUT",
-            body: JSON.stringify({
-              title: nextSnapshot.title.trim(),
-              plan: nextSnapshot.plan,
-              content_md: nextSnapshot.content_md,
-              summary: nextSnapshot.summary,
-              status: nextSnapshot.status,
-            }),
+          const nextChapter = await chapterStore.updateChapterDetail(latestChapter.id, {
+            title: nextSnapshot.title.trim(),
+            plan: nextSnapshot.plan,
+            content_md: nextSnapshot.content_md,
+            summary: nextSnapshot.summary,
+            status: nextSnapshot.status,
           });
           if (!saveGuardRef.current.isLatest(seq)) return true;
-          setActiveChapter(res.data.chapter);
-          const nextBaseline = chapterToForm(res.data.chapter);
+          setActiveChapter(nextChapter);
+          const nextBaseline = chapterToForm(nextChapter);
           setBaseline(nextBaseline);
           setForm((prev) => {
             if (!prev) return prev;
@@ -231,14 +207,11 @@ export function useChapterEditor(args: {
             }
             return prev;
           });
-          setChapters((prev) =>
-            prev.map((c) => (c.id === res.data.chapter.id ? chapterDetailToListItem(res.data.chapter) : c)),
-          );
           markWizardProjectChanged(latestChapter.project_id);
           bumpWizardLocal();
           if (nextSilent) scheduleWizardRefresh();
           else await refreshWizard();
-          if (!nextSilent) toast.toastSuccess("已保存", res.request_id);
+          if (!nextSilent) toast.toastSuccess("已保存");
           return true;
         } catch (e) {
           const err = e as ApiError;
@@ -318,7 +291,6 @@ export function useChapterEditor(args: {
   return {
     loading,
     chapters,
-    setChapters,
     refreshChapters,
     activeId,
     setActiveId,
