@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.schemas.base import ORMModel
-from app.schemas.limits import MAX_MD_CHARS, MAX_TEXT_CHARS
+from app.schemas.limits import MAX_BULK_CREATE_CHAPTERS, MAX_MD_CHARS, MAX_TEXT_CHARS
 
 
 ChapterStatus = Literal["planned", "drafting", "done"]
@@ -34,7 +34,7 @@ class BulkChapter(BaseModel):
 
 
 class BulkCreateRequest(BaseModel):
-    chapters: list[BulkChapter] = Field(min_length=1, max_length=200)
+    chapters: list[BulkChapter] = Field(min_length=1, max_length=MAX_BULK_CREATE_CHAPTERS)
 
 
 class ChapterOut(ORMModel):
