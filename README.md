@@ -260,6 +260,12 @@ cd backend
 - 如本地已有被误跟踪的配置文件，使用 `git rm --cached <path>` 停止跟踪即可；例如本仓库应确保 `backend/.env` 仅作为本地文件存在。
 - 安全红线不变：任何日志、报错、导出与调试输出都不得包含明文 secrets；接口与日志面只允许 `has_api_key` / `masked_api_key`。
 
+### 仓库 guard（Wave A）
+
+- 查看当前 guard：`cd backend && .\.venv\Scripts\python.exe ..\scripts\guards\run.py --list`
+- 运行仓库卫生 guard：`cd backend && .\.venv\Scripts\python.exe ..\scripts\guards\run.py no-secrets-in-repo db-artifacts-guard`
+- 说明：guard 会检查 Git 已跟踪文件 + 未忽略的新文件，优先在提交前挡住敏感文件、数据库产物、测试产物和临时截图/日志。
+
 ## 环境变量（后端）
 
 见 `backend/.env.example`：
