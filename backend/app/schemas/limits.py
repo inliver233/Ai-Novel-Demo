@@ -7,6 +7,7 @@ T = TypeVar("T")
 
 # Large user-authored markdown/text (outline/chapter/worldbook/settings/etc).
 MAX_MD_CHARS = 200_000
+MAX_OUTLINE_MD_CHARS = 2_000_000
 
 # Medium free-form text (plans/summaries/profiles/notes).
 MAX_TEXT_CHARS = 40_000
