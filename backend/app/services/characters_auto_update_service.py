@@ -37,8 +37,8 @@ from app.services.llm_retry import (
     task_llm_retry_max_seconds,
 )
 from app.services.output_parsers import extract_json_value, likely_truncated_json
+from app.services.project_task_event_service import emit_and_enqueue_project_task
 from app.services.search_index_service import schedule_search_rebuild_task
-from app.services.task_queue import get_task_queue
 
 logger = logging.getLogger("ainovel")
 
@@ -737,7 +737,9 @@ def schedule_characters_auto_update_task(
             .first()
         )
 
+        created_task = False
         if task is None:
+            created_task = True
             task = ProjectTask(
                 id=new_id(),
                 project_id=pid,
@@ -776,29 +778,15 @@ def schedule_characters_auto_update_task(
         if task is None:
             return None
 
-        queue = get_task_queue()
-        try:
-            queue.enqueue(kind="project_task", task_id=str(task.id))
-        except Exception as exc:
-            fields = exception_log_fields(exc)
-            msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:200]
-            task.status = "failed"
-            task.finished_at = utc_now()
-            task.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": msg})
-            db.commit()
-
-            log_event(
-                logger,
-                "warning",
-                event="PROJECT_TASK_ENQUEUE_ERROR",
-                task_id=str(task.id),
-                project_id=str(task.project_id),
-                kind=str(task.kind),
-                error_type=type(exc).__name__,
-                **fields,
-            )
-
-        return str(task.id)
+        return emit_and_enqueue_project_task(
+            db,
+            task=task,
+            request_id=request_id,
+            logger=logger,
+            event_type="queued" if created_task else None,
+            source="scheduler",
+            payload={"reason": reason_norm, "request_id": request_id, "chapter_id": cid, "chapter_token": token_norm},
+        )
     finally:
         if owns_session:
             db.close()

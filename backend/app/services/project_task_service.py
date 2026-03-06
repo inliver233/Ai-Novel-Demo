@@ -15,6 +15,11 @@ from app.core.secrets import redact_api_keys
 from app.db.session import SessionLocal
 from app.db.utils import new_id, utc_now
 from app.models.project_task import ProjectTask
+from app.services.project_task_event_service import (
+    append_project_task_event,
+    mark_project_task_enqueue_failed,
+    reset_project_task_to_queued,
+)
 
 logger = logging.getLogger("ainovel")
 
@@ -83,11 +88,13 @@ def project_task_to_dict(*, task: ProjectTask, include_payloads: bool) -> dict[s
         "kind": str(task.kind),
         "status": _task_status_to_public(str(task.status)),
         "idempotency_key": str(getattr(task, "idempotency_key", "") or ""),
+        "attempt": int(getattr(task, "attempt", 0) or 0),
         "error_type": error_type,
         "error_message": error_message,
         "timings": {
             "created_at": _iso(task.created_at),
             "started_at": _iso(task.started_at),
+            "heartbeat_at": _iso(getattr(task, "heartbeat_at", None)),
             "finished_at": _iso(task.finished_at),
             "updated_at": _iso(task.updated_at),
         },
@@ -102,6 +109,29 @@ def project_task_to_dict(*, task: ProjectTask, include_payloads: bool) -> dict[s
         data["error"] = redact_api_keys(err) if err is not None else None
 
     return data
+
+
+def _emit_and_enqueue_project_task(
+    *,
+    db: Session,
+    task: ProjectTask,
+    request_id: str | None,
+    event_type: str | None,
+    source: str,
+    payload: dict[str, Any] | None = None,
+) -> str:
+    if event_type is not None:
+        append_project_task_event(db, task=task, event_type=event_type, source=source, payload=payload)
+        db.commit()
+
+    from app.services.task_queue import get_task_queue
+
+    queue = get_task_queue()
+    try:
+        queue.enqueue(kind="project_task", task_id=str(task.id))
+    except Exception as exc:
+        mark_project_task_enqueue_failed(db, task=task, exc=exc, logger=logger, request_id=request_id)
+    return str(task.id)
 
 
 def list_project_tasks(
@@ -192,7 +222,9 @@ def schedule_worldbook_auto_update_task(
             .first()
         )
 
+        created_task = False
         if task is None:
+            created_task = True
             task = ProjectTask(
                 id=new_id(),
                 project_id=pid,
@@ -240,64 +272,23 @@ def schedule_worldbook_auto_update_task(
             task.actor_user_id = actor_norm
             db.commit()
 
+        event_type = "queued" if created_task else None
         if status_norm == "failed":
-            # Reset for retry (idempotent: keeps the same task row/idempotency_key).
-
-            task.status = "queued"
-            task.started_at = None
-            task.finished_at = None
-            task.result_json = None
-            task.error_json = None
-            try:
-                value = _compact_json_loads(task.params_json) if task.params_json else {}
-                if isinstance(value, dict):
-                    value["retry_count"] = int(value.get("retry_count") or 0) + 1
-                    task.params_json = _compact_json_dumps(value)
-            except Exception:
-                pass
-            task.updated_at = utc_now()
+            reset_project_task_to_queued(task=task, increment_retry_count=True)
             db.commit()
+            event_type = "retry"
         elif status_norm in {"running", "succeeded"}:
             # Avoid enqueue storms; worker will no-op anyway.
             return str(task.id)
 
-        from app.services.task_queue import get_task_queue
-
-        queue = get_task_queue()
-        try:
-            queue.enqueue(kind="project_task", task_id=str(task.id))
-        except Exception as exc:
-            fields = exception_log_fields(exc)
-            safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
-            if not safe_message:
-                safe_message = type(exc).__name__
-            task.status = "failed"
-            task.finished_at = utc_now()
-            if isinstance(exc, AppError):
-                details = exc.details if isinstance(exc.details, dict) else {}
-                error_payload = {
-                    "error_type": type(exc).__name__,
-                    "code": str(exc.code),
-                    "message": safe_message[:200],
-                    "details": redact_api_keys(details),
-                }
-            else:
-                error_payload = {"error_type": type(exc).__name__, "message": safe_message[:200]}
-
-            task.error_json = _compact_json_dumps(error_payload)
-            db.commit()
-            log_event(
-                logger,
-                "warning",
-                event="PROJECT_TASK_ENQUEUE_ERROR",
-                task_id=str(task.id),
-                project_id=str(task.project_id),
-                kind=str(task.kind),
-                error_type=type(exc).__name__,
-                **fields,
-            )
-
-        return str(task.id)
+        return _emit_and_enqueue_project_task(
+            db=db,
+            task=task,
+            request_id=request_id,
+            event_type=event_type,
+            source="scheduler",
+            payload={"reason": reason_norm, "request_id": request_id, "chapter_id": cid, "chapter_token": token_norm},
+        )
     finally:
         if owns_session:
             db.close()
@@ -347,7 +338,9 @@ def schedule_fractal_rebuild_task(
             .first()
         )
 
+        created_task = False
         if task is None:
+            created_task = True
             task = ProjectTask(
                 id=new_id(),
                 project_id=pid,
@@ -386,46 +379,14 @@ def schedule_fractal_rebuild_task(
         if task is None:
             return None
 
-        from app.services.task_queue import get_task_queue
-
-        queue = get_task_queue()
-        try:
-            queue.enqueue(kind="project_task", task_id=str(task.id))
-        except Exception as exc:
-            fields = exception_log_fields(exc)
-            safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
-            if not safe_message:
-                safe_message = type(exc).__name__
-
-            if isinstance(exc, AppError):
-                details = exc.details if isinstance(exc.details, dict) else {}
-                error_payload = {
-                    "error_type": type(exc).__name__,
-                    "code": str(exc.code),
-                    "message": safe_message[:200],
-                    "details": redact_api_keys(details),
-                }
-            else:
-                error_payload = {"error_type": type(exc).__name__, "message": safe_message[:200]}
-
-            task.status = "failed"
-            task.finished_at = utc_now()
-            task.error_json = _compact_json_dumps(error_payload)
-            db.commit()
-
-            log_event(
-                logger,
-                "warning",
-                event="PROJECT_TASK_ENQUEUE_ERROR",
-                task_id=str(task.id),
-                project_id=pid,
-                kind="fractal_rebuild",
-                error_type=type(exc).__name__,
-                request_id=request_id,
-                **fields,
-            )
-
-        return str(task.id)
+        return _emit_and_enqueue_project_task(
+            db=db,
+            task=task,
+            request_id=request_id,
+            event_type="queued" if created_task else None,
+            source="scheduler",
+            payload={"reason": reason_norm, "request_id": request_id, "chapter_id": cid, "chapter_token": token_norm},
+        )
     finally:
         if owns_session:
             db.close()
@@ -495,10 +456,18 @@ def _dedupe_queued_chapter_tasks(*, db: Session, project_id: str, keep_task: Pro
         if not reason.startswith("chapter"):
             continue
         t.status = "canceled"
+        t.heartbeat_at = None
         t.finished_at = now
         t.updated_at = now
         t.result_json = _compact_json_dumps({"canceled": True, "reason": "deduped_by_newer_trigger"})
         t.error_json = None
+        append_project_task_event(
+            db,
+            task=t,
+            event_type="canceled",
+            source="dedupe",
+            payload={"reason": "deduped_by_newer_trigger", "replaced_by_task_id": str(getattr(keep_task, "id", "") or "")},
+        )
         canceled += 1
 
     if canceled:
@@ -829,57 +798,17 @@ def retry_project_task(*, db: Session, task: ProjectTask) -> ProjectTask:
     if status_norm != "failed":
         return task
 
-    task.status = "queued"
-    task.started_at = None
-    task.finished_at = None
-    task.result_json = None
-    task.error_json = None
-
-    try:
-        value = _compact_json_loads(task.params_json) if task.params_json else {}
-        if isinstance(value, dict):
-            value["retry_count"] = int(value.get("retry_count") or 0) + 1
-            task.params_json = _compact_json_dumps(value)
-    except Exception:
-        pass
-
-    task.updated_at = utc_now()
+    reset_project_task_to_queued(task=task, increment_retry_count=True)
     db.commit()
 
-    from app.services.task_queue import get_task_queue
-
-    queue = get_task_queue()
-    try:
-        queue.enqueue(kind="project_task", task_id=str(task.id))
-    except Exception as exc:
-        fields = exception_log_fields(exc)
-        safe_message = redact_secrets_text(str(exc)).replace("\n", " ").strip()
-        if not safe_message:
-            safe_message = type(exc).__name__
-        task.status = "failed"
-        task.finished_at = utc_now()
-        if isinstance(exc, AppError):
-            details = exc.details if isinstance(exc.details, dict) else {}
-            error_payload = {
-                "error_type": type(exc).__name__,
-                "code": str(exc.code),
-                "message": safe_message[:200],
-                "details": redact_api_keys(details),
-            }
-        else:
-            error_payload = {"error_type": type(exc).__name__, "message": safe_message[:200]}
-        task.error_json = _compact_json_dumps(error_payload)
-        db.commit()
-        log_event(
-            logger,
-            "warning",
-            event="PROJECT_TASK_ENQUEUE_ERROR",
-            task_id=str(task.id),
-            project_id=str(task.project_id),
-            kind=str(task.kind),
-            error_type=type(exc).__name__,
-            **fields,
-        )
+    _emit_and_enqueue_project_task(
+        db=db,
+        task=task,
+        request_id=None,
+        event_type="retry",
+        source="manual_retry",
+        payload={"reason": "manual_retry"},
+    )
     return task
 
 
@@ -898,10 +827,12 @@ def cancel_project_task(*, db: Session, task: ProjectTask) -> ProjectTask:
 
     task.status = "canceled"
     task.started_at = None
+    task.heartbeat_at = None
     task.finished_at = utc_now()
     task.updated_at = utc_now()
     task.result_json = _compact_json_dumps({"canceled": True})
     task.error_json = None
+    append_project_task_event(db, task=task, event_type="canceled", source="manual_cancel", payload={"reason": "manual_cancel"})
     db.commit()
     return task
 
@@ -935,13 +866,22 @@ def run_project_task(*, task_id: str) -> str:
         res = db.execute(
             update(ProjectTask)
             .where(ProjectTask.id == task_id, ProjectTask.status == "queued")
-            .values(status="running", started_at=started_at, updated_at=started_at)
+            .values(
+                status="running",
+                started_at=started_at,
+                heartbeat_at=started_at,
+                attempt=ProjectTask.attempt + 1,
+                updated_at=started_at,
+            )
         )
         db.commit()
         if not getattr(res, "rowcount", 0):
             return task_id
-        task.status = "running"
-        task.started_at = started_at
+        task = db.get(ProjectTask, task_id)
+        if task is None:
+            return task_id
+        append_project_task_event(db, task=task, event_type="running", source="worker", payload={"reason": "worker_start"})
+        db.commit()
 
         kind = str(task.kind)
         project_id = str(task.project_id)
@@ -1421,7 +1361,9 @@ def run_project_task(*, task_id: str) -> str:
 
         task.status = "succeeded"
         task.result_json = _compact_json_dumps(redact_api_keys(result))
+        task.heartbeat_at = utc_now()
         task.finished_at = utc_now()
+        append_project_task_event(db, task=task, event_type="succeeded", source="worker", payload={"result": redact_api_keys(result)})
         db.commit()
 
         log_event(
@@ -1454,7 +1396,15 @@ def run_project_task(*, task_id: str) -> str:
 
                 task2.status = "failed"
                 task2.error_json = _compact_json_dumps(error_payload)
+                task2.heartbeat_at = utc_now()
                 task2.finished_at = utc_now()
+                append_project_task_event(
+                    db,
+                    task=task2,
+                    event_type="failed",
+                    source="worker",
+                    payload={"error": redact_api_keys(error_payload)},
+                )
                 db.commit()
         except Exception:
             db.rollback()

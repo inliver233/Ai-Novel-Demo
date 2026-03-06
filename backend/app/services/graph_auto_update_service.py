@@ -39,6 +39,7 @@ from app.services.llm_retry import (
 )
 from app.services.memory_update_service import propose_chapter_memory_change_set
 from app.services.output_contracts import contract_for_task
+from app.services.project_task_event_service import emit_and_enqueue_project_task
 
 logger = logging.getLogger("ainovel")
 
@@ -670,7 +671,9 @@ def schedule_graph_auto_update_task(
             .first()
         )
 
+        created_task = False
         if task is None:
+            created_task = True
             task = ProjectTask(
                 id=new_id(),
                 project_id=pid,
@@ -711,29 +714,21 @@ def schedule_graph_auto_update_task(
         if task is None:
             return None
 
-        from app.services.task_queue import get_task_queue
-
-        queue = get_task_queue()
-        try:
-            queue.enqueue(kind="project_task", task_id=str(task.id))
-        except Exception as exc:
-            fields = exception_log_fields(exc)
-            msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:200]
-            task.status = "failed"
-            task.finished_at = utc_now()
-            task.error_json = _compact_json_dumps({"error_type": type(exc).__name__, "message": msg})
-            db.commit()
-            log_event(
-                logger,
-                "warning",
-                event="PROJECT_TASK_ENQUEUE_ERROR",
-                task_id=str(task.id),
-                project_id=str(task.project_id),
-                kind=str(task.kind),
-                error_type=type(exc).__name__,
-                **fields,
-            )
-        return str(task.id)
+        return emit_and_enqueue_project_task(
+            db,
+            task=task,
+            request_id=request_id,
+            logger=logger,
+            event_type="queued" if created_task else None,
+            source="scheduler",
+            payload={
+                "reason": str(reason or "").strip() or "dirty",
+                "request_id": request_id,
+                "chapter_id": cid,
+                "chapter_token": token_norm,
+                "focus": (str(focus or "").strip() or None),
+            },
+        )
     finally:
         if owns_session:
             db.close()

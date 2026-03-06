@@ -14,6 +14,7 @@ from app.models.project import Project
 from app.models.project_membership import ProjectMembership
 from app.models.project_settings import ProjectSettings
 from app.models.project_task import ProjectTask
+from app.models.project_task_event import ProjectTaskEvent
 from app.models.project_table import ProjectTable, ProjectTableRow
 from app.models.project_source_document import ProjectSourceDocument, ProjectSourceDocumentChunk
 from app.models.project_default_style import ProjectDefaultStyle
@@ -58,6 +59,7 @@ __all__ = [
     "ProjectDefaultStyle",
     "ProjectSettings",
     "ProjectTask",
+    "ProjectTaskEvent",
     "ProjectTable",
     "ProjectTableRow",
     "ProjectSourceDocument",

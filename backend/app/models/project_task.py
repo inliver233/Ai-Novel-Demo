@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -26,7 +26,9 @@ class ProjectTask(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     __table_args__ = (UniqueConstraint("project_id", "idempotency_key", name="uq_project_tasks_project_idempotency_key"),)
@@ -36,4 +38,4 @@ Index("ix_project_tasks_project_id", ProjectTask.project_id)
 Index("ix_project_tasks_project_id_kind", ProjectTask.project_id, ProjectTask.kind)
 Index("ix_project_tasks_project_id_status", ProjectTask.project_id, ProjectTask.status)
 Index("ix_project_tasks_status", ProjectTask.status)
-
+Index("ix_project_tasks_status_heartbeat_at", ProjectTask.status, ProjectTask.heartbeat_at)

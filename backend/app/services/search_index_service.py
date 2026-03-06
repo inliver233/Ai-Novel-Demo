@@ -23,6 +23,7 @@ from app.models.search_index import SearchDocument
 from app.models.story_memory import StoryMemory
 from app.models.structured_memory import MemoryEntity, MemoryEvidence, MemoryRelation
 from app.models.worldbook_entry import WorldBookEntry
+from app.services.project_task_event_service import emit_and_enqueue_project_task, reset_project_task_to_queued
 
 logger = logging.getLogger("ainovel")
 
@@ -867,7 +868,9 @@ def schedule_search_rebuild_task(
                 .first()
             )
 
+            created_task = False
             if task is None:
+                created_task = True
                 task = ProjectTask(
                     id=new_id(),
                     project_id=pid,
@@ -907,31 +910,23 @@ def schedule_search_rebuild_task(
                         return None
             else:
                 status_norm = str(getattr(task, "status", "") or "").strip().lower()
+                event_type = None
                 if status_norm not in {"queued", "running"}:
-                    task.status = "queued"
-                    task.started_at = None
-                    task.finished_at = None
-                    task.result_json = None
-                    task.error_json = None
+                    reset_project_task_to_queued(task=task, increment_retry_count=status_norm == "failed")
                     db.commit()
+                    event_type = "retry" if status_norm == "failed" else "queued"
+                else:
+                    event_type = None
 
-            from app.services.task_queue import get_task_queue
-
-            queue = get_task_queue()
-            try:
-                queue.enqueue(kind="project_task", task_id=str(task.id))
-            except Exception as exc:
-                fields = exception_log_fields(exc)
-                log_event(
-                    logger,
-                    "warning",
-                    event="SEARCH_TASK_ENQUEUE_ERROR",
-                    project_id=pid,
-                    task_id=str(task.id),
-                    idempotency_key=idempotency_key,
-                    **fields,
-                )
-            return str(task.id)
+            return emit_and_enqueue_project_task(
+                db,
+                task=task,
+                request_id=request_id,
+                logger=logger,
+                event_type=("queued" if created_task else event_type),
+                source="scheduler",
+                payload={"reason": reason_norm, "request_id": request_id, "after_task_id": str(running.id)},
+            )
 
         last = (
             db.execute(
@@ -965,7 +960,9 @@ def schedule_search_rebuild_task(
             .first()
         )
 
+        created_task = False
         if task is None:
+            created_task = True
             task = ProjectTask(
                 id=new_id(),
                 project_id=pid,
@@ -1000,42 +997,22 @@ def schedule_search_rebuild_task(
                     return None
         else:
             status_norm = str(getattr(task, "status", "") or "").strip().lower()
+            event_type = None
             if status_norm not in {"queued", "running"}:
-                task.status = "queued"
-                task.started_at = None
-                task.finished_at = None
-                task.result_json = None
-                task.error_json = None
+                reset_project_task_to_queued(task=task, increment_retry_count=status_norm == "failed")
                 db.commit()
-
-        from app.services.task_queue import get_task_queue
-
-        queue = get_task_queue()
-        try:
-            queue.enqueue(kind="project_task", task_id=str(task.id))
-        except Exception as exc:
-            fields = exception_log_fields(exc)
-            msg = str(fields.get("exception") or str(exc)).replace("\n", " ").strip()[:200]
-            task.status = "failed"
-            task.finished_at = utc_now()
-            task.error_json = json.dumps(
-                {"error_type": type(exc).__name__, "message": msg},
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
-            db.commit()
-            log_event(
-                logger,
-                "warning",
-                event="PROJECT_TASK_ENQUEUE_ERROR",
-                task_id=str(task.id),
-                project_id=pid,
-                kind="search_rebuild",
-                error_type=type(exc).__name__,
-                request_id=request_id,
-                **fields,
-            )
-        return str(task.id)
+                event_type = "retry" if status_norm == "failed" else "queued"
+            else:
+                event_type = None
+        return emit_and_enqueue_project_task(
+            db,
+            task=task,
+            request_id=request_id,
+            logger=logger,
+            event_type=("queued" if created_task else event_type),
+            source="scheduler",
+            payload={"reason": reason_norm, "request_id": request_id},
+        )
     except Exception as exc:
         try:
             db.rollback()
