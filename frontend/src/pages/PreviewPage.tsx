@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { PaperContent } from "../components/layout/AppShell";
+import { ChapterVirtualList } from "../components/writing/ChapterVirtualList";
 import { Drawer } from "../components/ui/Drawer";
 import { useChapterDetail } from "../hooks/useChapterDetail";
 import { useChapterMetaList } from "../hooks/useChapterMetaList";
@@ -128,11 +129,11 @@ export function PreviewPage() {
   }, [nextChapter, openChapter, prevChapter]);
 
   const list = (
-    <div className="flex flex-col">
+    <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="inline-flex items-center gap-2 text-sm text-ink">
           <BookOpen size={16} />
-          章节
+          {"章节"}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -143,44 +144,28 @@ export function PreviewPage() {
             {onlyDone ? "显示全部" : "只看定稿"}
           </button>
           <span className="text-[11px] text-subtext">
-            {doneCount}/{sortedChapters.length} 已定稿
+            {doneCount}/{sortedChapters.length} {"已定稿"}
           </span>
         </div>
       </div>
 
-      <div className="p-2 pb-24">
-        {sortedChapters.length === 0 ? (
-          <div className="p-3 text-sm text-subtext">暂无章节</div>
-        ) : onlyDone && visibleChapters.length === 0 ? (
-          <div className="p-3 text-sm text-subtext">暂无已定稿章节</div>
-        ) : null}
-        <div className="grid gap-1">
-          {visibleChapters.map((c) => {
-            const isActive = c.id === effectiveActiveId;
-            return (
-              <button
-                key={c.id}
-                className={clsx(
-                  "ui-focus-ring ui-transition-fast flex w-full items-center justify-between gap-2 rounded-atelier border px-3 py-2 text-left text-sm motion-safe:active:scale-[0.99]",
-                  isActive
-                    ? "border-accent/40 bg-accent/10 text-ink"
-                    : "border-border bg-canvas text-subtext hover:bg-surface",
-                )}
-                onClick={() => {
-                  openChapter(c.id);
-                }}
-                type="button"
-              >
-                <span className="min-w-0 truncate">
-                  {c.number}. {c.title?.trim() ? c.title : "（未命名）"}
-                </span>
-                <span className={clsx("shrink-0 text-[11px]", c.status === "done" ? "text-accent" : "text-subtext")}>
-                  {humanizeChapterStatusZh(c.status)}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+      <div className="min-h-0 flex-1 p-2">
+        <ChapterVirtualList
+          chapters={visibleChapters}
+          activeId={effectiveActiveId}
+          ariaLabel="章节列表"
+          className="h-full"
+          emptyState={
+            sortedChapters.length === 0 ? (
+              <div className="p-3 text-sm text-subtext">{"暂无章节"}</div>
+            ) : (
+              <div className="p-3 text-sm text-subtext">{"暂无已定稿章节"}</div>
+            )
+          }
+          getStatusLabel={(chapter) => humanizeChapterStatusZh(chapter.status)}
+          onSelectChapter={openChapter}
+          variant="card"
+        />
       </div>
     </div>
   );
@@ -257,7 +242,7 @@ export function PreviewPage() {
       <div className="flex gap-4">
         {!collapsed ? (
           <aside className="hidden w-[280px] shrink-0 lg:block">
-            <div className="panel">{list}</div>
+            <div className="panel h-[calc(100vh-260px)] min-h-[520px] overflow-hidden">{list}</div>
           </aside>
         ) : null}
 
@@ -305,7 +290,7 @@ export function PreviewPage() {
             关闭
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">{list}</div>
+        <div className="min-h-0 flex-1">{list}</div>
       </Drawer>
 
       <WizardNextBar projectId={projectId} currentStep="preview" progress={wizardProgress} loading={wizardLoading} />

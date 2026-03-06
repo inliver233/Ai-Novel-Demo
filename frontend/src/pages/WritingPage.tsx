@@ -647,11 +647,11 @@ export function WritingPage() {
           </button>
         </div>
 
-        <div className="h-full overflow-auto p-2">
+        <div className="h-full p-2">
           <ChapterListPanel
             chapters={chapters}
             activeId={activeId}
-            containerClassName=""
+            containerClassName="h-full"
             onSelectChapter={(chapterId) => {
               setChapterListOpen(false);
               void requestSelectChapter(chapterId);
