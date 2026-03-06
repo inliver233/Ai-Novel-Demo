@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -56,6 +57,37 @@ class TestUserUsageStats(unittest.TestCase):
             self.assertEqual(int(row.total_generation_calls), 2)
             self.assertEqual(int(row.total_generation_error_calls), 1)
             self.assertEqual(int(row.total_generated_chars), 120)
+            self.assertIsNotNone(row.last_generation_at)
+
+    def test_bump_user_generation_usage_handles_naive_existing_timestamp(self) -> None:
+        with self.SessionLocal() as db:
+            db.add(
+                UserUsageStat(
+                    user_id="u1",
+                    total_generation_calls=1,
+                    total_generation_error_calls=0,
+                    total_generated_chars=10,
+                    last_generation_at=datetime(2026, 1, 1, 0, 0, 0),
+                )
+            )
+            db.commit()
+
+        with self.SessionLocal() as db:
+            bump_user_generation_usage(
+                db,
+                user_id="u1",
+                generated_chars=5,
+                had_error=False,
+                generated_at=datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+            )
+            db.commit()
+
+        with self.SessionLocal() as db:
+            row = db.get(UserUsageStat, "u1")
+            self.assertIsNotNone(row)
+            assert row is not None
+            self.assertEqual(int(row.total_generation_calls), 2)
+            self.assertEqual(int(row.total_generated_chars), 15)
             self.assertIsNotNone(row.last_generation_at)
 
 

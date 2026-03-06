@@ -36,6 +36,7 @@ from app.services.llm_retry import (
 )
 from app.services.output_contracts import contract_for_task
 from app.services.project_task_event_service import emit_and_enqueue_project_task
+from app.services.task_queue import get_task_queue
 from app.services.prompt_presets import ensure_default_chapter_analyze_preset, render_preset_for_task
 from app.services.search_index_service import schedule_search_rebuild_task
 from app.services.vector_rag_service import schedule_vector_rebuild_task

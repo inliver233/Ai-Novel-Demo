@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.models.project_task import ProjectTask
+from app.models.project_task_event import ProjectTaskEvent
 from app.services import project_task_service
 
 
@@ -21,6 +22,7 @@ class TestPlotAutoUpdateTaskErrorDetails(unittest.TestCase):
             conn.exec_driver_sql("CREATE TABLE projects (id VARCHAR(36) PRIMARY KEY)")
 
         ProjectTask.__table__.create(engine)
+        ProjectTaskEvent.__table__.create(engine)
         SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
         with SessionLocal() as db:
