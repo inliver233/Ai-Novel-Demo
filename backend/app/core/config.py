@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     task_queue_backend: TaskQueueBackend = "rq"
     redis_url: str = "redis://localhost:6379/0"
     rq_queue_name: str = "default"
+    project_task_heartbeat_interval_seconds: int = 5
+    project_task_watchdog_enabled: bool = True
+    project_task_watchdog_interval_seconds: int = 15
+    project_task_stale_running_timeout_seconds: int = 120
+    project_task_queued_reconcile_after_seconds: int = 20
 
     vector_chroma_persist_dir: str | None = None
     vector_chroma_collection_naming: VectorChromaCollectionNaming = "hash"

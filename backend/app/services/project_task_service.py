@@ -20,6 +20,7 @@ from app.services.project_task_event_service import (
     mark_project_task_enqueue_failed,
     reset_project_task_to_queued,
 )
+from app.services.project_task_runtime_service import start_project_task_heartbeat, stop_project_task_heartbeat
 
 logger = logging.getLogger("ainovel")
 
@@ -882,6 +883,7 @@ def run_project_task(*, task_id: str) -> str:
             return task_id
         append_project_task_event(db, task=task, event_type="running", source="worker", payload={"reason": "worker_start"})
         db.commit()
+        heartbeat_handle = start_project_task_heartbeat(task_id=task_id)
 
         kind = str(task.kind)
         project_id = str(task.project_id)
@@ -1419,4 +1421,5 @@ def run_project_task(*, task_id: str) -> str:
         )
         return task_id
     finally:
+        stop_project_task_heartbeat(locals().get("heartbeat_handle"))
         db.close()

@@ -124,6 +124,8 @@ class _InlineWorker:
         self._queue: queue_mod.Queue[tuple[TaskKind, str]] = queue_mod.Queue()
         self._metrics_lock = threading.Lock()
         self._last_processed_at: float | None = None
+        self._queued_task_ids: set[str] = set()
+        self._active_task_ids: set[str] = set()
         self._concurrency = _get_inline_worker_concurrency()
         self._threads: list[threading.Thread] = []
         for i in range(self._concurrency):
@@ -132,22 +134,37 @@ class _InlineWorker:
             self._threads.append(t)
 
     def enqueue(self, *, kind: TaskKind, task_id: str) -> None:
+        with self._metrics_lock:
+            self._queued_task_ids.add(str(task_id))
         self._queue.put((kind, task_id))
 
     def get_health_metrics(self) -> dict[str, Any]:
         with self._metrics_lock:
             last_processed_at = self._last_processed_at
+            queued_count = len(self._queued_task_ids)
+            active_count = len(self._active_task_ids)
         return {
             "inline_queue_size": int(self._queue.qsize()),
             "inline_last_processed_at": (
                 datetime.fromtimestamp(last_processed_at, tz=timezone.utc).isoformat() if last_processed_at else None
             ),
             "inline_concurrency": int(self._concurrency),
+            "inline_pending_project_tasks": int(queued_count + active_count),
         }
+
+    def has_task(self, task_id: str) -> bool:
+        task_id_norm = str(task_id or "").strip()
+        if not task_id_norm:
+            return False
+        with self._metrics_lock:
+            return task_id_norm in self._queued_task_ids or task_id_norm in self._active_task_ids
 
     def _run(self) -> None:
         while True:
             kind, task_id = self._queue.get()
+            with self._metrics_lock:
+                self._queued_task_ids.discard(str(task_id))
+                self._active_task_ids.add(str(task_id))
             try:
                 if kind == "batch_generation":
                     from app.services.batch_generation_service import run_batch_generation_task
@@ -181,6 +198,7 @@ class _InlineWorker:
                     pass
             finally:
                 with self._metrics_lock:
+                    self._active_task_ids.discard(str(task_id))
                     self._last_processed_at = time.time()
                 try:
                     self._queue.task_done()
@@ -324,6 +342,40 @@ def get_task_queue() -> TaskQueue:
                     return InlineTaskQueue()
         return RqTaskQueue(redis_url=redis_url, queue_name=queue_name)
     raise ValueError(f"Unsupported TASK_QUEUE_BACKEND: {backend!r}")
+
+
+def _rq_job_is_pending(*, redis_url: str, task_id: str) -> bool | None:
+    redis_url_norm = str(redis_url or "").strip()
+    task_id_norm = str(task_id or "").strip()
+    if not redis_url_norm or not task_id_norm:
+        return None
+    try:
+        from redis import Redis
+        from rq.exceptions import NoSuchJobError
+        from rq.job import Job
+
+        conn = Redis.from_url(redis_url_norm, socket_connect_timeout=0.3, socket_timeout=0.3, retry_on_timeout=False)
+        try:
+            job = Job.fetch(task_id_norm, connection=conn)
+        except NoSuchJobError:
+            return False
+        status = str(job.get_status(refresh=True) or "").strip().lower()
+        return status in {"queued", "started", "deferred", "scheduled"}
+    except Exception:
+        return None
+
+
+def project_task_queue_has_task(*, task_id: str) -> bool | None:
+    task_id_norm = str(task_id or "").strip()
+    if not task_id_norm:
+        return False
+
+    queue = get_task_queue()
+    if isinstance(queue, InlineTaskQueue):
+        return _get_inline_worker().has_task(task_id_norm)
+    if isinstance(queue, RqTaskQueue):
+        return _rq_job_is_pending(redis_url=queue._redis_url, task_id=task_id_norm)
+    return None
 
 
 def get_queue_status_for_health() -> dict[str, Any]:

@@ -23,6 +23,7 @@ from app.db.session import SessionLocal
 from app.llm.http_client import close_llm_http_client
 from app.models.user import User
 from app.services.auth_service import ensure_admin_user
+from app.services.project_task_runtime_service import start_project_task_watchdog, stop_project_task_watchdog
 from app.services.user_activity_service import touch_user_activity
 
 logger = logging.getLogger("ainovel")
@@ -140,8 +141,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         _ensure_admin_user()
     _warn_sqlite_single_worker()
     _ensure_local_user()
-    yield
-    close_llm_http_client()
+    watchdog_handle = start_project_task_watchdog()
+    try:
+        yield
+    finally:
+        stop_project_task_watchdog(watchdog_handle)
+        close_llm_http_client()
 
 
 app = FastAPI(title="ainovel", version=settings.app_version, lifespan=lifespan)
