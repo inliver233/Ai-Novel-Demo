@@ -253,6 +253,13 @@ cd backend
 - 如在 `backend/.env` 配置 `AUTH_ADMIN_PASSWORD`，需至少 8 位；开发环境下若配置过短会跳过 admin bootstrap 并输出 warning（避免启动失败）。
 - 前端 E2E 会设置 `VITE_DEV_FALLBACK_ENABLED=true` 以覆盖 dev_fallback 路径；生产环境务必保持禁用并确保 `APP_ENV=prod`（避免鉴权绕过风险）。
 
+## 仓库卫生与本地配置
+
+- 本地配置文件只保留 `*.example` 进版本库；实际运行时请复制 `backend/.env.example -> backend/.env`、`frontend/.env.example -> frontend/.env`、`.env.docker.example -> .env.docker`，并保持这些本地文件不提交到 Git。
+- 允许本地生成但禁止提交的运行/测试产物包括：`*.db`、`*.db-wal`、`*.db-shm`、`tmp_*`、`.tmp_*`、`test/.artifacts/`、`test/.tmp/`、临时截图、`*.log` / `*.err.log` / `*.out.log` 等调试日志。
+- 如本地已有被误跟踪的配置文件，使用 `git rm --cached <path>` 停止跟踪即可；例如本仓库应确保 `backend/.env` 仅作为本地文件存在。
+- 安全红线不变：任何日志、报错、导出与调试输出都不得包含明文 secrets；接口与日志面只允许 `has_api_key` / `masked_api_key`。
+
 ## 环境变量（后端）
 
 见 `backend/.env.example`：

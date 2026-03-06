@@ -30,10 +30,22 @@ dist/
 backend/.env
 frontend/.env
 .env.docker
+.env
 backend/.dev-backend.*.log
+frontend/.dev-frontend.*.log
+*.log
+*.err.log
+*.out.log
+tmp_*
+.tmp_*
+backend/.tmp*/
+frontend/.tmp*/
 backend/.tmp_test/
 test/.artifacts/
 test/.tmp/
+test-results/
+playwright-report/
+*.trace
 
 # OS / IDE
 .DS_Store
