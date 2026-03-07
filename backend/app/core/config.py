@@ -21,7 +21,7 @@ def _is_abs_path(value: str) -> bool:
     return bool(re.match(r"^[A-Za-z]:[\\/]", value))
 
 
-AppEnv = Literal["dev", "prod"]
+AppEnv = Literal["dev", "test", "prod"]
 LLMContractMode = Literal["audit", "enforce"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 TaskQueueBackend = Literal["rq", "inline"]
@@ -36,6 +36,26 @@ VectorEmbeddingProvider = Literal[
     "local_proxy",
     "sentence_transformers",
 ]
+
+
+WEAK_PROD_ADMIN_PASSWORDS = {
+    "changeme123!",
+    "changeme",
+    "password123",
+    "password",
+    "admin123",
+    "admin",
+    "12345678",
+}
+
+
+def _is_weak_admin_password(value: str | None) -> bool:
+    raw = str(value or "").strip()
+    if not raw:
+        return False
+    if len(raw) < 8:
+        return True
+    return raw.lower() in WEAK_PROD_ADMIN_PASSWORDS
 
 
 class Settings(BaseSettings):
@@ -153,9 +173,11 @@ class Settings(BaseSettings):
         raw = str(value).strip().lower()
         if raw in ("dev", "development"):
             return "dev"
+        if raw in ("test", "testing"):
+            return "test"
         if raw in ("prod", "production"):
             return "prod"
-        raise ValueError("APP_ENV must be 'dev' or 'prod'")
+        raise ValueError("APP_ENV must be 'dev', 'test', or 'prod'")
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -747,10 +769,14 @@ class Settings(BaseSettings):
             raise ValueError("TASK_QUEUE_BACKEND must be set to 'rq' when APP_ENV=prod")
         if self.app_env == "prod":
             origins = self.cors_origins_list()
+            if not origins:
+                raise ValueError("CORS_ORIGINS must be configured when APP_ENV=prod")
             if any(origin == "*" for origin in origins):
                 raise ValueError("CORS_ORIGINS must not contain '*' when APP_ENV=prod")
             if any(origin.lower() == "null" for origin in origins):
                 raise ValueError("CORS_ORIGINS must not contain 'null' when APP_ENV=prod")
+            if _is_weak_admin_password(self.auth_admin_password):
+                raise ValueError("AUTH_ADMIN_PASSWORD must not use weak or default credentials when APP_ENV=prod")
         if self.task_queue_backend == "rq" and not self.redis_url:
             raise ValueError("REDIS_URL must be set when TASK_QUEUE_BACKEND=rq")
         return self

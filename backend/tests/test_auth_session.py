@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import timedelta
+from unittest.mock import patch
 from typing import Generator
 
 from fastapi import FastAPI, Request
@@ -208,6 +209,23 @@ class TestAuthEndpoints(unittest.TestCase):
         payload = resp.json()["data"]
         self.assertTrue(payload["refreshed"])
         self.assertGreater(payload["session"]["expire_at"], int(near_exp.timestamp()))
+
+
+    def test_login_sets_secure_cookie_flags_in_prod(self) -> None:
+        self._seed_user(user_id="u1", password="password123")
+        client = TestClient(self.app)
+
+        with patch.object(settings, "app_env", "prod"), patch.object(settings, "auth_cookie_samesite", "strict"):
+            resp = client.post("/api/auth/local/login", json={"user_id": "u1", "password": "password123"})
+
+        self.assertEqual(resp.status_code, 200)
+        cookie_headers = resp.headers.get_list("set-cookie")
+        self.assertGreaterEqual(len(cookie_headers), 2)
+        for header in cookie_headers:
+            lowered = header.lower()
+            self.assertIn("httponly", lowered)
+            self.assertIn("secure", lowered)
+            self.assertIn("samesite=strict", lowered)
 
 
 if __name__ == "__main__":

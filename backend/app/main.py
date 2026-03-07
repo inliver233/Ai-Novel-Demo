@@ -153,7 +153,7 @@ app = FastAPI(title="ainovel", version=settings.app_version, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list() or ["http://localhost:5173"],
+    allow_origins=settings.cors_origins_list() or ([] if settings.app_env == "prod" else ["http://localhost:5173"]),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["Content-Type", "Authorization", "X-LLM-Provider", "X-LLM-API-Key"],
