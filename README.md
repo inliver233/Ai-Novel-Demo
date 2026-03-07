@@ -1,4 +1,4 @@
-# ainovel MVP（Atelier）
+﻿# ainovel MVP（Atelier）
 
 本仓库按 `mvp开发计划.md`（v2.4）实现 ainovel MVP：前端（React+TS+Vite+Tailwind）+ 后端（FastAPI）+ SQLite/Alembic + 多 Provider LLM 适配 + Markdown 导出。
 
@@ -271,7 +271,10 @@ cd backend
 - 安装 dev 检查依赖：`cd backend && .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`
 - 一键运行 backend 基线：`cd backend && .\.venv\Scripts\python.exe scripts\run_quality_gate.py`
 - 当前基线包含：`compileall`、`ruff check`、`scripts/guards/run.py`
-- 当前 guard 集合：`no-secrets-in-repo`、`db-artifacts-guard`、`backend-no-print-guard`、`no-direct-llm-call-in-api`、`file-line-count-guard`
+- 当前 guard 集合：`no-secrets-in-repo`、`db-artifacts-guard`、`deployment-security-guard`、`backend-no-print-guard`、`no-direct-llm-call-in-api`、`file-line-count-guard`、`prompt-preset-integrity-guard`
+- 项目级分层门禁：`python scripts/run_gate.py --layer smoke|contract|critical|full`
+- 项目级回归 runner：`python scripts/run_regression.py --profile prepush|release|full`
+- 矩阵/重跑说明：见 `docs/testing-matrix.md` 与 `docs/testing-gates.md`
 - 说明：`file-line-count-guard` 与 `no-direct-llm-call-in-api` 当前采用 audit-first 策略，先以 warning 暴露历史热点，避免第一版直接把老仓库卡死。
 
 ## 环境变量（后端）
@@ -280,7 +283,7 @@ cd backend
 - `DATABASE_URL`：默认 `sqlite:///./ainovel.db`（SQLite 相对路径会按 `backend/` 目录解析，避免因工作目录不同导致读错库）
 - `CORS_ORIGINS`：默认 `http://localhost:5173`
 - `LOG_LEVEL`：默认 `INFO`
-- `APP_ENV`：`dev|prod`
+- `APP_ENV`：`dev|test|prod`
 - `AUTH_DEV_FALLBACK_USER_ID`：仅 `APP_ENV=dev` 生效（dev 免登录本地用户）。生产环境务必 `APP_ENV=prod`，并建议将该值置空/不设置；若生产误以 `APP_ENV=dev` 启动会造成鉴权绕过（high）。
 - `SECRET_ENCRYPTION_KEY`：prod 必填（用于可迁移的 `enc:` 加密）。升级旧数据库时可先运行 `backend/scripts/migrate_llm_profile_secrets.py` 迁移历史 API Key。
 
