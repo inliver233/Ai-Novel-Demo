@@ -11,6 +11,11 @@ from app.schemas.limits import MAX_JSON_CHARS_SMALL, validate_json_chars
 class LLMPresetOut(BaseModel):
     project_id: str
     provider: LLMProvider
+    provider_key: str | None = None
+    model_key: str | None = None
+    known_model: bool = False
+    contract_mode: str = "audit"
+    pricing: dict[str, Any] = Field(default_factory=dict)
     base_url: str | None = None
     model: str
     temperature: float | None = None
@@ -48,20 +53,20 @@ class LLMPresetPutRequest(BaseModel):
         for item in v or []:
             if not isinstance(item, str):
                 raise ValueError("stop must be strings")
-            item = item.strip()
-            if not item:
+            norm = item.strip()
+            if not norm:
                 raise ValueError("stop cannot contain empty strings")
-            if len(item) > 256:
+            if len(norm) > 256:
                 raise ValueError("stop item too long")
-            out.append(item)
+            out.append(norm)
         return out
 
     @field_validator("extra")
     @classmethod
     def _validate_extra(cls, v: dict[str, Any]) -> dict[str, Any]:
-        for k in (v or {}).keys():
-            if not isinstance(k, str):
+        for key in (v or {}).keys():
+            if not isinstance(key, str):
                 raise ValueError("extra keys must be strings")
-            if len(k) > 128:
+            if len(key) > 128:
                 raise ValueError("extra key too long")
         return validate_json_chars(v, max_chars=MAX_JSON_CHARS_SMALL, field_name="extra") or {}

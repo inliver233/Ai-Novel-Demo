@@ -170,6 +170,30 @@ class TestLlmTaskPresetResolver(unittest.TestCase):
             self.assertIsNotNone(resolved)
             self.assertEqual(resolved.api_key, "sk-header-override")
 
+    def test_resolve_task_llm_config_canonicalizes_alias_model(self) -> None:
+        with self.SessionLocal() as db:
+            preset = db.get(LLMPreset, "p1")
+            self.assertIsNotNone(preset)
+            preset.model = "gpt-4o-mini-2024-07-18"
+            preset.max_tokens = 20000
+            db.commit()
+
+            project = db.get(Project, "p1")
+            self.assertIsNotNone(project)
+            resolved = resolve_task_llm_config(
+                db,
+                project=project,  # type: ignore[arg-type]
+                user_id="u_owner",
+                task_key="outline_generate",
+                header_api_key=None,
+            )
+            self.assertIsNotNone(resolved)
+            self.assertEqual(resolved.llm_call.model, "gpt-4o-mini")
+            self.assertEqual(resolved.llm_call.params.get("max_tokens"), 16384)
+            self.assertEqual(resolved.llm_call.base_url, "https://api.openai.com/v1")
+
 
 if __name__ == "__main__":
     unittest.main()
+
+

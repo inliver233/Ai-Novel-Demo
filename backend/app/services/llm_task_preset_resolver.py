@@ -12,6 +12,7 @@ from app.models.llm_preset import LLMPreset
 from app.models.llm_task_preset import LLMTaskPreset
 from app.models.project import Project
 from app.services.generation_service import PreparedLlmCall
+from app.services.llm_contract_service import normalize_base_url_for_provider, normalize_max_tokens_for_provider, normalize_provider_model
 from app.services.llm_key_resolver import normalize_header_api_key, resolve_api_key_for_profile
 from app.services.llm_task_catalog import is_supported_llm_task
 
@@ -53,19 +54,20 @@ def _parse_json_dict(value: str | None) -> dict[str, Any]:
 def _to_prepared_llm_call(row: LLMPreset | LLMTaskPreset) -> PreparedLlmCall:
     stop = _parse_json_list(getattr(row, "stop_json", None))
     extra = _parse_json_dict(getattr(row, "extra_json", None))
+    provider, model = normalize_provider_model(str(getattr(row, "provider", "") or ""), str(getattr(row, "model", "") or ""))
     params: dict[str, Any] = {
         "temperature": getattr(row, "temperature", None),
         "top_p": getattr(row, "top_p", None),
-        "max_tokens": getattr(row, "max_tokens", None),
+        "max_tokens": normalize_max_tokens_for_provider(provider, model, getattr(row, "max_tokens", None)),
         "presence_penalty": getattr(row, "presence_penalty", None),
         "frequency_penalty": getattr(row, "frequency_penalty", None),
         "top_k": getattr(row, "top_k", None),
         "stop": stop,
     }
     return PreparedLlmCall(
-        provider=str(getattr(row, "provider")),
-        model=str(getattr(row, "model")),
-        base_url=str(getattr(row, "base_url", "") or ""),
+        provider=provider,
+        model=model,
+        base_url=str(normalize_base_url_for_provider(provider, getattr(row, "base_url", None)) or ""),
         timeout_seconds=int(getattr(row, "timeout_seconds", 180) or 180),
         params=params,
         params_json=json.dumps(params, ensure_ascii=False),
@@ -115,10 +117,10 @@ def resolve_task_llm_config(
     elif profile_id is not None:
         profile = db.get(LLMProfile, profile_id)
         if profile is None or profile.owner_user_id != user_id:
-            raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+            raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页面保存 API Key", status_code=401)
         api_key = resolve_api_key_for_profile(profile=profile, header_api_key=None)
     else:
-        raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页保存 API Key", status_code=401)
+        raise AppError(code="LLM_KEY_MISSING", message="请先在 Prompts 页面保存 API Key", status_code=401)
 
     llm_call = _to_prepared_llm_call(row)
     return ResolvedTaskPreset(

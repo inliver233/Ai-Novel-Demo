@@ -8,26 +8,12 @@ from fastapi import APIRouter, Header, Query, Request
 from app.api.deps import DbDep, UserIdDep, require_owned_llm_profile, require_project_editor
 from app.core.errors import AppError, ok_payload
 from app.llm.http_client import get_llm_http_client
-from app.llm.utils import normalize_base_url
 from app.models.project import Project
 from app.schemas.llm import LLMProvider
+from app.services.llm_contract_service import normalize_base_url_for_provider, normalize_provider_model
 from app.services.llm_key_resolver import normalize_header_api_key, resolve_api_key_for_profile, resolve_api_key_for_project
 
 router = APIRouter()
-
-
-def _normalize_base_url_for_provider(provider: str, base_url: str | None) -> str:
-    if provider in ("openai", "openai_responses"):
-        return normalize_base_url(base_url or "https://api.openai.com/v1")
-    if provider in ("openai_compatible", "openai_responses_compatible"):
-        if not str(base_url or "").strip():
-            raise AppError(code="LLM_CONFIG_ERROR", message=f"{provider} 必须填写 base_url", status_code=400)
-        return normalize_base_url(base_url)
-    if provider == "anthropic":
-        return normalize_base_url(base_url or "https://api.anthropic.com")
-    if provider == "gemini":
-        return normalize_base_url(base_url or "https://generativelanguage.googleapis.com")
-    raise AppError(code="LLM_CONFIG_ERROR", message=f"不支持的 provider: {provider}", status_code=400)
 
 
 def _dedupe_models(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -178,12 +164,13 @@ def list_llm_models(
     header_key = normalize_header_api_key(x_llm_api_key)
     if profile_id:
         profile = require_owned_llm_profile(db, profile_id=profile_id, user_id=user_id)
-        if profile.provider != provider:
+        profile_provider, _ = normalize_provider_model(profile.provider, profile.model)
+        if profile_provider != provider:
             raise AppError(code="LLM_CONFIG_ERROR", message="provider 与 profile 不一致", status_code=400)
     elif project_id:
         project = require_project_editor(db, project_id=project_id, user_id=user_id)
 
-    effective_base_url = _normalize_base_url_for_provider(
+    effective_base_url = normalize_base_url_for_provider(
         provider,
         base_url or (profile.base_url if profile is not None else None),
     )
@@ -210,11 +197,11 @@ def list_llm_models(
 
     timeout = httpx.Timeout(connect=5.0, read=15.0, write=10.0, pool=5.0)
     if provider in ("openai", "openai_responses", "openai_compatible", "openai_responses_compatible"):
-        models = _list_openai_like_models(provider=provider, base_url=effective_base_url, api_key=api_key, timeout=timeout)
+        models = _list_openai_like_models(provider=provider, base_url=effective_base_url or "", api_key=api_key, timeout=timeout)
     elif provider == "anthropic":
-        models = _list_anthropic_models(provider=provider, base_url=effective_base_url, api_key=api_key, timeout=timeout)
+        models = _list_anthropic_models(provider=provider, base_url=effective_base_url or "", api_key=api_key, timeout=timeout)
     elif provider == "gemini":
-        models = _list_gemini_models(provider=provider, base_url=effective_base_url, api_key=api_key, timeout=timeout)
+        models = _list_gemini_models(provider=provider, base_url=effective_base_url or "", api_key=api_key, timeout=timeout)
     else:
         raise AppError(code="LLM_CONFIG_ERROR", message="不支持的 provider", status_code=400)
 

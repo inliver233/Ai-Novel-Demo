@@ -22,6 +22,7 @@ def _is_abs_path(value: str) -> bool:
 
 
 AppEnv = Literal["dev", "prod"]
+LLMContractMode = Literal["audit", "enforce"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 TaskQueueBackend = Literal["rq", "inline"]
 CookieSameSite = Literal["lax", "strict", "none"]
@@ -51,6 +52,7 @@ class Settings(BaseSettings):
 
     auth_session_signing_key: str | None = None
     auth_dev_fallback_user_id: str | None = "local-user"
+    llm_config_mode: LLMContractMode = "audit"
     auth_session_ttl_seconds: int = 60 * 60 * 24 * 7
     auth_refresh_threshold_seconds: int = 60 * 15
     auth_activity_touch_interval_seconds: int = 30
@@ -251,6 +253,16 @@ class Settings(BaseSettings):
     def _normalize_auth_dev_fallback_user_id(cls, value: object) -> str | None:
         raw = str(value or "").strip()
         return raw or None
+
+    @field_validator("llm_config_mode", mode="before")
+    @classmethod
+    def _normalize_llm_config_mode(cls, value: object) -> str:
+        raw = str(value or "").strip().lower()
+        if raw in ("", "audit"):
+            return "audit"
+        if raw in ("enforce", "strict"):
+            return "enforce"
+        raise ValueError("LLM_CONFIG_MODE must be audit or enforce")
 
     @field_validator("auth_session_ttl_seconds", mode="before")
     @classmethod
@@ -754,3 +766,6 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+
