@@ -86,6 +86,9 @@ test("ui: numeric tables ai_update -> TaskCenter apply/rollback", async ({ page,
     .toBe("done");
 
   await page.goto(href);
+  const projectTaskRow = page.getByRole("button", { name: new RegExp(taskId) }).first();
+  await expect(projectTaskRow).toBeVisible({ timeout: 60_000 });
+  await projectTaskRow.click();
   const apply = page.getByLabel("应用变更集 (taskcenter_changeset_apply)", { exact: true });
   const rollback = page.getByLabel("回滚变更集 (taskcenter_changeset_rollback)", { exact: true });
   await expect(apply).toBeVisible({ timeout: 60_000 });
@@ -112,6 +115,8 @@ test("ui: numeric tables ai_update -> TaskCenter apply/rollback", async ({ page,
     .toBe("100");
 
   await page.goto(href);
+  await expect(projectTaskRow).toBeVisible({ timeout: 60_000 });
+  await projectTaskRow.click();
   await expect(rollback).toBeEnabled({ timeout: 60_000 });
   await rollback.click();
   await expect(rollback).toBeDisabled({ timeout: 60_000 });

@@ -3,10 +3,14 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $backendDir = Join-Path $repoRoot "backend"
 $testDir = Join-Path $repoRoot "test"
+$baselineDbPath = Join-Path $backendDir ".tmp_test/ainovel.schema.baseline.db"
 
 Push-Location $backendDir
 try {
   New-Item -ItemType Directory -Force -Path ".tmp_test" | Out-Null
+  if (Test-Path $baselineDbPath) {
+    Remove-Item $baselineDbPath -Force
+  }
   $env:APP_ENV = "dev"
   $env:TASK_QUEUE_BACKEND = "inline"
   $env:DATABASE_URL = "sqlite:///./.tmp_test/ainovel.schema.baseline.db"

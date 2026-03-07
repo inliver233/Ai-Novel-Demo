@@ -64,7 +64,9 @@ test("ui: download debug bundle (history + context preview)", async ({ page, req
 
   await page.goto(`/projects/${projectId}/writing?chapterId=${chapterId}`);
 
-  await page.getByRole("button", { name: "生成记录", exact: true }).click();
+  const openHistory = page.getByLabel("Open generation history (writing_open_generation_history)", { exact: true });
+  await expect(openHistory).toBeVisible({ timeout: 60_000 });
+  await openHistory.click();
   const history = page.getByRole("dialog", { name: "生成记录", exact: true });
   await expect(history).toBeVisible();
 

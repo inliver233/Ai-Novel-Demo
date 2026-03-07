@@ -28,7 +28,7 @@ test("ui: select style -> generate + post_edit_sanitize -> replay style_resoluti
   const styleId = styleJson.data.style.id;
 
   await page.goto(`/projects/${projectId}/writing?chapterId=${chapterId}`);
-  await page.getByRole("button", { name: "AI 生成", exact: true }).click();
+  await page.getByRole("button", { name: /AI/ }).click();
   const drawer = page.getByRole("dialog", { name: "AI 生成", exact: true });
   await expect(drawer).toBeVisible();
 
@@ -51,7 +51,9 @@ test("ui: select style -> generate + post_edit_sanitize -> replay style_resoluti
 
   await drawer.getByRole("button", { name: "关闭", exact: true }).click();
 
-  await page.getByRole("button", { name: "生成记录", exact: true }).click();
+  const openHistory = page.getByLabel("Open generation history (writing_open_generation_history)", { exact: true });
+  await expect(openHistory).toBeVisible({ timeout: 60_000 });
+  await openHistory.click();
   const history = page.getByRole("dialog", { name: "生成记录", exact: true });
   await expect(history).toBeVisible();
 

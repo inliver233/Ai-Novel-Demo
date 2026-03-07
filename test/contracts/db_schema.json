@@ -3006,7 +3006,7 @@
     },
     "project_memberships": {
       "checks": [
-        "role IN ('viewer','editor','owner')"
+        "role IN ('owner','editor','viewer')"
       ],
       "columns": [
         {
@@ -5435,7 +5435,7 @@
           "type": "VARCHAR(64)"
         },
         {
-          "dflt_value": null,
+          "dflt_value": "0",
           "name": "is_admin",
           "notnull": 1,
           "pk": 0,
