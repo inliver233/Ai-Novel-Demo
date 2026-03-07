@@ -8,22 +8,31 @@ import { loadState } from "../../lib/state";
 
 type ApiOk<T> = { ok: true; data: T; request_id: string };
 
-test("api: project task runtime contract exposes timeline checkpoints artifacts and batch snapshot", async ({ request }) => {
+test("api: project task runtime contract exposes timeline checkpoints artifacts and batch snapshot", async ({
+  request,
+}) => {
   const state = loadState();
   const { projectId } = await bootstrapProject(request);
   const taskId = `pt-runtime-${Date.now()}`;
   const batchTaskId = `bt-runtime-${Date.now()}`;
   const runId = `gr-runtime-${Date.now()}`;
+  const runtimeProvider = `runtime-contract-provider-${Date.now()}`;
   const item1Id = `${taskId}-item-1`;
   const item2Id = `${taskId}-item-2`;
 
-  const chapter1 = await request.post(`${state.backendUrl}/api/projects/${projectId}/chapters`, {
-    data: { number: 1, title: "第一章", plan: "计划1" },
-  });
+  const chapter1 = await request.post(
+    `${state.backendUrl}/api/projects/${projectId}/chapters`,
+    {
+      data: { number: 1, title: "第一章", plan: "计划1" },
+    },
+  );
   expect(chapter1.ok()).toBeTruthy();
-  const chapter2 = await request.post(`${state.backendUrl}/api/projects/${projectId}/chapters`, {
-    data: { number: 2, title: "第二章", plan: "计划2" },
-  });
+  const chapter2 = await request.post(
+    `${state.backendUrl}/api/projects/${projectId}/chapters`,
+    {
+      data: { number: 2, title: "第二章", plan: "计划2" },
+    },
+  );
   expect(chapter2.ok()).toBeTruthy();
 
   const python =
@@ -33,7 +42,7 @@ test("api: project task runtime contract exposes timeline checkpoints artifacts 
 
   const script = [
     "import datetime, json, sqlite3, sys",
-    "db_path, project_id, task_id, batch_task_id, run_id = sys.argv[1:6]",
+    "db_path, project_id, task_id, batch_task_id, run_id, runtime_provider = sys.argv[1:7]",
     "con = sqlite3.connect(db_path)",
     "cur = con.cursor()",
     "now = datetime.datetime.utcnow().isoformat()",
@@ -50,7 +59,7 @@ test("api: project task runtime contract exposes timeline checkpoints artifacts 
     ")",
     "cur.execute(",
     '  "INSERT INTO batch_generation_tasks (id, project_id, outline_id, actor_user_id, project_task_id, status, total_count, completed_count, failed_count, skipped_count, cancel_requested, pause_requested, params_json, checkpoint_json, error_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",',
-    "  (batch_task_id, project_id, outline_id, None, task_id, 'paused', 2, 1, 1, 0, 0, 1, json.dumps({'runtime_provider': 'openai_compatible'}), json.dumps({'status': 'paused', 'completed_count': 1, 'failed_count': 1}), json.dumps({'code': 'MOCK_FAIL', 'message': 'step failed'}), now, now),",
+    "  (batch_task_id, project_id, outline_id, None, task_id, 'paused', 2, 1, 1, 0, 0, 1, json.dumps({'runtime_provider': runtime_provider}), json.dumps({'status': 'paused', 'completed_count': 1, 'failed_count': 1}), json.dumps({'code': 'MOCK_FAIL', 'message': 'step failed'}), now, now),",
     ")",
     "items = [",
     `  ('${item1Id}', chapter1_id, 1, 'succeeded', 1, run_id, 'rid-1', None, None),`,
@@ -78,28 +87,62 @@ test("api: project task runtime contract exposes timeline checkpoints artifacts 
     "con.close()",
   ].join("\n");
 
-  const insert = spawnSync(python, ["-c", script, state.dbPath, projectId, taskId, batchTaskId, runId], { encoding: "utf-8" });
+  const insert = spawnSync(
+    python,
+    [
+      "-c",
+      script,
+      state.dbPath,
+      projectId,
+      taskId,
+      batchTaskId,
+      runId,
+      runtimeProvider,
+    ],
+    { encoding: "utf-8" },
+  );
   expect(insert.status).toBe(0);
-  const inserted = JSON.parse(String(insert.stdout || "{}")) as { chapter1_id: string; chapter2_id: string };
+  const inserted = JSON.parse(String(insert.stdout || "{}")) as {
+    chapter1_id: string;
+    chapter2_id: string;
+  };
 
-  const runtimeRes = await request.get(`${state.backendUrl}/api/tasks/${taskId}/runtime`);
+  const runtimeRes = await request.get(
+    `${state.backendUrl}/api/tasks/${taskId}/runtime`,
+  );
   expect(runtimeRes.ok()).toBeTruthy();
   const runtimeJson = (await runtimeRes.json()) as ApiOk<{
     run: { id: string; status: string };
     timeline: Array<{ event_type: string }>;
     checkpoints: Array<{ checkpoint: { status: string } }>;
-    steps: Array<{ chapter_number: number; status: string; generation_run_id?: string | null }>;
+    steps: Array<{
+      chapter_number: number;
+      status: string;
+      generation_run_id?: string | null;
+    }>;
     artifacts: Array<{ kind: string; id: string; chapter_id?: string | null }>;
-    batch: { task: { id: string; status: string }; items: Array<{ chapter_id?: string | null; status: string }> };
+    batch: {
+      task: { id: string; status: string };
+      items: Array<{ chapter_id?: string | null; status: string }>;
+    };
   }>;
 
   const data = runtimeJson.data;
   expect(data.run.id).toBe(taskId);
   expect(data.run.status).toBe("paused");
-  expect(data.timeline.map((entry) => entry.event_type)).toEqual(["running", "step_started", "step_succeeded", "step_failed", "paused"]);
+  expect(data.timeline.map((entry) => entry.event_type)).toEqual([
+    "running",
+    "step_started",
+    "step_succeeded",
+    "step_failed",
+    "paused",
+  ]);
   expect(data.checkpoints.at(-1)?.checkpoint.status).toBe("paused");
   expect(data.steps.map((step) => step.chapter_number)).toEqual([1, 2]);
-  expect(data.steps.map((step) => step.status)).toEqual(["succeeded", "failed"]);
+  expect(data.steps.map((step) => step.status)).toEqual([
+    "succeeded",
+    "failed",
+  ]);
   expect(data.steps[0]?.generation_run_id).toBe(runId);
   expect(data.artifacts).toHaveLength(1);
   expect(data.artifacts[0]).toMatchObject({
@@ -114,5 +157,8 @@ test("api: project task runtime contract exposes timeline checkpoints artifacts 
   expect(data.batch.task.id).toBe(batchTaskId);
   expect(data.batch.task.status).toBe("paused");
   expect(data.batch.items).toHaveLength(2);
-  expect(data.batch.items.map((item) => item.status)).toEqual(["succeeded", "failed"]);
+  expect(data.batch.items.map((item) => item.status)).toEqual([
+    "succeeded",
+    "failed",
+  ]);
 });

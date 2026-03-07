@@ -7,13 +7,20 @@ import type { FullConfig } from "@playwright/test";
 import { findRepoRoot } from "./lib/paths";
 import { assertPortFree, getFreePort, waitForHttpOk } from "./lib/net";
 import { nodeCommand, npmCommand, spawnLogged } from "./lib/proc";
-import { loadState, saveState, stateFilePath, type E2EState } from "./lib/state";
+import {
+  loadState,
+  saveState,
+  stateFilePath,
+  type E2EState,
+} from "./lib/state";
 
 function killPid(pid: number): void {
   if (!pid) return;
   try {
     if (process.platform === "win32") {
-      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
+        stdio: "ignore",
+      });
       return;
     }
     process.kill(pid, "SIGTERM");
@@ -50,8 +57,14 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       }
     }
 
-    const backendConfig = parseUrlOrDefault(process.env.E2E_BACKEND_URL, "http://127.0.0.1:8000");
-    const frontendConfig = parseUrlOrDefault(process.env.E2E_FRONTEND_URL, "http://127.0.0.1:5173");
+    const backendConfig = parseUrlOrDefault(
+      process.env.E2E_BACKEND_URL,
+      "http://127.0.0.1:8000",
+    );
+    const frontendConfig = parseUrlOrDefault(
+      process.env.E2E_FRONTEND_URL,
+      "http://127.0.0.1:5173",
+    );
     const mockPort = Number(process.env.E2E_MOCK_PORT || 4010);
 
     const backendPort = Number(backendConfig.port || 8000);
@@ -61,7 +74,10 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
 
     let effectiveMockPort = mockPort;
     try {
-      await assertPortFree(mockPort, "127.0.0.1", { retries: 20, intervalMs: 250 });
+      await assertPortFree(mockPort, "127.0.0.1", {
+        retries: 20,
+        intervalMs: 250,
+      });
     } catch {
       // Safe to auto-switch the mock server port because only globalSetup + state.json depend on it.
       const fallback = await getFreePort("127.0.0.1");
@@ -109,11 +125,16 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
 
     const backendTmpDir = path.join(backendDir, ".tmp_test");
     fs.mkdirSync(backendTmpDir, { recursive: true });
-    const dbPath = path.join(backendTmpDir, "ainovel.e2e.db");
-    for (const suffix of ["", "-wal", "-shm", "-journal"]) {
-      const p = `${dbPath}${suffix}`;
-      if (fs.existsSync(p)) fs.rmSync(p, { force: true });
+    for (const name of fs.readdirSync(backendTmpDir)) {
+      if (!name.startsWith("ainovel.e2e")) continue;
+      try {
+        fs.rmSync(path.join(backendTmpDir, name), { force: true });
+      } catch {
+        // ignore stale locked files from previous aborted runs
+      }
     }
+    const dbFileName = `ainovel.e2e.${Date.now()}.db`;
+    const dbPath = path.join(backendTmpDir, dbFileName);
 
     const mockLlm = spawnLogged({
       name: "mock-llm",
@@ -126,26 +147,38 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       logFile: path.join(artifactsDir, "mock-llm.log"),
     });
     spawnedPids.push(mockLlm.pid ?? 0);
-    await waitForHttpOk(`http://127.0.0.1:${effectiveMockPort}/health`, { timeoutMs: 20_000 });
+    await waitForHttpOk(`http://127.0.0.1:${effectiveMockPort}/health`, {
+      timeoutMs: 20_000,
+    });
 
     const python =
       process.platform === "win32"
         ? path.join(backendDir, ".venv", "Scripts", "python.exe")
         : path.join(backendDir, ".venv", "bin", "python");
     if (!fs.existsSync(python)) {
-      throw new Error(`Backend venv python not found at: ${python}\nRun backend setup first (see README.md).`);
+      throw new Error(
+        `Backend venv python not found at: ${python}\nRun backend setup first (see README.md).`,
+      );
     }
 
     const backend = spawnLogged({
       name: "backend",
       cwd: backendDir,
       command: python,
-      commandArgs: ["-m", "uvicorn", "app.main:app", "--workers", "1", "--port", String(backendPort)],
+      commandArgs: [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--workers",
+        "1",
+        "--port",
+        String(backendPort),
+      ],
       env: {
         APP_ENV: "dev",
         LOG_LEVEL: "INFO",
         TASK_QUEUE_BACKEND: "inline",
-        DATABASE_URL: "sqlite:///./.tmp_test/ainovel.e2e.db",
+        DATABASE_URL: `sqlite:///./.tmp_test/${dbFileName}`,
         CORS_ORIGINS: `http://localhost:${frontendPort},http://127.0.0.1:${frontendPort}`,
         AUTH_ADMIN_USER_ID: "admin",
         AUTH_ADMIN_PASSWORD: "admin-pass",
@@ -158,8 +191,12 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     spawnedPids.push(backend.pid ?? 0);
     await waitForHttpOk(`${backendUrl}/api/health`, { timeoutMs: 60_000 });
 
-    const frontendCommand = process.platform === "win32" ? "cmd.exe" : npmCommand();
-    const frontendCommandArgs = process.platform === "win32" ? ["/c", npmCommand(), "run", "dev"] : ["run", "dev"];
+    const frontendCommand =
+      process.platform === "win32" ? "cmd.exe" : npmCommand();
+    const frontendCommandArgs =
+      process.platform === "win32"
+        ? ["/c", npmCommand(), "run", "dev"]
+        : ["run", "dev"];
     const frontendEnv: Record<string, string | undefined> = {
       // Make sure Vite uses a stable URL in tests.
       HOST: frontendConfig.hostname,
@@ -167,7 +204,8 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       VITE_DEV_FALLBACK_ENABLED: "true",
     };
     // Allow overriding backend for external runs, but keep default-path coverage for local E2E.
-    if (process.env.E2E_BACKEND_URL) frontendEnv.VITE_API_PROXY_TARGET = backendUrl;
+    if (process.env.E2E_BACKEND_URL)
+      frontendEnv.VITE_API_PROXY_TARGET = backendUrl;
 
     const frontend = spawnLogged({
       name: "frontend",

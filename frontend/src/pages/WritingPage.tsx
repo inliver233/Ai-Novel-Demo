@@ -609,8 +609,19 @@ export function WritingPage() {
         setBatchIncludeExisting={batch.setBatchIncludeExisting}
         batchTask={batch.batchTask}
         batchItems={batch.batchItems}
+        batchRuntime={batch.batchRuntime}
+        projectTaskStreamStatus={batch.projectTaskStreamStatus}
+        taskCenterHref={
+          projectId && batch.batchTask?.project_task_id
+            ? `/projects/${projectId}/tasks?project_task_id=${encodeURIComponent(batch.batchTask.project_task_id)}`
+            : null
+        }
         onClose={batch.closeModal}
         onCancelTask={() => void batch.cancelBatchGeneration()}
+        onPauseTask={() => void batch.pauseBatchGeneration()}
+        onResumeTask={() => void batch.resumeBatchGeneration()}
+        onRetryFailedTask={() => void batch.retryFailedBatchGeneration()}
+        onSkipFailedTask={() => void batch.skipFailedBatchGeneration()}
         onStartTask={() => void batch.startBatchGeneration()}
         onApplyItemToEditor={(it) => void batch.applyBatchItemToEditor(it)}
       />

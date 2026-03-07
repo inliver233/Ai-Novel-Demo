@@ -63,10 +63,20 @@ export function WritingToolbar(props: {
         >
           AI 生成
         </button>
-        <button className="btn btn-secondary" onClick={props.onOpenBatch} type="button">
+        <button
+          className="btn btn-secondary"
+          aria-label="Open batch generation (writing_open_batch_generation)"
+          onClick={props.onOpenBatch}
+          type="button"
+        >
           批量生成{props.batchProgressText}
         </button>
-        <button className="btn btn-secondary" onClick={props.onOpenHistory} type="button">
+        <button
+          className="btn btn-secondary"
+          aria-label="Open generation history (writing_open_generation_history)"
+          onClick={props.onOpenHistory}
+          type="button"
+        >
           生成记录
         </button>
 

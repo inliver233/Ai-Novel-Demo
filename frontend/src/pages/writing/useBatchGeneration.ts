@@ -1,8 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SetURLSearchParams } from "react-router-dom";
 
 import type { BatchGenerationTask, BatchGenerationTaskItem, GenerateForm } from "../../components/writing/types";
+import { useProjectTaskEvents } from "../../hooks/useProjectTaskEvents";
+import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../../services/apiClient";
+import {
+  cancelBatchGenerationTask,
+  getActiveBatchGenerationTask,
+  getBatchGenerationTask,
+  getProjectTaskRuntime,
+  hasFailedBatchGenerationItems,
+  isBatchGenerationProjectTaskKind,
+  isBatchGenerationTaskStatusRecoverable,
+  pauseBatchGenerationTask,
+  resumeBatchGenerationTask,
+  retryFailedBatchGenerationTask,
+  skipFailedBatchGenerationTask,
+  type ProjectTaskRuntime,
+} from "../../services/projectTaskRuntime";
 import type { Chapter, ChapterListItem, LLMPreset } from "../../types";
 import { extractMissingNumbers } from "./writingErrorUtils";
 
@@ -38,36 +54,149 @@ export function useBatchGeneration(args: {
   const [batchIncludeExisting, setBatchIncludeExisting] = useState(false);
   const [batchTask, setBatchTask] = useState<BatchGenerationTask | null>(null);
   const [batchItems, setBatchItems] = useState<BatchGenerationTaskItem[]>([]);
+  const [batchRuntime, setBatchRuntime] = useState<ProjectTaskRuntime | null>(null);
 
-  const refreshBatchTask = useCallback(
-    async (opts?: { silent?: boolean }) => {
-      if (!projectId) return;
+  const batchTaskRef = useRef<BatchGenerationTask | null>(null);
+  const batchRefreshGuardRef = useRef(createRequestSeqGuard());
+  const runtimeRefreshGuardRef = useRef(createRequestSeqGuard());
+  const batchSyncTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    batchTaskRef.current = batchTask;
+  }, [batchTask]);
+
+  useEffect(() => {
+    const batchRefreshGuard = batchRefreshGuardRef.current;
+    const runtimeRefreshGuard = runtimeRefreshGuardRef.current;
+    return () => {
+      batchRefreshGuard.invalidate();
+      runtimeRefreshGuard.invalidate();
+      if (batchSyncTimerRef.current !== null) {
+        window.clearTimeout(batchSyncTimerRef.current);
+      }
+    };
+  }, []);
+
+  const refreshBatchRuntime = useCallback(
+    async (projectTaskId: string, opts?: { silent?: boolean; loading?: boolean }) => {
+      const targetId = String(projectTaskId || "").trim();
+      if (!targetId) {
+        runtimeRefreshGuardRef.current.invalidate();
+        setBatchRuntime(null);
+        return;
+      }
+      const seq = runtimeRefreshGuardRef.current.next();
       try {
-        const res = await apiJson<{ task: BatchGenerationTask | null; items: BatchGenerationTaskItem[] }>(
-          `/api/projects/${projectId}/batch_generation_tasks/active`,
-        );
-        setBatchTask(res.data.task);
-        setBatchItems(res.data.items);
+        const runtime = await getProjectTaskRuntime(targetId);
+        if (!runtimeRefreshGuardRef.current.isLatest(seq)) return;
+        setBatchRuntime(runtime);
       } catch (e) {
+        if (!runtimeRefreshGuardRef.current.isLatest(seq)) return;
         if (!opts?.silent) {
           const err = e as ApiError;
           toast.toastError(`${err.message} (${err.code})`, err.requestId);
         }
       }
     },
-    [projectId, toast],
+    [toast],
+  );
+
+  const refreshBatchTask = useCallback(
+    async (opts?: { silent?: boolean; taskId?: string | null }) => {
+      if (!projectId) return;
+      const seq = batchRefreshGuardRef.current.next();
+      const fallbackTaskId = String(opts?.taskId || batchTaskRef.current?.id || "").trim();
+      try {
+        let data = await getActiveBatchGenerationTask(projectId);
+        if (!data.task && fallbackTaskId) {
+          try {
+            data = await getBatchGenerationTask(fallbackTaskId);
+          } catch (detailError) {
+            if (!(detailError instanceof ApiError) || detailError.status !== 404) {
+              throw detailError;
+            }
+          }
+        }
+        if (!batchRefreshGuardRef.current.isLatest(seq)) return;
+        setBatchTask(data.task);
+        setBatchItems(data.items);
+        batchTaskRef.current = data.task;
+        const projectTaskId = String(data.task?.project_task_id || "").trim();
+        if (projectTaskId) {
+          void refreshBatchRuntime(projectTaskId, { silent: true });
+        } else {
+          runtimeRefreshGuardRef.current.invalidate();
+          setBatchRuntime(null);
+        }
+      } catch (e) {
+        if (!batchRefreshGuardRef.current.isLatest(seq)) return;
+        if (!opts?.silent) {
+          const err = e as ApiError;
+          toast.toastError(`${err.message} (${err.code})`, err.requestId);
+        }
+      }
+    },
+    [projectId, refreshBatchRuntime, toast],
   );
 
   useEffect(() => {
+    if (!projectId) {
+      batchRefreshGuardRef.current.invalidate();
+      runtimeRefreshGuardRef.current.invalidate();
+      setBatchTask(null);
+      setBatchItems([]);
+      setBatchRuntime(null);
+      return;
+    }
     void refreshBatchTask({ silent: true });
-  }, [refreshBatchTask]);
+  }, [projectId, refreshBatchTask]);
+
+  const scheduleBatchSync = useCallback(
+    (projectTaskId?: string | null) => {
+      if (batchSyncTimerRef.current !== null) {
+        window.clearTimeout(batchSyncTimerRef.current);
+      }
+      batchSyncTimerRef.current = window.setTimeout(() => {
+        batchSyncTimerRef.current = null;
+        void refreshBatchTask({ silent: true });
+        const runtimeTaskId = String(projectTaskId || batchTaskRef.current?.project_task_id || "").trim();
+        if (runtimeTaskId) {
+          void refreshBatchRuntime(runtimeTaskId, { silent: true });
+        }
+      }, 120);
+    },
+    [refreshBatchRuntime, refreshBatchTask],
+  );
+
+  const projectTaskEvents = useProjectTaskEvents({
+    projectId,
+    enabled: Boolean(projectId),
+    onSnapshot: (snapshot) => {
+      const activeBatchTask = (snapshot.active_tasks || []).find((task) => isBatchGenerationProjectTaskKind(task.kind));
+      if (activeBatchTask || batchTaskRef.current) {
+        scheduleBatchSync(activeBatchTask?.id);
+      }
+    },
+    onEvent: (event) => {
+      if (!isBatchGenerationProjectTaskKind(event.kind)) return;
+      const currentProjectTaskId = String(batchTaskRef.current?.project_task_id || "").trim();
+      if (currentProjectTaskId && currentProjectTaskId !== event.task_id) return;
+      scheduleBatchSync(event.task_id);
+    },
+  });
 
   useEffect(() => {
-    if (!batchTask) return;
-    if (batchTask.status !== "queued" && batchTask.status !== "running") return;
-    const id = window.setInterval(() => void refreshBatchTask({ silent: true }), 1500);
+    if (projectTaskEvents.status === "open") return;
+    if (!batchTask || !isBatchGenerationTaskStatusRecoverable(batchTask.status)) return;
+    const id = window.setInterval(() => {
+      void refreshBatchTask({ silent: true });
+      const projectTaskId = String(batchTaskRef.current?.project_task_id || "").trim();
+      if (projectTaskId) {
+        void refreshBatchRuntime(projectTaskId, { silent: true });
+      }
+    }, 2000);
     return () => window.clearInterval(id);
-  }, [batchTask, refreshBatchTask]);
+  }, [batchTask, projectTaskEvents.status, refreshBatchRuntime, refreshBatchTask]);
 
   const openModal = useCallback(() => {
     setOpen(true);
@@ -79,7 +208,7 @@ export function useBatchGeneration(args: {
   const startBatchGeneration = useCallback(async () => {
     if (!projectId) return;
     if (!preset) {
-      toast.toastError("请先在 Prompts 页保存 LLM 配置");
+      toast.toastError("Please save an LLM preset on the Prompts page first.");
       return;
     }
     setBatchLoading(true);
@@ -118,19 +247,23 @@ export function useBatchGeneration(args: {
       );
       setBatchTask(res.data.task);
       setBatchItems(res.data.items);
-      toast.toastSuccess("已开始批量生成", res.request_id);
+      batchTaskRef.current = res.data.task;
+      if (res.data.task.project_task_id) {
+        void refreshBatchRuntime(res.data.task.project_task_id, { silent: true });
+      }
+      toast.toastSuccess("Batch generation started.", res.request_id);
     } catch (e) {
       const err = e as ApiError;
       const missingNumbers = extractMissingNumbers(err);
       if (missingNumbers.length > 0) {
         const targetNumber = missingNumbers[0]!;
-        const target = chapters.find((c) => c.number === targetNumber);
+        const target = chapters.find((chapter) => chapter.number === targetNumber);
         toast.toastError(
-          `缺少前置章节内容：第 ${missingNumbers.join("、")} 章`,
+          `Missing prerequisite chapter content: ${missingNumbers.join(", ")}.`,
           err.requestId,
           target
             ? {
-                label: `跳转到第 ${targetNumber} 章`,
+                label: `Open chapter ${targetNumber}`,
                 onClick: () => void requestSelectChapter(target.id),
               }
             : undefined,
@@ -149,6 +282,7 @@ export function useBatchGeneration(args: {
     genForm,
     preset,
     projectId,
+    refreshBatchRuntime,
     requestSelectChapter,
     toast,
   ]);
@@ -157,9 +291,69 @@ export function useBatchGeneration(args: {
     if (!batchTask) return;
     setBatchLoading(true);
     try {
-      await apiJson(`/api/batch_generation_tasks/${batchTask.id}/cancel`, { method: "POST" });
-      toast.toastSuccess("已请求取消批量生成");
-      await refreshBatchTask();
+      await cancelBatchGenerationTask(batchTask.id);
+      toast.toastSuccess("Batch generation canceled.");
+      await refreshBatchTask({ silent: true });
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setBatchLoading(false);
+    }
+  }, [batchTask, refreshBatchTask, toast]);
+
+  const pauseBatchGeneration = useCallback(async () => {
+    if (!batchTask) return;
+    setBatchLoading(true);
+    try {
+      await pauseBatchGenerationTask(batchTask.id);
+      toast.toastSuccess("Batch generation paused.");
+      await refreshBatchTask({ silent: true });
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setBatchLoading(false);
+    }
+  }, [batchTask, refreshBatchTask, toast]);
+
+  const resumeBatchGeneration = useCallback(async () => {
+    if (!batchTask) return;
+    setBatchLoading(true);
+    try {
+      await resumeBatchGenerationTask(batchTask.id);
+      toast.toastSuccess("Batch generation resumed.");
+      await refreshBatchTask({ silent: true });
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setBatchLoading(false);
+    }
+  }, [batchTask, refreshBatchTask, toast]);
+
+  const retryFailedBatchGeneration = useCallback(async () => {
+    if (!batchTask) return;
+    setBatchLoading(true);
+    try {
+      await retryFailedBatchGenerationTask(batchTask.id);
+      toast.toastSuccess("Failed chapters queued for retry.");
+      await refreshBatchTask({ silent: true });
+    } catch (e) {
+      const err = e as ApiError;
+      toast.toastError(`${err.message} (${err.code})`, err.requestId);
+    } finally {
+      setBatchLoading(false);
+    }
+  }, [batchTask, refreshBatchTask, toast]);
+
+  const skipFailedBatchGeneration = useCallback(async () => {
+    if (!batchTask) return;
+    setBatchLoading(true);
+    try {
+      await skipFailedBatchGenerationTask(batchTask.id);
+      toast.toastSuccess("Failed chapters skipped.");
+      await refreshBatchTask({ silent: true });
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
@@ -191,9 +385,16 @@ export function useBatchGeneration(args: {
     setBatchIncludeExisting,
     batchTask,
     batchItems,
+    batchRuntime,
+    projectTaskStreamStatus: projectTaskEvents.status,
     refreshBatchTask,
     startBatchGeneration,
     cancelBatchGeneration,
+    pauseBatchGeneration,
+    resumeBatchGeneration,
+    retryFailedBatchGeneration,
+    skipFailedBatchGeneration,
+    hasFailedBatchItems: hasFailedBatchGenerationItems(batchItems),
     applyBatchItemToEditor,
   };
 }

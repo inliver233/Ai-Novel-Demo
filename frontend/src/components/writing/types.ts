@@ -82,7 +82,7 @@ export type GenerationRun = {
   created_at: string;
 };
 
-export type BatchGenerationTaskStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
+export type BatchGenerationTaskStatus = "queued" | "running" | "paused" | "succeeded" | "failed" | "canceled";
 export type BatchGenerationItemStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "skipped";
 
 export type BatchGenerationTask = {
@@ -90,10 +90,15 @@ export type BatchGenerationTask = {
   project_id: string;
   outline_id: string;
   actor_user_id?: string | null;
+  project_task_id?: string | null;
   status: BatchGenerationTaskStatus;
   total_count: number;
   completed_count: number;
+  failed_count: number;
+  skipped_count: number;
   cancel_requested: boolean;
+  pause_requested: boolean;
+  checkpoint_json?: string | null;
   error_json?: string | null;
   created_at: string;
   updated_at: string;
@@ -105,8 +110,13 @@ export type BatchGenerationTaskItem = {
   chapter_id?: string | null;
   chapter_number: number;
   status: BatchGenerationItemStatus;
+  attempt_count: number;
   generation_run_id?: string | null;
+  last_request_id?: string | null;
   error_message?: string | null;
+  last_error_json?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
   created_at: string;
   updated_at: string;
 };
