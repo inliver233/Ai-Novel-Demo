@@ -3,13 +3,14 @@ from __future__ import annotations
 import json
 import time
 from typing import Any, Iterator
+from urllib.parse import urlsplit
 
 import httpx
 
 from app.core.errors import AppError
 from app.llm.http_client import get_llm_http_client
-from app.llm.types import LLMCallResult, LLMStreamState
 from app.llm.messages import ChatMessage
+from app.llm.types import LLMCallResult, LLMStreamState
 from app.llm.utils import normalize_base_url
 
 
@@ -18,7 +19,6 @@ def _filter_params(provider: str, params: dict[str, Any]) -> tuple[dict[str, Any
     if provider in ("openai", "openai_responses"):
         supported = {"temperature", "top_p", "max_tokens", "presence_penalty", "frequency_penalty", "stop"}
     elif provider in ("openai_compatible", "openai_responses_compatible"):
-        # Many OpenAI-compatible gateways only support a subset of OpenAI params. Keep this minimal to reduce 400s.
         supported = {"temperature", "top_p", "max_tokens", "stop"}
     elif provider == "anthropic":
         supported = {"temperature", "top_p", "max_tokens", "top_k", "stop"}
@@ -26,6 +26,7 @@ def _filter_params(provider: str, params: dict[str, Any]) -> tuple[dict[str, Any
         supported = {"temperature", "top_p", "max_tokens", "top_k", "stop"}
     else:
         supported = set()
+
     filtered: dict[str, Any] = {}
     dropped: list[str] = []
     for key, value in params.items():
@@ -38,6 +39,46 @@ def _filter_params(provider: str, params: dict[str, Any]) -> tuple[dict[str, Any
         else:
             dropped.append(key)
     return filtered, dropped
+
+
+def _llm_base_url_host(base_url: str | None) -> str | None:
+    raw = str(base_url or "").strip()
+    if not raw:
+        return None
+    parts = urlsplit(raw)
+    host = str(parts.netloc or "").strip()
+    return host or None
+
+
+def _llm_error_context(*, provider: str, base_url: str, model: str, timeout_seconds: int) -> dict[str, Any]:
+    context: dict[str, Any] = {
+        "provider": str(provider or "").strip(),
+        "model": str(model or "").strip(),
+        "timeout_seconds": int(timeout_seconds),
+    }
+    host = _llm_base_url_host(base_url)
+    if host:
+        context["base_url_host"] = host
+    return context
+
+
+def _attach_llm_error_context(
+    exc: AppError,
+    *,
+    provider: str,
+    base_url: str,
+    model: str,
+    timeout_seconds: int,
+) -> None:
+    exc.details = {
+        **_llm_error_context(
+            provider=provider,
+            base_url=base_url,
+            model=model,
+            timeout_seconds=timeout_seconds,
+        ),
+        **(exc.details or {}),
+    }
 
 
 def call_llm_stream(
@@ -94,73 +135,83 @@ def call_llm_stream_messages(
     pool_timeout = min(10.0, read_timeout)
     timeout = httpx.Timeout(connect=connect_timeout, read=read_timeout, write=write_timeout, pool=pool_timeout)
 
-    if provider in ("openai", "openai_compatible"):
-        from app.llm.providers.openai_chat import call_openai_chat_completions_stream
+    try:
+        if provider in ("openai", "openai_compatible"):
+            from app.llm.providers.openai_chat import call_openai_chat_completions_stream
 
-        return call_openai_chat_completions_stream(
-            client=client,
+            return call_openai_chat_completions_stream(
+                client=client,
+                provider=provider,
+                base_url=base_url,
+                model=model,
+                api_key=api_key,
+                messages=messages,
+                filtered_params=filtered_params,
+                dropped_params=dropped,
+                timeout=timeout,
+                start=start,
+                extra=extra,
+            )
+
+        if provider in ("openai_responses", "openai_responses_compatible"):
+            from app.llm.providers.openai_responses import call_openai_responses_stream
+
+            return call_openai_responses_stream(
+                client=client,
+                provider=provider,
+                base_url=base_url,
+                model=model,
+                api_key=api_key,
+                messages=messages,
+                filtered_params=filtered_params,
+                dropped_params=dropped,
+                timeout=timeout,
+                start=start,
+                extra=extra,
+            )
+
+        if provider == "anthropic":
+            from app.llm.providers.anthropic_messages import call_anthropic_messages_stream
+
+            return call_anthropic_messages_stream(
+                client=client,
+                base_url=base_url,
+                model=model,
+                api_key=api_key,
+                messages=messages,
+                filtered_params=filtered_params,
+                dropped_params=dropped,
+                timeout=timeout,
+                start=start,
+                extra=extra,
+            )
+
+        if provider == "gemini":
+            from app.llm.providers.gemini_generate_content import call_gemini_generate_content_stream
+
+            return call_gemini_generate_content_stream(
+                client=client,
+                base_url=base_url,
+                model=model,
+                api_key=api_key,
+                messages=messages,
+                filtered_params=filtered_params,
+                dropped_params=dropped,
+                timeout=timeout,
+                start=start,
+                extra=extra,
+            )
+
+        raise AppError(code="LLM_CONFIG_ERROR", message="不支持的 provider", status_code=400)
+    except AppError as exc:
+        _attach_llm_error_context(
+            exc,
             provider=provider,
             base_url=base_url,
             model=model,
-            api_key=api_key,
-            messages=messages,
-            filtered_params=filtered_params,
-            dropped_params=dropped,
-            timeout=timeout,
-            start=start,
-            extra=extra,
+            timeout_seconds=timeout_seconds,
         )
-
-    if provider in ("openai_responses", "openai_responses_compatible"):
-        from app.llm.providers.openai_responses import call_openai_responses_stream
-
-        return call_openai_responses_stream(
-            client=client,
-            provider=provider,
-            base_url=base_url,
-            model=model,
-            api_key=api_key,
-            messages=messages,
-            filtered_params=filtered_params,
-            dropped_params=dropped,
-            timeout=timeout,
-            start=start,
-            extra=extra,
-        )
-
-    if provider == "anthropic":
-        from app.llm.providers.anthropic_messages import call_anthropic_messages_stream
-
-        return call_anthropic_messages_stream(
-            client=client,
-            base_url=base_url,
-            model=model,
-            api_key=api_key,
-            messages=messages,
-            filtered_params=filtered_params,
-            dropped_params=dropped,
-            timeout=timeout,
-            start=start,
-            extra=extra,
-        )
-
-    if provider == "gemini":
-        from app.llm.providers.gemini_generate_content import call_gemini_generate_content_stream
-
-        return call_gemini_generate_content_stream(
-            client=client,
-            base_url=base_url,
-            model=model,
-            api_key=api_key,
-            messages=messages,
-            filtered_params=filtered_params,
-            dropped_params=dropped,
-            timeout=timeout,
-            start=start,
-            extra=extra,
-        )
-
-    raise AppError(code="LLM_CONFIG_ERROR", message="不支持的 provider", status_code=400)
+        raise
 
 
 def call_llm(
@@ -285,9 +336,49 @@ def call_llm_messages(
             )
 
         raise AppError(code="LLM_CONFIG_ERROR", message="不支持的 provider", status_code=400)
+    except AppError as exc:
+        _attach_llm_error_context(
+            exc,
+            provider=provider,
+            base_url=base_url,
+            model=model,
+            timeout_seconds=timeout_seconds,
+        )
+        raise
     except httpx.TimeoutException as exc:
-        raise AppError(code="LLM_TIMEOUT", message="连接超时，请检查网络或 base_url 是否正确", status_code=504) from exc
+        raise AppError(
+            code="LLM_TIMEOUT",
+            message="连接超时，请检查网络或 base_url 是否正确",
+            status_code=504,
+            details=_llm_error_context(
+                provider=provider,
+                base_url=base_url,
+                model=model,
+                timeout_seconds=timeout_seconds,
+            ),
+        ) from exc
     except httpx.HTTPError as exc:
-        raise AppError(code="LLM_UPSTREAM_ERROR", message="连接失败，请检查网络或 base_url 是否正确", status_code=502) from exc
+        raise AppError(
+            code="LLM_UPSTREAM_ERROR",
+            message="连接失败，请检查网络或 base_url 是否正确",
+            status_code=502,
+            details=_llm_error_context(
+                provider=provider,
+                base_url=base_url,
+                model=model,
+                timeout_seconds=timeout_seconds,
+            ),
+        ) from exc
     except json.JSONDecodeError as exc:
-        raise AppError(code="LLM_UPSTREAM_ERROR", message="上游响应解析失败", status_code=502) from exc
+        raise AppError(
+            code="LLM_UPSTREAM_ERROR",
+            message="上游响应解析失败",
+            status_code=502,
+            details=_llm_error_context(
+                provider=provider,
+                base_url=base_url,
+                model=model,
+                timeout_seconds=timeout_seconds,
+            ),
+        ) from exc
+

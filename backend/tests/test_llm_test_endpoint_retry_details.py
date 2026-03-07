@@ -68,12 +68,19 @@ class TestLlmTestEndpointRetryDetails(unittest.TestCase):
     def test_llm_test_exhausted_error_includes_attempts(self) -> None:
         client = TestClient(self.app)
 
-        timeout_exc = AppError(code="LLM_TIMEOUT", message="timeout", status_code=504)
+        timeout_exc = AppError(
+            code="LLM_TIMEOUT",
+            message="timeout",
+            status_code=504,
+            details={"status_code": 504, "upstream_error": "gateway timeout"},
+        )
         with (
             patch("app.api.routes.llm.task_llm_max_attempts", return_value=2),
             patch("app.api.routes.llm.compute_backoff_seconds", return_value=0),
             patch("app.api.routes.llm.time.sleep"),
             patch("app.api.routes.llm.call_llm", side_effect=[timeout_exc, timeout_exc]) as mock_call,
+            patch("app.api.routes.llm.log_event") as route_log_event,
+            patch("app.main.log_event") as main_log_event,
         ):
             resp = client.post(
                 "/api/llm/test",
@@ -87,9 +94,26 @@ class TestLlmTestEndpointRetryDetails(unittest.TestCase):
         self.assertFalse(payload.get("ok"))
         details = ((payload.get("error") or {}).get("details") or {}) if isinstance(payload, dict) else {}
         attempts = details.get("attempts") or []
+        self.assertEqual(details.get("provider"), "openai")
+        self.assertEqual(details.get("model"), "gpt-test")
+        self.assertEqual(details.get("base_url_host"), "api.openai.com")
+        self.assertEqual(details.get("timeout_seconds"), 5)
         self.assertEqual(details.get("attempt_max"), 2)
         self.assertEqual(len(attempts), 2)
         self.assertEqual((attempts[0] or {}).get("error_code"), "LLM_TIMEOUT")
+        self.assertEqual(route_log_event.call_count, 2)
+        _route_args, route_kwargs = route_log_event.call_args
+        self.assertEqual(route_kwargs.get("event"), "LLM_TEST_ATTEMPT_FAILED")
+        self.assertEqual(route_kwargs.get("attempt"), 2)
+        self.assertEqual(route_kwargs.get("attempt_max"), 2)
+        self.assertEqual(route_kwargs.get("provider"), "openai")
+        self.assertEqual(route_kwargs.get("model"), "gpt-test")
+        self.assertEqual(route_kwargs.get("base_url_host"), "api.openai.com")
+        self.assertEqual(route_kwargs.get("details"), {"status_code": 504, "upstream_error": "gateway timeout"})
+        _main_args, main_kwargs = main_log_event.call_args
+        self.assertEqual(main_kwargs.get("details", {}).get("provider"), "openai")
+        self.assertEqual(main_kwargs.get("details", {}).get("attempt_max"), 2)
+        self.assertEqual(len(main_kwargs.get("details", {}).get("attempts") or []), 2)
 
     def test_llm_test_does_not_retry_non_retryable(self) -> None:
         client = TestClient(self.app)
@@ -119,4 +143,3 @@ class TestLlmTestEndpointRetryDetails(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

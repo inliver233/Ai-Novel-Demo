@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import json
@@ -14,12 +14,30 @@ from app.db.utils import utc_now_iso
 
 def configure_logging() -> None:
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
-    # Avoid httpx/httpcore request logs leaking sensitive query params (e.g. Gemini uses ?key=...).
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 LogLevel = Literal["debug", "info", "warning", "error"]
+
+_SAFE_LOG_DETAIL_KEYS = frozenset(
+    {
+        "status_code",
+        "upstream_error",
+        "compat_adjustments",
+        "compat_dropped_params",
+        "errors",
+        "attempts",
+        "attempt_max",
+        "provider",
+        "model",
+        "base_url_host",
+        "timeout_seconds",
+        "dropped_params",
+        "finish_reason",
+        "latency_ms",
+    }
+)
 
 _QUERY_SECRET_RE = re.compile(r"(?i)([?&](?:key|api_key|apikey|token)=)([^&\s]+)")
 _URL_CREDENTIALS_RE = re.compile(r"(?i)\b([a-z][a-z0-9+\-.]*://)([^\s/@]*:[^\s/@]+@)")
@@ -57,6 +75,27 @@ def redact_secrets_text(text: str) -> str:
     return _redact_secrets(text)
 
 
+def safe_log_details(
+    details: object | None,
+    *,
+    extra_allowed: set[str] | frozenset[str] | None = None,
+) -> dict[str, Any] | None:
+    if not isinstance(details, dict):
+        return None
+    allowed = set(_SAFE_LOG_DETAIL_KEYS)
+    if extra_allowed:
+        allowed.update(extra_allowed)
+    safe: dict[str, Any] = {}
+    for key, value in details.items():
+        if key not in allowed:
+            continue
+        if key == "upstream_error" and isinstance(value, str):
+            safe[key] = redact_secrets_text(value)[:500]
+        else:
+            safe[key] = value
+    return safe or None
+
+
 def exception_log_fields(exc: Exception) -> dict[str, Any]:
     exc_type = type(exc).__name__
     msg = str(exc)
@@ -64,11 +103,9 @@ def exception_log_fields(exc: Exception) -> dict[str, Any]:
         return {
             "exception_type": exc_type,
             "exception": redact_secrets_text(msg.replace("\n", " ").strip())[:500],
-            # Keep stack frames but avoid including the exception message line (which may carry secrets).
             "stack": "".join(traceback.format_tb(exc.__traceback__)),
         }
 
-    # prod: do not log exception message/stack, only a stable fingerprint.
     fingerprint = f"{exc_type}:{msg}".encode("utf-8", errors="replace")
     exc_hash = hashlib.sha256(fingerprint).hexdigest()[:12]
     return {"exception_type": exc_type, "exception_hash": exc_hash}

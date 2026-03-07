@@ -16,7 +16,7 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.core.auth_session import decode_session_cookie
 from app.core.errors import AppError, error_payload
-from app.core.logging import configure_logging, exception_log_fields, log_event
+from app.core.logging import configure_logging, exception_log_fields, log_event, safe_log_details
 from app.core.request_id import new_request_id, reset_request_id, set_request_id
 from app.db.migrations import ensure_db_schema
 from app.db.session import SessionLocal
@@ -80,17 +80,7 @@ def _warn_sqlite_single_worker() -> None:
 
 
 def _safe_error_details(details: object | None) -> dict | None:
-    if not isinstance(details, dict):
-        return None
-    allowlist = {
-        "status_code",
-        "upstream_error",
-        "compat_adjustments",
-        "compat_dropped_params",
-        "errors",
-    }
-    safe = {k: v for k, v in details.items() if k in allowlist}
-    return safe or None
+    return safe_log_details(details)
 
 
 def _ensure_local_user() -> None:

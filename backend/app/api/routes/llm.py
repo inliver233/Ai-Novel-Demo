@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import time
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Header, Request
 
 from app.api.deps import UserIdDep, require_owned_llm_profile, require_project_editor
 from app.core.errors import AppError, ok_payload
+from app.core.logging import log_event, safe_log_details
 from app.db.session import SessionLocal
 from app.llm.client import call_llm
 from app.schemas.llm_test import LLMTestRequest
@@ -20,6 +23,19 @@ from app.services.llm_retry import (
 )
 
 router = APIRouter()
+logger = logging.getLogger("ainovel")
+
+
+def _llm_test_context(*, provider: str, model: str, base_url: str | None, timeout_seconds: int) -> dict[str, object]:
+    context: dict[str, object] = {
+        "provider": str(provider or "").strip(),
+        "model": str(model or "").strip(),
+        "timeout_seconds": int(timeout_seconds),
+    }
+    host = str(urlsplit(str(base_url or "").strip()).netloc or "").strip()
+    if host:
+        context["base_url_host"] = host
+    return context
 
 
 @router.post("/llm/test")
@@ -59,9 +75,15 @@ def llm_test(
     elif body.provider in ("openai_compatible", "openai_responses_compatible") and not base_url:
         raise AppError(code="LLM_CONFIG_ERROR", message=f"{body.provider} 必须填写 base_url", status_code=400)
 
+    timeout_seconds = int(body.timeout_seconds or 180)
+    llm_test_context = _llm_test_context(
+        provider=body.provider,
+        model=body.model,
+        base_url=str(base_url),
+        timeout_seconds=timeout_seconds,
+    )
+
     params = dict(body.params or {})
-    # Some providers/models may emit "thinking" blocks before the final text output; keep this > tiny so we can
-    # reliably parse a small text preview for connection tests.
     params.setdefault("max_tokens", 64)
     params.setdefault("temperature", 0)
 
@@ -78,23 +100,38 @@ def llm_test(
                 system="You are a connection test.",
                 user="Reply with 'pong' only.",
                 params=params,
-                timeout_seconds=int(body.timeout_seconds or 180),
+                timeout_seconds=timeout_seconds,
                 extra=dict(body.extra or {}),
             )
             break
         except AppError as exc:
             retryable = is_retryable_llm_error(exc)
-            attempts.append(
-                {
-                    "attempt": int(attempt),
-                    "error_code": str(exc.code),
-                    "status_code": int(exc.status_code),
-                    "retryable": bool(retryable),
-                }
+            attempt_details = {
+                "attempt": int(attempt),
+                "error_code": str(exc.code),
+                "status_code": int(exc.status_code),
+                "retryable": bool(retryable),
+            }
+            attempts.append(attempt_details)
+            log_event(
+                logger,
+                "warning" if retryable and attempt < max_attempts else "error",
+                event="LLM_TEST_ATTEMPT_FAILED",
+                attempt=int(attempt),
+                attempt_max=int(max_attempts),
+                retryable=bool(retryable),
+                error_code=str(exc.code),
+                status_code=int(exc.status_code),
+                details=safe_log_details(exc.details),
+                **llm_test_context,
             )
             if attempt >= max_attempts or not retryable:
-                if attempts:
-                    exc.details = {**(exc.details or {}), "attempts": attempts, "attempt_max": int(max_attempts)}
+                exc.details = {
+                    **llm_test_context,
+                    **(exc.details or {}),
+                    "attempts": attempts,
+                    "attempt_max": int(max_attempts),
+                }
                 raise
 
             delay = compute_backoff_seconds(
@@ -104,12 +141,17 @@ def llm_test(
                 jitter=task_llm_retry_jitter(),
                 error_code=str(exc.code),
             )
-            attempts[-1]["sleep_seconds"] = float(delay)
+            attempt_details["sleep_seconds"] = float(delay)
             if delay > 0:
                 time.sleep(float(delay))
 
     if result is None:
-        raise AppError(code="LLM_UPSTREAM_ERROR", message="模型服务异常，请稍后重试", status_code=502)
+        raise AppError(
+            code="LLM_UPSTREAM_ERROR",
+            message="模型服务异常，请稍后重试",
+            status_code=502,
+            details=dict(llm_test_context),
+        )
 
     text_preview = (result.text or "").strip()
     if len(text_preview) > 200:
@@ -123,3 +165,4 @@ def llm_test(
             "dropped_params": result.dropped_params,
         },
     )
+
