@@ -4,7 +4,9 @@
   "category": "记忆",
   "scope": "project",
   "version": 1,
-  "activation_tasks": [],
+  "activation_tasks": [
+    "fractal_v2"
+  ],
   "upgrade_add_identifiers": [],
   "blocks": [
     {
@@ -17,9 +19,13 @@
       "injection_position": "relative",
       "injection_depth": null,
       "injection_order": 10,
-      "triggers": ["fractal_v2"],
+      "triggers": [
+        "fractal_v2"
+      ],
       "forbid_overrides": false,
-      "budget": { "priority": "must" },
+      "budget": {
+        "priority": "must"
+      },
       "cache": null
     },
     {
@@ -32,9 +38,13 @@
       "injection_position": "relative",
       "injection_depth": null,
       "injection_order": 20,
-      "triggers": ["fractal_v2"],
+      "triggers": [
+        "fractal_v2"
+      ],
       "forbid_overrides": false,
-      "budget": { "priority": "must" },
+      "budget": {
+        "priority": "must"
+      },
       "cache": null
     }
   ]

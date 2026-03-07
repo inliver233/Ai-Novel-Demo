@@ -8,6 +8,7 @@ from scripts.guards import (
     file_line_count_guard,
     no_direct_llm_call_in_api,
     no_secrets_in_repo,
+    prompt_preset_integrity_guard,
 )
 from scripts.guards.base import GuardContext, GuardResult
 
@@ -19,4 +20,8 @@ REGISTRY: dict[str, tuple[str, GuardRunner]] = {
     backend_no_print_guard.GUARD_ID: (backend_no_print_guard.DESCRIPTION, backend_no_print_guard.run),
     no_direct_llm_call_in_api.GUARD_ID: (no_direct_llm_call_in_api.DESCRIPTION, no_direct_llm_call_in_api.run),
     file_line_count_guard.GUARD_ID: (file_line_count_guard.DESCRIPTION, file_line_count_guard.run),
+    prompt_preset_integrity_guard.GUARD_ID: (
+        prompt_preset_integrity_guard.DESCRIPTION,
+        prompt_preset_integrity_guard.run,
+    ),
 }

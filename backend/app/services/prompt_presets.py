@@ -28,10 +28,10 @@ LEGACY_IMPORTED_SCOPE = "legacy_imported"
 DEFAULT_PLAN_PRESET_NAME = "Default plan_chapter v1"
 DEFAULT_POST_EDIT_PRESET_NAME = "Default post_edit v1"
 DEFAULT_CONTENT_OPTIMIZE_PRESET_NAME = "Default content_optimize v1"
-DEFAULT_OUTLINE_PRESET_NAME = "默认·大纲生成 v3（推荐）"
-DEFAULT_CHAPTER_PRESET_NAME = "默认·章节生成 v3（推荐）"
-DEFAULT_CHAPTER_ANALYZE_PRESET_NAME = "默认·章节分析 v1（推荐）"
-DEFAULT_CHAPTER_REWRITE_PRESET_NAME = "默认·章节重写 v1（推荐）"
+DEFAULT_OUTLINE_PRESET_NAME = "榛樿路澶х翰鐢熸垚 v3锛堟帹鑽愶級"
+DEFAULT_CHAPTER_PRESET_NAME = "榛樿路绔犺妭鐢熸垚 v3锛堟帹鑽愶級"
+DEFAULT_CHAPTER_ANALYZE_PRESET_NAME = "榛樿路绔犺妭鍒嗘瀽 v1锛堟帹鑽愶級"
+DEFAULT_CHAPTER_REWRITE_PRESET_NAME = "榛樿路绔犺妭閲嶅啓 v1锛堟帹鑽愶級"
 
 _PROMPT_BLOCK_RENDER_CACHE_MAX_ENTRIES = 512
 _prompt_block_render_cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
@@ -162,7 +162,7 @@ def _ensure_default_preset_from_resource(
                 preset.active_for_json = json.dumps(merged, ensure_ascii=False)
                 changed = True
 
-        if resource.upgrade_add_identifiers:
+        if resource.upgrade_add_identifiers and int(preset.version or 0) < int(resource.version):
             blocks_by_identifier = {b.identifier: b for b in resource.blocks}
             existing_identifiers = set(
                 db.execute(select(PromptBlock.identifier).where(PromptBlock.preset_id == preset.id)).scalars().all()
@@ -178,6 +178,8 @@ def _ensure_default_preset_from_resource(
             if to_add:
                 db.add_all(to_add)
                 changed = True
+            preset.version = int(resource.version)
+            changed = True
 
         if changed:
             db.commit()
@@ -276,7 +278,7 @@ def resolve_resource_key_for_preset(db: Session, *, preset: PromptPreset) -> str
 def reset_prompt_preset_to_default_resource(db: Session, *, preset: PromptPreset) -> PromptPreset:
     resource_key = resolve_resource_key_for_preset(db, preset=preset)
     if not resource_key:
-        raise AppError.validation(message="该 PromptPreset 未绑定内置资源，无法重置到默认版本")
+        raise AppError.validation(message="PromptPreset is not bound to a default resource; reset_to_default is unavailable")
 
     resource = load_preset_resource(resource_key)
 
@@ -302,13 +304,13 @@ def reset_prompt_preset_to_default_resource(db: Session, *, preset: PromptPreset
 def reset_prompt_block_to_default_resource(db: Session, *, preset: PromptPreset, block: PromptBlock) -> PromptBlock:
     resource_key = resolve_resource_key_for_preset(db, preset=preset)
     if not resource_key:
-        raise AppError.validation(message="该 PromptPreset 未绑定内置资源，无法重置 block 到默认版本")
+        raise AppError.validation(message="PromptPreset is not bound to a default resource; block reset_to_default is unavailable")
 
     resource = load_preset_resource(resource_key)
     res_block = next((b for b in resource.blocks if b.identifier == block.identifier), None)
     if res_block is None:
         raise AppError.validation(
-            message="该 PromptBlock 不属于内置资源，无法重置到默认版本",
+            message="PromptBlock does not belong to the bound default resource; reset_to_default is unavailable",
             details={"resource": resource_key, "identifier": block.identifier},
         )
 
@@ -368,7 +370,7 @@ def get_active_preset_for_task(db: Session, *, project_id: str, task: str, allow
             return ensure_default_chapter_rewrite_preset(db, project_id=project_id, activate=True)
 
     if not allow_autocreate:
-        raise AppError.validation(message=f"当前项目未为 task={task} 配置可用 PromptPreset，请先在 Prompt Studio 初始化/激活")
+        raise AppError.validation(message=f"No PromptPreset is configured for task={task}; initialize or activate one in Prompt Studio first")
 
     if presets:
         return presets[0]
@@ -888,3 +890,4 @@ def render_preset_for_task(
     }
 
     return system, user, messages, sorted(all_missing), rendered_blocks, preset.id, render_log
+

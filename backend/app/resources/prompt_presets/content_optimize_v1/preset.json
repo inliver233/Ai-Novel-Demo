@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Default content_optimize v1",
-  "category": "正文优化",
+  "category": "姝ｆ枃浼樺寲",
   "scope": "project",
   "version": 1,
   "activation_tasks": [
@@ -45,7 +45,7 @@
       ],
       "forbid_overrides": false,
       "budget": {
-        "priority": "medium"
+        "priority": "important"
       },
       "cache": null
     },

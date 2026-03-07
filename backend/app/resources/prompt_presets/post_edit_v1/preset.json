@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "Default post_edit v1",
-  "category": "润色",
+  "category": "娑﹁壊",
   "scope": "project",
   "version": 1,
   "activation_tasks": [
@@ -65,7 +65,7 @@
       ],
       "forbid_overrides": false,
       "budget": {
-        "priority": "medium"
+        "priority": "important"
       },
       "cache": null
     },
