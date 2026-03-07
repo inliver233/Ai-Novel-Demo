@@ -14,6 +14,7 @@ from app.services.project_task_event_service import (
     list_project_task_events_after,
     project_task_event_to_dict,
 )
+from app.services.project_task_runtime_view_service import build_project_task_runtime_view
 from app.services.project_task_service import cancel_project_task, list_project_tasks, project_task_to_dict, retry_project_task
 from app.utils.sse_response import create_sse_response, format_sse, sse_heartbeat
 
@@ -129,6 +130,21 @@ def get_project_task_endpoint(
         raise AppError.not_found()
     require_project_viewer(db, project_id=str(task.project_id), user_id=user_id)
     return ok_payload(request_id=request_id, data=project_task_to_dict(task=task, include_payloads=True))
+
+
+@router.get("/tasks/{task_id}/runtime")
+def get_project_task_runtime_endpoint(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    task_id: str,
+) -> dict:
+    request_id = request.state.request_id
+    task = db.get(ProjectTask, task_id)
+    if task is None:
+        raise AppError.not_found()
+    require_project_viewer(db, project_id=str(task.project_id), user_id=user_id)
+    return ok_payload(request_id=request_id, data=build_project_task_runtime_view(db, task_id=task_id))
 
 
 @router.post("/tasks/{task_id}/retry")
