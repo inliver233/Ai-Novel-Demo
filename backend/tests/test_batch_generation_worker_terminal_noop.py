@@ -18,6 +18,8 @@ class TestBatchGenerationWorkerTerminalNoop(unittest.TestCase):
             conn.exec_driver_sql("CREATE TABLE users (id VARCHAR(36) PRIMARY KEY)")
             conn.exec_driver_sql("CREATE TABLE projects (id VARCHAR(36) PRIMARY KEY)")
             conn.exec_driver_sql("CREATE TABLE outlines (id VARCHAR(36) PRIMARY KEY)")
+            conn.exec_driver_sql("CREATE TABLE project_tasks (id VARCHAR(36) PRIMARY KEY)")
+            conn.exec_driver_sql("CREATE TABLE generation_runs (id VARCHAR(36) PRIMARY KEY)")
         BatchGenerationTask.__table__.create(engine)
         SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 

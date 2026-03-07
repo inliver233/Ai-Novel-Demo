@@ -10,8 +10,16 @@ from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id
 from app.models.batch_generation_task import BatchGenerationTask, BatchGenerationTaskItem
 from app.models.chapter import Chapter
+from app.models.project_task import ProjectTask
 from app.schemas.batch_generation import BatchGenerationCreateRequest, BatchGenerationTaskItemOut, BatchGenerationTaskOut
+from app.services.batch_generation_service import (
+    build_batch_generation_checkpoint,
+    ensure_batch_generation_project_task,
+    finalize_batch_project_task,
+    sync_batch_generation_checkpoint,
+)
 from app.services.outline_store import ensure_active_outline
+from app.services.project_task_event_service import append_project_task_event
 from app.services.task_queue import get_task_queue
 
 router = APIRouter()
@@ -144,17 +152,40 @@ def create_batch_generation_task(
 
     db.add(task)
     db.add_all(items)
+    ensure_batch_generation_project_task(
+        db,
+        batch_task=task,
+        chapter_numbers=[int(ch.number) for ch in selected],
+        request_id=request_id,
+    )
     db.commit()
 
     try:
         get_task_queue().enqueue_batch_generation_task(task_id)
     except AppError as exc:
         task.status = "failed"
+        task.failed_count = max(int(task.failed_count or 0), 1)
         task.error_json = json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False)
+        sync_batch_generation_checkpoint(task)
         for item in items:
             if item.status == "queued":
                 item.status = "failed"
                 item.error_message = f"{exc.message} ({exc.code})"
+        runtime_task = db.get(ProjectTask, task.project_task_id) if task.project_task_id else None
+        if runtime_task is not None:
+            runtime_task.status = "failed"
+            runtime_task.error_json = json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False)
+            append_project_task_event(
+                db,
+                task=runtime_task,
+                event_type="failed",
+                source="batch_generation_enqueue",
+                payload={
+                    "reason": "enqueue_failed",
+                    "checkpoint": build_batch_generation_checkpoint(task),
+                    "error": {"code": exc.code, "message": exc.message, "details": exc.details},
+                },
+            )
         db.commit()
         raise
 
@@ -254,6 +285,7 @@ def cancel_batch_generation_task(
         return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "canceled": False})
 
     task.cancel_requested = True
+    sync_batch_generation_checkpoint(task)
     if task.status == "queued":
         task.status = "canceled"
         items = (
@@ -267,6 +299,27 @@ def cancel_batch_generation_task(
         )
         for item in items:
             item.status = "canceled"
+        finalize_batch_project_task(
+            db,
+            batch_task=task,
+            status="canceled",
+            event_type="canceled",
+            result={"canceled": True, "batch_task_id": str(task.id)},
+            payload={"reason": "manual_cancel"},
+        )
+    elif task.project_task_id:
+        runtime_task = db.get(ProjectTask, task.project_task_id)
+        if runtime_task is not None:
+            append_project_task_event(
+                db,
+                task=runtime_task,
+                event_type="checkpoint",
+                source="batch_generation_cancel",
+                payload={
+                    "reason": "manual_cancel_requested",
+                    "checkpoint": build_batch_generation_checkpoint(task),
+                },
+            )
 
     db.commit()
     return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "canceled": True})

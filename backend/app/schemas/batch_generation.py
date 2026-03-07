@@ -9,7 +9,7 @@ from app.schemas.base import ORMModel
 from app.schemas.chapter_generate import ChapterGenerateContext
 
 
-BatchGenerationTaskStatus = Literal["queued", "running", "succeeded", "failed", "canceled"]
+BatchGenerationTaskStatus = Literal["queued", "running", "paused", "succeeded", "failed", "canceled"]
 BatchGenerationItemStatus = Literal["queued", "running", "succeeded", "failed", "canceled", "skipped"]
 
 
@@ -44,10 +44,15 @@ class BatchGenerationTaskOut(ORMModel):
     project_id: str
     outline_id: str
     actor_user_id: str | None = None
+    project_task_id: str | None = None
     status: BatchGenerationTaskStatus
     total_count: int
     completed_count: int
+    failed_count: int
+    skipped_count: int
     cancel_requested: bool
+    pause_requested: bool
+    checkpoint_json: str | None = None
     error_json: str | None = None
     created_at: datetime
     updated_at: datetime
