@@ -25,7 +25,7 @@ from app.services.project_task_runtime_service import start_project_task_heartbe
 logger = logging.getLogger("ainovel")
 
 
-_ALLOWED_TASK_STATUSES_QUERY = {"queued", "running", "failed", "done", "succeeded", "canceled"}
+_ALLOWED_TASK_STATUSES_QUERY = {"queued", "running", "paused", "failed", "done", "succeeded", "canceled"}
 _TASK_DONE_ALIASES = {"succeeded", "done"}
 
 
@@ -851,7 +851,7 @@ def run_project_task(*, task_id: str) -> str:
             return task_id
 
         status_norm = str(getattr(task, "status", "") or "").strip().lower()
-        if status_norm in {"succeeded", "done", "failed", "running"}:
+        if status_norm in {"succeeded", "done", "failed", "running", "paused"}:
             return task_id
         if status_norm == "canceled":
             if task.finished_at is None:

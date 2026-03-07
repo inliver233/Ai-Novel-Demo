@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     project_task_watchdog_interval_seconds: int = 15
     project_task_stale_running_timeout_seconds: int = 120
     project_task_queued_reconcile_after_seconds: int = 20
+    batch_generation_max_count: int = 200
+    batch_generation_project_active_limit: int = 1
+    batch_generation_user_active_limit: int = 3
+    batch_generation_provider_active_limit: int = 3
 
     vector_chroma_persist_dir: str | None = None
     vector_chroma_collection_naming: VectorChromaCollectionNaming = "hash"

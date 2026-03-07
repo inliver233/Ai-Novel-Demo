@@ -6,16 +6,22 @@ from fastapi import APIRouter, Request
 from sqlalchemy import select
 
 from app.api.deps import DbDep, UserIdDep, require_chapter_editor, require_project_editor, require_project_viewer
+from app.core.config import settings
 from app.core.errors import AppError, ok_payload
-from app.db.utils import new_id
+from app.db.utils import new_id, utc_now
 from app.models.batch_generation_task import BatchGenerationTask, BatchGenerationTaskItem
 from app.models.chapter import Chapter
 from app.models.project_task import ProjectTask
 from app.schemas.batch_generation import BatchGenerationCreateRequest, BatchGenerationTaskItemOut, BatchGenerationTaskOut
 from app.services.batch_generation_service import (
+    append_batch_project_task_event,
+    build_batch_step_payload,
     build_batch_generation_checkpoint,
     ensure_batch_generation_project_task,
     finalize_batch_project_task,
+    pause_batch_generation,
+    recalculate_batch_generation_counts,
+    requeue_batch_project_task,
     sync_batch_generation_checkpoint,
 )
 from app.services.outline_store import ensure_active_outline
@@ -23,6 +29,102 @@ from app.services.project_task_event_service import append_project_task_event
 from app.services.task_queue import get_task_queue
 
 router = APIRouter()
+
+
+def _batch_runtime_provider(task: BatchGenerationTask) -> str | None:
+    raw = {}
+    if task.params_json:
+        try:
+            parsed = json.loads(task.params_json)
+            if isinstance(parsed, dict):
+                raw = parsed
+        except Exception:
+            raw = {}
+    value = str(raw.get("runtime_provider") or "").strip()
+    return value or None
+
+
+def _enforce_batch_generation_quotas(
+    *,
+    db: DbDep,
+    project_id: str,
+    user_id: str,
+    provider: str | None,
+    ignore_task_id: str | None = None,
+) -> None:
+    active_rows = (
+        db.execute(
+            select(BatchGenerationTask).where(BatchGenerationTask.status.in_(["queued", "running", "paused"]))
+        )
+        .scalars()
+        .all()
+    )
+    if ignore_task_id:
+        active_rows = [row for row in active_rows if str(row.id) != str(ignore_task_id)]
+
+    project_active = sum(1 for row in active_rows if str(row.project_id) == str(project_id))
+    if project_active >= int(settings.batch_generation_project_active_limit or 1):
+        raise AppError.conflict(message="当前项目已有进行中的批量生成任务", details={"quota": "project", "project_id": project_id})
+
+    user_active = sum(1 for row in active_rows if str(row.actor_user_id or "") == str(user_id))
+    if user_active >= int(settings.batch_generation_user_active_limit or 3):
+        raise AppError.conflict(message="当前用户已有过多进行中的批量生成任务", details={"quota": "user", "user_id": user_id})
+
+    provider_norm = str(provider or "").strip().lower()
+    if provider_norm:
+        provider_active = sum(1 for row in active_rows if str(_batch_runtime_provider(row) or "").strip().lower() == provider_norm)
+        if provider_active >= int(settings.batch_generation_provider_active_limit or 3):
+            raise AppError.conflict(message="当前模型提供方已有过多进行中的批量生成任务", details={"quota": "provider", "provider": provider_norm})
+
+
+def _load_batch_items(db: DbDep, *, task_id: str) -> list[BatchGenerationTaskItem]:
+    return (
+        db.execute(select(BatchGenerationTaskItem).where(BatchGenerationTaskItem.task_id == task_id).order_by(BatchGenerationTaskItem.chapter_number.asc()))
+        .scalars()
+        .all()
+    )
+
+
+def _build_batch_task_response(db: DbDep, *, task_id: str) -> dict:
+    db.expire_all()
+    task = db.get(BatchGenerationTask, task_id)
+    if task is None:
+        raise AppError.not_found()
+    items = _load_batch_items(db, task_id=task_id)
+    out_task = BatchGenerationTaskOut.model_validate(task).model_dump()
+    out_items = [BatchGenerationTaskItemOut.model_validate(i).model_dump() for i in items]
+    return {"task": out_task, "items": out_items}
+
+
+def _enqueue_batch_task_or_restore_paused(
+    db: DbDep,
+    *,
+    task: BatchGenerationTask,
+    source: str,
+    reason: str,
+) -> None:
+    try:
+        get_task_queue().enqueue_batch_generation_task(str(task.id))
+    except AppError as exc:
+        pause_batch_generation(
+            db,
+            batch_task=task,
+            reason=reason,
+            source=source,
+            error={"code": exc.code, "message": exc.message, "details": exc.details},
+        )
+        db.commit()
+        raise
+    except Exception as exc:
+        pause_batch_generation(
+            db,
+            batch_task=task,
+            reason=reason,
+            source=source,
+            error={"code": "QUEUE_ENQUEUE_ERROR", "message": "批量生成任务入队失败", "details": {"error_type": type(exc).__name__}},
+        )
+        db.commit()
+        raise AppError(code="QUEUE_ENQUEUE_ERROR", message="批量生成任务入队失败", status_code=503)
 
 
 @router.post("/projects/{project_id}/batch_generation_tasks")
@@ -35,13 +137,22 @@ def create_batch_generation_task(
 ) -> dict:
     request_id = request.state.request_id
     project = require_project_editor(db, project_id=project_id, user_id=user_id)
+    provider = str(request.headers.get("X-LLM-Provider") or "").strip() or None
+
+    if int(body.count) > int(settings.batch_generation_max_count or 200):
+        raise AppError.validation(
+            message=f"批量生成数量不能超过 {int(settings.batch_generation_max_count or 200)}",
+            details={"max_count": int(settings.batch_generation_max_count or 200)},
+        )
+
+    _enforce_batch_generation_quotas(db=db, project_id=project_id, user_id=user_id, provider=provider)
 
     existing = (
         db.execute(
             select(BatchGenerationTask)
             .where(
                 BatchGenerationTask.project_id == project_id,
-                BatchGenerationTask.status.in_(["queued", "running"]),
+                BatchGenerationTask.status.in_(["queued", "running", "paused"]),
             )
             .order_by(BatchGenerationTask.created_at.desc())
             .limit(1)
@@ -133,8 +244,12 @@ def create_batch_generation_task(
         status="queued",
         total_count=len(selected),
         completed_count=0,
+        failed_count=0,
+        skipped_count=0,
         cancel_requested=False,
-        params_json=json.dumps(body.model_dump(), ensure_ascii=False),
+        pause_requested=False,
+        params_json=json.dumps({**body.model_dump(), "runtime_provider": provider}, ensure_ascii=False),
+        checkpoint_json=None,
         error_json=None,
     )
     items = [
@@ -265,6 +380,293 @@ def get_batch_generation_task(
     return ok_payload(request_id=request_id, data={"task": out_task, "items": out_items})
 
 
+@router.post("/batch_generation_tasks/{task_id}/pause")
+def pause_batch_generation_task(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    task_id: str,
+) -> dict:
+    request_id = request.state.request_id
+    task = db.get(BatchGenerationTask, task_id)
+    if task is None:
+        raise AppError.not_found()
+    require_project_editor(db, project_id=task.project_id, user_id=user_id)
+
+    if task.status not in ("queued", "running"):
+        return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "paused": False})
+
+    if task.pause_requested and task.status != "queued":
+        return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "paused": False})
+
+    task.pause_requested = True
+    task.cancel_requested = False
+    sync_batch_generation_checkpoint(task)
+    if task.status == "queued":
+        pause_batch_generation(
+            db,
+            batch_task=task,
+            reason="manual_pause",
+            source="batch_generation_pause",
+        )
+    else:
+        append_batch_project_task_event(
+            db,
+            batch_task=task,
+            event_type="checkpoint",
+            source="batch_generation_pause",
+            payload={
+                "reason": "manual_pause_requested",
+                "checkpoint": build_batch_generation_checkpoint(task),
+            },
+        )
+
+    db.commit()
+    return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "paused": True})
+
+
+@router.post("/batch_generation_tasks/{task_id}/resume")
+def resume_batch_generation_task(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    task_id: str,
+) -> dict:
+    request_id = request.state.request_id
+    task = db.get(BatchGenerationTask, task_id)
+    if task is None:
+        raise AppError.not_found()
+    require_project_editor(db, project_id=task.project_id, user_id=user_id)
+
+    if task.status != "paused":
+        return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "resumed": False})
+
+    failed_items = (
+        db.execute(
+            select(BatchGenerationTaskItem.chapter_number)
+            .where(BatchGenerationTaskItem.task_id == task_id, BatchGenerationTaskItem.status == "failed")
+            .order_by(BatchGenerationTaskItem.chapter_number.asc())
+        )
+        .scalars()
+        .all()
+    )
+    if failed_items:
+        raise AppError.conflict(
+            message="当前批次存在失败章节，请先选择“重试失败章节”或“跳过失败章节”",
+            details={"failed_chapter_numbers": [int(value) for value in failed_items]},
+        )
+
+    _enforce_batch_generation_quotas(
+        db=db,
+        project_id=str(task.project_id),
+        user_id=str(task.actor_user_id or user_id),
+        provider=_batch_runtime_provider(task),
+        ignore_task_id=task_id,
+    )
+
+    task.status = "queued"
+    task.pause_requested = False
+    task.cancel_requested = False
+    task.error_json = None
+    recalculate_batch_generation_counts(db, batch_task=task)
+    requeue_batch_project_task(
+        db,
+        batch_task=task,
+        event_type="resumed",
+        source="batch_generation_resume",
+        payload={"reason": "manual_resume"},
+    )
+    db.commit()
+    _enqueue_batch_task_or_restore_paused(
+        db,
+        task=task,
+        source="batch_generation_resume",
+        reason="resume_enqueue_failed",
+    )
+    return ok_payload(request_id=request_id, data={**_build_batch_task_response(db, task_id=task_id), "resumed": True})
+
+
+@router.post("/batch_generation_tasks/{task_id}/retry_failed")
+def retry_failed_batch_generation_task(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    task_id: str,
+) -> dict:
+    request_id = request.state.request_id
+    task = db.get(BatchGenerationTask, task_id)
+    if task is None:
+        raise AppError.not_found()
+    require_project_editor(db, project_id=task.project_id, user_id=user_id)
+
+    if task.status != "paused":
+        return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "retried": False})
+
+    failed_items = (
+        db.execute(
+            select(BatchGenerationTaskItem)
+            .where(BatchGenerationTaskItem.task_id == task_id, BatchGenerationTaskItem.status == "failed")
+            .order_by(BatchGenerationTaskItem.chapter_number.asc())
+        )
+        .scalars()
+        .all()
+    )
+    if not failed_items:
+        return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "retried": False})
+
+    _enforce_batch_generation_quotas(
+        db=db,
+        project_id=str(task.project_id),
+        user_id=str(task.actor_user_id or user_id),
+        provider=_batch_runtime_provider(task),
+        ignore_task_id=task_id,
+    )
+
+    retried_numbers: list[int] = []
+    for item in failed_items:
+        retried_numbers.append(int(item.chapter_number))
+        item.status = "queued"
+        item.error_message = None
+        item.last_error_json = None
+        item.started_at = None
+        item.finished_at = None
+        append_batch_project_task_event(
+            db,
+            batch_task=task,
+            event_type="step_requeued",
+            source="batch_generation_retry_failed",
+            payload={
+                "reason": "retry_failed",
+                "step": build_batch_step_payload(item),
+                "checkpoint": build_batch_generation_checkpoint(task),
+            },
+        )
+
+    task.status = "queued"
+    task.pause_requested = False
+    task.cancel_requested = False
+    task.error_json = None
+    recalculate_batch_generation_counts(db, batch_task=task)
+    requeue_batch_project_task(
+        db,
+        batch_task=task,
+        event_type="retry",
+        source="batch_generation_retry_failed",
+        payload={"reason": "retry_failed", "failed_chapter_numbers": retried_numbers},
+    )
+    db.commit()
+    _enqueue_batch_task_or_restore_paused(
+        db,
+        task=task,
+        source="batch_generation_retry_failed",
+        reason="retry_failed_enqueue_failed",
+    )
+    return ok_payload(request_id=request_id, data={**_build_batch_task_response(db, task_id=task_id), "retried": True})
+
+
+@router.post("/batch_generation_tasks/{task_id}/skip_failed")
+def skip_failed_batch_generation_task(
+    request: Request,
+    db: DbDep,
+    user_id: UserIdDep,
+    task_id: str,
+) -> dict:
+    request_id = request.state.request_id
+    task = db.get(BatchGenerationTask, task_id)
+    if task is None:
+        raise AppError.not_found()
+    require_project_editor(db, project_id=task.project_id, user_id=user_id)
+
+    if task.status != "paused":
+        return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "skipped": False})
+
+    failed_items = (
+        db.execute(
+            select(BatchGenerationTaskItem)
+            .where(BatchGenerationTaskItem.task_id == task_id, BatchGenerationTaskItem.status == "failed")
+            .order_by(BatchGenerationTaskItem.chapter_number.asc())
+        )
+        .scalars()
+        .all()
+    )
+    if not failed_items:
+        return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "skipped": False})
+
+    skipped_numbers: list[int] = []
+    for item in failed_items:
+        skipped_numbers.append(int(item.chapter_number))
+        item.status = "skipped"
+        item.finished_at = item.finished_at or utc_now()
+        append_batch_project_task_event(
+            db,
+            batch_task=task,
+            event_type="step_skipped",
+            source="batch_generation_skip_failed",
+            payload={
+                "reason": "skip_failed",
+                "step": build_batch_step_payload(item),
+                "checkpoint": build_batch_generation_checkpoint(task),
+            },
+        )
+
+    task.pause_requested = False
+    task.cancel_requested = False
+    task.error_json = None
+    recalculate_batch_generation_counts(db, batch_task=task)
+
+    pending_count = (
+        db.execute(
+            select(BatchGenerationTaskItem.id).where(BatchGenerationTaskItem.task_id == task_id, BatchGenerationTaskItem.status == "queued")
+        )
+        .scalars()
+        .all()
+    )
+    if pending_count:
+        _enforce_batch_generation_quotas(
+            db=db,
+            project_id=str(task.project_id),
+            user_id=str(task.actor_user_id or user_id),
+            provider=_batch_runtime_provider(task),
+            ignore_task_id=task_id,
+        )
+        task.status = "queued"
+        requeue_batch_project_task(
+            db,
+            batch_task=task,
+            event_type="resumed",
+            source="batch_generation_skip_failed",
+            payload={"reason": "skip_failed_resume", "skipped_chapter_numbers": skipped_numbers},
+        )
+        db.commit()
+        _enqueue_batch_task_or_restore_paused(
+            db,
+            task=task,
+            source="batch_generation_skip_failed",
+            reason="skip_failed_enqueue_failed",
+        )
+    else:
+        task.status = "succeeded"
+        task.pause_requested = False
+        sync_batch_generation_checkpoint(task)
+        finalize_batch_project_task(
+            db,
+            batch_task=task,
+            status="succeeded",
+            event_type="succeeded",
+            result={
+                "batch_task_id": str(task.id),
+                "total_count": int(task.total_count or 0),
+                "completed_count": int(task.completed_count or 0),
+                "failed_count": int(getattr(task, "failed_count", 0) or 0),
+                "skipped_count": int(getattr(task, "skipped_count", 0) or 0),
+            },
+            payload={"reason": "skip_failed_completed", "skipped_chapter_numbers": skipped_numbers},
+        )
+        db.commit()
+
+    return ok_payload(request_id=request_id, data={**_build_batch_task_response(db, task_id=task_id), "skipped": True})
+
+
 @router.post("/batch_generation_tasks/{task_id}/cancel")
 def cancel_batch_generation_task(
     request: Request,
@@ -278,20 +680,22 @@ def cancel_batch_generation_task(
         raise AppError.not_found()
     require_project_editor(db, project_id=task.project_id, user_id=user_id)
 
-    if task.status not in ("queued", "running"):
+    if task.status not in ("queued", "running", "paused"):
         return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "canceled": False})
 
     if task.cancel_requested:
         return ok_payload(request_id=request_id, data={"task": BatchGenerationTaskOut.model_validate(task).model_dump(), "canceled": False})
 
     task.cancel_requested = True
+    task.pause_requested = False
     sync_batch_generation_checkpoint(task)
-    if task.status == "queued":
+    if task.status in ("queued", "paused"):
+        immediate_cancel_reason = "manual_cancel" if task.status == "queued" else "manual_cancel_from_paused"
         task.status = "canceled"
         items = (
             db.execute(
                 select(BatchGenerationTaskItem).where(
-                    BatchGenerationTaskItem.task_id == task_id, BatchGenerationTaskItem.status == "queued"
+                    BatchGenerationTaskItem.task_id == task_id, BatchGenerationTaskItem.status.in_(["queued", "running"])
                 )
             )
             .scalars()
@@ -299,13 +703,15 @@ def cancel_batch_generation_task(
         )
         for item in items:
             item.status = "canceled"
+            item.finished_at = item.finished_at or utc_now()
+        recalculate_batch_generation_counts(db, batch_task=task)
         finalize_batch_project_task(
             db,
             batch_task=task,
             status="canceled",
             event_type="canceled",
             result={"canceled": True, "batch_task_id": str(task.id)},
-            payload={"reason": "manual_cancel"},
+            payload={"reason": immediate_cancel_reason},
         )
     elif task.project_task_id:
         runtime_task = db.get(ProjectTask, task.project_task_id)

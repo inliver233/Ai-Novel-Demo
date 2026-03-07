@@ -31,7 +31,7 @@ from app.services.generation_service import PreparedLlmCall, with_param_override
 from app.services.generation_pipeline import run_chapter_generate_llm_step, run_content_optimize_step, run_plan_llm_step, run_post_edit_step
 from app.services.length_control import estimate_max_tokens
 from app.services.llm_task_preset_resolver import resolve_task_llm_config
-from app.services.project_task_event_service import append_project_task_event
+from app.services.project_task_event_service import append_project_task_event, reset_project_task_to_queued
 from app.services.project_task_runtime_service import touch_project_task_heartbeat
 from app.services.style_resolution_service import resolve_style_guide
 from app.services.prompt_presets import ensure_default_plan_preset, render_preset_for_task
@@ -174,6 +174,112 @@ def touch_batch_project_task(db: Session, *, batch_task: BatchGenerationTask) ->
     touch_project_task_heartbeat(task_id=str(task.id))
 
 
+def append_batch_project_task_event(
+    db: Session,
+    *,
+    batch_task: BatchGenerationTask,
+    event_type: str,
+    source: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    task = _load_batch_project_task(db, batch_task=batch_task)
+    if task is None:
+        return
+    append_project_task_event(db, task=task, event_type=event_type, source=source, payload=payload)
+
+
+def build_batch_step_payload(item: BatchGenerationTaskItem | None) -> dict[str, Any] | None:
+    if item is None:
+        return None
+    return {
+        "item_id": str(item.id),
+        "chapter_id": str(item.chapter_id) if item.chapter_id else None,
+        "chapter_number": int(item.chapter_number),
+        "status": str(item.status),
+        "attempt_count": int(getattr(item, "attempt_count", 0) or 0),
+        "generation_run_id": str(item.generation_run_id) if item.generation_run_id else None,
+        "last_request_id": str(getattr(item, "last_request_id", "") or "") or None,
+        "error_message": str(item.error_message or "") or None,
+        "started_at": _iso(getattr(item, "started_at", None)),
+        "finished_at": _iso(getattr(item, "finished_at", None)),
+    }
+
+
+def recalculate_batch_generation_counts(db: Session, *, batch_task: BatchGenerationTask) -> None:
+    db.flush()
+    statuses = (
+        db.execute(select(BatchGenerationTaskItem.status).where(BatchGenerationTaskItem.task_id == str(batch_task.id)))
+        .scalars()
+        .all()
+    )
+    batch_task.total_count = len(statuses)
+    batch_task.completed_count = sum(1 for status in statuses if str(status) == "succeeded")
+    batch_task.failed_count = sum(1 for status in statuses if str(status) == "failed")
+    batch_task.skipped_count = sum(1 for status in statuses if str(status) == "skipped")
+    sync_batch_generation_checkpoint(batch_task)
+
+
+def requeue_batch_project_task(
+    db: Session,
+    *,
+    batch_task: BatchGenerationTask,
+    event_type: str,
+    source: str,
+    payload: dict[str, Any] | None = None,
+    increment_retry_count: bool = True,
+) -> None:
+    task = _load_batch_project_task(db, batch_task=batch_task)
+    if task is None:
+        return
+    reset_project_task_to_queued(task=task, increment_retry_count=increment_retry_count)
+    append_project_task_event(
+        db,
+        task=task,
+        event_type=event_type,
+        source=source,
+        payload={**dict(payload or {}), "checkpoint": build_batch_generation_checkpoint(batch_task)},
+    )
+
+
+def pause_batch_generation(
+    db: Session,
+    *,
+    batch_task: BatchGenerationTask,
+    reason: str,
+    source: str,
+    error: dict[str, Any] | None = None,
+    item: BatchGenerationTaskItem | None = None,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    batch_task.status = "paused"
+    batch_task.pause_requested = True
+    batch_task.error_json = _json_dumps(error) if error is not None else None
+    recalculate_batch_generation_counts(db, batch_task=batch_task)
+    step = build_batch_step_payload(item)
+    if step is not None:
+        append_batch_project_task_event(
+            db,
+            batch_task=batch_task,
+            event_type="step_failed" if error is not None else "checkpoint",
+            source=source,
+            payload={
+                "reason": reason,
+                "step": step,
+                "checkpoint": build_batch_generation_checkpoint(batch_task),
+                "error": error,
+            },
+        )
+    finalize_batch_project_task(
+        db,
+        batch_task=batch_task,
+        status="paused",
+        event_type="paused",
+        result={"paused": True, "batch_task_id": str(batch_task.id)},
+        error=error,
+        payload={**dict(payload or {}), "reason": reason, "step": step},
+    )
+
+
 def finalize_batch_project_task(
     db: Session,
     *,
@@ -253,6 +359,7 @@ def _cancel_task(task_id: str) -> None:
         if task is None:
             return
         task.status = "canceled"
+        task.pause_requested = False
         sync_batch_generation_checkpoint(task)
         items = (
             db.execute(
@@ -366,10 +473,11 @@ def run_batch_generation_task(*, task_id: str) -> None:
         task = db.get(BatchGenerationTask, task_id)
         if task is None:
             return
-        if task.status in ("succeeded", "failed", "canceled"):
+        if task.status in ("succeeded", "failed", "canceled", "paused"):
             return
         if task.cancel_requested:
             task.status = "canceled"
+            task.pause_requested = False
             sync_batch_generation_checkpoint(task)
             finalize_batch_project_task(
                 db,
@@ -378,6 +486,19 @@ def run_batch_generation_task(*, task_id: str) -> None:
                 event_type="canceled",
                 result={"canceled": True, "batch_task_id": str(task.id)},
                 payload={"reason": "cancel_requested_before_start"},
+            )
+            db.commit()
+            return
+        if task.pause_requested:
+            task.status = "paused"
+            sync_batch_generation_checkpoint(task)
+            finalize_batch_project_task(
+                db,
+                batch_task=task,
+                status="paused",
+                event_type="paused",
+                result={"paused": True, "batch_task_id": str(task.id)},
+                payload={"reason": "pause_requested_before_start"},
             )
             db.commit()
             return
@@ -394,12 +515,8 @@ def run_batch_generation_task(*, task_id: str) -> None:
             .where(BatchGenerationTaskItem.task_id == task_id)
             .order_by(BatchGenerationTaskItem.chapter_number.asc())
         ).all()
-
-        completed = sum(1 for r in rows if r[3] == "succeeded")
-        if completed != int(task.completed_count or 0):
-            task.completed_count = int(completed)
-            sync_batch_generation_checkpoint(task)
-            db.commit()
+        recalculate_batch_generation_counts(db, batch_task=task)
+        db.commit()
 
     try:
         (
@@ -423,17 +540,12 @@ def run_batch_generation_task(*, task_id: str) -> None:
         with SessionLocal() as db:
             task = db.get(BatchGenerationTask, task_id)
             if task is not None:
-                task.status = "failed"
-                task.error_json = json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False)
-                task.failed_count = max(int(getattr(task, "failed_count", 0) or 0), 1)
-                sync_batch_generation_checkpoint(task)
-                finalize_batch_project_task(
+                pause_batch_generation(
                     db,
                     batch_task=task,
-                    status="failed",
-                    event_type="failed",
+                    reason="prepare_project_context_failed",
+                    source="batch_generation_worker",
                     error={"code": exc.code, "message": exc.message, "details": exc.details},
-                    payload={"reason": "prepare_project_context_failed"},
                 )
                 db.commit()
         return
@@ -453,6 +565,16 @@ def run_batch_generation_task(*, task_id: str) -> None:
                 db.commit()
                 _cancel_task(task_id)
                 return
+            if task.pause_requested:
+                pause_batch_generation(
+                    db,
+                    batch_task=task,
+                    reason="pause_requested_before_step",
+                    source="batch_generation_worker",
+                    payload={"chapter_number": int(chapter_number)},
+                )
+                db.commit()
+                return
             touch_batch_project_task(db, batch_task=task)
 
             item = db.get(BatchGenerationTaskItem, item_id)
@@ -471,34 +593,45 @@ def run_batch_generation_task(*, task_id: str) -> None:
                 )
                 db.commit()
                 return
-            if item.status == "succeeded":
+            if item.status in {"succeeded", "skipped", "failed"}:
                 continue
 
+            chapter_request_id = f"batch:{task_id}:{str(chapter_id or '')[:8]}"
             item.status = "running"
             item.attempt_count = int(getattr(item, "attempt_count", 0) or 0) + 1
             item.started_at = utc_now()
             item.finished_at = None
+            item.last_request_id = chapter_request_id
             item.last_error_json = None
             item.error_message = None
+            append_batch_project_task_event(
+                db,
+                batch_task=task,
+                event_type="step_started",
+                source="batch_generation_worker",
+                payload={
+                    "reason": "chapter_started",
+                    "step": build_batch_step_payload(item),
+                    "checkpoint": build_batch_generation_checkpoint(task),
+                },
+            )
             db.commit()
 
             chapter = db.get(Chapter, chapter_id) if chapter_id else None
             if chapter is None:
                 item.status = "failed"
                 item.finished_at = utc_now()
+                item.last_request_id = chapter_request_id
                 item.last_error_json = _json_dumps({"code": "NOT_FOUND", "message": "章节不存在"})
                 item.error_message = "章节不存在"
-                task.status = "failed"
-                task.failed_count = int(getattr(task, "failed_count", 0) or 0) + 1
-                task.error_json = json.dumps({"code": "NOT_FOUND", "message": "章节不存在"}, ensure_ascii=False)
-                sync_batch_generation_checkpoint(task)
-                finalize_batch_project_task(
+                pause_batch_generation(
                     db,
                     batch_task=task,
-                    status="failed",
-                    event_type="failed",
+                    reason="chapter_missing",
+                    source="batch_generation_worker",
                     error={"code": "NOT_FOUND", "message": "章节不存在"},
-                    payload={"reason": "chapter_missing", "chapter_number": int(chapter_number)},
+                    item=item,
+                    payload={"chapter_number": int(chapter_number)},
                 )
                 db.commit()
                 return
@@ -701,29 +834,29 @@ def run_batch_generation_task(*, task_id: str) -> None:
                 item.last_error_json = None
                 item.last_request_id = chapter_request_id
                 item.finished_at = utc_now()
-                task.completed_count = int(task.completed_count or 0) + 1
-                sync_batch_generation_checkpoint(task)
-                project_task = _load_batch_project_task(db, batch_task=task)
-                if project_task is not None:
-                    append_project_task_event(
+                recalculate_batch_generation_counts(db, batch_task=task)
+                append_batch_project_task_event(
+                    db,
+                    batch_task=task,
+                    event_type="step_succeeded",
+                    source="batch_generation_worker",
+                    payload={
+                        "reason": "chapter_succeeded",
+                        "step": build_batch_step_payload(item),
+                        "checkpoint": build_batch_generation_checkpoint(task),
+                    },
+                )
+                if task.pause_requested:
+                    pause_batch_generation(
                         db,
-                        task=project_task,
-                        event_type="checkpoint",
+                        batch_task=task,
+                        reason="pause_requested_after_step",
                         source="batch_generation_worker",
-                        payload={
-                            "reason": "chapter_succeeded",
-                            "step": {
-                                "item_id": str(item.id),
-                                "chapter_id": str(item.chapter_id) if item.chapter_id else None,
-                                "chapter_number": int(item.chapter_number),
-                                "status": str(item.status),
-                                "attempt_count": int(getattr(item, "attempt_count", 0) or 0),
-                                "generation_run_id": str(item.generation_run_id) if item.generation_run_id else None,
-                                "request_id": chapter_request_id,
-                            },
-                            "checkpoint": build_batch_generation_checkpoint(task),
-                        },
+                        item=item,
+                        payload={"chapter_number": int(chapter_number)},
                     )
+                    db.commit()
+                    return
                 db.commit()
         except AppError as exc:
             log_event(
@@ -739,24 +872,21 @@ def run_batch_generation_task(*, task_id: str) -> None:
             with SessionLocal() as db:
                 task = db.get(BatchGenerationTask, task_id)
                 item = db.get(BatchGenerationTaskItem, item_id)
-                if task is not None:
-                    task.status = "failed"
-                    task.failed_count = int(getattr(task, "failed_count", 0) or 0) + 1
-                    task.error_json = json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False)
-                    sync_batch_generation_checkpoint(task)
                 if item is not None:
                     item.status = "failed"
                     item.error_message = f"{exc.message} ({exc.code})"
                     item.last_error_json = _json_dumps({"code": exc.code, "message": exc.message, "details": exc.details})
+                    item.last_request_id = chapter_request_id
                     item.finished_at = utc_now()
                 if task is not None:
-                    finalize_batch_project_task(
+                    pause_batch_generation(
                         db,
                         batch_task=task,
-                        status="failed",
-                        event_type="failed",
+                        reason="chapter_failed",
+                        source="batch_generation_worker",
                         error={"code": exc.code, "message": exc.message, "details": exc.details},
-                        payload={"reason": "chapter_failed", "chapter_number": int(chapter_number)},
+                        item=item,
+                        payload={"chapter_number": int(chapter_number)},
                     )
                 db.commit()
             return
@@ -774,24 +904,21 @@ def run_batch_generation_task(*, task_id: str) -> None:
             with SessionLocal() as db:
                 task = db.get(BatchGenerationTask, task_id)
                 item = db.get(BatchGenerationTaskItem, item_id)
-                if task is not None:
-                    task.status = "failed"
-                    task.failed_count = int(getattr(task, "failed_count", 0) or 0) + 1
-                    task.error_json = json.dumps({"code": "INTERNAL_ERROR", "message": "批量生成失败"}, ensure_ascii=False)
-                    sync_batch_generation_checkpoint(task)
                 if item is not None:
                     item.status = "failed"
                     item.error_message = "批量生成失败"
                     item.last_error_json = _json_dumps({"code": "INTERNAL_ERROR", "message": type(exc).__name__})
+                    item.last_request_id = chapter_request_id
                     item.finished_at = utc_now()
                 if task is not None:
-                    finalize_batch_project_task(
+                    pause_batch_generation(
                         db,
                         batch_task=task,
-                        status="failed",
-                        event_type="failed",
+                        reason="chapter_exception",
+                        source="batch_generation_worker",
                         error={"code": "INTERNAL_ERROR", "message": "批量生成失败"},
-                        payload={"reason": "chapter_exception", "chapter_number": int(chapter_number)},
+                        item=item,
+                        payload={"chapter_number": int(chapter_number)},
                     )
                 db.commit()
             return
@@ -802,6 +929,7 @@ def run_batch_generation_task(*, task_id: str) -> None:
             return
         if task.cancel_requested:
             task.status = "canceled"
+            task.pause_requested = False
             sync_batch_generation_checkpoint(task)
             finalize_batch_project_task(
                 db,
@@ -811,7 +939,17 @@ def run_batch_generation_task(*, task_id: str) -> None:
                 result={"canceled": True, "batch_task_id": str(task.id)},
                 payload={"reason": "cancel_requested_after_loop"},
             )
+        elif task.status == "paused" or task.pause_requested:
+            if task.status != "paused":
+                pause_batch_generation(
+                    db,
+                    batch_task=task,
+                    reason="pause_requested_after_loop",
+                    source="batch_generation_worker",
+                )
         elif task.status != "failed":
+            task.pause_requested = False
+            recalculate_batch_generation_counts(db, batch_task=task)
             task.status = "succeeded"
             sync_batch_generation_checkpoint(task)
             finalize_batch_project_task(

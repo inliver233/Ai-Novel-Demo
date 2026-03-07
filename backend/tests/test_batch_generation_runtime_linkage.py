@@ -17,7 +17,7 @@ from app.core.errors import AppError
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app_error_handler, validation_error_handler
-from app.models.batch_generation_task import BatchGenerationTask
+from app.models.batch_generation_task import BatchGenerationTask, BatchGenerationTaskItem
 from app.models.chapter import Chapter
 from app.models.generation_run import GenerationRun
 from app.models.llm_profile import LLMProfile
@@ -79,8 +79,6 @@ class TestBatchGenerationRuntimeLinkage(unittest.TestCase):
                 BatchGenerationTask.__table__,
             ],
         )
-        from app.models.batch_generation_task import BatchGenerationTaskItem
-
         BatchGenerationTaskItem.__table__.create(bind=engine)
 
         self.SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
@@ -176,3 +174,228 @@ class TestBatchGenerationRuntimeLinkage(unittest.TestCase):
                 .order_by(ProjectTaskEvent.seq.asc())
             ).scalars().all()
             self.assertEqual(event_types, ["queued", "canceled"])
+
+    def test_pause_and_resume_queued_batch_updates_linked_runtime_task(self) -> None:
+        client = TestClient(self.app)
+
+        class _NoopQueue:
+            def enqueue_batch_generation_task(self, task_id: str) -> str:
+                return task_id
+
+        with patch("app.api.routes.batch_generation.get_task_queue", return_value=_NoopQueue()):
+            created = client.post(
+                "/api/projects/p1/batch_generation_tasks",
+                headers={"X-Test-User": "u_owner"},
+                json={"count": 1, "include_existing": True},
+            )
+
+            batch_task_id = ((created.json().get("data") or {}).get("task") or {}).get("id")
+            paused = client.post(f"/api/batch_generation_tasks/{batch_task_id}/pause", headers={"X-Test-User": "u_owner"})
+            resumed = client.post(f"/api/batch_generation_tasks/{batch_task_id}/resume", headers={"X-Test-User": "u_owner"})
+
+        self.assertEqual(paused.status_code, 200)
+        self.assertEqual(resumed.status_code, 200)
+        self.assertTrue(bool((paused.json().get("data") or {}).get("paused")))
+        self.assertTrue(bool((resumed.json().get("data") or {}).get("resumed")))
+
+        with self.SessionLocal() as db:
+            batch_task = db.get(BatchGenerationTask, batch_task_id)
+            self.assertIsNotNone(batch_task)
+            assert batch_task is not None
+            self.assertEqual(batch_task.status, "queued")
+            self.assertFalse(bool(batch_task.pause_requested))
+
+            runtime_task = db.get(ProjectTask, batch_task.project_task_id)
+            self.assertIsNotNone(runtime_task)
+            assert runtime_task is not None
+            self.assertEqual(runtime_task.status, "queued")
+
+            event_types = db.execute(
+                select(ProjectTaskEvent.event_type)
+                .where(ProjectTaskEvent.task_id == runtime_task.id)
+                .order_by(ProjectTaskEvent.seq.asc())
+            ).scalars().all()
+            self.assertEqual(event_types, ["queued", "paused", "resumed"])
+
+    def test_resume_paused_batch_with_failed_items_requires_retry_or_skip(self) -> None:
+        client = TestClient(self.app)
+
+        class _NoopQueue:
+            def enqueue_batch_generation_task(self, task_id: str) -> str:
+                return task_id
+
+        with patch("app.api.routes.batch_generation.get_task_queue", return_value=_NoopQueue()):
+            created = client.post(
+                "/api/projects/p1/batch_generation_tasks",
+                headers={"X-Test-User": "u_owner"},
+                json={"count": 1, "include_existing": True},
+            )
+
+        batch_task_id = ((created.json().get("data") or {}).get("task") or {}).get("id")
+        self.assertTrue(str(batch_task_id or "").strip())
+
+        with self.SessionLocal() as db:
+            batch_task = db.get(BatchGenerationTask, batch_task_id)
+            self.assertIsNotNone(batch_task)
+            assert batch_task is not None
+            item = db.execute(select(BatchGenerationTaskItem).where(BatchGenerationTaskItem.task_id == batch_task_id)).scalars().first()
+            self.assertIsNotNone(item)
+            assert item is not None
+            item.status = "failed"
+            item.error_message = "boom"
+            batch_task.status = "paused"
+            batch_task.pause_requested = True
+            batch_task.failed_count = 1
+            runtime_task = db.get(ProjectTask, batch_task.project_task_id)
+            self.assertIsNotNone(runtime_task)
+            assert runtime_task is not None
+            runtime_task.status = "paused"
+            db.commit()
+
+        resp = client.post(f"/api/batch_generation_tasks/{batch_task_id}/resume", headers={"X-Test-User": "u_owner"})
+        self.assertEqual(resp.status_code, 409)
+        payload = resp.json()
+        self.assertEqual(((payload.get("error") or {}).get("details") or {}).get("failed_chapter_numbers"), [1])
+
+    def test_retry_failed_batch_requeues_failed_items(self) -> None:
+        client = TestClient(self.app)
+
+        class _NoopQueue:
+            def enqueue_batch_generation_task(self, task_id: str) -> str:
+                return task_id
+
+        with patch("app.api.routes.batch_generation.get_task_queue", return_value=_NoopQueue()):
+            created = client.post(
+                "/api/projects/p1/batch_generation_tasks",
+                headers={"X-Test-User": "u_owner"},
+                json={"count": 1, "include_existing": True},
+            )
+
+            batch_task_id = ((created.json().get("data") or {}).get("task") or {}).get("id")
+
+            with self.SessionLocal() as db:
+                batch_task = db.get(BatchGenerationTask, batch_task_id)
+                self.assertIsNotNone(batch_task)
+                assert batch_task is not None
+                item = db.execute(select(BatchGenerationTaskItem).where(BatchGenerationTaskItem.task_id == batch_task_id)).scalars().first()
+                self.assertIsNotNone(item)
+                assert item is not None
+                item.status = "failed"
+                item.error_message = "boom"
+                item.last_error_json = json.dumps({"code": "X", "message": "boom"}, ensure_ascii=False)
+                batch_task.status = "paused"
+                batch_task.pause_requested = True
+                batch_task.failed_count = 1
+                runtime_task = db.get(ProjectTask, batch_task.project_task_id)
+                self.assertIsNotNone(runtime_task)
+                assert runtime_task is not None
+                runtime_task.status = "paused"
+                db.commit()
+
+            retried = client.post(f"/api/batch_generation_tasks/{batch_task_id}/retry_failed", headers={"X-Test-User": "u_owner"})
+
+        self.assertEqual(retried.status_code, 200)
+        self.assertTrue(bool((retried.json().get("data") or {}).get("retried")))
+
+        with self.SessionLocal() as db:
+            batch_task = db.get(BatchGenerationTask, batch_task_id)
+            self.assertIsNotNone(batch_task)
+            assert batch_task is not None
+            item = db.execute(select(BatchGenerationTaskItem).where(BatchGenerationTaskItem.task_id == batch_task_id)).scalars().first()
+            self.assertIsNotNone(item)
+            assert item is not None
+            self.assertEqual(batch_task.status, "queued")
+            self.assertEqual(batch_task.failed_count, 0)
+            self.assertFalse(bool(batch_task.pause_requested))
+            self.assertEqual(item.status, "queued")
+            self.assertIsNone(item.error_message)
+            self.assertIsNone(item.last_error_json)
+
+            runtime_task = db.get(ProjectTask, batch_task.project_task_id)
+            self.assertIsNotNone(runtime_task)
+            assert runtime_task is not None
+            self.assertEqual(runtime_task.status, "queued")
+
+            event_types = db.execute(
+                select(ProjectTaskEvent.event_type)
+                .where(ProjectTaskEvent.task_id == runtime_task.id)
+                .order_by(ProjectTaskEvent.seq.asc())
+            ).scalars().all()
+            self.assertEqual(event_types, ["queued", "step_requeued", "retry"])
+
+    def test_skip_failed_batch_can_finish_without_pending_items(self) -> None:
+        client = TestClient(self.app)
+
+        class _NoopQueue:
+            def enqueue_batch_generation_task(self, task_id: str) -> str:
+                return task_id
+
+        with patch("app.api.routes.batch_generation.get_task_queue", return_value=_NoopQueue()):
+            created = client.post(
+                "/api/projects/p1/batch_generation_tasks",
+                headers={"X-Test-User": "u_owner"},
+                json={"count": 1, "include_existing": True},
+            )
+
+        batch_task_id = ((created.json().get("data") or {}).get("task") or {}).get("id")
+        with self.SessionLocal() as db:
+            batch_task = db.get(BatchGenerationTask, batch_task_id)
+            self.assertIsNotNone(batch_task)
+            assert batch_task is not None
+            item = db.execute(select(BatchGenerationTaskItem).where(BatchGenerationTaskItem.task_id == batch_task_id)).scalars().first()
+            self.assertIsNotNone(item)
+            assert item is not None
+            item.status = "failed"
+            item.error_message = "boom"
+            batch_task.status = "paused"
+            batch_task.pause_requested = True
+            batch_task.failed_count = 1
+            runtime_task = db.get(ProjectTask, batch_task.project_task_id)
+            self.assertIsNotNone(runtime_task)
+            assert runtime_task is not None
+            runtime_task.status = "paused"
+            db.commit()
+
+        skipped = client.post(f"/api/batch_generation_tasks/{batch_task_id}/skip_failed", headers={"X-Test-User": "u_owner"})
+        self.assertEqual(skipped.status_code, 200)
+        self.assertTrue(bool((skipped.json().get("data") or {}).get("skipped")))
+
+        with self.SessionLocal() as db:
+            batch_task = db.get(BatchGenerationTask, batch_task_id)
+            self.assertIsNotNone(batch_task)
+            assert batch_task is not None
+            item = db.execute(select(BatchGenerationTaskItem).where(BatchGenerationTaskItem.task_id == batch_task_id)).scalars().first()
+            self.assertIsNotNone(item)
+            assert item is not None
+            self.assertEqual(batch_task.status, "succeeded")
+            self.assertEqual(batch_task.failed_count, 0)
+            self.assertEqual(batch_task.skipped_count, 1)
+            self.assertEqual(item.status, "skipped")
+
+            runtime_task = db.get(ProjectTask, batch_task.project_task_id)
+            self.assertIsNotNone(runtime_task)
+            assert runtime_task is not None
+            self.assertEqual(runtime_task.status, "succeeded")
+
+    def test_create_batch_task_accepts_count_over_20_with_new_limit(self) -> None:
+        client = TestClient(self.app)
+
+        with self.SessionLocal() as db:
+            for number in range(2, 23):
+                db.add(Chapter(id=f"c{number}", project_id="p1", outline_id="o1", number=number, title=f"第{number}章", plan="", content_md=None, summary=None))
+            db.commit()
+
+        class _NoopQueue:
+            def enqueue_batch_generation_task(self, task_id: str) -> str:
+                return task_id
+
+        with patch("app.api.routes.batch_generation.get_task_queue", return_value=_NoopQueue()):
+            resp = client.post(
+                "/api/projects/p1/batch_generation_tasks",
+                headers={"X-Test-User": "u_owner"},
+                json={"count": 21, "include_existing": True},
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        task = ((resp.json().get("data") or {}).get("task") or {})
+        self.assertEqual(task.get("total_count"), 21)
