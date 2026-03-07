@@ -54,6 +54,17 @@ class TestGateRunner(unittest.TestCase):
             for layer_name in layers:
                 self.assertIn(layer_name, LAYER_ORDER)
 
+    def test_gate_cli_supports_perf_smoke_dry_run(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/run_gate.py"), "--layer", "perf-smoke", "--dry-run"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("playwright-perf-quick", proc.stdout)
+
     def test_regression_cli_supports_custom_layers_dry_run(self) -> None:
         proc = subprocess.run(
             [sys.executable, str(REPO_ROOT / "scripts/run_regression.py"), "--layers", "smoke,contract,full", "--dry-run"],

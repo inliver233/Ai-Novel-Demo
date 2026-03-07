@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-LAYER_ORDER = ("smoke", "contract", "critical", "full")
+LAYER_ORDER = ("smoke", "contract", "critical", "full", "perf-smoke")
 COVERAGE_AREAS = ("route", "task", "config", "prompt")
 
 
@@ -271,6 +271,16 @@ def build_layers(repo_root: Path = REPO_ROOT) -> dict[str, tuple[GateStep, ...]]
                 command=("npx", "playwright", "test", "--workers=1"),
                 coverage=("route", "task", "config", "prompt"),
                 rerun_hint="cd test && npx playwright test --workers=1",
+            ),
+        ),
+        "perf-smoke": (
+            GateStep(
+                step_id="playwright-perf-quick",
+                description="isolated frontend+backend perf quick baseline",
+                cwd=test_dir,
+                command=("pwsh", "scripts/run-perf-baseline.ps1", "-Scenario", "quick"),
+                coverage=("route", "task", "config", "prompt"),
+                rerun_hint="cd test && pwsh scripts/run-perf-baseline.ps1 -Scenario quick",
             ),
         ),
     }

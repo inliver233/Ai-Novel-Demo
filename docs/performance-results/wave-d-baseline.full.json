@@ -1,0 +1,812 @@
+{
+  "scenario": "full",
+  "generated_at": "2026-03-07T14:39:44.150Z",
+  "environment": {
+    "runner": "playwright-perf",
+    "db_mode": "isolated-e2e-sqlite",
+    "backend_url": "http://127.0.0.1:25920",
+    "frontend_url": "http://127.0.0.1:25921",
+    "notes": [
+      "frontend timings run in a single browser session; 1/5/20 concurrency applies to backend HTTP endpoints.",
+      "results are dev/test baselines on isolated SQLite and should be compared with prod separately."
+    ]
+  },
+  "datasets": [
+    {
+      "chapter_count": 100,
+      "project_id": "a91b1388-9f63-480d-b6b7-a3f4bfd9f942",
+      "target_chapter_id": "e7d495cd-874b-4869-9a70-76dfa00731dc",
+      "backend": {
+        "chapter_meta_scan": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 18.77,
+              "p50_ms": 18.1,
+              "p95_ms": 21.43,
+              "min_ms": 16.78,
+              "max_ms": 21.43
+            },
+            "batch_latency": {
+              "avg_ms": 18.79,
+              "p50_ms": 18.11,
+              "p95_ms": 21.47,
+              "min_ms": 16.79,
+              "max_ms": 21.47
+            },
+            "avg_requests_per_second": 53.22
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 76.6,
+              "p50_ms": 66.49,
+              "p95_ms": 122.08,
+              "min_ms": 32.49,
+              "max_ms": 122.08
+            },
+            "batch_latency": {
+              "avg_ms": 89.43,
+              "p50_ms": 79.41,
+              "p95_ms": 124.46,
+              "min_ms": 64.42,
+              "max_ms": 124.46
+            },
+            "avg_requests_per_second": 55.91
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 265.44,
+              "p50_ms": 266.34,
+              "p95_ms": 442.25,
+              "min_ms": 86.52,
+              "max_ms": 480.19
+            },
+            "batch_latency": {
+              "avg_ms": 390.09,
+              "p50_ms": 373.4,
+              "p95_ms": 494.15,
+              "min_ms": 302.74,
+              "max_ms": 494.15
+            },
+            "avg_requests_per_second": 51.27
+          }
+        ],
+        "chapter_detail": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 8.87,
+              "p50_ms": 9.14,
+              "p95_ms": 9.22,
+              "min_ms": 8.26,
+              "max_ms": 9.22
+            },
+            "batch_latency": {
+              "avg_ms": 8.89,
+              "p50_ms": 9.15,
+              "p95_ms": 9.23,
+              "min_ms": 8.28,
+              "max_ms": 9.23
+            },
+            "avg_requests_per_second": 112.49
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 27.98,
+              "p50_ms": 28.41,
+              "p95_ms": 37.08,
+              "min_ms": 20.08,
+              "max_ms": 37.08
+            },
+            "batch_latency": {
+              "avg_ms": 32.57,
+              "p50_ms": 32.18,
+              "p95_ms": 37.09,
+              "min_ms": 28.42,
+              "max_ms": 37.09
+            },
+            "avg_requests_per_second": 153.52
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 82.41,
+              "p50_ms": 83.39,
+              "p95_ms": 110.8,
+              "min_ms": 49.45,
+              "max_ms": 118.1
+            },
+            "batch_latency": {
+              "avg_ms": 116.87,
+              "p50_ms": 117.23,
+              "p95_ms": 119.78,
+              "min_ms": 113.58,
+              "max_ms": 119.78
+            },
+            "avg_requests_per_second": 171.13
+          }
+        ],
+        "task_runtime": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 29.29,
+              "p50_ms": 31.78,
+              "p95_ms": 36.01,
+              "min_ms": 20.09,
+              "max_ms": 36.01
+            },
+            "batch_latency": {
+              "avg_ms": 29.3,
+              "p50_ms": 31.79,
+              "p95_ms": 36.02,
+              "min_ms": 20.1,
+              "max_ms": 36.02
+            },
+            "avg_requests_per_second": 34.13
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 63.03,
+              "p50_ms": 67.59,
+              "p95_ms": 89.28,
+              "min_ms": 38.56,
+              "max_ms": 89.28
+            },
+            "batch_latency": {
+              "avg_ms": 81.09,
+              "p50_ms": 77.34,
+              "p95_ms": 90.43,
+              "min_ms": 75.49,
+              "max_ms": 90.43
+            },
+            "avg_requests_per_second": 61.66
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 229.07,
+              "p50_ms": 236.2,
+              "p95_ms": 318.08,
+              "min_ms": 82.98,
+              "max_ms": 337.11
+            },
+            "batch_latency": {
+              "avg_ms": 337.23,
+              "p50_ms": 328.31,
+              "p95_ms": 357.05,
+              "min_ms": 326.34,
+              "max_ms": 357.05
+            },
+            "avg_requests_per_second": 59.31
+          }
+        ],
+        "memory_retrieve": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 20.58,
+              "p50_ms": 15.09,
+              "p95_ms": 32.29,
+              "min_ms": 14.38,
+              "max_ms": 32.29
+            },
+            "batch_latency": {
+              "avg_ms": 20.59,
+              "p50_ms": 15.09,
+              "p95_ms": 32.29,
+              "min_ms": 14.38,
+              "max_ms": 32.29
+            },
+            "avg_requests_per_second": 48.57
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 70.23,
+              "p50_ms": 69.02,
+              "p95_ms": 85.29,
+              "min_ms": 42.66,
+              "max_ms": 85.29
+            },
+            "batch_latency": {
+              "avg_ms": 78.85,
+              "p50_ms": 80.46,
+              "p95_ms": 87.08,
+              "min_ms": 69.01,
+              "max_ms": 87.08
+            },
+            "avg_requests_per_second": 63.41
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 190.68,
+              "p50_ms": 214.11,
+              "p95_ms": 244.85,
+              "min_ms": 79.97,
+              "max_ms": 250.27
+            },
+            "batch_latency": {
+              "avg_ms": 244.63,
+              "p50_ms": 240.56,
+              "p95_ms": 256.49,
+              "min_ms": 236.83,
+              "max_ms": 256.49
+            },
+            "avg_requests_per_second": 81.76
+          }
+        ]
+      },
+      "frontend": {
+        "preview_open_ms": {
+          "avg_ms": 1191.75,
+          "p50_ms": 1154.73,
+          "p95_ms": 1271.47,
+          "min_ms": 1149.06,
+          "max_ms": 1271.47
+        },
+        "preview_next_chapter_ms": {
+          "avg_ms": 1202.59,
+          "p50_ms": 1206.21,
+          "p95_ms": 1217.81,
+          "min_ms": 1183.74,
+          "max_ms": 1217.81
+        },
+        "writing_open_ms": {
+          "avg_ms": 2203.96,
+          "p50_ms": 2195.29,
+          "p95_ms": 2224.45,
+          "min_ms": 2192.15,
+          "max_ms": 2224.45
+        },
+        "tasks_open_ms": {
+          "avg_ms": 1142.72,
+          "p50_ms": 1140.15,
+          "p95_ms": 1150.75,
+          "min_ms": 1137.24,
+          "max_ms": 1150.75
+        }
+      }
+    },
+    {
+      "chapter_count": 300,
+      "project_id": "77083f32-78ee-4e11-89f4-86973525534e",
+      "target_chapter_id": "6bbd62ab-a8c1-48b9-ae0c-5e306d90dd7d",
+      "backend": {
+        "chapter_meta_scan": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 36.83,
+              "p50_ms": 35.16,
+              "p95_ms": 40.64,
+              "min_ms": 34.69,
+              "max_ms": 40.64
+            },
+            "batch_latency": {
+              "avg_ms": 36.84,
+              "p50_ms": 35.17,
+              "p95_ms": 40.64,
+              "min_ms": 34.7,
+              "max_ms": 40.64
+            },
+            "avg_requests_per_second": 27.14
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 149.03,
+              "p50_ms": 146.4,
+              "p95_ms": 190.26,
+              "min_ms": 51.62,
+              "max_ms": 190.26
+            },
+            "batch_latency": {
+              "avg_ms": 172.16,
+              "p50_ms": 185.32,
+              "p95_ms": 193.25,
+              "min_ms": 137.91,
+              "max_ms": 193.25
+            },
+            "avg_requests_per_second": 29.04
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 614.25,
+              "p50_ms": 633.16,
+              "p95_ms": 696.36,
+              "min_ms": 262.82,
+              "max_ms": 713.26
+            },
+            "batch_latency": {
+              "avg_ms": 716.68,
+              "p50_ms": 714.5,
+              "p95_ms": 722.84,
+              "min_ms": 712.7,
+              "max_ms": 722.84
+            },
+            "avg_requests_per_second": 27.91
+          }
+        ],
+        "chapter_detail": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 8.27,
+              "p50_ms": 8.38,
+              "p95_ms": 8.94,
+              "min_ms": 7.48,
+              "max_ms": 8.94
+            },
+            "batch_latency": {
+              "avg_ms": 8.27,
+              "p50_ms": 8.38,
+              "p95_ms": 8.95,
+              "min_ms": 7.49,
+              "max_ms": 8.95
+            },
+            "avg_requests_per_second": 120.92
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 34.58,
+              "p50_ms": 34.58,
+              "p95_ms": 41.93,
+              "min_ms": 26.25,
+              "max_ms": 41.93
+            },
+            "batch_latency": {
+              "avg_ms": 42.56,
+              "p50_ms": 42.17,
+              "p95_ms": 45.38,
+              "min_ms": 40.13,
+              "max_ms": 45.38
+            },
+            "avg_requests_per_second": 117.48
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 78.21,
+              "p50_ms": 78.24,
+              "p95_ms": 102.26,
+              "min_ms": 45.99,
+              "max_ms": 111.31
+            },
+            "batch_latency": {
+              "avg_ms": 112.67,
+              "p50_ms": 112.33,
+              "p95_ms": 117.97,
+              "min_ms": 107.72,
+              "max_ms": 117.97
+            },
+            "avg_requests_per_second": 177.51
+          }
+        ],
+        "task_runtime": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 23.81,
+              "p50_ms": 16.15,
+              "p95_ms": 39.96,
+              "min_ms": 15.32,
+              "max_ms": 39.96
+            },
+            "batch_latency": {
+              "avg_ms": 23.82,
+              "p50_ms": 16.15,
+              "p95_ms": 39.97,
+              "min_ms": 15.33,
+              "max_ms": 39.97
+            },
+            "avg_requests_per_second": 41.98
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 71.79,
+              "p50_ms": 75.94,
+              "p95_ms": 92.93,
+              "min_ms": 41.9,
+              "max_ms": 92.93
+            },
+            "batch_latency": {
+              "avg_ms": 88.91,
+              "p50_ms": 87.77,
+              "p95_ms": 95.5,
+              "min_ms": 83.47,
+              "max_ms": 95.5
+            },
+            "avg_requests_per_second": 56.24
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 218.17,
+              "p50_ms": 229.31,
+              "p95_ms": 305.39,
+              "min_ms": 65.91,
+              "max_ms": 316.99
+            },
+            "batch_latency": {
+              "avg_ms": 315.7,
+              "p50_ms": 313.54,
+              "p95_ms": 327.5,
+              "min_ms": 306.06,
+              "max_ms": 327.5
+            },
+            "avg_requests_per_second": 63.35
+          }
+        ],
+        "memory_retrieve": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 15.78,
+              "p50_ms": 16.09,
+              "p95_ms": 17.07,
+              "min_ms": 14.19,
+              "max_ms": 17.07
+            },
+            "batch_latency": {
+              "avg_ms": 15.79,
+              "p50_ms": 16.09,
+              "p95_ms": 17.08,
+              "min_ms": 14.2,
+              "max_ms": 17.08
+            },
+            "avg_requests_per_second": 63.33
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 53.58,
+              "p50_ms": 52.9,
+              "p95_ms": 63.13,
+              "min_ms": 45.38,
+              "max_ms": 63.13
+            },
+            "batch_latency": {
+              "avg_ms": 60.04,
+              "p50_ms": 61.05,
+              "p95_ms": 63.14,
+              "min_ms": 55.93,
+              "max_ms": 63.14
+            },
+            "avg_requests_per_second": 83.28
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 156.76,
+              "p50_ms": 181.68,
+              "p95_ms": 205.92,
+              "min_ms": 66.34,
+              "max_ms": 211.59
+            },
+            "batch_latency": {
+              "avg_ms": 207.26,
+              "p50_ms": 203.84,
+              "p95_ms": 221.01,
+              "min_ms": 196.91,
+              "max_ms": 221.01
+            },
+            "avg_requests_per_second": 96.5
+          }
+        ]
+      },
+      "frontend": {
+        "preview_open_ms": {
+          "avg_ms": 1167.48,
+          "p50_ms": 1186.42,
+          "p95_ms": 1212.01,
+          "min_ms": 1104.02,
+          "max_ms": 1212.01
+        },
+        "preview_next_chapter_ms": {
+          "avg_ms": 1181.93,
+          "p50_ms": 1190.61,
+          "p95_ms": 1196.64,
+          "min_ms": 1158.56,
+          "max_ms": 1196.64
+        },
+        "writing_open_ms": {
+          "avg_ms": 1626.84,
+          "p50_ms": 1261.01,
+          "p95_ms": 2358.6,
+          "min_ms": 1260.91,
+          "max_ms": 2358.6
+        },
+        "tasks_open_ms": {
+          "avg_ms": 762.11,
+          "p50_ms": 582.47,
+          "p95_ms": 1122.38,
+          "min_ms": 581.48,
+          "max_ms": 1122.38
+        }
+      }
+    },
+    {
+      "chapter_count": 800,
+      "project_id": "e9a74da4-c4ee-47f9-b311-0df42a34aae1",
+      "target_chapter_id": "63de98ec-8850-4a59-9974-f4c4c87ce80c",
+      "backend": {
+        "chapter_meta_scan": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 77.97,
+              "p50_ms": 83.32,
+              "p95_ms": 92.47,
+              "min_ms": 58.12,
+              "max_ms": 92.47
+            },
+            "batch_latency": {
+              "avg_ms": 77.98,
+              "p50_ms": 83.32,
+              "p95_ms": 92.48,
+              "min_ms": 58.13,
+              "max_ms": 92.48
+            },
+            "avg_requests_per_second": 12.82
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 388.02,
+              "p50_ms": 396.19,
+              "p95_ms": 418.12,
+              "min_ms": 335.35,
+              "max_ms": 418.12
+            },
+            "batch_latency": {
+              "avg_ms": 413.53,
+              "p50_ms": 420.42,
+              "p95_ms": 420.51,
+              "min_ms": 399.65,
+              "max_ms": 420.51
+            },
+            "avg_requests_per_second": 12.09
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 2023.72,
+              "p50_ms": 2038.12,
+              "p95_ms": 2295.7,
+              "min_ms": 1473.55,
+              "max_ms": 2332.43
+            },
+            "batch_latency": {
+              "avg_ms": 2206.61,
+              "p50_ms": 2166.72,
+              "p95_ms": 2343.79,
+              "min_ms": 2109.34,
+              "max_ms": 2343.79
+            },
+            "avg_requests_per_second": 9.06
+          }
+        ],
+        "chapter_detail": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 11.21,
+              "p50_ms": 10.95,
+              "p95_ms": 11.95,
+              "min_ms": 10.73,
+              "max_ms": 11.95
+            },
+            "batch_latency": {
+              "avg_ms": 11.22,
+              "p50_ms": 10.95,
+              "p95_ms": 11.96,
+              "min_ms": 10.74,
+              "max_ms": 11.96
+            },
+            "avg_requests_per_second": 89.13
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 36.07,
+              "p50_ms": 35.29,
+              "p95_ms": 50.71,
+              "min_ms": 25.09,
+              "max_ms": 50.71
+            },
+            "batch_latency": {
+              "avg_ms": 45.96,
+              "p50_ms": 43.56,
+              "p95_ms": 55.67,
+              "min_ms": 38.64,
+              "max_ms": 55.67
+            },
+            "avg_requests_per_second": 108.79
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 94.17,
+              "p50_ms": 92.15,
+              "p95_ms": 118.36,
+              "min_ms": 63.8,
+              "max_ms": 132.37
+            },
+            "batch_latency": {
+              "avg_ms": 135.73,
+              "p50_ms": 138.27,
+              "p95_ms": 141.68,
+              "min_ms": 127.25,
+              "max_ms": 141.68
+            },
+            "avg_requests_per_second": 147.35
+          }
+        ],
+        "task_runtime": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 18.72,
+              "p50_ms": 17.86,
+              "p95_ms": 20.69,
+              "min_ms": 17.61,
+              "max_ms": 20.69
+            },
+            "batch_latency": {
+              "avg_ms": 18.73,
+              "p50_ms": 17.87,
+              "p95_ms": 20.7,
+              "min_ms": 17.61,
+              "max_ms": 20.7
+            },
+            "avg_requests_per_second": 53.39
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 78.35,
+              "p50_ms": 79.31,
+              "p95_ms": 108.3,
+              "min_ms": 39.76,
+              "max_ms": 108.3
+            },
+            "batch_latency": {
+              "avg_ms": 101.23,
+              "p50_ms": 108.31,
+              "p95_ms": 108.47,
+              "min_ms": 86.91,
+              "max_ms": 108.47
+            },
+            "avg_requests_per_second": 49.39
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 219.88,
+              "p50_ms": 231.64,
+              "p95_ms": 333.61,
+              "min_ms": 46.63,
+              "max_ms": 342.86
+            },
+            "batch_latency": {
+              "avg_ms": 329.55,
+              "p50_ms": 337.21,
+              "p95_ms": 356.69,
+              "min_ms": 294.76,
+              "max_ms": 356.69
+            },
+            "avg_requests_per_second": 60.69
+          }
+        ],
+        "memory_retrieve": [
+          {
+            "concurrency": 1,
+            "request_latency": {
+              "avg_ms": 16.54,
+              "p50_ms": 16.69,
+              "p95_ms": 17.72,
+              "min_ms": 15.21,
+              "max_ms": 17.72
+            },
+            "batch_latency": {
+              "avg_ms": 16.55,
+              "p50_ms": 16.7,
+              "p95_ms": 17.72,
+              "min_ms": 15.21,
+              "max_ms": 17.72
+            },
+            "avg_requests_per_second": 60.42
+          },
+          {
+            "concurrency": 5,
+            "request_latency": {
+              "avg_ms": 68.79,
+              "p50_ms": 67.67,
+              "p95_ms": 89.14,
+              "min_ms": 39.61,
+              "max_ms": 89.14
+            },
+            "batch_latency": {
+              "avg_ms": 79.51,
+              "p50_ms": 74.46,
+              "p95_ms": 91.18,
+              "min_ms": 72.88,
+              "max_ms": 91.18
+            },
+            "avg_requests_per_second": 62.89
+          },
+          {
+            "concurrency": 20,
+            "request_latency": {
+              "avg_ms": 212.5,
+              "p50_ms": 239.25,
+              "p95_ms": 282.86,
+              "min_ms": 89.23,
+              "max_ms": 294.97
+            },
+            "batch_latency": {
+              "avg_ms": 286.07,
+              "p50_ms": 278.09,
+              "p95_ms": 305.4,
+              "min_ms": 274.71,
+              "max_ms": 305.4
+            },
+            "avg_requests_per_second": 69.91
+          }
+        ]
+      },
+      "frontend": {
+        "preview_open_ms": {
+          "avg_ms": 1154.58,
+          "p50_ms": 1174.3,
+          "p95_ms": 1182.75,
+          "min_ms": 1106.69,
+          "max_ms": 1182.75
+        },
+        "preview_next_chapter_ms": {
+          "avg_ms": 1157.51,
+          "p50_ms": 1157.31,
+          "p95_ms": 1179.08,
+          "min_ms": 1136.15,
+          "max_ms": 1179.08
+        },
+        "writing_open_ms": {
+          "avg_ms": 2151.81,
+          "p50_ms": 2123.07,
+          "p95_ms": 2250.26,
+          "min_ms": 2082.1,
+          "max_ms": 2250.26
+        },
+        "tasks_open_ms": {
+          "avg_ms": 1133.33,
+          "p50_ms": 1120.24,
+          "p95_ms": 1179.93,
+          "min_ms": 1099.82,
+          "max_ms": 1179.93
+        }
+      }
+    }
+  ],
+  "summary": {
+    "slowest_backend": {
+      "name": "chapter_meta_scan",
+      "chapter_count": 800,
+      "concurrency": 20,
+      "p95_ms": 2295.7
+    },
+    "slowest_frontend": {
+      "name": "writing_open_ms",
+      "chapter_count": 300,
+      "p95_ms": 2358.6
+    }
+  }
+}
