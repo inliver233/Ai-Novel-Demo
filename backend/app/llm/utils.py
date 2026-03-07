@@ -3,7 +3,7 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from app.core.errors import AppError
-from app.llm.capabilities import recommended_max_tokens
+from app.llm.registry import provider_contract, recommended_max_tokens
 
 
 def normalize_base_url(value: str) -> str:
@@ -17,11 +17,14 @@ def normalize_base_url(value: str) -> str:
 
 
 def default_max_tokens_for_provider(provider: str) -> int:
-    return recommended_max_tokens(provider, model=None)
+    try:
+        return provider_contract(provider).recommended_max_tokens
+    except Exception:
+        return recommended_max_tokens(provider, model=None, mode="audit")
 
 
 def default_max_tokens(provider: str, model: str | None = None) -> int:
-    return recommended_max_tokens(provider, model=model)
+    return recommended_max_tokens(provider, model=model, mode="audit")
 
 
 def is_default_like_max_tokens(provider: str, value: int | None) -> bool:
