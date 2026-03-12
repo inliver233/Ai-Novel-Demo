@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Generator
 
 from fastapi import FastAPI, Request
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.testclient import TestClient
@@ -180,6 +180,39 @@ class TestAdminUserStats(unittest.TestCase):
         second_payload = second_page.json()["data"]
         self.assertEqual(len(second_payload["users"]), 1)
         self.assertNotEqual(first_payload["users"][0]["id"], second_payload["users"][0]["id"])
+
+    def test_admin_users_endpoint_handles_legacy_sqlite_activity_timestamps(self) -> None:
+        now_raw = utc_now().strftime("%Y-%m-%d %H:%M:%S")
+        with self.SessionLocal() as db:
+            db.execute(
+                text(
+                    """
+                    update user_activity_stats
+                    set last_seen_at = :last_seen_at,
+                        created_at = :created_at,
+                        updated_at = :updated_at
+                    where user_id = 'u1'
+                    """
+                ),
+                {
+                    "last_seen_at": now_raw,
+                    "created_at": now_raw,
+                    "updated_at": now_raw,
+                },
+            )
+            db.commit()
+
+        client = TestClient(self.app)
+        self._login_as_admin(client)
+
+        resp = client.get("/api/auth/admin/users?limit=5")
+        self.assertEqual(resp.status_code, 200)
+        users = resp.json()["data"]["users"]
+        u1 = next((item for item in users if item["id"] == "u1"), None)
+        self.assertIsNotNone(u1)
+        self.assertTrue(u1["activity"]["online"])
+        last_seen_at = str(u1["activity"]["last_seen_at"])
+        self.assertTrue(last_seen_at.endswith("+00:00") or last_seen_at.endswith("Z"))
 
 
 if __name__ == "__main__":

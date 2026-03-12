@@ -4,13 +4,14 @@ import json
 import logging
 import threading
 from dataclasses import dataclass
-from datetime import timedelta, timezone
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select, update
 
 from app.core.config import settings
 from app.core.logging import exception_log_fields, log_event
+from app.db.datetime_compat import coerce_utc_datetime
 from app.db.session import SessionLocal
 from app.db.utils import utc_now
 from app.models.project_task import ProjectTask
@@ -57,11 +58,7 @@ def _queued_reconcile_after_seconds() -> int:
 
 
 def _normalize_dt(value):
-    if value is None:
-        return None
-    if getattr(value, "tzinfo", None) is None:
-        return value
-    return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return coerce_utc_datetime(value)
 
 
 def touch_project_task_heartbeat(*, task_id: str) -> bool:

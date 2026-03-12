@@ -19,6 +19,7 @@ from app.core.auth_session import build_session, clear_session_cookies, set_sess
 from app.core.config import settings
 from app.core.errors import AppError, ok_payload
 from app.core.logging import log_event
+from app.db.datetime_compat import coerce_utc_datetime
 from app.db.utils import new_id, utc_now
 from app.models.auth_external_account import AuthExternalAccount
 from app.models.user import User
@@ -221,7 +222,7 @@ def _user_admin_public(
     usage: UserUsageStat | None = None,
     online_cutoff=None,
 ) -> dict:
-    last_seen_at = getattr(activity, "last_seen_at", None)
+    last_seen_at = coerce_utc_datetime(getattr(activity, "last_seen_at", None))
     online = False
     if isinstance(last_seen_at, datetime) and isinstance(online_cutoff, datetime):
         last_seen_epoch = _to_utc_epoch(last_seen_at)

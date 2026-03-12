@@ -5,7 +5,7 @@ import unittest
 from datetime import timedelta
 from unittest.mock import patch
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -153,3 +153,30 @@ class TestProjectTaskRuntimeReconcile(unittest.TestCase):
             self.assertEqual(task.status, "queued")
             events = db.execute(select(ProjectTaskEvent).where(ProjectTaskEvent.task_id == "pt-orphan").order_by(ProjectTaskEvent.seq.asc())).scalars().all()
             self.assertEqual([event.event_type for event in events], ["reconcile"])
+
+    def test_reconcile_handles_legacy_sqlite_datetime_rows(self) -> None:
+        with self.SessionLocal() as db:
+            db.execute(
+                text(
+                    """
+                    insert into project_tasks
+                    (id, project_id, actor_user_id, kind, status, idempotency_key, params_json, result_json, error_json,
+                     created_at, started_at, heartbeat_at, finished_at, attempt, updated_at)
+                    values
+                    ('pt-legacy', 'p1', 'u1', 'noop', 'running', 'legacy:v1', null, null, null,
+                     '2026-03-08 03:29:59', '2026-03-08 03:29:59', '2026-03-08 03:29:59', null, 1, '2026-03-08 03:29:59')
+                    """
+                )
+            )
+            db.commit()
+
+        with patch("app.services.project_task_runtime_service.SessionLocal", self.SessionLocal):
+            summary = reconcile_project_tasks_once(reason="watchdog", now=utc_now())
+
+        self.assertEqual(summary["timed_out_running"], 1)
+        with self.SessionLocal() as db:
+            task = db.get(ProjectTask, "pt-legacy")
+            assert task is not None
+            self.assertEqual(task.status, "failed")
+            err = json.loads(task.error_json or "{}")
+            self.assertEqual(err.get("code"), "PROJECT_TASK_HEARTBEAT_TIMEOUT")

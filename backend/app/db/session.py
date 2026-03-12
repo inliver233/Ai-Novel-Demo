@@ -7,6 +7,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
+from app.db import datetime_compat  # noqa: F401
 
 DATABASE_URL = settings.database_url
 IS_SQLITE = settings.is_sqlite()

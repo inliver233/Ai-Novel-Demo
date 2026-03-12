@@ -4,6 +4,7 @@ import threading
 from datetime import datetime
 
 from app.core.config import settings
+from app.db.datetime_compat import coerce_utc_datetime
 from app.db.session import SessionLocal
 from app.db.utils import utc_now
 from app.models.user_activity_stat import UserActivityStat
@@ -87,7 +88,9 @@ def touch_user_activity(
         return
 
     touch_interval = _touch_interval_seconds(min_interval_seconds)
-    now_dt = now if now is not None else utc_now()
+    now_dt = coerce_utc_datetime(now) if now is not None else utc_now()
+    if now_dt is None:
+        now_dt = utc_now()
     now_ts = now_dt.timestamp()
     if not _cache_allows_touch(user_id=uid, now_ts=now_ts, min_interval_seconds=touch_interval):
         return
@@ -113,7 +116,8 @@ def touch_user_activity(
             db.commit()
             return
 
-        if row.last_seen_at is not None and (now_dt - row.last_seen_at).total_seconds() < float(touch_interval):
+        last_seen_at = coerce_utc_datetime(getattr(row, "last_seen_at", None))
+        if last_seen_at is not None and (now_dt - last_seen_at).total_seconds() < float(touch_interval):
             return
 
         row.last_seen_at = now_dt
