@@ -89,6 +89,7 @@ from app.utils.sse_response import (
     sse_progress,
     sse_result,
     sse_start,
+    stream_blocking_call_with_heartbeat,
 )
 
 router = APIRouter()
@@ -99,6 +100,7 @@ CURRENT_DRAFT_TAIL_CHARS = 1200
 _MAX_MACRO_SEED_CHARS = 256
 DEFAULT_CHAPTER_META_LIMIT = 200
 MAX_CHAPTER_META_LIMIT = 500
+SSE_BLOCKING_STEP_HEARTBEAT_SECONDS = 1.0
 
 
 class ChapterPostEditAdoption(BaseModel):
@@ -1726,20 +1728,24 @@ def generate_chapter_stream(
                     yield sse_done()
                     return
 
-                yield sse_progress(message="生成规划...", progress=5)
-                plan_step = run_plan_llm_step(
-                    logger=logger,
-                    request_id=request_id,
-                    actor_user_id=user_id,
-                    project_id=project_id,
-                    chapter_id=chapter_id,
-                    api_key=str(plan_api_key or resolved_api_key),
-                    llm_call=plan_llm_call or llm_call,
-                    prompt_system=plan_prompt_system,
-                    prompt_user=plan_prompt_user,
-                    prompt_messages=plan_prompt_messages,
-                    prompt_render_log_json=plan_prompt_render_log_json,
-                    run_params_extra_json=run_params_extra_json,
+                plan_step = yield from stream_blocking_call_with_heartbeat(
+                    runner=lambda: run_plan_llm_step(
+                        logger=logger,
+                        request_id=request_id,
+                        actor_user_id=user_id,
+                        project_id=project_id,
+                        chapter_id=chapter_id,
+                        api_key=str(plan_api_key or resolved_api_key),
+                        llm_call=plan_llm_call or llm_call,
+                        prompt_system=plan_prompt_system,
+                        prompt_user=plan_prompt_user,
+                        prompt_messages=plan_prompt_messages,
+                        prompt_render_log_json=plan_prompt_render_log_json,
+                        run_params_extra_json=run_params_extra_json,
+                    ),
+                    start_event=sse_progress(message="生成规划...", progress=5),
+                    heartbeat_event=sse_heartbeat(),
+                    heartbeat_interval_seconds=SSE_BLOCKING_STEP_HEARTBEAT_SECONDS,
                 )
                 plan_out, plan_warnings, plan_parse_error = plan_step.plan_out, plan_step.warnings, plan_step.parse_error
                 if plan_parse_error is not None:
@@ -1871,15 +1877,19 @@ def generate_chapter_stream(
                         non_stream_attempts = task_llm_max_attempts(default=2)
                         for attempt2 in range(1, non_stream_attempts + 1):
                             try:
-                                res2 = call_llm_messages(
-                                    provider=llm_call.provider,
-                                    base_url=llm_call.base_url,
-                                    model=llm_call.model,
-                                    api_key=str(resolved_api_key),
-                                    messages=prompt_messages,
-                                    params=llm_call.params,
-                                    timeout_seconds=llm_call.timeout_seconds,
-                                    extra=llm_call.extra,
+                                res2 = yield from stream_blocking_call_with_heartbeat(
+                                    runner=lambda: call_llm_messages(
+                                        provider=llm_call.provider,
+                                        base_url=llm_call.base_url,
+                                        model=llm_call.model,
+                                        api_key=str(resolved_api_key),
+                                        messages=prompt_messages,
+                                        params=llm_call.params,
+                                        timeout_seconds=llm_call.timeout_seconds,
+                                        extra=llm_call.extra,
+                                    ),
+                                    heartbeat_event=sse_heartbeat(),
+                                    heartbeat_interval_seconds=SSE_BLOCKING_STEP_HEARTBEAT_SECONDS,
                                 )
                                 raw_output = res2.text or ""
                                 finish_reason = res2.finish_reason
@@ -2026,20 +2036,24 @@ def generate_chapter_stream(
 
                 if raw_content:
                     data["post_edit_raw_content_md"] = raw_content
-                    yield sse_progress(message="润色中...", progress=95)
-                    step = run_post_edit_step(
-                        logger=logger,
-                        request_id=request_id,
-                        actor_user_id=user_id,
-                        project_id=project_id,
-                        chapter_id=chapter_id,
-                        api_key=str(resolved_api_key),
-                        llm_call=llm_call,
-                        render_values=render_values or {},
-                        raw_content=raw_content,
-                        macro_seed=f"{macro_seed}:post_edit",
-                        post_edit_sanitize=bool(body.post_edit_sanitize),
-                        run_params_extra_json={**(run_params_extra_json or {}), "post_edit_sanitize": bool(body.post_edit_sanitize)},
+                    step = yield from stream_blocking_call_with_heartbeat(
+                        runner=lambda: run_post_edit_step(
+                            logger=logger,
+                            request_id=request_id,
+                            actor_user_id=user_id,
+                            project_id=project_id,
+                            chapter_id=chapter_id,
+                            api_key=str(resolved_api_key),
+                            llm_call=llm_call,
+                            render_values=render_values or {},
+                            raw_content=raw_content,
+                            macro_seed=f"{macro_seed}:post_edit",
+                            post_edit_sanitize=bool(body.post_edit_sanitize),
+                            run_params_extra_json={**(run_params_extra_json or {}), "post_edit_sanitize": bool(body.post_edit_sanitize)},
+                        ),
+                        start_event=sse_progress(message="润色中...", progress=95),
+                        heartbeat_event=sse_heartbeat(),
+                        heartbeat_interval_seconds=SSE_BLOCKING_STEP_HEARTBEAT_SECONDS,
                     )
                     post_edit_warnings = step.warnings
                     post_edit_parse_error = step.parse_error
@@ -2065,19 +2079,23 @@ def generate_chapter_stream(
 
                 if raw_content:
                     data["content_optimize_raw_content_md"] = raw_content
-                    yield sse_progress(message="正文优化中...", progress=97)
-                    step = run_content_optimize_step(
-                        logger=logger,
-                        request_id=request_id,
-                        actor_user_id=user_id,
-                        project_id=project_id,
-                        chapter_id=chapter_id,
-                        api_key=str(resolved_api_key),
-                        llm_call=llm_call,
-                        render_values=render_values or {},
-                        raw_content=raw_content,
-                        macro_seed=f"{macro_seed}:content_optimize",
-                        run_params_extra_json={**(run_params_extra_json or {}), "content_optimize": True},
+                    step = yield from stream_blocking_call_with_heartbeat(
+                        runner=lambda: run_content_optimize_step(
+                            logger=logger,
+                            request_id=request_id,
+                            actor_user_id=user_id,
+                            project_id=project_id,
+                            chapter_id=chapter_id,
+                            api_key=str(resolved_api_key),
+                            llm_call=llm_call,
+                            render_values=render_values or {},
+                            raw_content=raw_content,
+                            macro_seed=f"{macro_seed}:content_optimize",
+                            run_params_extra_json={**(run_params_extra_json or {}), "content_optimize": True},
+                        ),
+                        start_event=sse_progress(message="正文优化中...", progress=97),
+                        heartbeat_event=sse_heartbeat(),
+                        heartbeat_interval_seconds=SSE_BLOCKING_STEP_HEARTBEAT_SECONDS,
                     )
                     content_optimize_warnings = step.warnings
                     content_optimize_parse_error = step.parse_error

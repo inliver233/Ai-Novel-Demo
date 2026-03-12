@@ -41,6 +41,9 @@ type WritingStyle = {
 export function AiGenerateDrawer(props: Props) {
   const { onClose, open } = props;
   const streamProviderSupported = !!props.preset && props.preset.provider.startsWith("openai");
+  const reliableTransportRequired =
+    props.genForm.plan_first || props.genForm.post_edit || props.genForm.content_optimize;
+  const autoReliableTransport = !props.genForm.stream && reliableTransportRequired;
   const titleId = useId();
   const advancedPanelId = useId();
   const hasPromptOverride = props.genForm.prompt_override != null;
@@ -593,7 +596,11 @@ export function AiGenerateDrawer(props: Props) {
             <div className="mt-2 text-[11px] text-subtext">默认折叠：流式生成、规划、润色等。</div>
           ) : null}
 
-          {props.preset && props.genForm.stream && !streamProviderSupported ? (
+          {autoReliableTransport ? (
+            <div className="mt-2 text-xs text-warning">已为规划/润色/正文优化自动启用可靠链路，避免请求超时。</div>
+          ) : null}
+
+          {props.preset && props.genForm.stream && !streamProviderSupported && !reliableTransportRequired ? (
             <div className="mt-2 text-xs text-warning">不支持流式，生成时会自动回退非流式生成</div>
           ) : null}
 

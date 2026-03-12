@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 import json
-from typing import Any, Iterable, Iterator
+from typing import Any, Callable, Generator, Iterable, Iterator, TypeVar
 
 from fastapi.responses import StreamingResponse
+
+
+T = TypeVar("T")
 
 
 def format_sse(
@@ -68,6 +73,33 @@ def sse_done() -> str:
 
 def sse_heartbeat() -> str:
     return ": heartbeat\n\n"
+
+
+def stream_blocking_call_with_heartbeat(
+    *,
+    runner: Callable[[], T],
+    start_event: str | None = None,
+    heartbeat_event: str | None = None,
+    heartbeat_interval_seconds: float = 1.0,
+) -> Generator[str, None, T]:
+    interval = float(heartbeat_interval_seconds)
+    if interval <= 0:
+        interval = 1.0
+
+    if start_event is not None:
+        yield start_event
+
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ainovel-sse-step")
+    future = executor.submit(runner)
+    try:
+        while True:
+            try:
+                return future.result(timeout=interval)
+            except FutureTimeoutError:
+                if heartbeat_event is not None:
+                    yield heartbeat_event
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def create_sse_response(generator: Iterable[str] | Iterator[str]) -> StreamingResponse:

@@ -65,12 +65,60 @@ function readJson(req) {
   });
 }
 
+function extractTaggedBlock(text, tagName) {
+  const safeTag = String(tagName || "").trim();
+  if (!safeTag) return "";
+  const pattern = new RegExp(`<${safeTag}>([\\s\\S]*?)<\\/${safeTag}>`, "i");
+  const match = pattern.exec(String(text ?? ""));
+  return match ? match[1].trim() : "";
+}
+
+function rewriteTaggedContent(rawContent, variant, all) {
+  const raw = String(rawContent ?? "").trim();
+  if (!raw) {
+    return variant === "post_edit"
+      ? "E2E 润色校验：未收到可编辑正文。"
+      : "E2E 正文优化校验：未收到可优化正文。";
+  }
+
+  const paragraphs = raw
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (paragraphs.length === 0) return raw;
+
+  if (variant === "post_edit") {
+    const styleInjected = all.includes("e2e 风格注入");
+    paragraphs[0] = `${paragraphs[0]} E2E 润色校验已完成，语气更克制。${styleInjected ? "E2E 风格注入已生效。" : ""}`.trim();
+  } else {
+    paragraphs[0] = `${paragraphs[0]} E2E 正文优化校验已完成，句式更顺滑。`;
+  }
+
+  if (paragraphs.length > 1) {
+    paragraphs[1] = paragraphs[1]
+      .replace("逐块渲染与解析", "逐块渲染、解析与稳态落盘")
+      .replace("多次增量更新发生", "增量更新稳定落地");
+  }
+
+  return paragraphs.join("\n\n");
+}
+
 function chooseOutputText(payload) {
   const messages = Array.isArray(payload?.messages) ? payload.messages : [];
-  const all = messages
+  const combined = messages
     .map((m) => (m && typeof m === "object" ? String(m.content ?? "") : ""))
-    .join("\n")
-    .toLowerCase();
+    .join("\n");
+  const all = combined.toLowerCase();
+
+  if (all.includes("你是小说文本编辑与润色器")) {
+    const rewritten = rewriteTaggedContent(extractTaggedBlock(combined, "RAW_CONTENT"), "post_edit", all);
+    return `<rewrite>\n${rewritten}\n</rewrite>`;
+  }
+
+  if (all.includes("你是小说正文优化器")) {
+    const optimized = rewriteTaggedContent(extractTaggedBlock(combined, "content"), "content_optimize", all);
+    return `<content>\n${optimized}\n</content>`;
+  }
 
   if (all.includes("<rewrite>")) {
     return ["<rewrite>", "", "这是 **E2E** 重写后的正文。", "", "第二段：用于验证重写结果应用。", "", "</rewrite>"].join("\n");

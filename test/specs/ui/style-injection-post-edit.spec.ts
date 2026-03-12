@@ -36,18 +36,35 @@ test("ui: select style -> generate + post_edit_sanitize -> replay style_resoluti
   await drawer.getByRole("checkbox", { name: "流式生成（beta）", exact: true }).uncheck();
   await drawer.getByRole("checkbox", { name: "润色", exact: true }).check();
   await drawer.getByRole("checkbox", { name: "去味/一致性修复", exact: true }).check();
+  await expect(page.getByText("已为规划/润色/正文优化自动启用可靠链路，避免请求超时。")).toBeVisible();
 
   const styleSelect = drawer.getByLabel("gen_style_id", { exact: true });
   await expect(styleSelect).toBeVisible();
   await expect(styleSelect.locator(`option[value="${styleId}"]`)).toHaveCount(1);
   await styleSelect.selectOption(styleId);
 
-  const genRespP = page.waitForResponse(
-    (resp) => resp.request().method() === "POST" && resp.url().endsWith(`/api/chapters/${chapterId}/generate`),
+  let sawNonStreamGenerate = false;
+  await page.route(`**/api/chapters/${chapterId}/generate`, async (route) => {
+    sawNonStreamGenerate = true;
+    await route.fallback();
+  });
+  const genReqP = page.waitForRequest(
+    (req) => req.method() === "POST" && req.url().endsWith(`/api/chapters/${chapterId}/generate-stream`),
   );
   await drawer.getByRole("button", { name: "生成", exact: true }).click();
-  const genResp = await genRespP;
-  expect(genResp.ok()).toBeTruthy();
+  await genReqP;
+  await expect(page.locator('textarea[name="content_md"]')).not.toHaveValue("", { timeout: 60_000 });
+  expect(sawNonStreamGenerate).toBe(false);
+
+  const postEditCompareButton = drawer.getByRole("button", { name: "润色对比/回退", exact: true });
+  await expect(postEditCompareButton).toBeVisible({ timeout: 60_000 });
+  await postEditCompareButton.click();
+  const compare = page.getByRole("dialog", { name: "润色对比", exact: true });
+  await expect(compare).toBeVisible();
+  await compare.getByRole("button", { name: "后处理稿", exact: true }).click();
+  await expect(compare).toContainText("E2E 润色校验已完成");
+  await expect(compare).toContainText("E2E 风格注入已生效");
+  await compare.getByRole("button", { name: "关闭", exact: true }).click();
 
   await drawer.getByRole("button", { name: "关闭", exact: true }).click();
 
@@ -57,8 +74,13 @@ test("ui: select style -> generate + post_edit_sanitize -> replay style_resoluti
   const history = page.getByRole("dialog", { name: "生成记录", exact: true });
   await expect(history).toBeVisible();
 
-  await history.getByRole("button", { name: /post_edit_sanitize/ }).click();
   await expect(history).toContainText(styleId);
   await expect(history).toContainText('"source": "request"');
+
+  const postEditPipelineButton = history.locator('button[aria-label^="pipeline run_id:"]').filter({
+    hasText: "post_edit_sanitize",
+  });
+  await expect(postEditPipelineButton).toHaveCount(1, { timeout: 60_000 });
+  await postEditPipelineButton.first().click();
   await expect(history).toContainText('"post_edit_sanitize": true');
 });

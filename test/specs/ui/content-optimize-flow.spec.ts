@@ -5,7 +5,7 @@ import { loadState } from "../../lib/state";
 
 type ApiOk<T> = { ok: true; data: T; request_id: string };
 
-test("ui: content_optimize toggle sends payload and exposes compare entry when diff exists", async ({ page, request }) => {
+test("ui: content_optimize without stream checkbox still uses reliable stream transport", async ({ page, request }) => {
   const state = loadState();
   const { projectId } = await bootstrapProject(request);
 
@@ -24,33 +24,41 @@ test("ui: content_optimize toggle sends payload and exposes compare entry when d
   await drawer.getByRole("button", { name: "高级参数", exact: true }).click();
   await drawer.getByRole("checkbox", { name: "流式生成（beta）", exact: true }).uncheck();
   await drawer.getByRole("checkbox", { name: "正文优化", exact: true }).check();
+  await expect(page.getByText("已为规划/润色/正文优化自动启用可靠链路，避免请求超时。")).toBeVisible();
 
-  const genRespP = page.waitForResponse(
-    (resp) => resp.request().method() === "POST" && resp.url().endsWith(`/api/chapters/${chapterId}/generate`),
+  let sawNonStreamGenerate = false;
+  await page.route(`**/api/chapters/${chapterId}/generate`, async (route) => {
+    sawNonStreamGenerate = true;
+    await route.fallback();
+  });
+  const genReqP = page.waitForRequest(
+    (req) => req.method() === "POST" && req.url().endsWith(`/api/chapters/${chapterId}/generate-stream`),
   );
   await drawer.getByRole("button", { name: "生成", exact: true }).click();
-  const genResp = await genRespP;
-  expect(genResp.ok()).toBeTruthy();
+  await genReqP;
+  await expect(page.locator('textarea[name="content_md"]')).not.toHaveValue("", { timeout: 60_000 });
+  expect(sawNonStreamGenerate).toBe(false);
 
-  const genJson = (await genResp.json()) as ApiOk<{
-    content_optimize_applied?: boolean;
-    content_optimize_raw_content_md?: string;
-    content_optimize_optimized_content_md?: string;
-    content_optimize_run_id?: string;
-  }>;
-  const raw = (genJson.data.content_optimize_raw_content_md ?? "").trim();
-  const optimized = (genJson.data.content_optimize_optimized_content_md ?? "").trim();
+  const contentOptimizeCompareButton = drawer.getByRole("button", { name: "正文优化对比/回退", exact: true });
+  await expect(contentOptimizeCompareButton).toBeVisible({ timeout: 60_000 });
+  await contentOptimizeCompareButton.click();
+  const compare = page.getByRole("dialog", { name: "正文优化对比", exact: true });
+  await expect(compare).toBeVisible();
+  await compare.getByRole("button", { name: "优化稿", exact: true }).click();
+  await expect(compare).toContainText("E2E 正文优化校验已完成");
+  await compare.getByRole("button", { name: "关闭", exact: true }).click();
 
-  expect(typeof genJson.data.content_optimize_applied).toBe("boolean");
-  expect(typeof genJson.data.content_optimize_run_id).toBe("string");
-  expect(raw.length).toBeGreaterThan(0);
+  await drawer.getByRole("button", { name: "关闭", exact: true }).click();
+  const openHistory = page.getByLabel("Open generation history (writing_open_generation_history)", { exact: true });
+  await expect(openHistory).toBeVisible({ timeout: 60_000 });
+  await openHistory.click();
+  const history = page.getByRole("dialog", { name: "生成记录", exact: true });
+  await expect(history).toBeVisible();
 
-  const compareButton = drawer.getByRole("button", { name: "正文优化对比/回退", exact: true });
-  if (optimized.length > 0 && raw !== optimized) {
-    await expect(compareButton).toBeVisible();
-    await compareButton.click();
-    await expect(page.getByRole("dialog", { name: "正文优化对比", exact: true })).toBeVisible();
-  } else {
-    await expect(compareButton).toHaveCount(0);
-  }
+  const contentOptimizePipelineButton = history.locator('button[aria-label^="pipeline run_id:"]').filter({
+    hasText: "content_optimize",
+  });
+  await expect(contentOptimizePipelineButton).toHaveCount(1, { timeout: 60_000 });
+  await contentOptimizePipelineButton.first().click();
+  await expect(history).toContainText('"content_optimize": true');
 });

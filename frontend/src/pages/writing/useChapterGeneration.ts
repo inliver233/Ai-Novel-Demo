@@ -228,6 +228,7 @@ export function useChapterGeneration(args: {
       }
       const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
       const streamProviderSupported = preset.provider.startsWith("openai");
+      const advancedTransportRequired = genForm.plan_first || genForm.post_edit || genForm.content_optimize;
 
       setPostEditCompare(null);
       setContentOptimizeCompare(null);
@@ -297,8 +298,8 @@ export function useChapterGeneration(args: {
         const baseContent = form.content_md;
         const baseSummary = form.summary;
 
-        const shouldStream = genForm.stream && streamProviderSupported;
-        if (genForm.stream && !streamProviderSupported) {
+        const shouldStream = advancedTransportRequired || (genForm.stream && streamProviderSupported);
+        if (genForm.stream && !streamProviderSupported && !advancedTransportRequired) {
           toast.toastWarning("已回退非流式生成");
         }
 
@@ -480,7 +481,7 @@ export function useChapterGeneration(args: {
               return;
             }
             if (err instanceof SSEError && err.code !== "SSE_SERVER_ERROR") {
-              if (!genStreamHasChunkRef.current) {
+              if (!genStreamHasChunkRef.current && !advancedTransportRequired) {
                 toast.toastError("流式生成失败，已回退非流式", err.requestId ?? requestId);
                 const res = await apiJson<GenerateResponse>(`/api/chapters/${activeChapter.id}/generate`, {
                   method: "POST",
@@ -562,7 +563,7 @@ export function useChapterGeneration(args: {
                 }
                 return;
               }
-              toast.toastError(`${err.message} (${err.code})`, err.requestId);
+              toast.toastError(`${err.message} (${err.code})`, err.requestId ?? requestId);
               return;
             }
             if (err instanceof SSEError && err.code === "SSE_SERVER_ERROR") {
