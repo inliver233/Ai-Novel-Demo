@@ -50,12 +50,34 @@ complexity: complex
 - none: local code inspection, vitest, backend commands, and Playwright provide enough coverage for this batch.
 
 ## Acceptance Checklist
-- [ ] `WorldBookPage.tsx` and `TaskCenterPage.tsx` shrink materially and stop owning all state, render, and copy responsibilities directly.
-- [ ] Routes, search params, preview flows, drawer behavior, bulk/import/export, auto-update, TaskCenter filters/details/runtime/SSE, and navigation flows do not regress.
-- [ ] Touched WorldBook and TaskCenter helper text, warnings, confirms, disabled reasons, queue/live/fail-soft messaging become more consistent.
-- [ ] Touched WorldBook and TaskCenter styling stops using obvious hard-coded danger colors and reuses existing semantic tokens.
-- [ ] Backend compileall, unittest, quality gate, frontend lint, vitest, build, directed Playwright, and final full Playwright all pass.
-- [ ] Investigation docs and the matching issue CSV are updated factually with done and not-done scope for this batch only.
+- [x] `WorldBookPage.tsx` and `TaskCenterPage.tsx` shrink materially and stop owning all state, render, and copy responsibilities directly.
+- [x] Routes, search params, preview flows, drawer behavior, bulk/import/export, auto-update, TaskCenter filters/details/runtime/SSE, and navigation flows do not regress.
+- [x] Touched WorldBook and TaskCenter helper text, warnings, confirms, disabled reasons, queue/live/fail-soft messaging become more consistent.
+- [x] Touched WorldBook and TaskCenter styling stops using obvious hard-coded danger colors and reuses existing semantic tokens.
+- [x] Backend compileall, unittest, quality gate, frontend lint, vitest, build, directed Playwright, and final full Playwright all pass.
+- [x] Investigation docs and the matching issue CSV are updated factually with done and not-done scope for this batch only.
+
+## Execution Result
+- `MVP-662` completed in commit `0e4c753`: `WorldBookPage.tsx` shrank to `26` lines and moved page-local state/section/model/copy responsibilities into `frontend/src/pages/worldbook/`.
+- `MVP-663` completed in commit `8094d7a`: `TaskCenterPage.tsx` shrank to `41` lines and moved filters/detail/runtime/SSE responsibilities into `frontend/src/pages/taskCenter/`.
+- `MVP-664` completed in commit `4307c40`: touched WorldBook and TaskCenter copy/loading/error/confirm messaging was unified locally, and the remaining WorldBook selection token leak moved from `text-white` to `color-on-accent`.
+- Full batch verification finished on `2026-03-14` with:
+  - Backend `compileall`: pass
+  - Backend `unittest`: `429 passed, 1 skipped`
+  - Backend `quality_gate`: pass, with existing legacy allowlist and oversized-file warnings only
+  - Frontend `lint`: pass
+  - Frontend `vitest`: `23` files / `83` tests passed
+  - Frontend `build`: pass
+  - Directed Playwright for the 15 required spec files: `20/20` passed
+  - Final `cd test && npm test`: `139/139` passed
+- Honest out-of-scope items remain unchanged:
+  - No global data-layer unification (`T09`)
+  - No `OutlinePage` / `WritingPage` split
+  - No main-path refactor (`T06` / `T07`)
+  - No repo-wide copy or theme system project
+  - No backend service decomposition or deployment upgrade
+- Production-readiness conclusion:
+  - This batch preserved route/search-param/ARIA/button/API contracts and passed the full required regression set, so the repo remains fit for direct production push.
 
 ## Risks / Blockers
 - Extracting only JSX without moving state boundaries would leave the hotspot complexity intact and fail the batch intent.
