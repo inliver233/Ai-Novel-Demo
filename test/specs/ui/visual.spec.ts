@@ -18,9 +18,25 @@ async function stabilizeUi(page: Page): Promise<void> {
 
 async function hideUnstableBadges(page: Page): Promise<void> {
   await page.evaluate(() => {
-    for (const btn of document.querySelectorAll('button[aria-label="copy_request_id"]')) {
-      btn.closest("div")?.remove();
-    }
+    const removeRequestIdBadges = () => {
+      for (const btn of document.querySelectorAll('button[aria-label="copy_request_id"]')) {
+        btn.closest("div")?.remove();
+      }
+    };
+
+    removeRequestIdBadges();
+
+    const key = "__ainovelVisualHideRequestIdObserver";
+    const globalWindow = window as typeof window & {
+      [key: string]: MutationObserver | undefined;
+    };
+    globalWindow[key]?.disconnect();
+
+    const observer = new MutationObserver(() => {
+      removeRequestIdBadges();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    globalWindow[key] = observer;
   });
 }
 
