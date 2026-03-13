@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 
 import type { LLMProfile, LLMProvider, LLMTaskCatalogItem } from "../../types";
+import { describeModelListState, deriveLlmModuleAccessState, type LlmModuleAccessState } from "./llmConnectionState";
 import type { LlmForm, LlmModelListState } from "./types";
 
 type TaskModuleView = {
@@ -29,7 +30,6 @@ type Props = {
     context_window_limit: number | null;
   } | null;
   onTestConnection: () => void;
-  testConnectionDisabledReason?: string | null;
   onSave: () => void;
   mainModelList: LlmModelListState;
   onReloadMainModels: () => void;
@@ -83,8 +83,23 @@ type ModuleEditorProps = {
     context_window_limit: number | null;
   } | null;
   modelList: LlmModelListState;
+  modelListHelpText: string;
   headerActions: ReactNode;
 };
+
+function RemoteStateNotice(props: { state: LlmModuleAccessState; className?: string }) {
+  const toneClass =
+    props.state.tone === "success"
+      ? "border-success/30 bg-success/10"
+      : "border-warning/30 bg-warning/10";
+  const titleClass = props.state.tone === "success" ? "text-success" : "text-warning";
+  return (
+    <div className={`rounded-atelier border p-3 ${toneClass}${props.className ? ` ${props.className}` : ""}`}>
+      <div className={`text-xs font-medium ${titleClass}`}>{props.state.title}</div>
+      <div className="mt-1 text-[11px] text-subtext">{props.state.detail}</div>
+    </div>
+  );
+}
 
 function getJsonParseErrorPosition(message: string): number | null {
   const m = message.match(/\bposition\s+(\d+)\b/i);
@@ -229,10 +244,7 @@ function ModuleEditor(props: ModuleEditorProps) {
               </option>
             ))}
           </datalist>
-          <div className="text-[11px] text-subtext">
-            支持“下拉候选 + 手动输入”。{props.modelList.warning ? `提示：${props.modelList.warning}` : ""}
-            {props.modelList.error ? `错误：${props.modelList.error}` : ""}
-          </div>
+          <div className="text-[11px] text-subtext">{props.modelListHelpText}</div>
         </label>
 
         <label className="grid gap-1 md:col-span-2">
@@ -441,7 +453,19 @@ export function LlmPresetPanel(props: Props) {
   const selectedProfile = props.selectedProfileId
     ? (props.profiles.find((p) => p.id === props.selectedProfileId) ?? null)
     : null;
-  const testDisabledReason = (props.testConnectionDisabledReason ?? "").trim();
+  const mainAccessState = useMemo(
+    () =>
+      deriveLlmModuleAccessState({
+        scope: "main",
+        moduleProvider: props.llmForm.provider,
+        selectedProfile,
+      }),
+    [props.llmForm.provider, selectedProfile],
+  );
+  const mainModelListHelpText = useMemo(
+    () => describeModelListState(props.mainModelList, mainAccessState),
+    [mainAccessState, props.mainModelList],
+  );
 
   return (
     <section className="panel p-6">
@@ -455,6 +479,7 @@ export function LlmPresetPanel(props: Props) {
       </div>
 
       <div className="mt-4">
+        <RemoteStateNotice state={mainAccessState} className="mb-3" />
         <ModuleEditor
           moduleId="main-module"
           legacyMainFieldNames
@@ -466,23 +491,26 @@ export function LlmPresetPanel(props: Props) {
           dirty={props.presetDirty}
           capabilities={props.capabilities}
           modelList={props.mainModelList}
+          modelListHelpText={mainModelListHelpText}
           headerActions={
             <>
               <button
                 className="btn btn-secondary"
-                disabled={props.mainModelList.loading || props.saving}
+                disabled={props.mainModelList.loading || props.saving || Boolean(mainAccessState.actionReason)}
                 onClick={props.onReloadMainModels}
+                title={mainAccessState.actionReason ?? undefined}
                 type="button"
               >
-                {props.mainModelList.loading ? "拉取中..." : "拉取模型列表"}
+                {props.mainModelList.loading ? "拉取中…" : "拉取模型列表"}
               </button>
               <button
                 className="btn btn-secondary"
-                disabled={props.testing || props.profileBusy || Boolean(testDisabledReason)}
+                disabled={props.testing || props.profileBusy || Boolean(mainAccessState.actionReason)}
                 onClick={props.onTestConnection}
+                title={mainAccessState.actionReason ?? undefined}
                 type="button"
               >
-                {props.testing ? "测试中..." : "测试连接"}
+                {props.testing ? "测试中…" : "测试连接"}
               </button>
               <button
                 className="btn btn-primary"
@@ -495,7 +523,6 @@ export function LlmPresetPanel(props: Props) {
             </>
           }
         />
-        {testDisabledReason ? <div className="mt-2 text-[11px] text-warning">{testDisabledReason}</div> : null}
       </div>
 
       <div className="mt-6 rounded-atelier border border-border/70 bg-canvas p-4">
@@ -541,11 +568,14 @@ export function LlmPresetPanel(props: Props) {
               const boundProfile = task.llm_profile_id
                 ? (props.profiles.find((p) => p.id === task.llm_profile_id) ?? null)
                 : null;
-              const effectiveProfile = boundProfile ?? (!task.llm_profile_id ? selectedProfile : null);
-              const profileMismatch = Boolean(boundProfile && boundProfile.provider !== task.form.provider);
-              const fallbackProfileMismatch = Boolean(
-                !boundProfile && selectedProfile && selectedProfile.provider !== task.form.provider,
-              );
+              const taskAccessState = deriveLlmModuleAccessState({
+                scope: "task",
+                moduleProvider: task.form.provider,
+                selectedProfile,
+                boundProfile,
+              });
+              const effectiveProfile = taskAccessState.effectiveProfile;
+              const taskModelListHelpText = describeModelListState(task.modelList, taskAccessState);
               const testing = Boolean(props.taskTesting[task.task_key]);
               const profileBusy = Boolean(props.taskProfileBusy[task.task_key]);
               const taskBusy = task.saving || task.deleting || profileBusy;
@@ -566,19 +596,21 @@ export function LlmPresetPanel(props: Props) {
                       ) : null}
                       <button
                         className="btn btn-secondary btn-sm"
-                        disabled={task.modelList.loading || taskUiLocked}
+                        disabled={task.modelList.loading || taskUiLocked || Boolean(taskAccessState.actionReason)}
                         onClick={() => props.onReloadTaskModels(task.task_key)}
+                        title={taskAccessState.actionReason ?? undefined}
                         type="button"
                       >
-                        {task.modelList.loading ? "拉取中..." : "模型列表"}
+                        {task.modelList.loading ? "拉取中…" : "拉取模型列表"}
                       </button>
                       <button
                         className="btn btn-secondary btn-sm"
-                        disabled={taskUiLocked || props.profileBusy}
+                        disabled={taskUiLocked || props.profileBusy || Boolean(taskAccessState.actionReason)}
                         onClick={() => props.onTestTaskConnection(task.task_key)}
+                        title={taskAccessState.actionReason ?? undefined}
                         type="button"
                       >
-                        {testing ? "测试中..." : "测试连接"}
+                        {testing ? "测试中…" : "测试连接"}
                       </button>
                       <button
                         className="btn btn-primary btn-sm"
@@ -599,6 +631,8 @@ export function LlmPresetPanel(props: Props) {
                     </div>
                   </div>
 
+                  <RemoteStateNotice state={taskAccessState} className="mb-3" />
+
                   <div className="mb-3 grid gap-1">
                     <span className="text-xs text-subtext">任务模块绑定的 API 配置库</span>
                     <select
@@ -617,16 +651,6 @@ export function LlmPresetPanel(props: Props) {
                     <div className="text-[11px] text-subtext">
                       选择后该任务优先使用该配置库的 API Key。留空表示继承项目主配置绑定的 API Key。
                     </div>
-                    {profileMismatch ? (
-                      <div className="text-[11px] text-warning">
-                        所选配置库 provider 与当前模块 provider 不一致，保存会失败。
-                      </div>
-                    ) : null}
-                    {fallbackProfileMismatch ? (
-                      <div className="text-[11px] text-warning">
-                        当前未绑定任务配置，回退主配置 provider 与模块 provider 不一致，测试连接会失败。
-                      </div>
-                    ) : null}
                     {effectiveProfile ? (
                       <>
                         <div className="text-[11px] text-subtext">
@@ -684,6 +708,7 @@ export function LlmPresetPanel(props: Props) {
                     dirty={task.dirty}
                     capabilities={null}
                     modelList={task.modelList}
+                    modelListHelpText={taskModelListHelpText}
                     headerActions={<></>}
                   />
                 </div>
@@ -777,11 +802,13 @@ export function LlmPresetPanel(props: Props) {
           </button>
         </div>
         <div className="mt-2 text-xs text-subtext">
-          {selectedProfile
-            ? selectedProfile.has_api_key
-              ? `已保存：${selectedProfile.masked_api_key ?? "（已保存）"}`
-              : "未保存：请在下方输入并保存"
-            : "请先选择/新建一个后端配置再保存 Key"}
+          {mainAccessState.stage === "ready"
+            ? `已就绪：${selectedProfile?.masked_api_key ?? "（已保存）"}。现在可以拉取模型列表并测试连接。`
+            : mainAccessState.stage === "missing_key"
+              ? "已绑定 profile，但还没有保存 Key。保存后才能拉取模型列表和测试连接。"
+              : mainAccessState.stage === "missing_profile"
+                ? "请先选择/新建一个 profile，再保存 Key。"
+                : "当前模块 provider 与已绑定 profile 不一致；先统一 provider，再保存或测试。"}
         </div>
         <div className="mt-2 flex gap-2">
           <input

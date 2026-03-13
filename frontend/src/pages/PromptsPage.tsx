@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { WizardNextBar } from "../components/atelier/WizardNextBar";
 import { LlmPresetPanel } from "../components/prompts/LlmPresetPanel";
+import { deriveLlmModuleAccessState } from "../components/prompts/llmConnectionState";
 import type { LlmForm, LlmModelListState, LlmTaskFormDraft } from "../components/prompts/types";
 import { useConfirm } from "../components/ui/confirm";
 import { RequestIdBadge } from "../components/ui/RequestIdBadge";
@@ -371,11 +372,16 @@ export function PromptsPage() {
   const addableTasks = useMemo(() => taskCatalog.filter((item) => !taskDrafts[item.key]), [taskCatalog, taskDrafts]);
 
   const dirty = presetDirty || taskDirty;
-  const llmCtaBlockedReason = useMemo(() => {
-    if (!selectedProfileId) return "请先选择或新建一个后端配置";
-    if (!selectedProfile?.has_api_key) return "请先保存 API Key";
-    return null;
-  }, [selectedProfile?.has_api_key, selectedProfileId]);
+  const mainAccessState = useMemo(
+    () =>
+      deriveLlmModuleAccessState({
+        scope: "main",
+        moduleProvider: llmForm.provider,
+        selectedProfile,
+      }),
+    [llmForm.provider, selectedProfile],
+  );
+  const llmCtaBlockedReason = mainAccessState.actionReason;
 
   useEffect(() => {
     if (!addableTasks.length) {
@@ -768,17 +774,33 @@ export function PromptsPage() {
   );
 
   const reloadMainModels = useCallback(() => {
+    if (mainAccessState.actionReason) {
+      toast.toastError(mainAccessState.actionReason);
+      return;
+    }
     void loadModels({
       scope: "main",
       form: llmForm,
       profileId: selectedProfileId,
     });
-  }, [llmForm, loadModels, selectedProfileId]);
+  }, [llmForm, loadModels, mainAccessState.actionReason, selectedProfileId, toast]);
 
   const reloadTaskModels = useCallback(
     (taskKey: string) => {
       const draft = taskDrafts[taskKey];
       if (!draft) return;
+      const boundProfileId = (draft.llm_profile_id ?? "").trim() || null;
+      const boundProfile = boundProfileId ? (profiles.find((item) => item.id === boundProfileId) ?? null) : null;
+      const taskAccessState = deriveLlmModuleAccessState({
+        scope: "task",
+        moduleProvider: draft.form.provider,
+        selectedProfile,
+        boundProfile,
+      });
+      if (taskAccessState.actionReason) {
+        toast.toastError(taskAccessState.actionReason);
+        return;
+      }
       void loadModels({
         scope: "task",
         taskKey,
@@ -786,7 +808,7 @@ export function PromptsPage() {
         profileId: draft.llm_profile_id,
       });
     },
-    [loadModels, taskDrafts],
+    [loadModels, profiles, selectedProfile, taskDrafts, toast],
   );
 
   const saveAllDirtyModules = useCallback(async (): Promise<boolean> => {
@@ -1438,23 +1460,18 @@ export function PromptsPage() {
         toast.toastError("任务模块绑定的配置库不存在，请重新选择");
         return false;
       }
-      const effectiveProfile = boundProfile ?? selectedProfile;
-      if (!effectiveProfile) {
-        toast.toastError("请先为任务模块绑定配置库，或先设置主配置并保存 Key");
+      const taskAccessState = deriveLlmModuleAccessState({
+        scope: "task",
+        moduleProvider: payload.payload.provider,
+        selectedProfile,
+        boundProfile,
+      });
+      if (taskAccessState.actionReason) {
+        toast.toastError(taskAccessState.actionReason);
         return false;
       }
-      if (effectiveProfile.provider !== payload.payload.provider) {
-        if (boundProfile) {
-          toast.toastError("任务模块 provider 必须与所选 API 配置库 provider 一致");
-        } else {
-          toast.toastError("当前任务未绑定配置库，将回退主配置。请保持 provider 一致，或为任务绑定独立配置库");
-        }
-        return false;
-      }
-      if (!effectiveProfile.has_api_key) {
-        toast.toastError("请先保存该任务生效配置的 API Key");
-        return false;
-      }
+      const effectiveProfile = taskAccessState.effectiveProfile;
+      if (!effectiveProfile) return false;
 
       const model = payload.payload.model.trim();
       const baseUrl = payload.payload.base_url;
@@ -1501,22 +1518,24 @@ export function PromptsPage() {
 
   const testConnection = useCallback(async (): Promise<boolean> => {
     if (!projectId) return false;
-    if (!selectedProfileId) {
-      toast.toastError("请先选择或新建一个后端配置");
-      return false;
-    }
     const payload = buildPresetPayload(llmForm);
     if (!payload.ok) {
       toast.toastError(payload.message);
       return false;
     }
 
-    const model = payload.payload.model.trim();
-    const baseUrl = payload.payload.base_url;
-    if (!selectedProfile?.has_api_key) {
-      toast.toastError("请先保存 API Key");
+    const connectionState = deriveLlmModuleAccessState({
+      scope: "main",
+      moduleProvider: payload.payload.provider,
+      selectedProfile,
+    });
+    if (connectionState.actionReason) {
+      toast.toastError(connectionState.actionReason);
       return false;
     }
+
+    const model = payload.payload.model.trim();
+    const baseUrl = payload.payload.base_url;
 
     setTesting(true);
     try {
@@ -1556,7 +1575,7 @@ export function PromptsPage() {
     } finally {
       setTesting(false);
     }
-  }, [bumpWizardLocal, llmForm, projectId, selectedProfile?.has_api_key, selectedProfileId, toast]);
+  }, [bumpWizardLocal, llmForm, projectId, selectedProfile, toast]);
 
   const nextAfterLlm = useMemo(() => {
     const idx = wizard.progress.steps.findIndex((s) => s.key === "llm");
@@ -1656,7 +1675,6 @@ export function PromptsPage() {
         testing={testing}
         capabilities={capabilities}
         onTestConnection={() => void testConnection()}
-        testConnectionDisabledReason={llmCtaBlockedReason}
         onSave={() => void saveAll()}
         mainModelList={mainModelList}
         onReloadMainModels={reloadMainModels}
