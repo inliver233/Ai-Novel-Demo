@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -697,6 +698,15 @@ def _merge_v2_payload_into_output(*, base_output: dict[str, Any], v2_payload: di
     return out
 
 
+def _is_fractal_memory_project_race(exc: IntegrityError) -> bool:
+    text = str(exc).lower()
+    if "fractal_memory" not in text:
+        return False
+    return ("unique constraint" in text or "duplicate key value violates unique constraint" in text) and (
+        "project_id" in text or "uq_fractal_memory_project_id" in text
+    )
+
+
 def _persist_v2_and_return_context(
     *,
     db: Session,
@@ -1008,12 +1018,8 @@ def rebuild_fractal_memory(*, db: Session, project_id: str, reason: str) -> dict
     if done_truncated:
         dropped_items.append({"reason": "done_chapters_budget", "count": max(1, done_total - len(done_chapters))})
     budget_obs = _fractal_budget_observability(config=cfg, dropped=dropped_items, done_limit=done_limit)
-    row = db.execute(select(FractalMemory).where(FractalMemory.project_id == project_id)).scalars().first()
-    if row is None:
-        row = FractalMemory(id=new_id(), project_id=project_id)
-        db.add(row)
 
-    row.config_json = _compact_json_dumps(
+    config_json = _compact_json_dumps(
         {
             "scene_window": cfg.scene_window,
             "arc_window": cfg.arc_window,
@@ -1033,11 +1039,33 @@ def rebuild_fractal_memory(*, db: Session, project_id: str, reason: str) -> dict
             "budget_observability": budget_obs,
         }
     )
-    row.scenes_json = _compact_json_dumps(computed["scenes"])
-    row.arcs_json = _compact_json_dumps(computed["arcs"])
-    row.sagas_json = _compact_json_dumps(computed["sagas"])
+    scenes_json = _compact_json_dumps(computed["scenes"])
+    arcs_json = _compact_json_dumps(computed["arcs"])
+    sagas_json = _compact_json_dumps(computed["sagas"])
 
-    db.commit()
+    def _assign_payload(target: FractalMemory) -> None:
+        target.config_json = config_json
+        target.scenes_json = scenes_json
+        target.arcs_json = arcs_json
+        target.sagas_json = sagas_json
+
+    row = db.execute(select(FractalMemory).where(FractalMemory.project_id == project_id)).scalars().first()
+    if row is None:
+        row = FractalMemory(id=new_id(), project_id=project_id)
+        db.add(row)
+    _assign_payload(row)
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if not _is_fractal_memory_project_race(exc):
+            raise
+        row = db.execute(select(FractalMemory).where(FractalMemory.project_id == project_id)).scalars().first()
+        if row is None:
+            raise
+        _assign_payload(row)
+        db.commit()
     out = get_fractal_context(db=db, project_id=project_id, enabled=True)
 
     log_event(

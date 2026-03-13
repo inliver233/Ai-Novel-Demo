@@ -6,6 +6,7 @@ const DONE_LABEL = humanizeChapterStatus("done");
 export const WRITING_PAGE_COPY = {
   loading: "加载中...",
   emptyState: "请选择或新建章节开始写作。",
+  dirtyBadge: "（未保存）",
   updatedAtPrefix: "updated_at:",
   hotkeyHint: "快捷键：Ctrl/Cmd + S 保存",
   titleLabel: "标题",
@@ -102,8 +103,8 @@ export const WRITING_PAGE_COPY = {
   },
 } as const;
 
-export function getWritingChapterHeading(chapterNumber: number, dirty: boolean): string {
-  return `第 ${chapterNumber} 章${dirty ? " （未保存）" : ""}`;
+export function getWritingChapterHeading(chapterNumber: number): string {
+  return `第 ${chapterNumber} 章`;
 }
 
 export function getWritingReadonlyCallout(): string {

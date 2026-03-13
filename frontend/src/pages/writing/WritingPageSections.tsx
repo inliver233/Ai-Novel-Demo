@@ -80,7 +80,8 @@ export function WritingEditorSection(props: WritingEditorSectionProps) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-content text-2xl text-ink">
-            {getWritingChapterHeading(props.activeChapter.number, props.dirty)}
+            {getWritingChapterHeading(props.activeChapter.number)}{" "}
+            <span className="text-subtext">{props.dirty ? WRITING_PAGE_COPY.dirtyBadge : ""}</span>
           </div>
           <div className="mt-1 text-xs text-subtext">
             {WRITING_PAGE_COPY.updatedAtPrefix} {props.activeChapter.updated_at}

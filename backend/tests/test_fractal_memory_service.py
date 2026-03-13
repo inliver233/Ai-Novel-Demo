@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -262,3 +266,87 @@ class TestFractalMemoryStorageLoop(unittest.TestCase):
         self.assertEqual(prompt_block_v2.get("identifier"), "sys.memory.fractal_v2")
         self.assertEqual(prompt_block_v2.get("role"), "system")
         self.assertEqual(prompt_block_v2.get("text_md"), "")
+
+
+class TestFractalMemoryRaceRecovery(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        db_path = Path(self._tmpdir.name) / "fractal-race.db"
+        engine = create_engine(
+            f"sqlite:///{db_path.as_posix()}",
+            connect_args={"check_same_thread": False},
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(
+            engine,
+            tables=[
+                User.__table__,
+                Project.__table__,
+                Outline.__table__,
+                Chapter.__table__,
+                FractalMemory.__table__,
+                StoryMemory.__table__,
+            ],
+        )
+        self.SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+    def _seed_project(self, *, db, chapter_count: int) -> None:
+        db.add(User(id="u1", display_name="User 1", is_admin=False))
+        db.add(Project(id="p1", owner_user_id="u1", name="Project 1", genre=None, logline=None))
+        db.add(Outline(id="o1", project_id="p1", title="Outline 1", content_md=None, structure_json=None))
+        db.bulk_save_objects(
+            [
+                Chapter(
+                    id=f"c{i}",
+                    project_id="p1",
+                    outline_id="o1",
+                    number=i,
+                    title=f"第{i}章",
+                    plan=None,
+                    content_md=f"scene {i}",
+                    summary=None,
+                    status="done",
+                )
+                for i in range(1, chapter_count + 1)
+            ]
+        )
+        db.commit()
+
+    def test_rebuild_recovers_when_row_is_created_concurrently(self) -> None:
+        with self.SessionLocal() as db:
+            self._seed_project(db=db, chapter_count=2)
+            real_commit = db.commit
+            injected = {"done": False}
+
+            def flaky_commit() -> None:
+                if not injected["done"]:
+                    injected["done"] = True
+                    with self.SessionLocal() as other:
+                        other.add(
+                            FractalMemory(
+                                id="fm-race",
+                                project_id="p1",
+                                config_json="{}",
+                                scenes_json="[]",
+                                arcs_json="[]",
+                                sagas_json="[]",
+                            )
+                        )
+                        other.commit()
+                    raise IntegrityError(
+                        "INSERT INTO fractal_memory",
+                        {},
+                        Exception("UNIQUE constraint failed: fractal_memory.project_id"),
+                    )
+                real_commit()
+
+            with patch.object(db, "commit", side_effect=flaky_commit):
+                out = rebuild_fractal_memory(db=db, project_id="p1", reason="test_race_recovery")
+
+        self.assertTrue(bool(out.get("enabled")))
+        cfg = out.get("config") or {}
+        self.assertEqual(cfg.get("reason"), "test_race_recovery")
+        with self.SessionLocal() as verify_db:
+            rows = verify_db.query(FractalMemory).filter(FractalMemory.project_id == "p1").all()
+            self.assertEqual(len(rows), 1)
