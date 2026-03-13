@@ -467,7 +467,7 @@ export function WorldBookEntriesSection(props: WorldBookEntriesSectionProps) {
                         <div
                           className={
                             selected
-                              ? "flex h-5 w-5 items-center justify-center rounded-atelier border border-accent bg-accent text-xs text-white"
+                              ? "flex h-5 w-5 items-center justify-center rounded-atelier border border-accent bg-accent text-[rgb(var(--color-on-accent))] text-xs"
                               : "h-5 w-5 rounded-atelier border border-border bg-canvas"
                           }
                         >

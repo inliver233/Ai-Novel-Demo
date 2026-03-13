@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatRuntimeBatchFlags,
+  formatRuntimeBatchItemSummary,
+  formatRuntimeBatchProgress,
+  formatRuntimeCheckpointSummary,
+  formatRuntimeTimelineMeta,
+  formatRuntimeTimelineStep,
+  formatTaskCenterErrorText,
   getProjectTaskLiveStatusLabel,
   getTaskCenterDetailHeading,
   getTaskCenterDetailTitle,
@@ -63,5 +70,25 @@ describe("taskCenterModels", () => {
     expect(getProjectTaskLiveStatusLabel("connecting")).toBe("reconnecting");
     expect(getProjectTaskLiveStatusLabel("error")).toBe("fallback polling");
     expect(getProjectTaskLiveStatusLabel("idle")).toBe("idle");
+  });
+
+  it("formats shared error and runtime copy consistently", () => {
+    expect(formatTaskCenterErrorText(undefined, null)).toBe("ERROR: 未知错误");
+    expect(
+      formatRuntimeCheckpointSummary({ status: "paused", completed_count: 1, failed_count: 2, skipped_count: 3 }),
+    ).toBe("last_checkpoint: paused | completed 1 | failed 2 | skipped 3");
+    expect(formatRuntimeBatchProgress({ completed_count: 4, total_count: 5, failed_count: 1, skipped_count: 0 })).toBe(
+      "completed 4/5 | failed 1 | skipped 0",
+    );
+    expect(formatRuntimeBatchFlags({ pause_requested: true, cancel_requested: false })).toBe(
+      "pause_requested: true | cancel_requested: false",
+    );
+    expect(formatRuntimeBatchItemSummary({ status: "failed", attempt_count: 2, last_request_id: "rid-1" })).toBe(
+      "failed | attempt 2 | request_id rid-1",
+    );
+    expect(formatRuntimeTimelineMeta({ reason: "chapter_failed", source: "worker" })).toBe(
+      "reason: chapter_failed | source: worker",
+    );
+    expect(formatRuntimeTimelineStep({ chapter_number: 3, status: "running" })).toBe("chapter 3 | status running");
   });
 });

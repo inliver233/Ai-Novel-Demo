@@ -326,7 +326,7 @@ export function useTaskCenterPageState(): TaskCenterPageState {
           `created_at=${item.created_at || "-"}`,
           `updated_at=${item.updated_at || "-"}`,
         ].join("\n"),
-        { title: "Copy debug info manually" },
+        { title: TASK_CENTER_COPY.copyDebugInfoTitle },
       );
       return;
     }
@@ -345,7 +345,7 @@ export function useTaskCenterPageState(): TaskCenterPageState {
           `error_message=${item.error_message || "-"}`,
           `error=${safeJsonStringify(item.error ?? null)}`,
         ].join("\n"),
-        { title: "Copy debug info manually" },
+        { title: TASK_CENTER_COPY.copyDebugInfoTitle },
       );
       return;
     }
@@ -362,13 +362,13 @@ export function useTaskCenterPageState(): TaskCenterPageState {
         `error_message=${item.error_message || "-"}`,
         `error=${safeJsonStringify(item.error ?? null)}`,
       ].join("\n"),
-      { title: "Copy debug info manually" },
+      { title: TASK_CENTER_COPY.copyDebugInfoTitle },
     );
   }, [selected]);
 
   const copyRawJson = useCallback(async () => {
     if (!selected) return;
-    await copyText(safeJsonStringify(selected.item), { title: "Copy debug info manually" });
+    await copyText(safeJsonStringify(selected.item), { title: TASK_CENTER_COPY.copyDebugInfoTitle });
   }, [selected]);
 
   const selectProjectTask = useCallback(
@@ -390,7 +390,7 @@ export function useTaskCenterPageState(): TaskCenterPageState {
           method: "POST",
           body: JSON.stringify({}),
         });
-        toast.toastSuccess("已重试任务", response.request_id);
+        toast.toastSuccess(TASK_CENTER_COPY.projectTasksRetryToast, response.request_id);
         await refreshProjectTasks();
         setSelected((prev) =>
           prev?.kind === "project_task" && prev.item.id === targetId
@@ -418,7 +418,7 @@ export function useTaskCenterPageState(): TaskCenterPageState {
           method: "POST",
           body: JSON.stringify({}),
         });
-        toast.toastSuccess("已取消任务", response.request_id);
+        toast.toastSuccess(TASK_CENTER_COPY.projectTasksCancelToast, response.request_id);
         await refreshProjectTasks();
         setSelected((prev) =>
           prev?.kind === "project_task" && prev.item.id === targetId
@@ -446,20 +446,20 @@ export function useTaskCenterPageState(): TaskCenterPageState {
       try {
         if (action === "pause") {
           await pauseBatchGenerationTask(batchTaskId);
-          toast.toastSuccess("Batch paused.");
+          toast.toastSuccess(TASK_CENTER_COPY.runtimeBatchPausedToast);
         } else if (action === "resume") {
           await resumeBatchGenerationTask(batchTaskId);
-          toast.toastSuccess("Batch resumed.");
+          toast.toastSuccess(TASK_CENTER_COPY.runtimeBatchResumedToast);
         } else if (action === "retry_failed") {
           await retryFailedBatchGenerationTask(batchTaskId);
-          toast.toastSuccess("Failed chapters queued for retry.");
+          toast.toastSuccess(TASK_CENTER_COPY.runtimeBatchRetryFailedToast);
         } else if (action === "skip_failed") {
           await skipFailedBatchGenerationTask(batchTaskId);
-          toast.toastSuccess("Failed chapters skipped.");
+          toast.toastSuccess(TASK_CENTER_COPY.runtimeBatchSkipFailedToast);
         } else {
           if (!window.confirm(TASK_CENTER_COPY.cancelBatchConfirm)) return;
           await cancelBatchGenerationTask(batchTaskId);
-          toast.toastSuccess("Batch canceled.");
+          toast.toastSuccess(TASK_CENTER_COPY.runtimeBatchCanceledToast);
         }
         await refreshProjectTasks();
         await Promise.all([
@@ -499,7 +499,7 @@ export function useTaskCenterPageState(): TaskCenterPageState {
             body: JSON.stringify({}),
           },
         );
-        toast.toastSuccess("已应用 ChangeSet", response.request_id);
+        toast.toastSuccess(TASK_CENTER_COPY.detailApplyChangeSetToast, response.request_id);
         await refreshChangeSets();
       } catch (error) {
         const err =
@@ -527,7 +527,7 @@ export function useTaskCenterPageState(): TaskCenterPageState {
             body: JSON.stringify({}),
           },
         );
-        toast.toastSuccess("已回滚 ChangeSet", response.request_id);
+        toast.toastSuccess(TASK_CENTER_COPY.detailRollbackChangeSetToast, response.request_id);
         await refreshChangeSets();
       } catch (error) {
         const err =

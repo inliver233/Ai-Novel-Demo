@@ -10,12 +10,13 @@ import { extractHowToFix, safeJsonStringify } from "./helpers";
 import { ProjectTaskRuntimePanel } from "./ProjectTaskRuntimePanel";
 import { StatusBadge } from "./StatusBadge";
 import { TASK_CENTER_COPY } from "./taskCenterCopy";
-import type {
-  HealthData,
-  MemoryChangeSetSummary,
-  MemoryTaskSummary,
-  ProjectTaskSummary,
-  TaskCenterSelectedItem,
+import {
+  formatTaskCenterErrorText,
+  type HealthData,
+  type MemoryChangeSetSummary,
+  type MemoryTaskSummary,
+  type ProjectTaskSummary,
+  type TaskCenterSelectedItem,
 } from "./taskCenterModels";
 
 function RequestIdRow(props: {
@@ -54,22 +55,25 @@ export function TaskCenterHealthBanner(props: TaskCenterHealthBannerProps) {
       aria-label={TASK_CENTER_COPY.queueStatusAria}
     >
       <div>
-        配置后端（queue_backend）：<span className="font-mono text-ink">{props.health.data.queue_backend}</span>
+        {TASK_CENTER_COPY.queueBackendLabel}：
+        <span className="font-mono text-ink">{props.health.data.queue_backend}</span>
         {props.health.data.effective_backend ? (
           <>
             {" "}
-            | 实际后端（effective_backend）：{" "}
+            | {TASK_CENTER_COPY.effectiveBackendLabel}：{" "}
             <span className="font-mono text-ink">{props.health.data.effective_backend}</span>
           </>
         ) : null}
         {props.health.data.queue_backend === "rq" ? (
           <>
             {" "}
-            | redis_ok：<span className="font-mono text-ink">{String(props.health.data.redis_ok ?? "-")}</span>
+            | {TASK_CENTER_COPY.redisOkLabel}：
+            <span className="font-mono text-ink">{String(props.health.data.redis_ok ?? "-")}</span>
             {props.health.data.rq_queue_name ? (
               <>
                 {" "}
-                | queue：<span className="font-mono text-ink">{props.health.data.rq_queue_name}</span>
+                | {TASK_CENTER_COPY.queueNameLabel}：
+                <span className="font-mono text-ink">{props.health.data.rq_queue_name}</span>
               </>
             ) : null}
           </>
@@ -171,7 +175,7 @@ export function TaskCenterChangeSetsSection(props: TaskCenterChangeSetsSectionPr
             value={props.status}
             onChange={(event) => props.onStatusChange(event.target.value)}
           >
-            <option value="all">全部</option>
+            <option value="all">{TASK_CENTER_COPY.allOption}</option>
             <option value="proposed">{humanizeChangeSetStatus("proposed")}</option>
             <option value="applied">{humanizeChangeSetStatus("applied")}</option>
             <option value="rolled_back">{humanizeChangeSetStatus("rolled_back")}</option>
@@ -180,7 +184,7 @@ export function TaskCenterChangeSetsSection(props: TaskCenterChangeSetsSectionPr
         </label>
       </div>
 
-      {props.loading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
+      {props.loading ? <div className="mt-3 text-sm text-subtext">{TASK_CENTER_COPY.loading}</div> : null}
       {!props.loading && props.items.length === 0 ? (
         <div className="mt-3 text-sm text-subtext">{TASK_CENTER_COPY.changeSetsEmpty}</div>
       ) : null}
@@ -247,11 +251,21 @@ export function TaskCenterTasksSection(props: TaskCenterTasksSectionProps) {
           </div>
           <div className="mt-1 text-[11px] text-subtext">{TASK_CENTER_COPY.tasksStatusHint}</div>
           <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-subtext">
-            <span>总计 {props.summary.all}</span>
-            <span>排队中 {props.summary.queued}</span>
-            <span>运行中 {props.summary.running}</span>
-            <span>完成 {props.summary.done}</span>
-            <span>失败 {props.summary.failed}</span>
+            <span>
+              {TASK_CENTER_COPY.countLabels.all} {props.summary.all}
+            </span>
+            <span>
+              {TASK_CENTER_COPY.countLabels.queued} {props.summary.queued}
+            </span>
+            <span>
+              {TASK_CENTER_COPY.countLabels.running} {props.summary.running}
+            </span>
+            <span>
+              {TASK_CENTER_COPY.countLabels.done} {props.summary.done}
+            </span>
+            <span>
+              {TASK_CENTER_COPY.countLabels.failed} {props.summary.failed}
+            </span>
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -271,7 +285,7 @@ export function TaskCenterTasksSection(props: TaskCenterTasksSectionProps) {
               value={props.status}
               onChange={(event) => props.onStatusChange(event.target.value)}
             >
-              <option value="all">全部</option>
+              <option value="all">{TASK_CENTER_COPY.allOption}</option>
               <option value="queued">{humanizeTaskStatus("queued")}</option>
               <option value="running">{humanizeTaskStatus("running")}</option>
               <option value="done">{humanizeTaskStatus("done")}</option>
@@ -281,7 +295,7 @@ export function TaskCenterTasksSection(props: TaskCenterTasksSectionProps) {
         </div>
       </div>
 
-      {props.loading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
+      {props.loading ? <div className="mt-3 text-sm text-subtext">{TASK_CENTER_COPY.loading}</div> : null}
       {!props.loading && props.items.length === 0 ? (
         <div className="mt-3 text-sm text-subtext">{TASK_CENTER_COPY.tasksEmpty}</div>
       ) : null}
@@ -309,7 +323,7 @@ export function TaskCenterTasksSection(props: TaskCenterTasksSectionProps) {
                 ) : null}
                 {item.status === "failed" ? (
                   <div className="mt-1 truncate text-xs text-danger">
-                    {item.error_type || "ERROR"}: {item.error_message || "未知错误"}
+                    {formatTaskCenterErrorText(item.error_type, item.error_message)}
                   </div>
                 ) : null}
               </div>
@@ -348,11 +362,21 @@ export function TaskCenterProjectTasksSection(props: TaskCenterProjectTasksSecti
             {props.liveStatusLabel}
           </div>
           <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-subtext">
-            <span>总计 {props.summary.all}</span>
-            <span>排队中 {props.summary.queued}</span>
-            <span>运行中 {props.summary.running}</span>
-            <span>完成 {props.summary.done}</span>
-            <span>失败 {props.summary.failed}</span>
+            <span>
+              {TASK_CENTER_COPY.countLabels.all} {props.summary.all}
+            </span>
+            <span>
+              {TASK_CENTER_COPY.countLabels.queued} {props.summary.queued}
+            </span>
+            <span>
+              {TASK_CENTER_COPY.countLabels.running} {props.summary.running}
+            </span>
+            <span>
+              {TASK_CENTER_COPY.countLabels.done} {props.summary.done}
+            </span>
+            <span>
+              {TASK_CENTER_COPY.countLabels.failed} {props.summary.failed}
+            </span>
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -372,7 +396,7 @@ export function TaskCenterProjectTasksSection(props: TaskCenterProjectTasksSecti
               value={props.status}
               onChange={(event) => props.onStatusChange(event.target.value)}
             >
-              <option value="all">全部</option>
+              <option value="all">{TASK_CENTER_COPY.allOption}</option>
               <option value="queued">{humanizeTaskStatus("queued")}</option>
               <option value="running">{humanizeTaskStatus("running")}</option>
               <option value="done">{humanizeTaskStatus("done")}</option>
@@ -382,7 +406,7 @@ export function TaskCenterProjectTasksSection(props: TaskCenterProjectTasksSecti
         </div>
       </div>
 
-      {props.loading ? <div className="mt-3 text-sm text-subtext">加载中...</div> : null}
+      {props.loading ? <div className="mt-3 text-sm text-subtext">{TASK_CENTER_COPY.loading}</div> : null}
       {!props.loading && props.items.length === 0 ? (
         <div className="mt-3 text-sm text-subtext">{TASK_CENTER_COPY.projectTasksEmpty}</div>
       ) : null}
@@ -408,7 +432,7 @@ export function TaskCenterProjectTasksSection(props: TaskCenterProjectTasksSecti
                 ) : null}
                 {item.status === "failed" ? (
                   <div className="mt-1 truncate text-xs text-danger">
-                    {item.error_type || "ERROR"}: {item.error_message || "未知错误"}
+                    {formatTaskCenterErrorText(item.error_type, item.error_message)}
                   </div>
                 ) : null}
               </div>
@@ -604,7 +628,7 @@ export function TaskCenterDetailDrawer(props: TaskCenterDetailDrawerProps) {
             {props.selected.item.status === "failed" ? (
               <div className="mt-2 grid gap-2 text-xs text-subtext">
                 <div className="text-danger">
-                  {props.selected.item.error_type || "ERROR"}: {props.selected.item.error_message || "未知错误"}
+                  {formatTaskCenterErrorText(props.selected.item.error_type, props.selected.item.error_message)}
                 </div>
                 {extractHowToFix(props.selected.item.error).length > 0 ? (
                   <ul className="list-disc pl-5 text-[11px] text-subtext">
@@ -678,7 +702,7 @@ export function TaskCenterDetailDrawer(props: TaskCenterDetailDrawerProps) {
                 onClick={props.onRefreshProjectTaskDetail}
                 type="button"
               >
-                刷新详情
+                {TASK_CENTER_COPY.detailRefreshProjectTask}
               </button>
               {props.selected.item.status === "failed" && !props.selectedProjectTaskRuntime?.batch ? (
                 <button
@@ -701,7 +725,9 @@ export function TaskCenterDetailDrawer(props: TaskCenterDetailDrawerProps) {
                 </button>
               ) : null}
             </div>
-            {props.projectTaskDetailLoading ? <div className="mt-2 text-xs text-subtext">加载中...</div> : null}
+            {props.projectTaskDetailLoading ? (
+              <div className="mt-2 text-xs text-subtext">{TASK_CENTER_COPY.loading}</div>
+            ) : null}
           </section>
 
           <ProjectTaskRuntimePanel
@@ -752,7 +778,7 @@ export function TaskCenterDetailDrawer(props: TaskCenterDetailDrawerProps) {
             {props.selected.item.status === "failed" ? (
               <div className="mt-2 grid gap-2 text-xs text-subtext">
                 <div className="text-danger">
-                  {props.selected.item.error_type || "ERROR"}: {props.selected.item.error_message || "未知错误"}
+                  {formatTaskCenterErrorText(props.selected.item.error_type, props.selected.item.error_message)}
                 </div>
                 {extractHowToFix(props.selected.item.error).length > 0 ? (
                   <ul className="list-disc pl-5 text-[11px] text-subtext">
@@ -787,7 +813,9 @@ export function TaskCenterDetailDrawer(props: TaskCenterDetailDrawerProps) {
                       aria-label="应用变更集 (taskcenter_changeset_apply)"
                       type="button"
                     >
-                      {props.changeSetActionLoading ? "处理中..." : TASK_CENTER_COPY.applyChangeSetButton}
+                      {props.changeSetActionLoading
+                        ? TASK_CENTER_COPY.processing
+                        : TASK_CENTER_COPY.applyChangeSetButton}
                     </button>
                     <button
                       className="btn btn-secondary btn-sm"
@@ -796,7 +824,9 @@ export function TaskCenterDetailDrawer(props: TaskCenterDetailDrawerProps) {
                       aria-label="回滚变更集 (taskcenter_changeset_rollback)"
                       type="button"
                     >
-                      {props.changeSetActionLoading ? "处理中..." : TASK_CENTER_COPY.rollbackChangeSetButton}
+                      {props.changeSetActionLoading
+                        ? TASK_CENTER_COPY.processing
+                        : TASK_CENTER_COPY.rollbackChangeSetButton}
                     </button>
                   </div>
                   <div className="text-[11px] text-subtext">{TASK_CENTER_COPY.detailApplyRollbackHint}</div>

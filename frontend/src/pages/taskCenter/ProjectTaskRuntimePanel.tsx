@@ -1,13 +1,15 @@
 import { getLatestRuntimeCheckpoint, type ProjectTaskRuntime } from "../../services/projectTaskRuntime";
 import { StatusBadge } from "./StatusBadge";
-
-function readNumber(value: unknown, fallback = 0): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function readString(value: unknown, fallback = "-"): string {
-  return typeof value === "string" && value.trim() ? value.trim() : fallback;
-}
+import { TASK_CENTER_COPY } from "./taskCenterCopy";
+import {
+  formatRuntimeBatchFlags,
+  formatRuntimeBatchItemSummary,
+  formatRuntimeBatchProgress,
+  formatRuntimeCheckpointSummary,
+  formatRuntimeTimelineMeta,
+  formatRuntimeTimelineStep,
+  formatTaskCenterErrorText,
+} from "./taskCenterModels";
 
 export function ProjectTaskRuntimePanel(props: {
   runtime: ProjectTaskRuntime | null;
@@ -39,19 +41,19 @@ export function ProjectTaskRuntimePanel(props: {
         aria-label="projecttask_runtime_overview"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-sm text-ink">Runtime</div>
+          <div className="text-sm text-ink">{TASK_CENTER_COPY.runtimeTitle}</div>
           <button
             className="btn btn-secondary btn-sm"
             aria-label="Refresh runtime detail (taskcenter_projecttask_runtime_refresh)"
             onClick={props.onRefresh}
             type="button"
           >
-            Refresh runtime
+            {TASK_CENTER_COPY.runtimeRefreshButton}
           </button>
         </div>
-        {props.loading ? <div className="mt-2 text-xs text-subtext">Loading...</div> : null}
+        {props.loading ? <div className="mt-2 text-xs text-subtext">{TASK_CENTER_COPY.loading}</div> : null}
         {!props.loading && !props.runtime ? (
-          <div className="mt-2 text-xs text-subtext">No unified runtime data yet.</div>
+          <div className="mt-2 text-xs text-subtext">{TASK_CENTER_COPY.runtimeEmpty}</div>
         ) : null}
         {props.runtime ? (
           <div className="mt-2 grid gap-1 text-xs text-subtext">
@@ -59,33 +61,21 @@ export function ProjectTaskRuntimePanel(props: {
             <div>checkpoints: {props.runtime.checkpoints.length}</div>
             <div>steps: {props.runtime.steps.length}</div>
             <div>artifacts: {props.runtime.artifacts.length}</div>
-            {latestCheckpoint ? (
-              <div>
-                last_checkpoint: {readString(latestCheckpoint.status)} ? completed{" "}
-                {readNumber(latestCheckpoint.completed_count)} ? failed {readNumber(latestCheckpoint.failed_count)} ?
-                skipped {readNumber(latestCheckpoint.skipped_count)}
-              </div>
-            ) : null}
+            {latestCheckpoint ? <div>{formatRuntimeCheckpointSummary(latestCheckpoint)}</div> : null}
           </div>
         ) : null}
       </section>
 
       {batch ? (
         <section className="rounded-atelier border border-border bg-surface p-3" aria-label="projecttask_runtime_batch">
-          <div className="text-sm text-ink">Batch</div>
+          <div className="text-sm text-ink">{TASK_CENTER_COPY.runtimeBatchTitle}</div>
           <div className="mt-2 grid gap-1 text-xs text-subtext">
             <div className="flex flex-wrap items-center gap-2">
               <span>Status:</span>
               <StatusBadge status={batch.task.status} kind="task" />
             </div>
-            <div>
-              completed {batch.task.completed_count}/{batch.task.total_count} ? failed {batch.task.failed_count} ?
-              skipped {batch.task.skipped_count}
-            </div>
-            <div>
-              pause_requested: {String(batch.task.pause_requested)} ? cancel_requested:{" "}
-              {String(batch.task.cancel_requested)}
-            </div>
+            <div>{formatRuntimeBatchProgress(batch.task)}</div>
+            <div>{formatRuntimeBatchFlags(batch.task)}</div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {canPause ? (
@@ -96,7 +86,7 @@ export function ProjectTaskRuntimePanel(props: {
                 onClick={props.onPauseBatch}
                 type="button"
               >
-                {props.actionLoading ? "Working..." : "Pause"}
+                {props.actionLoading ? TASK_CENTER_COPY.runtimeBatchWorking : TASK_CENTER_COPY.runtimeBatchPause}
               </button>
             ) : null}
             {canResume ? (
@@ -107,7 +97,7 @@ export function ProjectTaskRuntimePanel(props: {
                 onClick={props.onResumeBatch}
                 type="button"
               >
-                {props.actionLoading ? "Working..." : "Resume"}
+                {props.actionLoading ? TASK_CENTER_COPY.runtimeBatchWorking : TASK_CENTER_COPY.runtimeBatchResume}
               </button>
             ) : null}
             {canRetryFailed ? (
@@ -118,7 +108,7 @@ export function ProjectTaskRuntimePanel(props: {
                 onClick={props.onRetryFailedBatch}
                 type="button"
               >
-                {props.actionLoading ? "Working..." : "Retry failed chapters"}
+                {props.actionLoading ? TASK_CENTER_COPY.runtimeBatchWorking : TASK_CENTER_COPY.runtimeBatchRetryFailed}
               </button>
             ) : null}
             {canSkipFailed ? (
@@ -129,7 +119,7 @@ export function ProjectTaskRuntimePanel(props: {
                 onClick={props.onSkipFailedBatch}
                 type="button"
               >
-                {props.actionLoading ? "Working..." : "Skip failed chapters"}
+                {props.actionLoading ? TASK_CENTER_COPY.runtimeBatchWorking : TASK_CENTER_COPY.runtimeBatchSkipFailed}
               </button>
             ) : null}
             {canCancel ? (
@@ -140,7 +130,7 @@ export function ProjectTaskRuntimePanel(props: {
                 onClick={props.onCancelBatch}
                 type="button"
               >
-                {props.actionLoading ? "Working..." : "Cancel batch"}
+                {props.actionLoading ? TASK_CENTER_COPY.runtimeBatchWorking : TASK_CENTER_COPY.runtimeBatchCancel}
               </button>
             ) : null}
           </div>
@@ -149,17 +139,16 @@ export function ProjectTaskRuntimePanel(props: {
             aria-label="projecttask_runtime_batch_items"
           >
             {batchItems.length === 0 ? (
-              <div className="p-3 text-xs text-subtext">No batch steps yet.</div>
+              <div className="p-3 text-xs text-subtext">{TASK_CENTER_COPY.runtimeNoBatchItems}</div>
             ) : (
               <div className="divide-y divide-border">
                 {batchItems.map((item) => (
                   <div key={item.id} className="grid gap-1 px-3 py-2 text-xs text-subtext">
                     <div className="text-ink">Chapter {item.chapter_number}</div>
-                    <div>
-                      {item.status} ? attempt {item.attempt_count}
-                      {item.last_request_id ? ` ? request_id ${item.last_request_id}` : ""}
-                    </div>
-                    {item.error_message ? <div className="text-danger">{item.error_message}</div> : null}
+                    <div>{formatRuntimeBatchItemSummary(item)}</div>
+                    {item.error_message ? (
+                      <div className="text-danger">{formatTaskCenterErrorText(null, item.error_message)}</div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -173,7 +162,7 @@ export function ProjectTaskRuntimePanel(props: {
           className="rounded-atelier border border-border bg-surface p-3"
           aria-label="projecttask_runtime_artifacts"
         >
-          <div className="text-sm text-ink">Artifacts</div>
+          <div className="text-sm text-ink">{TASK_CENTER_COPY.runtimeArtifactsTitle}</div>
           <div className="mt-2 grid gap-2 text-xs text-subtext">
             {props.runtime.artifacts.map((artifact) => (
               <div key={`${artifact.kind}-${artifact.id}`} className="flex flex-wrap items-center gap-2">
@@ -187,7 +176,7 @@ export function ProjectTaskRuntimePanel(props: {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Open generation run
+                    {TASK_CENTER_COPY.runtimeOpenGenerationRun}
                   </a>
                 ) : null}
               </div>
@@ -201,9 +190,9 @@ export function ProjectTaskRuntimePanel(props: {
           className="rounded-atelier border border-border bg-surface p-3"
           aria-label="projecttask_runtime_timeline"
         >
-          <div className="text-sm text-ink">Timeline</div>
+          <div className="text-sm text-ink">{TASK_CENTER_COPY.runtimeTimelineTitle}</div>
           {props.runtime.timeline.length === 0 ? (
-            <div className="mt-2 text-xs text-subtext">No timeline events yet.</div>
+            <div className="mt-2 text-xs text-subtext">{TASK_CENTER_COPY.runtimeNoTimeline}</div>
           ) : (
             <div className="mt-3 max-h-72 space-y-2 overflow-auto">
               {props.runtime.timeline.map((entry) => (
@@ -213,19 +202,13 @@ export function ProjectTaskRuntimePanel(props: {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2 text-ink">
                     <span>
-                      #{entry.seq} ? {entry.event_type}
+                      #{entry.seq} | {entry.event_type}
                     </span>
                     <span>{entry.created_at || "-"}</span>
                   </div>
-                  <div className="mt-1">
-                    {entry.reason ? `reason: ${entry.reason}` : "reason: -"}
-                    {entry.source ? ` ? source: ${entry.source}` : ""}
-                  </div>
-                  {entry.step && typeof entry.step === "object" ? (
-                    <div className="mt-1">
-                      chapter {readNumber((entry.step as Record<string, unknown>).chapter_number)} ? status{" "}
-                      {readString((entry.step as Record<string, unknown>).status)}
-                    </div>
+                  <div className="mt-1">{formatRuntimeTimelineMeta(entry)}</div>
+                  {formatRuntimeTimelineStep(entry.step) ? (
+                    <div className="mt-1">{formatRuntimeTimelineStep(entry.step)}</div>
                   ) : null}
                 </div>
               ))}

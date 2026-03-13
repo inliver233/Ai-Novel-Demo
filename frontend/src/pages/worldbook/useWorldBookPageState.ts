@@ -37,7 +37,7 @@ import {
   WorldBookPageActionsBar,
   WorldBookPreviewPanel,
 } from "./WorldBookPageSections";
-import { WORLDBOOK_COPY } from "./worldbookCopy";
+import { formatWorldBookActionError, WORLDBOOK_COPY } from "./worldbookCopy";
 import {
   buildWorldBookFilterState,
   downloadJson,
@@ -131,7 +131,7 @@ export function useWorldBookPageState(): WorldBookPageState {
       await autoUpdateTaskQuery.refresh();
     } catch (error) {
       const err = error as ApiError;
-      toast.toastError(`触发失败：${err.message} (${err.code})`, err.requestId);
+      toast.toastError(formatWorldBookActionError(WORLDBOOK_COPY.autoUpdateTriggerFailed, err), err.requestId);
     } finally {
       setAutoUpdateActionLoading(false);
     }
@@ -146,7 +146,7 @@ export function useWorldBookPageState(): WorldBookPageState {
       await autoUpdateTaskQuery.refresh();
     } catch (error) {
       const err = error as ApiError;
-      toast.toastError(`重试失败：${err.message} (${err.code})`, err.requestId);
+      toast.toastError(formatWorldBookActionError(WORLDBOOK_COPY.autoUpdateRetryFailed, err), err.requestId);
     } finally {
       setAutoUpdateActionLoading(false);
     }
@@ -178,7 +178,7 @@ export function useWorldBookPageState(): WorldBookPageState {
       toast.toastSuccess(WORLDBOOK_COPY.exportSuccess);
     } catch (error) {
       const err = error as ApiError;
-      toast.toastError(`导出失败：${err.message} (${err.code})`, err.requestId);
+      toast.toastError(formatWorldBookActionError(WORLDBOOK_COPY.exportFailed, err), err.requestId);
     } finally {
       setExporting(false);
     }
@@ -248,7 +248,7 @@ export function useWorldBookPageState(): WorldBookPageState {
         }
       } catch (error) {
         const err = error as ApiError;
-        toast.toastError(`导入失败：${err.message} (${err.code})`, err.requestId);
+        toast.toastError(formatWorldBookActionError(WORLDBOOK_COPY.importFailed, err), err.requestId);
       } finally {
         setImportLoading(false);
       }
@@ -521,7 +521,10 @@ export function useWorldBookPageState(): WorldBookPageState {
         toast.toastSuccess(WORLDBOOK_COPY.bulkUpdatedToast);
       } catch (error) {
         const err = error as ApiError;
-        toast.toastError(`批量更新失败（${selectedIds.length}条）：${err.message} (${err.code})`, err.requestId);
+        toast.toastError(
+          formatWorldBookActionError(WORLDBOOK_COPY.bulkUpdateFailed, err, { count: selectedIds.length }),
+          err.requestId,
+        );
       } finally {
         setBulkLoading(false);
       }
@@ -562,7 +565,10 @@ export function useWorldBookPageState(): WorldBookPageState {
       setBulkExcludedIds([]);
     } catch (error) {
       const err = error as ApiError;
-      toast.toastError(`批量删除失败（${selectedIds.length}条）：${err.message} (${err.code})`, err.requestId);
+      toast.toastError(
+        formatWorldBookActionError(WORLDBOOK_COPY.bulkDeleteFailed, err, { count: selectedIds.length }),
+        err.requestId,
+      );
     } finally {
       setBulkLoading(false);
     }
@@ -601,7 +607,7 @@ export function useWorldBookPageState(): WorldBookPageState {
         toast.toastSuccess(WORLDBOOK_COPY.duplicateSuccess);
       } catch (error) {
         const err = error as ApiError;
-        toast.toastError(`复制失败：${err.message} (${err.code})`, err.requestId);
+        toast.toastError(formatWorldBookActionError(WORLDBOOK_COPY.duplicateFailed, err), err.requestId);
       } finally {
         setBulkLoading(false);
       }

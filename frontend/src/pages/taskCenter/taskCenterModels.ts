@@ -1,3 +1,5 @@
+import { TASK_CENTER_COPY } from "./taskCenterCopy";
+
 export type MemoryChangeSetSummary = {
   id: string;
   chapter_id?: string | null;
@@ -108,8 +110,63 @@ export function getTaskCenterDetailHeading(selected: TaskCenterSelectedItem): st
 }
 
 export function getProjectTaskLiveStatusLabel(status: "idle" | "connecting" | "open" | "error"): string {
-  if (status === "open") return "connected";
-  if (status === "connecting") return "reconnecting";
-  if (status === "error") return "fallback polling";
-  return "idle";
+  return TASK_CENTER_COPY.projectTasksLiveLabels[status];
+}
+
+function readNumber(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function readString(value: unknown, fallback = "-"): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+export function formatTaskCenterErrorText(errorType?: string | null, errorMessage?: string | null) {
+  return `${errorType || TASK_CENTER_COPY.unknownErrorType}: ${errorMessage || TASK_CENTER_COPY.unknownErrorMessage}`;
+}
+
+export function formatRuntimeCheckpointSummary(checkpoint: {
+  status?: unknown;
+  completed_count?: unknown;
+  failed_count?: unknown;
+  skipped_count?: unknown;
+}) {
+  return `last_checkpoint: ${readString(checkpoint.status)} | completed ${readNumber(checkpoint.completed_count)} | failed ${readNumber(checkpoint.failed_count)} | skipped ${readNumber(checkpoint.skipped_count)}`;
+}
+
+export function formatRuntimeBatchProgress(task: {
+  completed_count?: unknown;
+  total_count?: unknown;
+  failed_count?: unknown;
+  skipped_count?: unknown;
+}) {
+  return `completed ${readNumber(task.completed_count)}/${readNumber(task.total_count)} | failed ${readNumber(task.failed_count)} | skipped ${readNumber(task.skipped_count)}`;
+}
+
+export function formatRuntimeBatchFlags(task: { pause_requested?: unknown; cancel_requested?: unknown }) {
+  return `pause_requested: ${String(Boolean(task.pause_requested))} | cancel_requested: ${String(Boolean(task.cancel_requested))}`;
+}
+
+export function formatRuntimeBatchItemSummary(item: {
+  status?: unknown;
+  attempt_count?: unknown;
+  last_request_id?: unknown;
+}) {
+  const requestId =
+    typeof item.last_request_id === "string" && item.last_request_id.trim()
+      ? ` | request_id ${item.last_request_id.trim()}`
+      : "";
+  return `${readString(item.status)} | attempt ${readNumber(item.attempt_count)}${requestId}`;
+}
+
+export function formatRuntimeTimelineMeta(entry: { reason?: unknown; source?: unknown }) {
+  const reason = readString(entry.reason);
+  const source = typeof entry.source === "string" && entry.source.trim() ? ` | source: ${entry.source.trim()}` : "";
+  return `reason: ${reason}${source}`;
+}
+
+export function formatRuntimeTimelineStep(step: unknown) {
+  if (!step || typeof step !== "object") return null;
+  const data = step as Record<string, unknown>;
+  return `chapter ${readNumber(data.chapter_number)} | status ${readString(data.status)}`;
 }

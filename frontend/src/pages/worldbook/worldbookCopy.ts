@@ -1,8 +1,14 @@
+type WorldBookActionError = {
+  message: string;
+  code: string;
+};
+
 export const WORLDBOOK_COPY = {
   exportJson: "导出 JSON",
   exporting: "导出中...",
   importJson: "导入 JSON",
   exportSuccess: "已导出 JSON",
+  exportFailed: "导出失败",
 
   autoUpdateTitle: "世界书自动更新",
   autoUpdateHint: "章节定稿后会后台抽取并合并条目；失败不影响写作，可重试。",
@@ -12,6 +18,8 @@ export const WORLDBOOK_COPY = {
   autoUpdateProcessing: "处理中...",
   autoUpdateTriggeredToast: "已触发世界书自动更新（后台任务）",
   autoUpdateRetryToast: "已提交重试",
+  autoUpdateTriggerFailed: "触发失败",
+  autoUpdateRetryFailed: "重试失败",
   autoUpdateEmpty: "暂无任务记录（章节定稿后会自动创建）。",
   autoUpdateTaskCenter: "任务中心",
   autoUpdateRequestId: "request_id:",
@@ -52,7 +60,10 @@ export const WORLDBOOK_COPY = {
   bulkConfirmText: "确认",
   bulkUpdatedToast: "已批量更新",
   bulkDeletedToast: "已批量删除",
+  bulkUpdateFailed: "批量更新失败",
+  bulkDeleteFailed: "批量删除失败",
   duplicateConfirmText: "复制",
+  duplicateFailed: "复制失败",
   duplicateFailedEmpty: "复制失败：返回为空",
   duplicateSuccess: "已复制并进入编辑",
   duplicateRequiresSingle: "复制并编辑需要选择 1 条条目",
@@ -75,6 +86,7 @@ export const WORLDBOOK_COPY = {
   importLoadedToast: "已加载导入文件",
   importParseFailed: "导入 JSON 解析失败",
   importChooseFile: "请先选择导入 JSON 文件",
+  importFailed: "导入失败",
   importOverwriteConfirmTitle: "确认覆盖导入？",
   importOverwriteConfirmDescription: "overwrite 会先删除当前所有条目，然后导入 JSON。",
   importOverwriteConfirmText: "继续",
@@ -88,3 +100,9 @@ export const WORLDBOOK_COPY = {
   importReportConflicts: "冲突（conflicts）",
   importReportActions: "变更（actions）",
 } as const;
+
+export function formatWorldBookActionError(action: string, error: WorldBookActionError, options?: { count?: number }) {
+  const countPrefix =
+    typeof options?.count === "number" && Number.isFinite(options.count) ? `（${options.count}条）` : "";
+  return `${action}${countPrefix}：${error.message} (${error.code})`;
+}
