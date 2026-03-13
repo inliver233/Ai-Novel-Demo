@@ -21,7 +21,9 @@ function parseIso(value: string | null | undefined): number | null {
 }
 
 function statusRank(status: string | null | undefined): number {
-  const normalized = String(status || "").trim().toLowerCase();
+  const normalized = String(status || "")
+    .trim()
+    .toLowerCase();
   if (normalized === "done") return 4;
   if (normalized === "failed") return 3;
   if (normalized === "running") return 2;
@@ -74,7 +76,9 @@ export function mergeImportDocuments(
 }
 
 export function getImportProposalDisabledReason(status: string | null | undefined): string | null {
-  const normalized = String(status || "").trim().toLowerCase();
+  const normalized = String(status || "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return "请先选择一条导入记录。";
   if (normalized === "done") return null;
   if (normalized === "queued" || normalized === "running") return "导入完成后才能应用提案。";

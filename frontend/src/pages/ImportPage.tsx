@@ -150,9 +150,11 @@ export function ImportPage() {
   }, [detail, statusDoc?.status]);
 
   useEffect(() => {
+    const listGuard = listGuardRef.current;
+    const detailGuard = detailGuardRef.current;
     return () => {
-      listGuardRef.current.invalidate();
-      detailGuardRef.current.invalidate();
+      listGuard.invalidate();
+      detailGuard.invalidate();
     };
   }, []);
 

@@ -89,9 +89,7 @@ type ModuleEditorProps = {
 
 function RemoteStateNotice(props: { state: LlmModuleAccessState; className?: string }) {
   const toneClass =
-    props.state.tone === "success"
-      ? "border-success/30 bg-success/10"
-      : "border-warning/30 bg-warning/10";
+    props.state.tone === "success" ? "border-success/30 bg-success/10" : "border-warning/30 bg-warning/10";
   const titleClass = props.state.tone === "success" ? "text-success" : "text-warning";
   return (
     <div className={`rounded-atelier border p-3 ${toneClass}${props.className ? ` ${props.className}` : ""}`}>
