@@ -7,6 +7,7 @@ import type { GenerationRun } from "../../components/writing/types";
 import { ApiError, apiJson } from "../../services/apiClient";
 import { createChapterMarkerStreamParser } from "../../services/chapterMarkerStreamParser";
 import type { Chapter } from "../../types";
+import { WRITING_PAGE_COPY } from "./writingPageCopy";
 import type { ChapterForm } from "./writingUtils";
 
 export function useApplyGenerationRun(args: {
@@ -43,13 +44,7 @@ export function useApplyGenerationRun(args: {
     void (async () => {
       try {
         if (dirty) {
-          const choice = await confirm.choose({
-            title: "章节有未保存修改，是否应用生成记录？",
-            description: "应用后会覆盖编辑器内容（不会自动保存）。",
-            confirmText: "保存并应用",
-            secondaryText: "直接应用（不保存）",
-            cancelText: "取消",
-          });
+          const choice = await confirm.choose(WRITING_PAGE_COPY.confirms.applyGenerationRun);
           if (choice === "cancel") return;
           if (choice === "confirm") {
             const ok = await saveChapter();
@@ -68,7 +63,7 @@ export function useApplyGenerationRun(args: {
         }
         const raw = typeof run.output_text === "string" ? run.output_text : "";
         if (!raw.trim()) {
-          toast.toastError("生成记录为空，无法应用", res.request_id);
+          toast.toastError(WRITING_PAGE_COPY.applyRunEmpty, res.request_id);
           return;
         }
 
@@ -87,7 +82,7 @@ export function useApplyGenerationRun(args: {
         setForm((prev) =>
           prev ? { ...prev, content_md: nextContent, summary: nextSummary || prev.summary, status: "drafting" } : prev,
         );
-        toast.toastSuccess("已应用生成结果（别忘了保存）", res.request_id);
+        toast.toastSuccess(WRITING_PAGE_COPY.applyRunSuccess, res.request_id);
       } catch (e) {
         const err = e as ApiError;
         toast.toastError(`${err.message} (${err.code})`, err.requestId);

@@ -10,6 +10,7 @@ import { ApiError } from "../../services/apiClient";
 import { chapterStore } from "../../services/chapterStore";
 import { markWizardProjectChanged } from "../../services/wizard";
 import type { Chapter, ChapterListItem } from "../../types";
+import { WRITING_PAGE_COPY } from "./writingPageCopy";
 import { chapterToForm } from "./writingUtils";
 import type { ChapterForm } from "./writingUtils";
 
@@ -164,7 +165,7 @@ export function useChapterEditor(args: {
         queuedSnapshotRef.current = snapshot;
         queuedSilentRef.current = queuedSilentRef.current && silent;
         if (!silent && !queuedToastShownRef.current) {
-          toast.toastWarning("保存中：已加入队列，将自动保存。");
+          toast.toastWarning(WRITING_PAGE_COPY.saveQueued);
           queuedToastShownRef.current = true;
         }
         if (!queuedPromiseRef.current) {
@@ -211,7 +212,7 @@ export function useChapterEditor(args: {
           bumpWizardLocal();
           if (nextSilent) scheduleWizardRefresh();
           else await refreshWizard();
-          if (!nextSilent) toast.toastSuccess("已保存");
+          if (!nextSilent) toast.toastSuccess(WRITING_PAGE_COPY.saveSuccess);
           return true;
         } catch (e) {
           const err = e as ApiError;
@@ -270,13 +271,7 @@ export function useChapterEditor(args: {
     async (id: string) => {
       if (id === activeId) return;
       if (dirty) {
-        const choice = await confirm.choose({
-          title: "章节有未保存修改，是否切换？",
-          description: "切换后未保存内容会丢失。",
-          confirmText: "保存并切换",
-          secondaryText: "不保存切换",
-          cancelText: "取消",
-        });
+        const choice = await confirm.choose(WRITING_PAGE_COPY.confirms.switchChapter);
         if (choice === "cancel") return;
         if (choice === "confirm") {
           const ok = await saveChapter();

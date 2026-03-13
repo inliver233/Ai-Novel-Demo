@@ -7,6 +7,7 @@ import { ApiError } from "../../services/apiClient";
 import { chapterStore } from "../../services/chapterStore";
 import { markWizardProjectChanged } from "../../services/wizard";
 import type { Chapter, ChapterListItem } from "../../types";
+import { WRITING_PAGE_COPY } from "./writingPageCopy";
 import { nextChapterNumber } from "./writingUtils";
 
 export function useChapterCrud(args: {
@@ -45,7 +46,7 @@ export function useChapterCrud(args: {
     if (!projectId) return;
     if (createSaving) return;
     if (!createForm.number || createForm.number < 1) {
-      toast.toastError("章号必须 >= 1");
+      toast.toastError(WRITING_PAGE_COPY.chapterNumberInvalid);
       return;
     }
     setCreateSaving(true);
@@ -59,7 +60,7 @@ export function useChapterCrud(args: {
       markWizardProjectChanged(projectId);
       bumpWizardLocal();
       void refreshWizard();
-      toast.toastSuccess("已创建");
+      toast.toastSuccess(WRITING_PAGE_COPY.createSuccess);
       setCreateOpen(false);
       await requestSelectChapter(chapter.id);
     } catch (e) {
@@ -72,12 +73,7 @@ export function useChapterCrud(args: {
 
   const deleteChapter = useCallback(async () => {
     if (!activeChapter) return;
-    const ok = await confirm.confirm({
-      title: "删除章节？",
-      description: "删除后该章节正文与摘要将丢失。",
-      confirmText: "删除",
-      danger: true,
-    });
+    const ok = await confirm.confirm({ ...WRITING_PAGE_COPY.confirms.deleteChapter, danger: true });
     if (!ok) return;
 
     try {
@@ -85,7 +81,7 @@ export function useChapterCrud(args: {
       markWizardProjectChanged(activeChapter.project_id);
       bumpWizardLocal();
       void refreshWizard();
-      toast.toastSuccess("已删除");
+      toast.toastSuccess(WRITING_PAGE_COPY.deleteSuccess);
       const idx = chapters.findIndex((c) => c.id === activeChapter.id);
       const next = chapters[idx - 1]?.id ?? chapters[idx + 1]?.id ?? null;
       setActiveId(next);

@@ -7,6 +7,7 @@ import { UI_COPY } from "../../lib/uiCopy";
 import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../../services/apiClient";
 import type { Chapter, LLMPreset } from "../../types";
+import { getWritingApplyMemorySuccess, WRITING_PAGE_COPY } from "./writingPageCopy";
 import type { ChapterForm } from "./writingUtils";
 
 export function useChapterAnalysis(args: {
@@ -25,7 +26,7 @@ export function useChapterAnalysis(args: {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<ChapterAnalyzeResult | null>(null);
   const [analysisFocus, setAnalysisFocus] = useState("");
-  const [rewriteInstruction, setRewriteInstruction] = useState("按分析建议重写，减少重复，保持叙事连续。");
+  const [rewriteInstruction, setRewriteInstruction] = useState<string>(WRITING_PAGE_COPY.analyzeInstructionDefault);
   const [rewriteLoading, setRewriteLoading] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
   const analyzeGuardRef = useRef(createRequestSeqGuard());
@@ -66,11 +67,11 @@ export function useChapterAnalysis(args: {
   const analyzeChapter = useCallback(async () => {
     if (!activeChapter || !form) return;
     if (!preset) {
-      toast.toastError("请先在 Prompts 页保存 LLM 配置");
+      toast.toastError(WRITING_PAGE_COPY.promptPresetRequired);
       return;
     }
     if (!(form.content_md ?? "").trim()) {
-      toast.toastError("正文为空，无法分析");
+      toast.toastError(WRITING_PAGE_COPY.analyzeEmptyContent);
       return;
     }
 
@@ -104,9 +105,12 @@ export function useChapterAnalysis(args: {
       if (!analyzeGuardRef.current.isLatest(seq)) return;
       setAnalysisResult(res.data);
       if (res.data.parse_error?.message) {
-        toast.toastError(`分析解析失败：${res.data.parse_error.message}`, res.request_id);
+        toast.toastError(
+          `${WRITING_PAGE_COPY.analyzeParseFailedPrefix}${res.data.parse_error.message}`,
+          res.request_id,
+        );
       } else {
-        toast.toastSuccess("分析完成", res.request_id);
+        toast.toastSuccess(WRITING_PAGE_COPY.analyzeDone, res.request_id);
       }
       const droppedParams = res.data.dropped_params ?? [];
       if (droppedParams.length > 0) {
@@ -126,15 +130,15 @@ export function useChapterAnalysis(args: {
   const rewriteFromAnalysis = useCallback(async () => {
     if (!activeChapter || !form) return;
     if (!preset) {
-      toast.toastError("请先在 Prompts 页保存 LLM 配置");
+      toast.toastError(WRITING_PAGE_COPY.promptPresetRequired);
       return;
     }
     if (!analysisResult?.analysis) {
-      toast.toastError("请先完成章节分析");
+      toast.toastError(WRITING_PAGE_COPY.rewriteNeedsAnalysis);
       return;
     }
     if (!(form.content_md ?? "").trim()) {
-      toast.toastError("正文为空，无法重写");
+      toast.toastError(WRITING_PAGE_COPY.rewriteEmptyContent);
       return;
     }
 
@@ -167,13 +171,13 @@ export function useChapterAnalysis(args: {
 
       const nextContent = (res.data.content_md ?? "").trim();
       if (!nextContent) {
-        const msg = res.data.parse_error?.message ?? "重写解析失败";
+        const msg = res.data.parse_error?.message ?? WRITING_PAGE_COPY.rewriteParseFailed;
         toast.toastError(msg, res.request_id);
         return;
       }
 
       setForm((prev) => (prev ? { ...prev, content_md: nextContent, status: "drafting" } : prev));
-      toast.toastSuccess("已应用重写结果到编辑器（未保存）", res.request_id);
+      toast.toastSuccess(WRITING_PAGE_COPY.rewriteAppliedUnsaved, res.request_id);
       const droppedParams = res.data.dropped_params ?? [];
       if (droppedParams.length > 0) {
         toast.toastSuccess(`${UI_COPY.common.droppedParamsPrefix}${droppedParams.join("、")}`, res.request_id);
@@ -192,7 +196,7 @@ export function useChapterAnalysis(args: {
   const applyAnalysisToMemory = useCallback(async () => {
     if (!activeChapter || !form) return;
     if (!analysisResult?.analysis) {
-      toast.toastError("请先完成章节分析");
+      toast.toastError(WRITING_PAGE_COPY.rewriteNeedsAnalysis);
       return;
     }
 
@@ -214,8 +218,8 @@ export function useChapterAnalysis(args: {
       if (!applyGuardRef.current.isLatest(seq)) return;
 
       const count = (res.data.memories ?? []).length;
-      toast.toastSuccess(`已生成 ${count} 条记忆（标注可用）`, res.request_id, {
-        label: "打开标注页",
+      toast.toastSuccess(getWritingApplyMemorySuccess(count), res.request_id, {
+        label: WRITING_PAGE_COPY.openChapterAnalysis,
         onClick: () => {
           void (async () => {
             if (dirtyRef.current && saveChapter) {

@@ -6,6 +6,7 @@ import { ApiError, apiJson } from "../../services/apiClient";
 import { chapterStore } from "../../services/chapterStore";
 import { markWizardProjectChanged } from "../../services/wizard";
 import type { Project } from "../../types";
+import { WRITING_PAGE_COPY } from "./writingPageCopy";
 
 export function useOutlineSwitcher(args: {
   projectId: string | undefined;
@@ -38,13 +39,7 @@ export function useOutlineSwitcher(args: {
       if (!nextOutlineId || nextOutlineId === activeOutlineId) return;
 
       if (dirty) {
-        const choice = await confirm.choose({
-          title: "章节有未保存修改，是否切换大纲？",
-          description: "切换大纲后未保存内容会丢失。",
-          confirmText: "保存并切换",
-          secondaryText: "不保存切换",
-          cancelText: "取消",
-        });
+        const choice = await confirm.choose(WRITING_PAGE_COPY.confirms.switchOutline);
         if (choice === "cancel") return;
         if (choice === "confirm") {
           const ok = await saveChapter();
@@ -63,7 +58,7 @@ export function useOutlineSwitcher(args: {
         await refreshWriting();
         await refreshChapters();
         await refreshWizard();
-        toast.toastSuccess("已切换大纲");
+        toast.toastSuccess(WRITING_PAGE_COPY.switchedOutline);
       } catch (e) {
         const err = e as ApiError;
         toast.toastError(`${err.message} (${err.code})`, err.requestId);

@@ -12,6 +12,11 @@ import { SSEError, SSEPostClient } from "../../services/sseClient";
 import { writingMemoryInjectionEnabledStorageKey } from "../../services/uiState";
 import type { Chapter, ChapterListItem, LLMPreset } from "../../types";
 import { extractMissingNumbers } from "./writingErrorUtils";
+import {
+  getWritingJumpToChapterLabel,
+  getWritingMissingPrerequisiteMessage,
+  WRITING_PAGE_COPY,
+} from "./writingPageCopy";
 import { appendMarkdown } from "./writingUtils";
 import type { ChapterForm } from "./writingUtils";
 
@@ -176,7 +181,7 @@ export function useChapterGeneration(args: {
       });
       setPostEditCompare((prev) => (prev ? { ...prev, appliedChoice: choice } : prev));
       toast.toastSuccess(
-        choice === "raw" ? "已采用原稿（别忘了保存）" : "已采用后处理稿（别忘了保存）",
+        choice === "raw" ? WRITING_PAGE_COPY.postEditRawApplied : WRITING_PAGE_COPY.postEditEditedApplied,
         postEditCompare.requestId ?? undefined,
       );
 
@@ -192,7 +197,10 @@ export function useChapterGeneration(args: {
         });
       } catch (e) {
         const err = e as ApiError;
-        toast.toastWarning(`记录采用策略失败：${err.message} (${err.code})`, err.requestId);
+        toast.toastWarning(
+          `${WRITING_PAGE_COPY.adoptionRecordFailedPrefix}${err.message} (${err.code})`,
+          err.requestId,
+        );
       }
     },
     [activeChapter, postEditCompare, setForm, toast],
@@ -209,7 +217,9 @@ export function useChapterGeneration(args: {
       });
       setContentOptimizeCompare((prev) => (prev ? { ...prev, appliedChoice: choice } : prev));
       toast.toastSuccess(
-        choice === "raw" ? "已采用优化前原稿（别忘了保存）" : "已采用正文优化稿（别忘了保存）",
+        choice === "raw"
+          ? WRITING_PAGE_COPY.contentOptimizeRawApplied
+          : WRITING_PAGE_COPY.contentOptimizeOptimizedApplied,
         contentOptimizeCompare.requestId ?? undefined,
       );
     },
@@ -223,7 +233,7 @@ export function useChapterGeneration(args: {
     ) => {
       if (!activeChapter || !form) return;
       if (!preset) {
-        toast.toastError("请先在 Prompts 页保存 LLM 配置");
+        toast.toastError(WRITING_PAGE_COPY.promptPresetRequired);
         return;
       }
       const headers: Record<string, string> = { "X-LLM-Provider": preset.provider };
@@ -233,13 +243,7 @@ export function useChapterGeneration(args: {
       setPostEditCompare(null);
       setContentOptimizeCompare(null);
       if (dirty) {
-        const choice = await confirm.choose({
-          title: "章节有未保存修改，如何生成？",
-          description: "生成结果会写入编辑器，但不会自动保存。",
-          confirmText: "保存并生成",
-          secondaryText: "直接生成（不保存当前修改）",
-          cancelText: "取消",
-        });
+        const choice = await confirm.choose(WRITING_PAGE_COPY.confirms.generateWithDirty);
         if (choice === "cancel") return;
         if (choice === "confirm") {
           const ok = await saveChapter();
@@ -300,7 +304,7 @@ export function useChapterGeneration(args: {
 
         const shouldStream = advancedTransportRequired || (genForm.stream && streamProviderSupported);
         if (genForm.stream && !streamProviderSupported && !advancedTransportRequired) {
-          toast.toastWarning("已回退非流式生成");
+          toast.toastWarning(WRITING_PAGE_COPY.generateUnsupportedProviderFallback);
         }
 
         if (shouldStream) {
@@ -457,9 +461,9 @@ export function useChapterGeneration(args: {
 
           try {
             await client.connect();
-            toast.toastSuccess("生成完成（别忘了保存）", requestId);
+            toast.toastSuccess(WRITING_PAGE_COPY.generateDoneUnsaved, requestId);
             if (!genStreamHasChunkRef.current) {
-              toast.toastSuccess("未收到流式分片（可能上游未返回分片或输出为空）", requestId);
+              toast.toastSuccess(WRITING_PAGE_COPY.generateEmptyStream, requestId);
             }
             if (droppedParams.length > 0) {
               toast.toastSuccess(`${UI_COPY.common.droppedParamsPrefix}${droppedParams.join("、")}`, requestId);
@@ -477,12 +481,12 @@ export function useChapterGeneration(args: {
                   summary: expectedSummary ? baseSummary : prev.summary,
                 };
               });
-              toast.toastSuccess("已取消生成", err.requestId ?? requestId);
+              toast.toastSuccess(WRITING_PAGE_COPY.generateCanceled, err.requestId ?? requestId);
               return;
             }
             if (err instanceof SSEError && err.code !== "SSE_SERVER_ERROR") {
               if (!genStreamHasChunkRef.current && !advancedTransportRequired) {
-                toast.toastError("流式生成失败，已回退非流式", err.requestId ?? requestId);
+                toast.toastError(WRITING_PAGE_COPY.generateFallback, err.requestId ?? requestId);
                 const res = await apiJson<GenerateResponse>(`/api/chapters/${activeChapter.id}/generate`, {
                   method: "POST",
                   headers,
@@ -556,7 +560,7 @@ export function useChapterGeneration(args: {
                   setContentOptimizeCompare(null);
                 }
 
-                toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
+                toast.toastSuccess(WRITING_PAGE_COPY.generateDoneUnsaved, res.request_id);
                 const dp = res.data.dropped_params ?? [];
                 if (dp.length > 0) {
                   toast.toastSuccess(`${UI_COPY.common.droppedParamsPrefix}${dp.join("、")}`, res.request_id);
@@ -576,11 +580,11 @@ export function useChapterGeneration(args: {
                 const targetNumber = missingNumbers[0]!;
                 const target = chapters.find((c) => c.number === targetNumber);
                 toast.toastError(
-                  `缺少前置章节内容：第 ${missingNumbers.join("、")} 章`,
+                  getWritingMissingPrerequisiteMessage(missingNumbers),
                   err.requestId,
                   target
                     ? {
-                        label: `跳转到第 ${targetNumber} 章`,
+                        label: getWritingJumpToChapterLabel(targetNumber),
                         onClick: () => void requestSelectChapter(target.id),
                       }
                     : undefined,
@@ -590,7 +594,7 @@ export function useChapterGeneration(args: {
               toast.toastError(`${err.message} (${err.code})`, err.requestId);
               return;
             }
-            toast.toastError("生成失败");
+            toast.toastError(WRITING_PAGE_COPY.generateFailed);
           }
         } else {
           const res = await apiJson<GenerateResponse>(`/api/chapters/${activeChapter.id}/generate`, {
@@ -663,7 +667,7 @@ export function useChapterGeneration(args: {
             setContentOptimizeCompare(null);
           }
 
-          toast.toastSuccess("生成完成（别忘了保存）", res.request_id);
+          toast.toastSuccess(WRITING_PAGE_COPY.generateDoneUnsaved, res.request_id);
           const dp = res.data.dropped_params ?? [];
           if (dp.length > 0) {
             toast.toastSuccess(`${UI_COPY.common.droppedParamsPrefix}${dp.join("、")}`, res.request_id);
@@ -676,11 +680,11 @@ export function useChapterGeneration(args: {
           const targetNumber = missingNumbers[0]!;
           const target = chapters.find((c) => c.number === targetNumber);
           toast.toastError(
-            `缺少前置章节内容：第 ${missingNumbers.join("、")} 章`,
+            getWritingMissingPrerequisiteMessage(missingNumbers),
             err.requestId,
             target
               ? {
-                  label: `跳转到第 ${targetNumber} 章`,
+                  label: getWritingJumpToChapterLabel(targetNumber),
                   onClick: () => void requestSelectChapter(target.id),
                 }
               : undefined,
