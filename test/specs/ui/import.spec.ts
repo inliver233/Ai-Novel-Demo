@@ -27,10 +27,22 @@ test("ui: import page uploads and applies proposals", async ({ page, request }) 
   await expect(docButton.first()).toBeVisible();
   await docButton.first().click();
 
-  await expect(page.getByRole("button", { name: "应用到 WorldBook", exact: true })).toBeVisible();
+  const applyWorldbook = page.getByRole("button", { name: "应用到 WorldBook", exact: true });
+  const applyStoryMemory = page.getByRole("button", { name: "应用到 story_memory", exact: true });
+
+  await expect(docButton.first()).toContainText("完成");
+  await expect(applyWorldbook).toBeEnabled();
+  await expect(applyStoryMemory).toBeEnabled();
+
+  await page.getByLabel("import_refresh", { exact: true }).click();
+  await expect(docButton.first()).toBeVisible();
+  await expect(docButton.first()).toContainText("完成");
+  await expect(page.getByText("暂无导入记录。请先上传 txt/md 文件。", { exact: true })).toHaveCount(0);
+
+  await expect(applyWorldbook).toBeVisible();
   await page.getByRole("button", { name: "应用到 WorldBook", exact: true }).click();
 
-  await expect(page.getByRole("button", { name: "应用到 story_memory", exact: true })).toBeVisible();
+  await expect(applyStoryMemory).toBeVisible();
   await page.getByRole("button", { name: "应用到 story_memory", exact: true }).click();
 
   const wb = await request.get(`${state.backendUrl}/api/projects/${projectId}/worldbook_entries/export_all`);

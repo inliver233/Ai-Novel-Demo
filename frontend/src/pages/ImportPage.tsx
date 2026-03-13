@@ -4,23 +4,9 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { DebugDetails, DebugPageShell } from "../components/atelier/DebugPageShell";
 import { GhostwriterIndicator } from "../components/atelier/GhostwriterIndicator";
 import { useToast } from "../components/ui/toast";
+import { createRequestSeqGuard } from "../lib/requestSeqGuard";
 import { ApiError, apiJson, sanitizeFilename } from "../services/apiClient";
-
-type ImportDocument = {
-  id: string;
-  project_id: string;
-  actor_user_id: string | null;
-  filename: string;
-  content_type: string;
-  status: string;
-  progress: number;
-  progress_message: string | null;
-  chunk_count: number;
-  kb_id: string | null;
-  error_message: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-};
+import { getImportProposalDisabledReason, mergeImportDocuments, type ImportDocument } from "./importState";
 
 type ImportDocumentDetail = {
   document: ImportDocument;
@@ -85,6 +71,8 @@ export function ImportPage() {
 
   const autoOpenedDocIdRef = useRef<string | null>(null);
   const lastPolledRef = useRef<{ id: string; status: string } | null>(null);
+  const listGuardRef = useRef(createRequestSeqGuard());
+  const detailGuardRef = useRef(createRequestSeqGuard());
 
   const selectedDoc = useMemo(() => {
     if (!selectedId) return null;
@@ -156,30 +144,45 @@ export function ImportPage() {
     if (lastUpdateAgoMs == null) return false;
     return lastUpdateAgoMs >= 5 * 60_000;
   }, [lastUpdateAgoMs, pollStatus]);
+  const proposalDisabledReason = useMemo(() => {
+    if (!detail) return "请先选择一条导入记录。";
+    return getImportProposalDisabledReason(statusDoc?.status ?? detail.document.status);
+  }, [detail, statusDoc?.status]);
+
+  useEffect(() => {
+    return () => {
+      listGuardRef.current.invalidate();
+      detailGuardRef.current.invalidate();
+    };
+  }, []);
 
   const loadList = useCallback(async () => {
     if (!projectId) return;
-    if (listLoading) return;
+    const seq = listGuardRef.current.next();
     setListLoading(true);
     try {
       const res = await apiJson<{ documents: ImportDocument[] }>(`/api/projects/${projectId}/imports`);
-      setDocuments(Array.isArray(res.data.documents) ? res.data.documents : []);
+      if (!listGuardRef.current.isLatest(seq)) return;
+      const documents = Array.isArray(res.data.documents) ? res.data.documents : [];
+      setDocuments((prev) => mergeImportDocuments(prev, documents));
     } catch (e) {
+      if (!listGuardRef.current.isLatest(seq)) return;
       const err =
         e instanceof ApiError
           ? e
           : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
-      setListLoading(false);
+      if (listGuardRef.current.isLatest(seq)) setListLoading(false);
     }
-  }, [listLoading, projectId, toast]);
+  }, [projectId, toast]);
 
   const selectDocAndLoad = useCallback(
     async (docId: string) => {
       if (!projectId) return;
       const id = String(docId || "").trim();
       if (!id) return;
+      const seq = detailGuardRef.current.next();
       setPollPaused(false);
       setSelectedId(id);
       setChunks([]);
@@ -187,15 +190,18 @@ export function ImportPage() {
       setDetailLoading(true);
       try {
         const res = await apiJson<ImportDocumentDetail>(`/api/projects/${projectId}/imports/${encodeURIComponent(id)}`);
+        if (!detailGuardRef.current.isLatest(seq)) return;
         setDetail(res.data);
+        setDocuments((prev) => mergeImportDocuments(prev, [res.data.document]));
       } catch (e) {
+        if (!detailGuardRef.current.isLatest(seq)) return;
         const err =
           e instanceof ApiError
             ? e
             : new ApiError({ code: "UNKNOWN", message: String(e), requestId: "unknown", status: 0 });
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       } finally {
-        setDetailLoading(false);
+        if (detailGuardRef.current.isLatest(seq)) setDetailLoading(false);
       }
     },
     [projectId, toast],
@@ -212,9 +218,9 @@ export function ImportPage() {
           { method: "POST", body: JSON.stringify({}) },
         );
         toast.toastSuccess("已重试导入", res.request_id);
+        setDocuments((prev) => mergeImportDocuments(prev, [res.data.document]));
         setSelectedId(res.data.document.id);
-        await loadList();
-        await selectDocAndLoad(res.data.document.id);
+        await Promise.all([loadList(), selectDocAndLoad(res.data.document.id)]);
       } catch (e) {
         const err =
           e instanceof ApiError
@@ -276,8 +282,8 @@ export function ImportPage() {
         },
       );
       toast.toastSuccess("已提交导入任务", res.request_id);
-      await loadList();
-      await selectDocAndLoad(res.data.document.id);
+      setDocuments((prev) => mergeImportDocuments(prev, [res.data.document]));
+      await Promise.all([loadList(), selectDocAndLoad(res.data.document.id)]);
     } catch (e) {
       const err =
         e instanceof ApiError
@@ -436,7 +442,7 @@ export function ImportPage() {
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="grid gap-2">
             {listLoading ? <div className="text-xs text-subtext">加载中…</div> : null}
-            {documents.length === 0 && !listLoading ? (
+            {documents.length === 0 && !listLoading && !statusDoc ? (
               <div className="rounded-atelier border border-border bg-canvas p-4 text-sm text-subtext">
                 暂无导入记录。请先上传 txt/md 文件。
               </div>
@@ -511,7 +517,7 @@ export function ImportPage() {
                         取消自动刷新
                       </button>
                     ) : null}
-                    {selectedDoc?.status === "failed" || isPollingStalled ? (
+                    {pollStatus === "failed" || isPollingStalled ? (
                       <button className="btn btn-secondary" onClick={() => void retryImport(selectedId)} type="button">
                         重试
                       </button>
@@ -562,7 +568,7 @@ export function ImportPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       className="btn btn-primary"
-                      disabled={applyWorldbookLoading}
+                      disabled={applyWorldbookLoading || Boolean(proposalDisabledReason)}
                       onClick={() => void applyWorldbook()}
                       type="button"
                     >
@@ -570,16 +576,16 @@ export function ImportPage() {
                     </button>
                     <button
                       className="btn btn-secondary"
-                      disabled={applyStoryMemoryLoading}
+                      disabled={applyStoryMemoryLoading || Boolean(proposalDisabledReason)}
                       onClick={() => void applyStoryMemory()}
                       type="button"
                     >
                       {applyStoryMemoryLoading ? "应用中…" : "应用到 story_memory"}
                     </button>
                   </div>
-                  <div className="text-xs text-subtext">
-                    世界书（worldbook）：写入 WorldBookEntry（应用后在「世界书」页可见）。故事记忆（story_memory）：写入
-                    StoryMemory （应用后在记忆预览/检索中可命中）。
+                  <div className={proposalDisabledReason ? "text-xs text-warning" : "text-xs text-subtext"}>
+                    {proposalDisabledReason ??
+                      "导入已完成，可将提案写入 WorldBook 或 story_memory；写入后可在对应页面继续编辑与检索。"}
                   </div>
                 </div>
 
