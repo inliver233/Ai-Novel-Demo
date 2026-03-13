@@ -426,7 +426,9 @@ export function PromptsVectorRagSection(props: PromptsVectorRagSectionProps) {
                 />
                 <div className="text-[11px] text-subtext">
                   已保存（项目覆盖）：
-                  {baselineSettings.vector_rerank_has_api_key ? baselineSettings.vector_rerank_masked_api_key : "（无）"}
+                  {baselineSettings.vector_rerank_has_api_key
+                    ? baselineSettings.vector_rerank_masked_api_key
+                    : "（无）"}
                   {baselineSettings.vector_rerank_effective_has_api_key
                     ? ` | 当前有效：${baselineSettings.vector_rerank_effective_masked_api_key}`
                     : " | 当前有效：（无）"}
