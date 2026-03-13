@@ -120,6 +120,9 @@ export const UI_COPY = {
     subtitle: "Embedding 用于把文本变成向量以便检索；Rerank 用于对候选结果二次排序提升命中（可能增加耗时/成本）。",
     apiKeyHint: "API Key（接口密钥）加密存储，仅回显 masked；留空可使用后端环境变量。",
     save: "保存 RAG 配置",
+    dryRunTitle: "测试配置（dry-run）",
+    backendEnvFallbackHint: "不确定怎么配时，可保持留空让后端从环境变量读取。",
+    pendingClearSuffix: " | 将在保存时清除",
     rerankTitle: "Rerank（重排）",
     rerankConfigDetailsTitle: "Rerank 提供方配置",
     rerankProviderLabel: "Rerank 提供方（provider；项目覆盖；留空=使用后端环境变量）",
@@ -131,6 +134,7 @@ export const UI_COPY = {
     rerankClearApiKey: "清除项目级 Rerank API Key",
     rerankResetOverrides: "恢复使用后端环境变量（清除项目覆盖）",
     embeddingTitle: "Embedding（向量化）配置",
+    embeddingClearApiKey: "清除项目级 API Key",
   },
   structuredMemory: {
     title: "图谱底座数据（StructuredMemory）",

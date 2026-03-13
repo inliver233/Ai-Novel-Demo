@@ -4,6 +4,7 @@ import { humanizeMemberRole } from "../../lib/humanize";
 import type { Project, ProjectSettings } from "../../types";
 
 import type { ProjectForm, ProjectMembershipItem, SettingsForm } from "./models";
+import { SETTINGS_COPY } from "./settingsCopy";
 
 type SettingsCoreSectionsProps = {
   projectForm: ProjectForm;
@@ -283,7 +284,7 @@ export function SettingsCoreSections(props: SettingsCoreSectionsProps) {
               对 StructuredMemory / WORLD_BOOK 注入做去重、排序、表格化合并，用于节省 tokens 并提升可读性（默认关闭）。
             </div>
             <div className="text-xs text-subtext">
-              status: {baselineSettings.context_optimizer_enabled ? "enabled" : "disabled"}
+              {SETTINGS_COPY.contextOptimizer.status(baselineSettings.context_optimizer_enabled)}
             </div>
           </div>
         </summary>

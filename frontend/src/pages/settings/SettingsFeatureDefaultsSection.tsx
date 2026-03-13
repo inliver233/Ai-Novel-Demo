@@ -1,5 +1,7 @@
 import { UI_COPY } from "../../lib/uiCopy";
 
+import { SETTINGS_COPY } from "./settingsCopy";
+
 type SettingsFeatureDefaultsSectionProps = {
   writingMemoryInjectionEnabled: boolean;
   onChangeWritingMemoryInjectionEnabled: (enabled: boolean) => void;
@@ -14,8 +16,7 @@ export function SettingsFeatureDefaultsSection(props: SettingsFeatureDefaultsSec
           <div className="font-content text-xl text-ink">{UI_COPY.featureDefaults.title}</div>
           <div className="text-xs text-subtext">{UI_COPY.featureDefaults.subtitle}</div>
           <div className="text-xs text-subtext">
-            status: memory_injection_default={props.writingMemoryInjectionEnabled ? "enabled" : "disabled"}{" "}
-            (localStorage)
+            {SETTINGS_COPY.featureDefaults.status(props.writingMemoryInjectionEnabled)}
           </div>
         </div>
       </summary>

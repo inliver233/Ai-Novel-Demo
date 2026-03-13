@@ -40,6 +40,7 @@ import { SettingsCoreSections } from "./SettingsCoreSections";
 import { SettingsFeatureDefaultsSection } from "./SettingsFeatureDefaultsSection";
 import { SettingsQueryPreprocessingSection } from "./SettingsQueryPreprocessingSection";
 import { SettingsVectorRagSection } from "./SettingsVectorRagSection";
+import { SETTINGS_COPY } from "./settingsCopy";
 
 const qpPreviewCache = new Map<string, QpPreviewState>();
 const qpPreviewQueryTextCache = new Map<string, string>();
@@ -733,7 +734,7 @@ export function useSettingsPageState(): SettingsPageState {
     if (saving || embeddingDryRunLoading || rerankDryRunLoading) return;
 
     if (dirty) {
-      toast.toastError("请先保存设置后再测试（测试使用已保存配置）");
+      toast.toastError(SETTINGS_COPY.vectorRag.saveBeforeTestToast);
       return;
     }
 
@@ -763,7 +764,7 @@ export function useSettingsPageState(): SettingsPageState {
     if (saving || embeddingDryRunLoading || rerankDryRunLoading) return;
 
     if (dirty) {
-      toast.toastError("请先保存设置后再测试（测试使用已保存配置）");
+      toast.toastError(SETTINGS_COPY.vectorRag.saveBeforeTestToast);
       return;
     }
 

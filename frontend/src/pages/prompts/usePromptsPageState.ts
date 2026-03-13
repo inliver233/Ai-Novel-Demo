@@ -40,6 +40,7 @@ import {
 } from "./models";
 import { formatLlmTestApiError } from "./llmApiError";
 import type { PromptsVectorRagSectionProps } from "./PromptsVectorRagSection";
+import { buildClearTaskApiKeyConfirm, buildDeleteTaskModuleConfirm, PROMPTS_COPY } from "./promptsCopy";
 
 type TaskModuleView = {
   task_key: string;
@@ -586,10 +587,7 @@ export function usePromptsPageState(): PromptsPageState {
       const draft = taskDrafts[taskKey];
       if (!draft) return false;
       const yes = await confirm.confirm({
-        title: "删除任务模块",
-        description: `确认删除任务模块「${taskCatalogByKey.get(taskKey)?.label ?? taskKey}」？删除后将回退到主模块。`,
-        confirmText: "删除",
-        cancelText: "取消",
+        ...buildDeleteTaskModuleConfirm(taskCatalogByKey.get(taskKey)?.label ?? taskKey),
         danger: true,
       });
       if (!yes) return false;
@@ -978,7 +976,7 @@ export function usePromptsPageState(): PromptsPageState {
     if (savingVector || embeddingDryRunLoading || rerankDryRunLoading) return;
 
     if (vectorRagDirty || vectorApiKeyDirty || rerankApiKeyDirty) {
-      toast.toastError("请先保存 RAG 配置后再测试（测试使用已保存配置）");
+      toast.toastError(PROMPTS_COPY.vectorRag.saveBeforeTestToast);
       return;
     }
 
@@ -1017,7 +1015,7 @@ export function usePromptsPageState(): PromptsPageState {
     if (savingVector || embeddingDryRunLoading || rerankDryRunLoading) return;
 
     if (vectorRagDirty || vectorApiKeyDirty || rerankApiKeyDirty) {
-      toast.toastError("请先保存 RAG 配置后再测试（测试使用已保存配置）");
+      toast.toastError(PROMPTS_COPY.vectorRag.saveBeforeTestToast);
       return;
     }
 
@@ -1201,9 +1199,7 @@ export function usePromptsPageState(): PromptsPageState {
     if (profileBusy) return;
 
     const ok = await confirm.confirm({
-      title: "删除当前后端配置？",
-      description: "删除后不可恢复。项目将解除绑定，需要重新选择/新建配置并保存 Key。",
-      confirmText: "删除",
+      ...PROMPTS_COPY.confirm.deleteProfile,
       danger: true,
     });
     if (!ok) return;
@@ -1264,9 +1260,7 @@ export function usePromptsPageState(): PromptsPageState {
     if (profileBusy) return;
 
     const ok = await confirm.confirm({
-      title: "清除 API Key？",
-      description: "清除后将无法生成/测试连接，直到重新保存 Key。",
-      confirmText: "清除",
+      ...PROMPTS_COPY.confirm.clearProfileApiKey,
       danger: true,
     });
     if (!ok) return;
@@ -1364,10 +1358,7 @@ export function usePromptsPageState(): PromptsPageState {
 
       const taskLabel = taskCatalogByKey.get(taskKey)?.label ?? taskKey;
       const ok = await confirm.confirm({
-        title: "清除任务模块绑定配置的 API Key？",
-        description: `将清除配置库「${profile.name}」的 Key。该配置库被其他模块复用时也会立即失效。`,
-        confirmText: "清除",
-        cancelText: "取消",
+        ...buildClearTaskApiKeyConfirm(profile.name),
         danger: true,
       });
       if (!ok) return false;

@@ -4,6 +4,7 @@ import { RequestIdBadge } from "../../components/ui/RequestIdBadge";
 import type { ProjectSettings } from "../../types";
 
 import type { QpPreviewState, SettingsForm } from "./models";
+import { SETTINGS_COPY } from "./settingsCopy";
 
 type SettingsQueryPreprocessingSectionProps = {
   baselineSettings: ProjectSettings;
@@ -27,19 +28,15 @@ export function SettingsQueryPreprocessingSection(props: SettingsQueryPreprocess
   return (
     <details
       className="panel"
-      aria-label="Query 预处理（Query Preprocessing）"
+      aria-label={SETTINGS_COPY.queryPreprocess.ariaLabel}
       open={props.qpPanelOpen}
       onToggle={(e) => props.onTogglePanel((e.currentTarget as HTMLDetailsElement).open)}
     >
       <summary className="ui-focus-ring ui-transition-fast cursor-pointer select-none p-6">
         <div className="grid gap-1">
-          <div className="font-content text-xl text-ink">Query 预处理（Query Preprocessing）</div>
-          <div className="text-xs text-subtext">
-            用于把 query_text 先“标准化/去噪”，让 WorldBook / Vector RAG / Graph 的检索更稳定（默认关闭）。
-          </div>
-          <div className="text-xs text-subtext">
-            功能：提取 #tag、移除 exclusion_rules、可选识别章节引用（index_ref_enhance）。
-          </div>
+          <div className="font-content text-xl text-ink">{SETTINGS_COPY.queryPreprocess.title}</div>
+          <div className="text-xs text-subtext">{SETTINGS_COPY.queryPreprocess.subtitle}</div>
+          <div className="text-xs text-subtext">{SETTINGS_COPY.queryPreprocess.featureHint}</div>
         </div>
       </summary>
 
@@ -54,7 +51,7 @@ export function SettingsQueryPreprocessingSection(props: SettingsQueryPreprocess
               }
               type="checkbox"
             />
-            启用 query_preprocessing（默认关闭）
+            {SETTINGS_COPY.queryPreprocess.enableLabel}
           </label>
 
           <div className="text-[11px] text-subtext">
@@ -66,7 +63,7 @@ export function SettingsQueryPreprocessingSection(props: SettingsQueryPreprocess
             <>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1">
-                  <span className="text-xs text-subtext">tags（每行一条；匹配 #tag；留空=提取所有 tag）</span>
+                  <span className="text-xs text-subtext">{SETTINGS_COPY.queryPreprocess.tagsLabel}</span>
                   <textarea
                     className="textarea"
                     name="query_preprocessing_tags"
@@ -77,14 +74,14 @@ export function SettingsQueryPreprocessingSection(props: SettingsQueryPreprocess
                     }
                     placeholder={"例如：\nfoo\nbar"}
                   />
-                  <div className="text-[11px] text-subtext">最大 50 条；每条最多 64 字符。</div>
+                  <div className="text-[11px] text-subtext">{SETTINGS_COPY.queryPreprocess.tagsHint}</div>
                   {props.queryPreprocessErr && props.queryPreprocessErrField === "tags" ? (
                     <div className="text-xs text-warning">{props.queryPreprocessErr}</div>
                   ) : null}
                 </label>
 
                 <label className="grid gap-1">
-                  <span className="text-xs text-subtext">exclusion_rules（每行一条；出现则移除）</span>
+                  <span className="text-xs text-subtext">{SETTINGS_COPY.queryPreprocess.exclusionRulesLabel}</span>
                   <textarea
                     className="textarea"
                     name="query_preprocessing_exclusion_rules"
@@ -98,7 +95,7 @@ export function SettingsQueryPreprocessingSection(props: SettingsQueryPreprocess
                     }
                     placeholder={"例如：\n忽略这段\nREMOVE"}
                   />
-                  <div className="text-[11px] text-subtext">最大 50 条；每条最多 256 字符。</div>
+                  <div className="text-[11px] text-subtext">{SETTINGS_COPY.queryPreprocess.exclusionRulesHint}</div>
                   {props.queryPreprocessErr && props.queryPreprocessErrField === "exclusion_rules" ? (
                     <div className="text-xs text-warning">{props.queryPreprocessErr}</div>
                   ) : null}
@@ -117,12 +114,12 @@ export function SettingsQueryPreprocessingSection(props: SettingsQueryPreprocess
                   }
                   type="checkbox"
                 />
-                index_ref_enhance（识别“第N章 / chapter N”并追加引用 token）
+                {SETTINGS_COPY.queryPreprocess.indexRefEnhanceLabel}
               </label>
 
               <div className="rounded-atelier border border-border bg-canvas p-4">
-                <div className="text-sm text-ink">示例 normalize（基于已保存的 effective 配置）</div>
-                <div className="mt-1 text-xs text-subtext">修改配置后请先保存，再点击预览。</div>
+                <div className="text-sm text-ink">{SETTINGS_COPY.queryPreprocess.previewTitle}</div>
+                <div className="mt-1 text-xs text-subtext">{SETTINGS_COPY.queryPreprocess.previewHint}</div>
 
                 <label className="mt-3 grid gap-1 text-xs text-subtext">
                   query_text
@@ -130,7 +127,7 @@ export function SettingsQueryPreprocessingSection(props: SettingsQueryPreprocess
                     className="textarea mt-1 min-h-20 w-full"
                     value={props.qpPreviewQueryText}
                     onChange={(e) => props.onChangePreviewQueryText(e.target.value)}
-                    placeholder="例如：回顾第1章 #foo REMOVE"
+                    placeholder={SETTINGS_COPY.queryPreprocess.previewPlaceholder}
                   />
                 </label>
 
@@ -141,7 +138,9 @@ export function SettingsQueryPreprocessingSection(props: SettingsQueryPreprocess
                     onClick={props.onRunQpPreview}
                     type="button"
                   >
-                    {props.qpPreviewLoading ? "预览中…" : "预览"}
+                    {props.qpPreviewLoading
+                      ? SETTINGS_COPY.queryPreprocess.previewLoadingButton
+                      : SETTINGS_COPY.queryPreprocess.previewButton}
                   </button>
                   <button
                     className="btn btn-secondary"
@@ -149,7 +148,7 @@ export function SettingsQueryPreprocessingSection(props: SettingsQueryPreprocess
                     onClick={props.onClearQpPreview}
                     type="button"
                   >
-                    清空结果
+                    {SETTINGS_COPY.queryPreprocess.clearResultButton}
                   </button>
                 </div>
 
@@ -178,7 +177,7 @@ export function SettingsQueryPreprocessingSection(props: SettingsQueryPreprocess
             </>
           ) : (
             <div className="rounded-atelier border border-border bg-canvas p-4 text-xs text-subtext">
-              启用后可配置 tags / exclusion_rules，并可在下方预览 normalized_query_text（保存后生效）。
+              {SETTINGS_COPY.queryPreprocess.emptyState}
             </div>
           )}
         </div>

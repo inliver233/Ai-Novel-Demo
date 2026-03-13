@@ -5,6 +5,7 @@ import { UI_COPY } from "../../lib/uiCopy";
 import type { ProjectSettings } from "../../types";
 
 import type { SettingsForm, VectorEmbeddingDryRunResult, VectorRerankDryRunResult } from "./models";
+import { SETTINGS_COPY } from "./settingsCopy";
 
 export type SettingsVectorRagSectionProps = {
   projectId?: string;
@@ -56,12 +57,9 @@ export function SettingsVectorRagSection(props: SettingsVectorRagSectionProps) {
         <div className="mt-4 grid gap-4">
           {props.projectId ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-atelier border border-border bg-canvas p-4 text-xs text-subtext">
-              <div className="min-w-0">
-                配置入口已迁移到「模型配置」页（向量检索）。建议在那边完成 Embedding/Rerank
-                配置后再回到这里查看生效状态。
-              </div>
+              <div className="min-w-0">{SETTINGS_COPY.vectorRag.openPromptsConfigHint}</div>
               <button className="btn btn-secondary" onClick={props.onOpenPromptsConfig} type="button">
-                打开模型配置
+                {SETTINGS_COPY.vectorRag.openPromptsConfigCta}
               </button>
             </div>
           ) : null}
@@ -106,7 +104,7 @@ export function SettingsVectorRagSection(props: SettingsVectorRagSectionProps) {
 
           <div className="rounded-atelier border border-border bg-canvas p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="text-sm text-ink">测试配置（dry-run）</div>
+              <div className="text-sm text-ink">{UI_COPY.vectorRag.dryRunTitle}</div>
               <div className="flex flex-wrap gap-2">
                 <button
                   className="btn btn-secondary"
@@ -141,12 +139,12 @@ export function SettingsVectorRagSection(props: SettingsVectorRagSectionProps) {
               </div>
             </div>
             {props.dirty || props.vectorApiKeyDirty || props.rerankApiKeyDirty ? (
-              <div className="mt-1 text-[11px] text-subtext">提示：测试使用已保存配置；请先保存当前设置。</div>
+              <div className="mt-1 text-[11px] text-subtext">{SETTINGS_COPY.vectorRag.saveBeforeTestHint}</div>
             ) : null}
 
             {props.embeddingDryRunError ? (
               <div className="mt-3 rounded-atelier border border-border bg-surface p-3">
-                <div className="text-xs text-red-600 dark:text-red-300">
+                <div className="text-xs text-danger">
                   Embedding 测试失败：{props.embeddingDryRunError.message} ({props.embeddingDryRunError.code})
                 </div>
                 <RequestIdBadge requestId={props.embeddingDryRunError.requestId} className="mt-2" />
@@ -170,7 +168,7 @@ export function SettingsVectorRagSection(props: SettingsVectorRagSectionProps) {
 
             {props.rerankDryRunError ? (
               <div className="mt-3 rounded-atelier border border-border bg-surface p-3">
-                <div className="text-xs text-red-600 dark:text-red-300">
+                <div className="text-xs text-danger">
                   Rerank 测试失败：{props.rerankDryRunError.message} ({props.rerankDryRunError.code})
                 </div>
                 <RequestIdBadge requestId={props.rerankDryRunError.requestId} className="mt-2" />
@@ -265,7 +263,7 @@ export function SettingsVectorRagSection(props: SettingsVectorRagSectionProps) {
                 {UI_COPY.vectorRag.rerankConfigDetailsTitle}
               </summary>
               <div className="mt-4 grid gap-4">
-                <div className="text-xs text-subtext">不确定怎么配时，可保持留空让后端从环境变量读取。</div>
+                <div className="text-xs text-subtext">{UI_COPY.vectorRag.backendEnvFallbackHint}</div>
 
                 <label className="grid gap-1">
                   <span className="text-xs text-subtext">{UI_COPY.vectorRag.rerankProviderLabel}</span>
@@ -431,7 +429,7 @@ export function SettingsVectorRagSection(props: SettingsVectorRagSectionProps) {
                     {props.baselineSettings.vector_rerank_effective_has_api_key
                       ? ` | 当前有效：${props.baselineSettings.vector_rerank_effective_masked_api_key}`
                       : " | 当前有效：（无）"}
-                    {props.rerankApiKeyClearRequested ? " | 将在保存时清除" : ""}
+                    {props.rerankApiKeyClearRequested ? UI_COPY.vectorRag.pendingClearSuffix : ""}
                   </div>
                 </label>
 
@@ -480,7 +478,7 @@ export function SettingsVectorRagSection(props: SettingsVectorRagSectionProps) {
               {UI_COPY.vectorRag.embeddingTitle}
             </summary>
             <div className="mt-4 grid gap-4">
-              <div className="text-xs text-subtext">不确定怎么配时，可保持留空让后端从环境变量读取。</div>
+              <div className="text-xs text-subtext">{UI_COPY.vectorRag.backendEnvFallbackHint}</div>
 
               <label className="grid gap-1">
                 <span className="text-xs text-subtext">
@@ -625,7 +623,7 @@ export function SettingsVectorRagSection(props: SettingsVectorRagSectionProps) {
                   {props.baselineSettings.vector_embedding_effective_has_api_key
                     ? ` | 当前有效：${props.baselineSettings.vector_embedding_effective_masked_api_key}`
                     : " | 当前有效：（无）"}
-                  {props.vectorApiKeyClearRequested ? " | 将在保存时清除" : ""}
+                  {props.vectorApiKeyClearRequested ? UI_COPY.vectorRag.pendingClearSuffix : ""}
                 </div>
               </label>
 
@@ -639,7 +637,7 @@ export function SettingsVectorRagSection(props: SettingsVectorRagSectionProps) {
                   }}
                   type="button"
                 >
-                  清除项目级 API Key
+                  {UI_COPY.vectorRag.embeddingClearApiKey}
                 </button>
                 <button
                   className="btn btn-secondary"
