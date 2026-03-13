@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
@@ -184,16 +184,20 @@ def _row_public(row: ProjectTableRow, *, include_data: bool = True) -> dict[str,
 
 
 class TableCreateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     table_key: str | None = Field(default=None, max_length=64)
     name: str = Field(min_length=1, max_length=255)
     auto_update_enabled: bool | None = Field(default=None)
-    schema: dict[str, Any] = Field(default_factory=dict)
+    table_schema: dict[str, Any] = Field(default_factory=dict, alias="schema")
 
 
 class TableUpdateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str | None = Field(default=None, max_length=255)
     auto_update_enabled: bool | None = Field(default=None)
-    schema: dict[str, Any] | None = Field(default=None)
+    table_schema: dict[str, Any] | None = Field(default=None, alias="schema")
 
 
 class TableRowCreateRequest(BaseModel):
@@ -288,7 +292,7 @@ def create_project_table(
     else:
         table_key = f"tbl_{new_id()[:8]}"
 
-    schema_norm = _normalize_schema(body.schema)
+    schema_norm = _normalize_schema(body.table_schema)
     schema_json = _compact_json_dumps(schema_norm)
 
     row = ProjectTable(
@@ -356,8 +360,8 @@ def update_project_table(
     if body.auto_update_enabled is not None:
         table.auto_update_enabled = bool(body.auto_update_enabled)
 
-    if body.schema is not None:
-        schema_norm = _normalize_schema(body.schema)
+    if body.table_schema is not None:
+        schema_norm = _normalize_schema(body.table_schema)
 
         # Ensure existing rows are still compatible (fail-closed).
         rows = (
