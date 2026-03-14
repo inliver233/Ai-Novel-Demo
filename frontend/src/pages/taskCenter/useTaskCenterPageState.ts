@@ -1,22 +1,25 @@
-import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { useToast } from "../../components/ui/toast";
 import { useProjectData } from "../../hooks/useProjectData";
-import { useProjectTaskEvents } from "../../hooks/useProjectTaskEvents";
+import {
+  useProjectTaskDetailResource,
+  useProjectTaskListResource,
+  useProjectTaskLiveSync,
+  useProjectTaskRuntimeResource,
+} from "../../hooks/useProjectTaskRuntimeResource";
 import { copyText } from "../../lib/copyText";
-import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
 import { humanizeChangeSetStatus, humanizeTaskStatus } from "../../lib/humanize";
 import { ApiError, apiJson } from "../../services/apiClient";
 import {
   cancelBatchGenerationTask,
-  getProjectTaskRuntime,
   pauseBatchGenerationTask,
   resumeBatchGenerationTask,
   retryFailedBatchGenerationTask,
   skipFailedBatchGenerationTask,
-  type ProjectTaskRuntime,
 } from "../../services/projectTaskRuntime";
+import { projectTaskStore } from "../../services/projectTaskStore";
 
 import {
   extractChangeSetIdFromProjectTaskResult,
@@ -70,14 +73,8 @@ export function useTaskCenterPageState(): TaskCenterPageState {
   const [taskStatus, setTaskStatus] = useState<string>("all");
   const [projectTaskStatus, setProjectTaskStatus] = useState<string>("all");
   const [autoOpenedProjectTask, setAutoOpenedProjectTask] = useState(false);
-  const projectTaskRefreshTimerRef = useRef<number | null>(null);
-  const projectTaskDetailGuardRef = useRef(createRequestSeqGuard());
-  const projectTaskRuntimeGuardRef = useRef(createRequestSeqGuard());
-  const [selectedProjectTaskRuntime, setSelectedProjectTaskRuntime] = useState<ProjectTaskRuntime | null>(null);
-  const [projectTaskRuntimeLoading, setProjectTaskRuntimeLoading] = useState(false);
   const [projectTaskBatchActionLoading, setProjectTaskBatchActionLoading] = useState(false);
   const [selected, setSelected] = useState<TaskCenterSelectedItem>(null);
-  const [projectTaskDetailLoading, setProjectTaskDetailLoading] = useState(false);
   const [changeSetActionLoading, setChangeSetActionLoading] = useState(false);
 
   useEffect(() => {
@@ -124,21 +121,13 @@ export function useTaskCenterPageState(): TaskCenterPageState {
     [taskStatus],
   );
 
-  const loadProjectTasks = useCallback(
-    async (id: string): Promise<PagedResult<ProjectTaskSummary>> => {
-      const params = new URLSearchParams();
-      if (projectTaskStatus !== "all") params.set("status", projectTaskStatus);
-      params.set("limit", "50");
-      const qs = params.toString();
-      const response = await apiJson<PagedResult<ProjectTaskSummary>>(`/api/projects/${id}/tasks${qs ? `?${qs}` : ""}`);
-      return response.data;
-    },
-    [projectTaskStatus],
-  );
-
   const changeSetsQuery = useProjectData(projectId, loadChangeSets);
   const tasksQuery = useProjectData(projectId, loadTasks);
-  const projectTasksQuery = useProjectData(projectId, loadProjectTasks);
+  const projectTasksQuery = useProjectTaskListResource({
+    projectId,
+    status: projectTaskStatus,
+    enabled: Boolean(projectId),
+  });
 
   const refreshChangeSets = changeSetsQuery.refresh;
   const refreshTasks = tasksQuery.refresh;
@@ -154,27 +143,59 @@ export function useTaskCenterPageState(): TaskCenterPageState {
     void refreshTasks();
   }, [projectId, refreshTasks, taskStatus]);
 
-  useEffect(() => {
-    if (!projectId) return;
-    void refreshProjectTasks();
-  }, [projectId, projectTaskStatus, refreshProjectTasks]);
-
   const changeSets = useMemo(() => changeSetsQuery.data?.items ?? [], [changeSetsQuery.data?.items]);
   const tasks = useMemo(() => tasksQuery.data?.items ?? [], [tasksQuery.data?.items]);
-  const projectTasks = useMemo(() => projectTasksQuery.data?.items ?? [], [projectTasksQuery.data?.items]);
+  const projectTasks = useMemo(() => projectTasksQuery.data ?? [], [projectTasksQuery.data]);
+
+  const selectedProjectTaskId = selected?.kind === "project_task" ? selected.item.id : null;
+  const selectedProjectTaskProjectId =
+    selected?.kind === "project_task"
+      ? selected.item.project_id || projectTaskStore.tryGetProjectIdForTask(selected.item.id) || projectId || ""
+      : "";
+  const projectTaskDetailResource = useProjectTaskDetailResource({
+    taskId: selectedProjectTaskId,
+    enabled: selected?.kind === "project_task",
+  });
+  const projectTaskRuntimeResource = useProjectTaskRuntimeResource({
+    taskId: selectedProjectTaskId,
+    enabled: selected?.kind === "project_task",
+  });
+  const selectedProjectTask = useMemo(() => {
+    if (selected?.kind !== "project_task") return null;
+    return projectTaskDetailResource.data ?? selected.item;
+  }, [projectTaskDetailResource.data, selected]);
+  const detailSelected = useMemo<TaskCenterSelectedItem>(() => {
+    if (selected?.kind !== "project_task" || !selectedProjectTask) return selected;
+    return { kind: "project_task", item: selectedProjectTask };
+  }, [selected, selectedProjectTask]);
+  const selectedProjectTaskRuntime = projectTaskRuntimeResource.data;
+  const projectTaskDetailLoading = detailSelected?.kind === "project_task" ? projectTaskDetailResource.loading : false;
+  const projectTaskRuntimeLoading =
+    detailSelected?.kind === "project_task" ? projectTaskRuntimeResource.loading : false;
 
   const changeSetSummary = useMemo(() => summarizeChangeSets(changeSets), [changeSets]);
   const taskSummary = useMemo(() => summarizeTasks(tasks), [tasks]);
   const projectTaskSummary = useMemo(() => summarizeTasks(projectTasks, { succeededAsDone: true }), [projectTasks]);
 
-  const detailTitle = useMemo(() => getTaskCenterDetailTitle(selected), [selected]);
-  const detailHeading = useMemo(() => getTaskCenterDetailHeading(selected), [selected]);
+  const detailTitle = useMemo(() => getTaskCenterDetailTitle(detailSelected), [detailSelected]);
+  const detailHeading = useMemo(() => getTaskCenterDetailHeading(detailSelected), [detailSelected]);
 
   const refreshAll = useCallback(() => {
     void refreshChangeSets();
     void refreshTasks();
-    void refreshProjectTasks();
-  }, [refreshChangeSets, refreshProjectTasks, refreshTasks]);
+    void refreshProjectTasks({ force: true });
+    if (selectedProjectTaskId) {
+      void projectTaskDetailResource.refresh({ taskId: selectedProjectTaskId, force: true, silent: true });
+      void projectTaskRuntimeResource.refresh({ taskId: selectedProjectTaskId, force: true, silent: true });
+    }
+  }, [
+    projectTaskDetailResource,
+    projectTaskRuntimeResource,
+    refreshChangeSets,
+    refreshProjectTasks,
+    refreshTasks,
+    selectedProjectTaskId,
+  ]);
 
   const copyRequestId = useCallback(async (requestId: string) => {
     await copyText(requestId, { title: TASK_CENTER_COPY.requestIdCopyTitle });
@@ -185,126 +206,35 @@ export function useTaskCenterPageState(): TaskCenterPageState {
   }, []);
 
   const refreshSelectedProjectTask = useCallback(
-    async (taskId: string, options?: { silent?: boolean; loading?: boolean }) => {
-      const targetId = String(taskId || "").trim();
-      if (!targetId) return;
-      const seq = projectTaskDetailGuardRef.current.next();
-      if (options?.loading) setProjectTaskDetailLoading(true);
-      try {
-        const response = await apiJson<ProjectTaskSummary>(`/api/tasks/${encodeURIComponent(targetId)}`);
-        if (!projectTaskDetailGuardRef.current.isLatest(seq)) return;
-        setSelected((prev) =>
-          prev?.kind === "project_task" && prev.item.id === targetId
-            ? { kind: "project_task", item: response.data }
-            : prev,
-        );
-      } catch (error) {
-        if (!projectTaskDetailGuardRef.current.isLatest(seq)) return;
-        if (!options?.silent) {
-          const err =
-            error instanceof ApiError
-              ? error
-              : new ApiError({ code: "UNKNOWN", message: String(error), requestId: "unknown", status: 0 });
-          toast.toastError(`${err.message} (${err.code})`, err.requestId);
-        }
-      } finally {
-        if (options?.loading && projectTaskDetailGuardRef.current.isLatest(seq)) {
-          setProjectTaskDetailLoading(false);
-        }
-      }
+    async (taskId: string, options?: { silent?: boolean }) => {
+      await projectTaskDetailResource.refresh({ taskId, force: true, silent: options?.silent });
     },
-    [toast],
+    [projectTaskDetailResource],
   );
 
   const refreshSelectedProjectTaskRuntime = useCallback(
-    async (taskId: string, options?: { silent?: boolean; loading?: boolean }) => {
-      const targetId = String(taskId || "").trim();
-      if (!targetId) return;
-      const seq = projectTaskRuntimeGuardRef.current.next();
-      if (options?.loading) setProjectTaskRuntimeLoading(true);
-      try {
-        const runtime = await getProjectTaskRuntime(targetId);
-        if (!projectTaskRuntimeGuardRef.current.isLatest(seq)) return;
-        setSelectedProjectTaskRuntime(runtime);
-      } catch (error) {
-        if (!projectTaskRuntimeGuardRef.current.isLatest(seq)) return;
-        if (!options?.silent) {
-          const err =
-            error instanceof ApiError
-              ? error
-              : new ApiError({ code: "UNKNOWN", message: String(error), requestId: "unknown", status: 0 });
-          toast.toastError(`${err.message} (${err.code})`, err.requestId);
-        }
-      } finally {
-        if (options?.loading && projectTaskRuntimeGuardRef.current.isLatest(seq)) {
-          setProjectTaskRuntimeLoading(false);
-        }
-      }
+    async (taskId: string, options?: { silent?: boolean }) => {
+      await projectTaskRuntimeResource.refresh({ taskId, force: true, silent: options?.silent });
     },
-    [toast],
+    [projectTaskRuntimeResource],
   );
 
-  const scheduleProjectTaskRefresh = useCallback(
-    (taskId?: string | null) => {
-      if (projectTaskRefreshTimerRef.current !== null) {
-        window.clearTimeout(projectTaskRefreshTimerRef.current);
-      }
-      projectTaskRefreshTimerRef.current = window.setTimeout(() => {
-        projectTaskRefreshTimerRef.current = null;
-        void refreshProjectTasks();
-        if (taskId && selected?.kind === "project_task" && selected.item.id === taskId) {
-          void refreshSelectedProjectTask(taskId, { silent: true });
-          void refreshSelectedProjectTaskRuntime(taskId, { silent: true });
-        }
-      }, 120);
-    },
-    [refreshProjectTasks, refreshSelectedProjectTask, refreshSelectedProjectTaskRuntime, selected],
-  );
-
-  useEffect(() => {
-    const detailGuard = projectTaskDetailGuardRef.current;
-    const runtimeGuard = projectTaskRuntimeGuardRef.current;
-    return () => {
-      detailGuard.invalidate();
-      runtimeGuard.invalidate();
-      if (projectTaskRefreshTimerRef.current !== null) {
-        window.clearTimeout(projectTaskRefreshTimerRef.current);
-      }
-    };
-  }, []);
-
-  const projectTaskEvents = useProjectTaskEvents({
+  const projectTaskEvents = useProjectTaskLiveSync({
     projectId,
     enabled: Boolean(projectId),
-    onSnapshot: (snapshot) => {
-      if ((snapshot.active_tasks || []).length > 0) {
-        scheduleProjectTaskRefresh(snapshot.active_tasks[0]?.id);
+    trackedTaskId: selectedProjectTaskId,
+    pollWhen: Boolean(projectId),
+    pickSnapshotTaskId: (snapshot) => snapshot.active_tasks[0]?.id ?? null,
+    shouldRefreshOnEvent: () => true,
+    onRefresh: (taskId) => {
+      void refreshProjectTasks({ force: true, silent: true });
+      const targetId = String(taskId || "").trim();
+      if (selectedProjectTaskId && (!targetId || targetId === selectedProjectTaskId)) {
+        void refreshSelectedProjectTask(selectedProjectTaskId, { silent: true });
+        void refreshSelectedProjectTaskRuntime(selectedProjectTaskId, { silent: true });
       }
-    },
-    onEvent: (event) => {
-      scheduleProjectTaskRefresh(event.task_id);
     },
   });
-
-  useEffect(() => {
-    if (!projectId) return;
-    if (projectTaskEvents.status === "open") return;
-    const intervalId = window.setInterval(() => {
-      void refreshProjectTasks();
-      if (selected?.kind === "project_task") {
-        void refreshSelectedProjectTask(selected.item.id, { silent: true });
-        void refreshSelectedProjectTaskRuntime(selected.item.id, { silent: true });
-      }
-    }, 8000);
-    return () => window.clearInterval(intervalId);
-  }, [
-    projectId,
-    projectTaskEvents.status,
-    refreshProjectTasks,
-    refreshSelectedProjectTask,
-    refreshSelectedProjectTaskRuntime,
-    selected,
-  ]);
 
   const projectTaskLiveStatusLabel = useMemo(
     () => getProjectTaskLiveStatusLabel(projectTaskEvents.status),
@@ -312,9 +242,9 @@ export function useTaskCenterPageState(): TaskCenterPageState {
   );
 
   const copyDebugInfo = useCallback(async () => {
-    if (!selected) return;
-    if (selected.kind === "change_set") {
-      const item = selected.item;
+    if (!detailSelected) return;
+    if (detailSelected.kind === "change_set") {
+      const item = detailSelected.item;
       await copyText(
         [
           "[TaskCenter][ChangeSet]",
@@ -331,8 +261,8 @@ export function useTaskCenterPageState(): TaskCenterPageState {
       return;
     }
 
-    if (selected.kind === "task") {
-      const item = selected.item;
+    if (detailSelected.kind === "task") {
+      const item = detailSelected.item;
       await copyText(
         [
           "[TaskCenter][Task]",
@@ -350,7 +280,7 @@ export function useTaskCenterPageState(): TaskCenterPageState {
       return;
     }
 
-    const item = selected.item;
+    const item = detailSelected.item;
     await copyText(
       [
         "[TaskCenter][ProjectTask]",
@@ -364,22 +294,18 @@ export function useTaskCenterPageState(): TaskCenterPageState {
       ].join("\n"),
       { title: TASK_CENTER_COPY.copyDebugInfoTitle },
     );
-  }, [selected]);
+  }, [detailSelected]);
 
   const copyRawJson = useCallback(async () => {
-    if (!selected) return;
-    await copyText(safeJsonStringify(selected.item), { title: TASK_CENTER_COPY.copyDebugInfoTitle });
-  }, [selected]);
+    if (!detailSelected) return;
+    await copyText(safeJsonStringify(detailSelected.item), { title: TASK_CENTER_COPY.copyDebugInfoTitle });
+  }, [detailSelected]);
 
-  const selectProjectTask = useCallback(
-    async (task: ProjectTaskSummary) => {
-      setSelected({ kind: "project_task", item: task });
-      setSelectedProjectTaskRuntime(null);
-      void refreshSelectedProjectTask(task.id, { loading: true });
-      void refreshSelectedProjectTaskRuntime(task.id, { loading: true });
-    },
-    [refreshSelectedProjectTask, refreshSelectedProjectTaskRuntime],
-  );
+  const selectProjectTask = useCallback(async (task: ProjectTaskSummary) => {
+    projectTaskStore.setProjectTaskDetail(task);
+    projectTaskStore.invalidateProjectTaskDetail(task.id);
+    setSelected({ kind: "project_task", item: task });
+  }, []);
 
   const retryProjectTask = useCallback(
     async (taskId: string) => {
@@ -391,12 +317,13 @@ export function useTaskCenterPageState(): TaskCenterPageState {
           body: JSON.stringify({}),
         });
         toast.toastSuccess(TASK_CENTER_COPY.projectTasksRetryToast, response.request_id);
-        await refreshProjectTasks();
-        setSelected((prev) =>
-          prev?.kind === "project_task" && prev.item.id === targetId
-            ? { kind: "project_task", item: response.data }
-            : prev,
-        );
+        projectTaskStore.setProjectTaskDetail(response.data);
+        projectTaskStore.invalidateProjectTaskLists(response.data.project_id);
+        await refreshProjectTasks({ force: true, silent: true });
+        if (selectedProjectTaskId === targetId) {
+          await refreshSelectedProjectTask(targetId, { silent: true });
+          await refreshSelectedProjectTaskRuntime(targetId, { silent: true });
+        }
       } catch (error) {
         const err =
           error instanceof ApiError
@@ -405,7 +332,7 @@ export function useTaskCenterPageState(): TaskCenterPageState {
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       }
     },
-    [refreshProjectTasks, toast],
+    [refreshProjectTasks, refreshSelectedProjectTask, refreshSelectedProjectTaskRuntime, selectedProjectTaskId, toast],
   );
 
   const cancelProjectTask = useCallback(
@@ -419,12 +346,13 @@ export function useTaskCenterPageState(): TaskCenterPageState {
           body: JSON.stringify({}),
         });
         toast.toastSuccess(TASK_CENTER_COPY.projectTasksCancelToast, response.request_id);
-        await refreshProjectTasks();
-        setSelected((prev) =>
-          prev?.kind === "project_task" && prev.item.id === targetId
-            ? { kind: "project_task", item: response.data }
-            : prev,
-        );
+        projectTaskStore.setProjectTaskDetail(response.data);
+        projectTaskStore.invalidateProjectTaskLists(response.data.project_id);
+        await refreshProjectTasks({ force: true, silent: true });
+        if (selectedProjectTaskId === targetId) {
+          await refreshSelectedProjectTask(targetId, { silent: true });
+          await refreshSelectedProjectTaskRuntime(targetId, { silent: true });
+        }
       } catch (error) {
         const err =
           error instanceof ApiError
@@ -433,15 +361,15 @@ export function useTaskCenterPageState(): TaskCenterPageState {
         toast.toastError(`${err.message} (${err.code})`, err.requestId);
       }
     },
-    [refreshProjectTasks, toast],
+    [refreshProjectTasks, refreshSelectedProjectTask, refreshSelectedProjectTaskRuntime, selectedProjectTaskId, toast],
   );
 
   const runSelectedBatchAction = useCallback(
     async (action: "pause" | "resume" | "retry_failed" | "skip_failed" | "cancel") => {
-      if (selected?.kind !== "project_task") return;
+      if (detailSelected?.kind !== "project_task") return;
       const batchTaskId = String(selectedProjectTaskRuntime?.batch?.task.id || "").trim();
       if (!batchTaskId) return;
-      const projectTaskId = selected.item.id;
+      const projectTaskId = detailSelected.item.id;
       setProjectTaskBatchActionLoading(true);
       try {
         if (action === "pause") {
@@ -461,7 +389,12 @@ export function useTaskCenterPageState(): TaskCenterPageState {
           await cancelBatchGenerationTask(batchTaskId);
           toast.toastSuccess(TASK_CENTER_COPY.runtimeBatchCanceledToast);
         }
-        await refreshProjectTasks();
+        if (selectedProjectTaskProjectId) {
+          projectTaskStore.invalidateProjectTaskLists(selectedProjectTaskProjectId);
+        }
+        projectTaskStore.invalidateProjectTaskDetail(projectTaskId);
+        projectTaskStore.invalidateProjectTaskRuntime(projectTaskId);
+        await refreshProjectTasks({ force: true, silent: true });
         await Promise.all([
           refreshSelectedProjectTask(projectTaskId, { silent: true }),
           refreshSelectedProjectTaskRuntime(projectTaskId, { silent: true }),
@@ -480,7 +413,8 @@ export function useTaskCenterPageState(): TaskCenterPageState {
       refreshProjectTasks,
       refreshSelectedProjectTask,
       refreshSelectedProjectTaskRuntime,
-      selected,
+      detailSelected,
+      selectedProjectTaskProjectId,
       selectedProjectTaskRuntime,
       toast,
     ],
@@ -547,35 +481,43 @@ export function useTaskCenterPageState(): TaskCenterPageState {
     const targetId = String(searchParams.get("project_task_id") || "").trim();
     if (!targetId || autoOpenedProjectTask) return;
     setAutoOpenedProjectTask(true);
-    setSelectedProjectTaskRuntime(null);
-    void refreshSelectedProjectTask(targetId, { loading: true });
-    void refreshSelectedProjectTaskRuntime(targetId, { loading: true });
-  }, [autoOpenedProjectTask, projectId, refreshSelectedProjectTask, refreshSelectedProjectTaskRuntime, searchParams]);
+    projectTaskStore.touchProjectTaskDetail(targetId, projectId);
+    void projectTaskStore.loadProjectTaskDetail(targetId).catch(() => undefined);
+    void projectTaskStore.loadProjectTaskRuntime(targetId).catch(() => undefined);
+  }, [autoOpenedProjectTask, projectId, searchParams]);
 
   useEffect(() => {
-    if (selected?.kind === "project_task") return;
-    projectTaskRuntimeGuardRef.current.invalidate();
-    setSelectedProjectTaskRuntime(null);
-    setProjectTaskRuntimeLoading(false);
+    if (detailSelected?.kind === "project_task") return;
     setProjectTaskBatchActionLoading(false);
-  }, [selected]);
+  }, [detailSelected]);
 
   const selectedProjectTaskChangeSetId = useMemo(() => {
-    if (selected?.kind !== "project_task") return null;
-    return extractChangeSetIdFromProjectTaskResult(selected.item.result);
-  }, [selected]);
+    if (detailSelected?.kind !== "project_task") return null;
+    return (
+      extractChangeSetIdFromProjectTaskResult(detailSelected.item.result) ||
+      (selected?.kind === "project_task" ? extractChangeSetIdFromProjectTaskResult(selected.item.result) : null)
+    );
+  }, [detailSelected, selected]);
 
   const selectedProjectTaskChangeSetStatus = useMemo(() => {
-    if (selected?.kind !== "project_task") return null;
-    return extractChangeSetStatusFromProjectTaskResult(selected.item.result);
-  }, [selected]);
+    if (detailSelected?.kind !== "project_task") return null;
+    return (
+      extractChangeSetStatusFromProjectTaskResult(detailSelected.item.result) ||
+      (selected?.kind === "project_task" ? extractChangeSetStatusFromProjectTaskResult(selected.item.result) : null)
+    );
+  }, [detailSelected, selected]);
 
   const selectedProjectTaskRunId = useMemo(() => {
-    if (selected?.kind !== "project_task") return null;
+    if (detailSelected?.kind !== "project_task") return null;
     return (
-      extractRunIdFromProjectTaskError(selected.item.error) || extractRunIdFromProjectTaskResult(selected.item.result)
+      extractRunIdFromProjectTaskError(detailSelected.item.error) ||
+      extractRunIdFromProjectTaskResult(detailSelected.item.result) ||
+      (selected?.kind === "project_task"
+        ? extractRunIdFromProjectTaskError(selected.item.error) ||
+          extractRunIdFromProjectTaskResult(selected.item.result)
+        : null)
     );
-  }, [selected]);
+  }, [detailSelected, selected]);
 
   const liveChangeSetStatus = useMemo(() => {
     const id = selectedProjectTaskChangeSetId;
@@ -626,7 +568,7 @@ export function useTaskCenterPageState(): TaskCenterPageState {
       onCancel: (taskId) => void cancelProjectTask(taskId),
     },
     detailDrawerProps: {
-      selected,
+      selected: detailSelected,
       detailTitle,
       detailHeading,
       projectTaskDetailLoading,
@@ -643,14 +585,14 @@ export function useTaskCenterPageState(): TaskCenterPageState {
       onCopyRequestId: (requestId) => void copyRequestId(requestId),
       onCopyRunId: (runId) => void copyRunId(runId),
       onRefreshProjectTaskDetail: () => {
-        if (selected?.kind !== "project_task") return;
-        void selectProjectTask(selected.item);
+        if (detailSelected?.kind !== "project_task") return;
+        void refreshSelectedProjectTask(detailSelected.item.id);
       },
       onRetryProjectTask: (taskId) => void retryProjectTask(taskId),
       onCancelProjectTask: (taskId) => void cancelProjectTask(taskId),
       onRefreshProjectTaskRuntime: () => {
-        if (selected?.kind !== "project_task") return;
-        void refreshSelectedProjectTaskRuntime(selected.item.id, { loading: true });
+        if (detailSelected?.kind !== "project_task") return;
+        void refreshSelectedProjectTaskRuntime(detailSelected.item.id);
       },
       onPauseBatch: () => void runSelectedBatchAction("pause"),
       onResumeBatch: () => void runSelectedBatchAction("resume"),

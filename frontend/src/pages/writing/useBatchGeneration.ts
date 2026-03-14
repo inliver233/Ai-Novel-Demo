@@ -2,14 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SetURLSearchParams } from "react-router-dom";
 
 import type { BatchGenerationTask, BatchGenerationTaskItem, GenerateForm } from "../../components/writing/types";
-import { useProjectTaskEvents } from "../../hooks/useProjectTaskEvents";
+import { useProjectTaskLiveSync, useProjectTaskRuntimeResource } from "../../hooks/useProjectTaskRuntimeResource";
 import { createRequestSeqGuard } from "../../lib/requestSeqGuard";
 import { ApiError, apiJson } from "../../services/apiClient";
 import {
   cancelBatchGenerationTask,
   getActiveBatchGenerationTask,
   getBatchGenerationTask,
-  getProjectTaskRuntime,
   hasFailedBatchGenerationItems,
   isBatchGenerationProjectTaskKind,
   isBatchGenerationTaskStatusRecoverable,
@@ -17,7 +16,6 @@ import {
   resumeBatchGenerationTask,
   retryFailedBatchGenerationTask,
   skipFailedBatchGenerationTask,
-  type ProjectTaskRuntime,
 } from "../../services/projectTaskRuntime";
 import type { Chapter, ChapterListItem, LLMPreset } from "../../types";
 import { extractMissingNumbers } from "./writingErrorUtils";
@@ -54,12 +52,14 @@ export function useBatchGeneration(args: {
   const [batchIncludeExisting, setBatchIncludeExisting] = useState(false);
   const [batchTask, setBatchTask] = useState<BatchGenerationTask | null>(null);
   const [batchItems, setBatchItems] = useState<BatchGenerationTaskItem[]>([]);
-  const [batchRuntime, setBatchRuntime] = useState<ProjectTaskRuntime | null>(null);
 
   const batchTaskRef = useRef<BatchGenerationTask | null>(null);
   const batchRefreshGuardRef = useRef(createRequestSeqGuard());
-  const runtimeRefreshGuardRef = useRef(createRequestSeqGuard());
-  const batchSyncTimerRef = useRef<number | null>(null);
+  const batchProjectTaskId = String(batchTask?.project_task_id || "").trim() || null;
+  const batchRuntimeResource = useProjectTaskRuntimeResource({
+    taskId: batchProjectTaskId,
+    enabled: Boolean(batchProjectTaskId),
+  });
 
   useEffect(() => {
     batchTaskRef.current = batchTask;
@@ -67,39 +67,10 @@ export function useBatchGeneration(args: {
 
   useEffect(() => {
     const batchRefreshGuard = batchRefreshGuardRef.current;
-    const runtimeRefreshGuard = runtimeRefreshGuardRef.current;
     return () => {
       batchRefreshGuard.invalidate();
-      runtimeRefreshGuard.invalidate();
-      if (batchSyncTimerRef.current !== null) {
-        window.clearTimeout(batchSyncTimerRef.current);
-      }
     };
   }, []);
-
-  const refreshBatchRuntime = useCallback(
-    async (projectTaskId: string, opts?: { silent?: boolean; loading?: boolean }) => {
-      const targetId = String(projectTaskId || "").trim();
-      if (!targetId) {
-        runtimeRefreshGuardRef.current.invalidate();
-        setBatchRuntime(null);
-        return;
-      }
-      const seq = runtimeRefreshGuardRef.current.next();
-      try {
-        const runtime = await getProjectTaskRuntime(targetId);
-        if (!runtimeRefreshGuardRef.current.isLatest(seq)) return;
-        setBatchRuntime(runtime);
-      } catch (e) {
-        if (!runtimeRefreshGuardRef.current.isLatest(seq)) return;
-        if (!opts?.silent) {
-          const err = e as ApiError;
-          toast.toastError(`${err.message} (${err.code})`, err.requestId);
-        }
-      }
-    },
-    [toast],
-  );
 
   const refreshBatchTask = useCallback(
     async (opts?: { silent?: boolean; taskId?: string | null }) => {
@@ -121,13 +92,6 @@ export function useBatchGeneration(args: {
         setBatchTask(data.task);
         setBatchItems(data.items);
         batchTaskRef.current = data.task;
-        const projectTaskId = String(data.task?.project_task_id || "").trim();
-        if (projectTaskId) {
-          void refreshBatchRuntime(projectTaskId, { silent: true });
-        } else {
-          runtimeRefreshGuardRef.current.invalidate();
-          setBatchRuntime(null);
-        }
       } catch (e) {
         if (!batchRefreshGuardRef.current.isLatest(seq)) return;
         if (!opts?.silent) {
@@ -136,67 +100,39 @@ export function useBatchGeneration(args: {
         }
       }
     },
-    [projectId, refreshBatchRuntime, toast],
+    [projectId, toast],
   );
 
   useEffect(() => {
     if (!projectId) {
       batchRefreshGuardRef.current.invalidate();
-      runtimeRefreshGuardRef.current.invalidate();
       setBatchTask(null);
       setBatchItems([]);
-      setBatchRuntime(null);
       return;
     }
     void refreshBatchTask({ silent: true });
   }, [projectId, refreshBatchTask]);
 
-  const scheduleBatchSync = useCallback(
-    (projectTaskId?: string | null) => {
-      if (batchSyncTimerRef.current !== null) {
-        window.clearTimeout(batchSyncTimerRef.current);
-      }
-      batchSyncTimerRef.current = window.setTimeout(() => {
-        batchSyncTimerRef.current = null;
-        void refreshBatchTask({ silent: true });
-        const runtimeTaskId = String(projectTaskId || batchTaskRef.current?.project_task_id || "").trim();
-        if (runtimeTaskId) {
-          void refreshBatchRuntime(runtimeTaskId, { silent: true });
-        }
-      }, 120);
-    },
-    [refreshBatchRuntime, refreshBatchTask],
-  );
-
-  const projectTaskEvents = useProjectTaskEvents({
+  const projectTaskEvents = useProjectTaskLiveSync({
     projectId,
     enabled: Boolean(projectId),
-    onSnapshot: (snapshot) => {
+    trackedTaskId: batchProjectTaskId,
+    pollWhen: Boolean(batchTask && isBatchGenerationTaskStatusRecoverable(batchTask.status)),
+    pollIntervalMs: 2000,
+    refreshOnIdleSnapshot: true,
+    pickSnapshotTaskId: (snapshot) => {
       const activeBatchTask = (snapshot.active_tasks || []).find((task) => isBatchGenerationProjectTaskKind(task.kind));
-      if (activeBatchTask || batchTaskRef.current) {
-        scheduleBatchSync(activeBatchTask?.id);
-      }
+      return activeBatchTask?.id ?? null;
     },
-    onEvent: (event) => {
-      if (!isBatchGenerationProjectTaskKind(event.kind)) return;
-      const currentProjectTaskId = String(batchTaskRef.current?.project_task_id || "").trim();
-      if (currentProjectTaskId && currentProjectTaskId !== event.task_id) return;
-      scheduleBatchSync(event.task_id);
+    shouldRefreshOnEvent: (event, trackedTaskId) => {
+      if (!isBatchGenerationProjectTaskKind(event.kind)) return false;
+      return !trackedTaskId || trackedTaskId === event.task_id;
+    },
+    onRefresh: (taskId) => {
+      void refreshBatchTask({ silent: true, taskId });
+      void batchRuntimeResource.refresh({ taskId: taskId ?? batchProjectTaskId, force: true, silent: true });
     },
   });
-
-  useEffect(() => {
-    if (projectTaskEvents.status === "open") return;
-    if (!batchTask || !isBatchGenerationTaskStatusRecoverable(batchTask.status)) return;
-    const id = window.setInterval(() => {
-      void refreshBatchTask({ silent: true });
-      const projectTaskId = String(batchTaskRef.current?.project_task_id || "").trim();
-      if (projectTaskId) {
-        void refreshBatchRuntime(projectTaskId, { silent: true });
-      }
-    }, 2000);
-    return () => window.clearInterval(id);
-  }, [batchTask, projectTaskEvents.status, refreshBatchRuntime, refreshBatchTask]);
 
   const openModal = useCallback(() => {
     setOpen(true);
@@ -248,9 +184,6 @@ export function useBatchGeneration(args: {
       setBatchTask(res.data.task);
       setBatchItems(res.data.items);
       batchTaskRef.current = res.data.task;
-      if (res.data.task.project_task_id) {
-        void refreshBatchRuntime(res.data.task.project_task_id, { silent: true });
-      }
       toast.toastSuccess("Batch generation started.", res.request_id);
     } catch (e) {
       const err = e as ApiError;
@@ -282,7 +215,6 @@ export function useBatchGeneration(args: {
     genForm,
     preset,
     projectId,
-    refreshBatchRuntime,
     requestSelectChapter,
     toast,
   ]);
@@ -294,13 +226,14 @@ export function useBatchGeneration(args: {
       await cancelBatchGenerationTask(batchTask.id);
       toast.toastSuccess("Batch generation canceled.");
       await refreshBatchTask({ silent: true });
+      await batchRuntimeResource.refresh({ force: true, silent: true });
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
       setBatchLoading(false);
     }
-  }, [batchTask, refreshBatchTask, toast]);
+  }, [batchRuntimeResource, batchTask, refreshBatchTask, toast]);
 
   const pauseBatchGeneration = useCallback(async () => {
     if (!batchTask) return;
@@ -309,13 +242,14 @@ export function useBatchGeneration(args: {
       await pauseBatchGenerationTask(batchTask.id);
       toast.toastSuccess("Batch generation paused.");
       await refreshBatchTask({ silent: true });
+      await batchRuntimeResource.refresh({ force: true, silent: true });
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
       setBatchLoading(false);
     }
-  }, [batchTask, refreshBatchTask, toast]);
+  }, [batchRuntimeResource, batchTask, refreshBatchTask, toast]);
 
   const resumeBatchGeneration = useCallback(async () => {
     if (!batchTask) return;
@@ -324,13 +258,14 @@ export function useBatchGeneration(args: {
       await resumeBatchGenerationTask(batchTask.id);
       toast.toastSuccess("Batch generation resumed.");
       await refreshBatchTask({ silent: true });
+      await batchRuntimeResource.refresh({ force: true, silent: true });
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
       setBatchLoading(false);
     }
-  }, [batchTask, refreshBatchTask, toast]);
+  }, [batchRuntimeResource, batchTask, refreshBatchTask, toast]);
 
   const retryFailedBatchGeneration = useCallback(async () => {
     if (!batchTask) return;
@@ -339,13 +274,14 @@ export function useBatchGeneration(args: {
       await retryFailedBatchGenerationTask(batchTask.id);
       toast.toastSuccess("Failed chapters queued for retry.");
       await refreshBatchTask({ silent: true });
+      await batchRuntimeResource.refresh({ force: true, silent: true });
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
       setBatchLoading(false);
     }
-  }, [batchTask, refreshBatchTask, toast]);
+  }, [batchRuntimeResource, batchTask, refreshBatchTask, toast]);
 
   const skipFailedBatchGeneration = useCallback(async () => {
     if (!batchTask) return;
@@ -354,13 +290,14 @@ export function useBatchGeneration(args: {
       await skipFailedBatchGenerationTask(batchTask.id);
       toast.toastSuccess("Failed chapters skipped.");
       await refreshBatchTask({ silent: true });
+      await batchRuntimeResource.refresh({ force: true, silent: true });
     } catch (e) {
       const err = e as ApiError;
       toast.toastError(`${err.message} (${err.code})`, err.requestId);
     } finally {
       setBatchLoading(false);
     }
-  }, [batchTask, refreshBatchTask, toast]);
+  }, [batchRuntimeResource, batchTask, refreshBatchTask, toast]);
 
   const applyBatchItemToEditor = useCallback(
     async (item: BatchGenerationTaskItem) => {
@@ -385,7 +322,7 @@ export function useBatchGeneration(args: {
     setBatchIncludeExisting,
     batchTask,
     batchItems,
-    batchRuntime,
+    batchRuntime: batchRuntimeResource.data,
     projectTaskStreamStatus: projectTaskEvents.status,
     refreshBatchTask,
     startBatchGeneration,
