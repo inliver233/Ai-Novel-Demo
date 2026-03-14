@@ -9,6 +9,7 @@ import { VectorRagDebugPanel } from "./contextPreview/VectorRagDebugPanel";
 import { WorldbookPreviewPanel } from "./contextPreview/WorldbookPreviewPanel";
 import { useVectorRagQuery } from "./contextPreview/useVectorRagQuery";
 import { downloadJson, writeClipboardText } from "./contextPreview/utils";
+import { formatWritingDisabledReason, WRITING_RUNTIME_COPY } from "./writingRuntimeCopy";
 
 type Props = {
   open: boolean;
@@ -408,7 +409,7 @@ export function ContextPreviewDrawer(props: Props) {
       if (e instanceof ApiError) {
         setContextOptimizerSettingsError({ code: e.code, message: e.message, requestId: e.requestId });
       } else {
-        setContextOptimizerSettingsError({ code: "UNKNOWN", message: "加载失败" });
+        setContextOptimizerSettingsError({ code: "UNKNOWN", message: WRITING_RUNTIME_COPY.loadFailed });
       }
       setContextOptimizerEnabled(null);
     } finally {
@@ -462,7 +463,7 @@ export function ContextPreviewDrawer(props: Props) {
       if (e instanceof ApiError) {
         setOptimizerCompareError({ code: e.code, message: e.message, requestId: e.requestId });
       } else {
-        setOptimizerCompareError({ code: "UNKNOWN", message: "加载失败" });
+        setOptimizerCompareError({ code: "UNKNOWN", message: WRITING_RUNTIME_COPY.loadFailed });
       }
       setOptimizerCompare(null);
     } finally {
@@ -502,7 +503,7 @@ export function ContextPreviewDrawer(props: Props) {
         if (e instanceof ApiError) {
           setError({ code: e.code, message: e.message, requestId: e.requestId });
         } else {
-          setError({ code: "UNKNOWN", message: "加载失败" });
+          setError({ code: "UNKNOWN", message: WRITING_RUNTIME_COPY.loadFailed });
         }
       } finally {
         setLoading(false);
@@ -640,7 +641,7 @@ export function ContextPreviewDrawer(props: Props) {
         <div className="mt-2 text-xs text-ink">风险</div>
         <ul className="mt-1 list-disc pl-5">
           <li>页面可能包含隐私/敏感内容：分享/截图前请确认，并避免公开传播</li>
-          <li>可用“下载预览 bundle”导出排障材料；按设计不应包含 API Key（分享前仍建议自行快速检索）</li>
+          <li>{WRITING_RUNTIME_COPY.previewBundleSafetyHint}</li>
         </ul>
       </div>
 
@@ -798,7 +799,7 @@ export function ContextPreviewDrawer(props: Props) {
                       {it.enabled ? (
                         <span className="text-success">enabled</span>
                       ) : (
-                        <span className="text-warning">disabled: {it.disabled_reason ?? "unknown"}</span>
+                        <span className="text-warning">{formatWritingDisabledReason(it.disabled_reason)}</span>
                       )}
                     </div>
                     {it.note ? <div className="mt-1 text-[11px] text-subtext">{it.note}</div> : null}
@@ -816,9 +817,7 @@ export function ContextPreviewDrawer(props: Props) {
             <summary className="ui-transition-fast cursor-pointer text-sm text-ink hover:text-ink">
               原始数据（JSON）
             </summary>
-            <div className="mt-3 text-xs text-subtext">
-              建议优先用顶部「下载预览 bundle」导出文件。需要复制粘贴时，可用下方按钮。
-            </div>
+            <div className="mt-3 text-xs text-subtext">{WRITING_RUNTIME_COPY.bundleExportRecommendation}</div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 className="btn btn-secondary"
@@ -1065,7 +1064,7 @@ export function ContextPreviewDrawer(props: Props) {
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <div className="text-sm text-ink">Tables（sys.memory.tables）</div>
                     <div className="text-[11px] text-subtext">
-                      {enabled ? "enabled" : `disabled: ${disabledReason ?? "unknown"}`} · tables:{tablesCount} · rows:
+                      {enabled ? "enabled" : formatWritingDisabledReason(disabledReason)} · tables:{tablesCount} · rows:
                       {rowsCount} · truncated:{truncated ? "true" : "false"}
                     </div>
                   </div>
@@ -1114,7 +1113,7 @@ export function ContextPreviewDrawer(props: Props) {
                 return (
                   <details key={key} className="rounded-atelier border border-border bg-surface p-3">
                     <summary className="ui-transition-fast cursor-pointer text-xs text-subtext hover:text-ink">
-                      {key}.items ({items.length}){enabled ? "" : ` — disabled:${disabledReason ?? "unknown"}`}
+                      {key}.items ({items.length}){enabled ? "" : ` — ${formatWritingDisabledReason(disabledReason)}`}
                     </summary>
                     <div className="mt-2 flex justify-end">
                       <button

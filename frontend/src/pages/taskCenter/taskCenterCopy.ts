@@ -110,6 +110,8 @@ export const TASK_CENTER_COPY = {
   runtimeBatchSkipFailed: "Skip failed chapters",
   runtimeBatchCancel: "Cancel batch",
   runtimeBatchWorking: "Working...",
+  runtimeBatchActionHint: "暂停或取消只影响当前批处理，不会改写已经完成的章节。",
+  runtimeBatchFailureHint: "失败章节可选择重试或跳过；不会覆盖已经成功的章节内容。",
   runtimeBatchPausedToast: "Batch paused.",
   runtimeBatchResumedToast: "Batch resumed.",
   runtimeBatchRetryFailedToast: "Failed chapters queued for retry.",

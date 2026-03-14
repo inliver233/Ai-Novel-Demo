@@ -5,6 +5,7 @@ import { ApiError, apiDownloadAttachment, apiJson } from "../../services/apiClie
 import { Drawer } from "../ui/Drawer";
 import { useToast } from "../ui/toast";
 import type { GenerationRun } from "./types";
+import { formatWritingDisabledReason, WRITING_RUNTIME_COPY } from "./writingRuntimeCopy";
 
 type Props = {
   open: boolean;
@@ -238,8 +239,8 @@ export function GenerationHistoryDrawer(props: Props) {
                     <div className="text-xs text-ink">排障包说明</div>
                     <ul className="mt-1 list-disc pl-5">
                       <li>用途：定位生成失败、提示词渲染、记忆检索注入等问题</li>
-                      <li>提示：可能包含隐私/敏感内容，分享前请确认并避免公开传播</li>
-                      <li>安全：按设计不应包含 API Key；分享前仍建议自行快速检索</li>
+                      <li>{WRITING_RUNTIME_COPY.bundlePrivacyHint}</li>
+                      <li>{WRITING_RUNTIME_COPY.bundleSafetyHint}</li>
                     </ul>
                   </div>
                 </div>
@@ -332,7 +333,7 @@ export function GenerationHistoryDrawer(props: Props) {
                                   {enabled ? (
                                     <span className="text-success">enabled</span>
                                   ) : (
-                                    <span className="text-warning">disabled: {disabledReason ?? "unknown"}</span>
+                                    <span className="text-warning">{formatWritingDisabledReason(disabledReason)}</span>
                                   )}
                                 </div>
                               </div>

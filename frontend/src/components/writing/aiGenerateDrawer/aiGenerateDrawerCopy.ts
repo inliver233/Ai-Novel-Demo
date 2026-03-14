@@ -2,7 +2,6 @@ export const AI_GENERATE_DRAWER_COPY = {
   title: "AI 生成",
   close: "关闭",
   llmMissing: "未加载 LLM 配置",
-  promptOverrideWarning: "已启用 Prompt 覆盖：生成将使用覆盖文本（可在 Prompt Inspector 回退默认）。",
   streamConnecting: "连接中...",
   cancelGenerate: "取消生成",
   autosaveHint: "生成与编辑内容会自动保存（有短暂延迟），也可随时点击“保存”或 Ctrl/Cmd+S 立即保存。",

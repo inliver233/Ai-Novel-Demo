@@ -134,6 +134,11 @@ export function ProjectTaskRuntimePanel(props: {
               </button>
             ) : null}
           </div>
+          <div className="mt-2 text-[11px] text-subtext">
+            {failedItems.length > 0
+              ? TASK_CENTER_COPY.runtimeBatchFailureHint
+              : TASK_CENTER_COPY.runtimeBatchActionHint}
+          </div>
           <div
             className="mt-3 max-h-64 overflow-auto rounded-atelier border border-border bg-canvas"
             aria-label="projecttask_runtime_batch_items"

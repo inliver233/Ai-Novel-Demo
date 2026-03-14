@@ -5,6 +5,7 @@ import type { LLMPreset } from "../../types";
 import { ApiError, apiJson } from "../../services/apiClient";
 import { Drawer } from "../ui/Drawer";
 import { useToast } from "../ui/toast";
+import { WRITING_RUNTIME_COPY } from "./writingRuntimeCopy";
 
 type Props = {
   open: boolean;
@@ -150,7 +151,7 @@ export function PromptInspectorDrawer(props: Props) {
       if (e instanceof ApiError) {
         setError({ code: e.code, message: e.message, requestId: e.requestId });
       } else {
-        setError({ code: "UNKNOWN", message: "加载失败" });
+        setError({ code: "UNKNOWN", message: WRITING_RUNTIME_COPY.loadFailed });
       }
       setPrecheck(null);
       setRequestId(null);
@@ -248,7 +249,7 @@ export function PromptInspectorDrawer(props: Props) {
       </div>
 
       {overrideEnabled ? (
-        <div className="mt-3 callout-warning">已启用覆盖提示词：生成将使用覆盖文本（可随时回退）。</div>
+        <div className="mt-3 callout-warning">{WRITING_RUNTIME_COPY.promptOverrideWarning}</div>
       ) : null}
 
       {error ? (
@@ -394,9 +395,7 @@ export function PromptInspectorDrawer(props: Props) {
                 使用覆盖文本执行
               </button>
             </div>
-            <div className="text-[11px] text-subtext">
-              提示：使用覆盖后，“生成/追加生成”也会继续沿用覆盖文本，直到回退默认。
-            </div>
+            <div className="text-[11px] text-subtext">{WRITING_RUNTIME_COPY.promptOverridePersistenceHint}</div>
           </div>
         </div>
       </div>

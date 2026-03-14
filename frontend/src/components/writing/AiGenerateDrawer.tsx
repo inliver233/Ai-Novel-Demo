@@ -9,6 +9,7 @@ import { AiGenerateDefaultSection } from "./aiGenerateDrawer/AiGenerateDefaultSe
 import { getAiGenerateDrawerState, getStyleHelperText } from "./aiGenerateDrawer/aiGenerateDrawerModels";
 import { useAiGenerateStyles } from "./aiGenerateDrawer/useAiGenerateStyles";
 import type { GenerateForm } from "./types";
+import { WRITING_RUNTIME_COPY } from "./writingRuntimeCopy";
 
 type Props = {
   open: boolean;
@@ -80,7 +81,7 @@ export function AiGenerateDrawer(props: Props) {
           </div>
           <div className="mt-1 text-xs text-subtext">{drawerState.presetSummary}</div>
           {drawerState.hasPromptOverride ? (
-            <div className="mt-2 callout-warning">{AI_GENERATE_DRAWER_COPY.promptOverrideWarning}</div>
+            <div className="mt-2 callout-warning">{WRITING_RUNTIME_COPY.promptOverrideWarning}</div>
           ) : null}
         </div>
         <button className="btn btn-secondary" aria-label="关闭" onClick={closeDrawer} type="button">
