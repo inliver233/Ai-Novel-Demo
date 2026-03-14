@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createProjectTaskStore } from "./projectTaskStore";
+import { createProjectTaskStore, type ProjectTaskListQuery } from "./projectTaskStore";
 import type { ProjectTaskRuntime } from "./projectTaskRuntime";
 import type { ProjectTask } from "./worldbookApi";
 
@@ -36,11 +36,11 @@ function makeRuntime(overrides: Partial<ProjectTaskRuntime> = {}): ProjectTaskRu
 
 describe("projectTaskStore", () => {
   it("caches project task lists per filter until invalidated", async () => {
-    const listProjectTasks = vi
-      .fn<[string, { status: string; limit: number }], Promise<ProjectTask[]>>()
-      .mockImplementation(async (_projectId, query) => [makeTask({ id: `task-${query.status || "all"}` })]);
+    const listProjectTasks = vi.fn(async (projectId: string, query: Required<ProjectTaskListQuery>) => [
+      makeTask({ id: `${projectId}-${query.status || "all"}` }),
+    ]);
     const store = createProjectTaskStore({
-      listProjectTasks,
+      listProjectTasks: (projectId, query) => listProjectTasks(projectId, query),
       fetchProjectTaskDetail: vi.fn(async () => makeTask()),
       fetchProjectTaskRuntime: vi.fn(async () => makeRuntime()),
     });
@@ -59,11 +59,11 @@ describe("projectTaskStore", () => {
   });
 
   it("treats all-status list queries as the unfiltered cache key", async () => {
-    const listProjectTasks = vi
-      .fn<[string, { status: string; limit: number }], Promise<ProjectTask[]>>()
-      .mockImplementation(async () => [makeTask({ id: "task-all" })]);
+    const listProjectTasks = vi.fn(async (projectId: string, query: Required<ProjectTaskListQuery>) => [
+      makeTask({ id: `${projectId}-all-${query.limit}` }),
+    ]);
     const store = createProjectTaskStore({
-      listProjectTasks,
+      listProjectTasks: (projectId, query) => listProjectTasks(projectId, query),
       fetchProjectTaskDetail: vi.fn(async () => makeTask()),
       fetchProjectTaskRuntime: vi.fn(async () => makeRuntime()),
     });

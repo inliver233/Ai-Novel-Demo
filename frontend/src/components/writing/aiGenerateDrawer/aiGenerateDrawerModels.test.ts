@@ -68,11 +68,11 @@ describe("aiGenerateDrawerModels", () => {
   it("flags unsupported stream fallback only for non-openai presets without reliable transport", () => {
     const unsupported = getAiGenerateDrawerState({
       genForm: makeForm({ stream: true }),
-      preset: { project_id: "p1", provider: "ollama", model: "local", stop: [], extra: {} },
+      preset: { project_id: "p1", provider: "anthropic", model: "local", stop: [], extra: {} },
     });
     const withReliableTransport = getAiGenerateDrawerState({
       genForm: makeForm({ stream: true, post_edit: true }),
-      preset: { project_id: "p1", provider: "ollama", model: "local", stop: [], extra: {} },
+      preset: { project_id: "p1", provider: "anthropic", model: "local", stop: [], extra: {} },
     });
 
     expect(unsupported.showUnsupportedStreamWarning).toBe(true);
