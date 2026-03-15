@@ -363,7 +363,14 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
             text = json.dumps({"chapters": chapters}, ensure_ascii=False)
             return SimpleNamespace(text=text, finish_reason="stop", run_id=f"run-{call_count['value']}")
 
-        with patch("app.services.outline_generation_app_service.call_llm_and_record", side_effect=_fake_call_llm_and_record):
+        with (
+            patch("app.services.outline_generation_fill_service.call_llm_and_record", side_effect=_fake_call_llm_and_record),
+            patch("app.services.outline_generation_gap_repair_service.call_llm_and_record", side_effect=_fake_call_llm_and_record),
+            patch(
+                "app.services.outline_generation_gap_repair_final_sweep_service.call_llm_and_record",
+                side_effect=_fake_call_llm_and_record,
+            ),
+        ):
             out, warnings, _run_ids = _fill_outline_missing_chapters_with_llm(
                 data=data,
                 target_chapter_count=50,
@@ -405,9 +412,19 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
             "chapters": [{"number": i, "title": f"第{i}章", "beats": ["a"]} for i in range(1, 6)],
         }
 
-        with patch(
-            "app.services.outline_generation_app_service.call_llm_and_record",
-            side_effect=AppError(code="LLM_TIMEOUT", message="timeout", status_code=504),
+        with (
+            patch(
+                "app.services.outline_generation_fill_service.call_llm_and_record",
+                side_effect=AppError(code="LLM_TIMEOUT", message="timeout", status_code=504),
+            ),
+            patch(
+                "app.services.outline_generation_gap_repair_service.call_llm_and_record",
+                side_effect=AppError(code="LLM_TIMEOUT", message="timeout", status_code=504),
+            ),
+            patch(
+                "app.services.outline_generation_gap_repair_final_sweep_service.call_llm_and_record",
+                side_effect=AppError(code="LLM_TIMEOUT", message="timeout", status_code=504),
+            ),
         ):
             out, warnings, run_ids = _fill_outline_missing_chapters_with_llm(
                 data=data,
@@ -478,7 +495,14 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
                 raise AssertionError(f"unexpected run_type: {run_type}")
             return SimpleNamespace(text=text, finish_reason="stop", run_id=f"run-{call_count['value']}")
 
-        with patch("app.services.outline_generation_app_service.call_llm_and_record", side_effect=_fake_call_llm_and_record):
+        with (
+            patch("app.services.outline_generation_fill_service.call_llm_and_record", side_effect=_fake_call_llm_and_record),
+            patch("app.services.outline_generation_gap_repair_service.call_llm_and_record", side_effect=_fake_call_llm_and_record),
+            patch(
+                "app.services.outline_generation_gap_repair_final_sweep_service.call_llm_and_record",
+                side_effect=_fake_call_llm_and_record,
+            ),
+        ):
             out, warnings, run_ids = _fill_outline_missing_chapters_with_llm(
                 data=data,
                 target_chapter_count=20,
@@ -533,7 +557,7 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
                 dropped_params=[],
             )
 
-        with patch("app.services.outline_generation_app_service.call_llm_and_record", side_effect=_fake_call_llm_and_record):
+        with patch("app.services.outline_generation_segment_service.call_llm_and_record", side_effect=_fake_call_llm_and_record):
             res = _generate_outline_segmented_with_llm(
                 request_id="rid-segment-test",
                 actor_user_id="u1",
