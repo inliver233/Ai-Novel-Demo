@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 import json
-import logging
 from datetime import datetime
-from typing import Literal
 
 from fastapi import APIRouter, Header, Query, Request
-from pydantic import Field
 from sqlalchemy import func, or_, select
 
 from app.api.deps import DbDep, UserIdDep, require_chapter_editor, require_project_editor, require_project_viewer
+from app.api.routes.memory_route_helpers import (
+    _build_memory_pack_payload,
+    _normalize_memory_auto_propose_args,
+    _parse_iso_dt,
+    _safe_json,
+)
+from app.api.routes.memory_route_models import (
+    MemoryAutoProposeRequest,
+    StoryMemoryForeshadowResolveRequest,
+    StoryMemoryImportV1Request,
+)
 from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
@@ -25,11 +33,12 @@ from app.models.structured_memory import (
     MemoryForeshadow,
     MemoryRelation,
 )
-from app.models.user import User
-from app.schemas.base import RequestModel
 from app.schemas.memory_update import MemoryUpdateV1Request
 from app.schemas.memory_preview import MemoryPreviewRequest
-from app.services.memory_auto_update_app_service import auto_propose_chapter_memory_update as auto_propose_chapter_memory_update_service
+from app.services.memory_auto_update_app_service import (
+    auto_propose_chapter_memory_update as auto_propose_chapter_memory_update_service,
+    require_chapter_done_for_memory_update,
+)
 from app.services.memory_retrieval_service import retrieve_memory_context_pack
 from app.services.memory_update_service import (
     apply_memory_change_set,
@@ -46,24 +55,6 @@ from app.services.search_index_service import schedule_search_rebuild_task
 from app.services.vector_rag_service import schedule_vector_rebuild_task
 
 router = APIRouter()
-logger = logging.getLogger("ainovel")
-
-
-def _require_chapter_done_for_memory_update(*, db: DbDep, chapter: Chapter, user_id: str, allow_draft: bool) -> None:
-    status = str(getattr(chapter, "status", "") or "").strip().lower()
-    if status == "done":
-        return
-
-    if allow_draft:
-        actor = db.get(User, user_id)
-        if actor is None or not bool(getattr(actor, "is_admin", False)):
-            raise AppError.forbidden()
-        return
-
-    raise AppError.conflict(
-        message="仅定稿章节可进行记忆更新",
-        details={"reason": "chapter_not_done", "chapter_status": str(getattr(chapter, "status", "") or "")},
-    )
 
 
 @router.get("/projects/{project_id}/memory/retrieve")
@@ -78,7 +69,7 @@ def retrieve_project_memory(
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
     pack = retrieve_memory_context_pack(db=db, project_id=project_id, query_text=query_text, include_deleted=include_deleted)
-    return ok_payload(request_id=request_id, data=pack.model_dump())
+    return ok_payload(request_id=request_id, data=_build_memory_pack_payload(pack))
 
 
 @router.post("/projects/{project_id}/memory/preview")
@@ -99,24 +90,7 @@ def preview_project_memory(
         section_enabled=body.section_enabled,
         budget_overrides=body.budget_overrides,
     )
-    return ok_payload(request_id=request_id, data=pack.model_dump())
-
-
-StoryMemoryImportSchemaVersion = Literal["story_memory_import_v1"]
-
-
-class StoryMemoryImportV1Item(RequestModel):
-    memory_type: str = Field(min_length=1, max_length=64)
-    title: str | None = Field(default=None, max_length=255)
-    content: str = Field(min_length=1, max_length=8000)
-    importance_score: float = Field(default=0.0)
-    story_timeline: int = Field(default=0)
-    is_foreshadow: int = Field(default=0, ge=0, le=1)
-
-
-class StoryMemoryImportV1Request(RequestModel):
-    schema_version: StoryMemoryImportSchemaVersion = "story_memory_import_v1"
-    memories: list[StoryMemoryImportV1Item] = Field(default_factory=list, min_length=1, max_length=50)
+    return ok_payload(request_id=request_id, data=_build_memory_pack_payload(pack))
 
 
 @router.post("/projects/{project_id}/story_memories/import_all")
@@ -179,12 +153,6 @@ def import_all_story_memories(
         db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="story_memory_import_all"
     )
     return ok_payload(request_id=request_id, data={"created": len(created_ids), "ids": created_ids})
-
-
-class StoryMemoryForeshadowResolveRequest(RequestModel):
-    resolved_at_chapter_id: str | None = Field(default=None, max_length=64)
-
-
 @router.get("/projects/{project_id}/story_memories/foreshadows/open_loops")
 def list_story_memory_foreshadow_open_loops(
     request: Request,
@@ -317,36 +285,6 @@ def resolve_story_memory_foreshadow(
             }
         },
     )
-
-
-def _safe_json(raw: str | None, default: object) -> object:
-    if raw is None:
-        return default
-    try:
-        return json.loads(raw)
-    except Exception:
-        return default
-
-
-def _parse_iso_dt(value: str | None) -> datetime | None:
-    if value is None:
-        return None
-    s = str(value).strip()
-    if not s:
-        return None
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    try:
-        return datetime.fromisoformat(s)
-    except Exception:
-        return None
-
-
-class MemoryAutoProposeRequest(RequestModel):
-    idempotency_key: str | None = Field(default=None, max_length=64)
-    focus: str | None = Field(default=None, max_length=4000)
-
-
 @router.get("/projects/{project_id}/memory/structured")
 def list_structured_memory(
     request: Request,
@@ -598,7 +536,7 @@ def propose_chapter_memory_update(
 ) -> dict:
     request_id = request.state.request_id
     chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
-    _require_chapter_done_for_memory_update(db=db, chapter=chapter, user_id=user_id, allow_draft=allow_draft)
+    require_chapter_done_for_memory_update(db=db, chapter=chapter, user_id=user_id, allow_draft=allow_draft)
     out = propose_chapter_memory_change_set(db=db, request_id=request_id, actor_user_id=user_id, chapter=chapter, payload=body)
     return ok_payload(request_id=request_id, data=out)
 
@@ -634,8 +572,10 @@ def auto_propose_chapter_memory_update(
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ) -> dict:
     request_id = request.state.request_id
-    focus = (body.focus or "").strip()
-    idempotency_key = (body.idempotency_key or "").strip() or f"memupd-auto-{new_id()[:8]}"
+    focus, idempotency_key = _normalize_memory_auto_propose_args(
+        focus=body.focus,
+        idempotency_key=body.idempotency_key,
+    )
     out = auto_propose_chapter_memory_update_service(
         request_id=request_id,
         chapter_id=chapter_id,
@@ -668,7 +608,7 @@ def apply_memory_update(
     if chapter_id:
         chapter = db.get(Chapter, chapter_id)
         if chapter is not None:
-            _require_chapter_done_for_memory_update(db=db, chapter=chapter, user_id=user_id, allow_draft=allow_draft)
+            require_chapter_done_for_memory_update(db=db, chapter=chapter, user_id=user_id, allow_draft=allow_draft)
 
     out = apply_memory_change_set(db=db, request_id=request_id, actor_user_id=user_id, change_set=change_set)
     return ok_payload(request_id=request_id, data=out)
