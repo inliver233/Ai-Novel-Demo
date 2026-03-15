@@ -46,10 +46,10 @@ class TestLlmTestEndpointRetryDetails(unittest.TestCase):
         ok = SimpleNamespace(text="pong", latency_ms=1, finish_reason="stop", dropped_params=[])
 
         with (
-            patch("app.api.routes.llm.task_llm_max_attempts", return_value=2),
-            patch("app.api.routes.llm.compute_backoff_seconds", return_value=0),
-            patch("app.api.routes.llm.time.sleep") as mock_sleep,
-            patch("app.api.routes.llm.call_llm", side_effect=[timeout_exc, ok]) as mock_call,
+            patch("app.services.llm_test_app_service.task_llm_max_attempts", return_value=2),
+            patch("app.services.llm_test_app_service.compute_backoff_seconds", return_value=0),
+            patch("app.services.llm_test_app_service.time.sleep") as mock_sleep,
+            patch("app.services.llm_test_app_service.call_llm", side_effect=[timeout_exc, ok]) as mock_call,
         ):
             resp = client.post(
                 "/api/llm/test",
@@ -75,11 +75,11 @@ class TestLlmTestEndpointRetryDetails(unittest.TestCase):
             details={"status_code": 504, "upstream_error": "gateway timeout"},
         )
         with (
-            patch("app.api.routes.llm.task_llm_max_attempts", return_value=2),
-            patch("app.api.routes.llm.compute_backoff_seconds", return_value=0),
-            patch("app.api.routes.llm.time.sleep"),
-            patch("app.api.routes.llm.call_llm", side_effect=[timeout_exc, timeout_exc]) as mock_call,
-            patch("app.api.routes.llm.log_event") as route_log_event,
+            patch("app.services.llm_test_app_service.task_llm_max_attempts", return_value=2),
+            patch("app.services.llm_test_app_service.compute_backoff_seconds", return_value=0),
+            patch("app.services.llm_test_app_service.time.sleep"),
+            patch("app.services.llm_test_app_service.call_llm", side_effect=[timeout_exc, timeout_exc]) as mock_call,
+            patch("app.services.llm_test_app_service.log_event") as service_log_event,
             patch("app.main.log_event") as main_log_event,
         ):
             resp = client.post(
@@ -101,15 +101,15 @@ class TestLlmTestEndpointRetryDetails(unittest.TestCase):
         self.assertEqual(details.get("attempt_max"), 2)
         self.assertEqual(len(attempts), 2)
         self.assertEqual((attempts[0] or {}).get("error_code"), "LLM_TIMEOUT")
-        self.assertEqual(route_log_event.call_count, 2)
-        _route_args, route_kwargs = route_log_event.call_args
-        self.assertEqual(route_kwargs.get("event"), "LLM_TEST_ATTEMPT_FAILED")
-        self.assertEqual(route_kwargs.get("attempt"), 2)
-        self.assertEqual(route_kwargs.get("attempt_max"), 2)
-        self.assertEqual(route_kwargs.get("provider"), "openai")
-        self.assertEqual(route_kwargs.get("model"), "gpt-test")
-        self.assertEqual(route_kwargs.get("base_url_host"), "api.openai.com")
-        self.assertEqual(route_kwargs.get("details"), {"status_code": 504, "upstream_error": "gateway timeout"})
+        self.assertEqual(service_log_event.call_count, 2)
+        _service_args, service_kwargs = service_log_event.call_args
+        self.assertEqual(service_kwargs.get("event"), "LLM_TEST_ATTEMPT_FAILED")
+        self.assertEqual(service_kwargs.get("attempt"), 2)
+        self.assertEqual(service_kwargs.get("attempt_max"), 2)
+        self.assertEqual(service_kwargs.get("provider"), "openai")
+        self.assertEqual(service_kwargs.get("model"), "gpt-test")
+        self.assertEqual(service_kwargs.get("base_url_host"), "api.openai.com")
+        self.assertEqual(service_kwargs.get("details"), {"status_code": 504, "upstream_error": "gateway timeout"})
         _main_args, main_kwargs = main_log_event.call_args
         self.assertEqual(main_kwargs.get("details", {}).get("provider"), "openai")
         self.assertEqual(main_kwargs.get("details", {}).get("attempt_max"), 2)
@@ -120,10 +120,10 @@ class TestLlmTestEndpointRetryDetails(unittest.TestCase):
 
         bad = AppError(code="LLM_BAD_REQUEST", message="bad", status_code=400)
         with (
-            patch("app.api.routes.llm.task_llm_max_attempts", return_value=3),
-            patch("app.api.routes.llm.compute_backoff_seconds", return_value=0),
-            patch("app.api.routes.llm.time.sleep"),
-            patch("app.api.routes.llm.call_llm", side_effect=[bad]) as mock_call,
+            patch("app.services.llm_test_app_service.task_llm_max_attempts", return_value=3),
+            patch("app.services.llm_test_app_service.compute_backoff_seconds", return_value=0),
+            patch("app.services.llm_test_app_service.time.sleep"),
+            patch("app.services.llm_test_app_service.call_llm", side_effect=[bad]) as mock_call,
         ):
             resp = client.post(
                 "/api/llm/test",
