@@ -11,12 +11,10 @@ from sqlalchemy import func, or_, select
 
 from app.api.deps import DbDep, UserIdDep, require_chapter_editor, require_project_editor, require_project_viewer
 from app.core.errors import AppError, ok_payload
-from app.db.session import SessionLocal
 from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
 from app.models.generation_run import GenerationRun
 from app.models.memory_task import MemoryTask
-from app.models.project import Project
 from app.models.project_settings import ProjectSettings
 from app.models.story_memory import StoryMemory
 from app.models.structured_memory import (
@@ -31,8 +29,7 @@ from app.models.user import User
 from app.schemas.base import RequestModel
 from app.schemas.memory_update import MemoryUpdateV1Request
 from app.schemas.memory_preview import MemoryPreviewRequest
-from app.services.generation_service import call_llm_and_record, with_param_overrides
-from app.services.llm_task_preset_resolver import resolve_task_llm_config
+from app.services.memory_auto_update_app_service import auto_propose_chapter_memory_update as auto_propose_chapter_memory_update_service
 from app.services.memory_retrieval_service import retrieve_memory_context_pack
 from app.services.memory_update_service import (
     apply_memory_change_set,
@@ -45,36 +42,11 @@ from app.services.memory_update_service import (
     rollback_memory_change_set,
 )
 from app.services.table_executor import TableUpdateV1Request
-from app.services.output_contracts import contract_for_task
-from app.services.prompt_presets import _ensure_default_preset_from_resource, render_preset_for_task
 from app.services.search_index_service import schedule_search_rebuild_task
 from app.services.vector_rag_service import schedule_vector_rebuild_task
 
 router = APIRouter()
 logger = logging.getLogger("ainovel")
-
-
-def _resolve_task_llm_for_call(
-    *,
-    db,
-    project: Project,
-    user_id: str,
-    task_key: str,
-    x_llm_provider: str | None,
-    x_llm_api_key: str | None,
-):
-    resolved = resolve_task_llm_config(
-        db,
-        project=project,
-        user_id=user_id,
-        task_key=task_key,
-        header_api_key=x_llm_api_key,
-    )
-    if resolved is None:
-        raise AppError(code="LLM_CONFIG_ERROR", message="请先在 Prompts 页保存 LLM 配置", status_code=400)
-    if x_llm_api_key and x_llm_provider and resolved.llm_call.provider != x_llm_provider:
-        raise AppError(code="LLM_CONFIG_ERROR", message="当前任务 provider 与请求头不一致，请先保存/切换", status_code=400)
-    return resolved
 
 
 def _require_chapter_done_for_memory_update(*, db: DbDep, chapter: Chapter, user_id: str, allow_draft: bool) -> None:
@@ -662,116 +634,18 @@ def auto_propose_chapter_memory_update(
     x_llm_api_key: str | None = Header(default=None, alias="X-LLM-API-Key", max_length=4096),
 ) -> dict:
     request_id = request.state.request_id
-    resolved_api_key = ""
-
-    prompt_system = ""
-    prompt_user = ""
-    prompt_render_log_json: str | None = None
-    prompt_messages = None
-    llm_call = None
-    project_id = ""
-
     focus = (body.focus or "").strip()
     idempotency_key = (body.idempotency_key or "").strip() or f"memupd-auto-{new_id()[:8]}"
-
-    db = SessionLocal()
-    try:
-        chapter = require_chapter_editor(db, chapter_id=chapter_id, user_id=user_id)
-        _require_chapter_done_for_memory_update(db=db, chapter=chapter, user_id=user_id, allow_draft=allow_draft)
-        project_id = str(chapter.project_id)
-        project = db.get(Project, project_id)
-        if project is None:
-            raise AppError.not_found()
-
-        resolved_memupd = _resolve_task_llm_for_call(
-            db=db,
-            project=project,
-            user_id=user_id,
-            task_key="memory_update",
-            x_llm_provider=x_llm_provider,
-            x_llm_api_key=x_llm_api_key,
-        )
-        resolved_api_key = str(resolved_memupd.api_key)
-
-        _ensure_default_preset_from_resource(db, project_id=project_id, resource_key="memory_update_v1", activate=True)
-        values = {
-            "chapter_id": str(chapter.id),
-            "chapter_number": int(chapter.number),
-            "chapter_title": str(chapter.title or ""),
-            "chapter_plan": str(chapter.plan or ""),
-            "chapter_content_md": str(chapter.content_md or ""),
-            "focus": focus,
-        }
-
-        prompt_system, prompt_user, prompt_messages, _, _, _, render_log = render_preset_for_task(
-            db,
-            project_id=project_id,
-            task="memory_update",
-            values=values,
-            macro_seed=f"{request_id}:memory_update",
-            provider=resolved_memupd.llm_call.provider,
-        )
-        prompt_render_log_json = json.dumps(render_log, ensure_ascii=False)
-        llm_call = resolved_memupd.llm_call
-    finally:
-        db.close()
-
-    if llm_call is None:
-        raise AppError(code="INTERNAL_ERROR", message="LLM 调用准备失败", status_code=500)
-    if not prompt_system.strip() and not prompt_user.strip():
-        raise AppError(code="PROMPT_CONFIG_ERROR", message="缺少 memory_update 提示词预设/提示块", status_code=400)
-
-    llm_call = with_param_overrides(llm_call, {"temperature": 0.2, "max_tokens": 2048})
-    llm_result = call_llm_and_record(
-        logger=logger,
+    out = auto_propose_chapter_memory_update_service(
         request_id=request_id,
-        actor_user_id=user_id,
-        project_id=project_id,
         chapter_id=chapter_id,
-        run_type="memory_update_auto_propose",
-        api_key=str(resolved_api_key),
-        prompt_system=prompt_system,
-        prompt_user=prompt_user,
-        prompt_messages=prompt_messages,
-        prompt_render_log_json=prompt_render_log_json,
-        llm_call=llm_call,
-    )
-
-    contract = contract_for_task("memory_update")
-    parsed = contract.parse(llm_result.text, finish_reason=llm_result.finish_reason)
-    if parsed.parse_error is not None:
-        raise AppError.validation(
-            message="记忆更新（memory_update）输出不符合 JSON 契约",
-            details={
-                "parse_error": parsed.parse_error,
-                "warnings": parsed.warnings,
-                "generation_run_id": llm_result.run_id,
-                "finish_reason": llm_result.finish_reason,
-            },
-        )
-
-    payload = MemoryUpdateV1Request(
-        schema_version="memory_update_v1",
+        focus=focus,
+        user_id=user_id,
+        allow_draft=allow_draft,
+        x_llm_provider=x_llm_provider,
+        x_llm_api_key=x_llm_api_key,
         idempotency_key=idempotency_key,
-        title=str(parsed.data.get("title") or "Memory Update (auto)").strip() or "Memory Update (auto)",
-        summary_md=str(parsed.data.get("summary_md") or "").strip() or None,
-        ops=list(parsed.data.get("ops") or []),
     )
-
-    db2 = SessionLocal()
-    try:
-        chapter2 = require_chapter_editor(db2, chapter_id=chapter_id, user_id=user_id)
-        _require_chapter_done_for_memory_update(db=db2, chapter=chapter2, user_id=user_id, allow_draft=allow_draft)
-        out = propose_chapter_memory_change_set(
-            db=db2,
-            request_id=request_id,
-            actor_user_id=user_id,
-            chapter=chapter2,
-            payload=payload,
-        )
-        out["llm_generation_run_id"] = llm_result.run_id
-    finally:
-        db2.close()
     return ok_payload(request_id=request_id, data=out)
 
 
