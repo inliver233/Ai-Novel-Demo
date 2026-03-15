@@ -15,6 +15,15 @@ from app.services.outline_generation_fill_service import _fill_outline_missing_c
 from app.services.outline_generation_models import PreparedOutlineGeneration
 from app.services.outline_generation_prepare_service import _write_outline_segmented_aggregate_run
 from app.services.outline_generation_route_bridge import _outline_route
+from app.services.outline_generation_stream_finalize_service import (
+    finalize_outline_stream_result,
+    finalize_segmented_outline_stream_result,
+    write_outline_stream_error_run,
+)
+from app.services.outline_generation_stream_progress_service import (
+    iter_fill_progress_sse_events,
+    iter_segment_progress_sse_events,
+)
 from app.services.outline_generation_segment_service import _generate_outline_segmented_with_llm
 from app.services.output_contracts import build_repair_prompt_for_task, contract_for_task
 from app.services.run_store import write_generation_run
@@ -81,72 +90,14 @@ def generate_outline_stream_events(
                 run_params_extra_json=run_params_extra_json,
                 progress_hook=_on_segment_progress,
             )
-
-            last_ping = 0.0
-            last_message = ""
-            last_snapshot_key: tuple[str, int, int, int] | None = None
-            last_raw_preview_key: tuple[str, int, int, int] | None = None
-            while True:
-                now = time.monotonic()
-                if now - last_ping >= outline_route.OUTLINE_FILL_HEARTBEAT_INTERVAL_SECONDS:
-                    yield sse_heartbeat()
-                    last_ping = now
-                with segment_progress_lock:
-                    pending_snapshots = list(segment_progress_events)
-                    segment_progress_events.clear()
-                for snapshot in pending_snapshots:
-                    event_name = str(snapshot.get("event") or "")
-                    batch_idx = int(snapshot.get("batch_index") or 0)
-                    attempt = int(snapshot.get("attempt") or 0)
-                    completed_count = int(snapshot.get("completed_count") or 0)
-                    snapshot_chapters = snapshot.get("chapters_snapshot")
-                    snapshot_outline_md = str(snapshot.get("outline_md") or "")
-                    if event_name in (
-                        "batch_applied",
-                        "fill_attempt_applied",
-                        "fill_gap_repair_applied",
-                        "fill_gap_repair_final_sweep_applied",
-                    ) and isinstance(snapshot_chapters, list):
-                        snapshot_key = (event_name, batch_idx, attempt, completed_count)
-                        if snapshot_key != last_snapshot_key:
-                            yield sse_result({"outline_md": snapshot_outline_md, "chapters": snapshot_chapters})
-                            last_snapshot_key = snapshot_key
-                    raw_preview = str(snapshot.get("raw_output_preview") or "").strip()
-                    raw_chars_raw = snapshot.get("raw_output_chars")
-                    try:
-                        raw_chars = int(raw_chars_raw) if raw_chars_raw is not None else len(raw_preview)
-                    except Exception:
-                        raw_chars = len(raw_preview)
-                    if raw_preview:
-                        raw_key = (event_name, batch_idx, attempt, raw_chars)
-                        if raw_key != last_raw_preview_key:
-                            batch_count_raw = snapshot.get("batch_count")
-                            try:
-                                batch_count = int(batch_count_raw) if batch_count_raw is not None else 0
-                            except Exception:
-                                batch_count = 0
-                            title_parts = [event_name or "segment"]
-                            if batch_idx > 0 and batch_count > 0:
-                                title_parts.append(f"batch {batch_idx}/{batch_count}")
-                            elif batch_idx > 0:
-                                title_parts.append(f"batch {batch_idx}")
-                            if attempt > 0:
-                                title_parts.append(f"attempt {attempt}")
-                            title = " | ".join(title_parts)
-                            yield sse_chunk(f"\n\n[{title}]\n{raw_preview}\n")
-                            last_raw_preview_key = raw_key
-                    progress_percent = snapshot.get("progress_percent")
-                    if isinstance(progress_percent, int):
-                        progress_num = max(10, min(98, progress_percent))
-                    else:
-                        progress_num = 10
-                    message = outline_route._outline_segment_progress_message(snapshot)
-                    if message != last_message:
-                        yield sse_progress(message=message, progress=progress_num)
-                        last_message = message
-                if future.done():
-                    break
-                time.sleep(outline_route.OUTLINE_FILL_POLL_INTERVAL_SECONDS)
+            yield from iter_segment_progress_sse_events(
+                future=future,
+                progress_events=segment_progress_events,
+                progress_lock=segment_progress_lock,
+                heartbeat_interval=outline_route.OUTLINE_FILL_HEARTBEAT_INTERVAL_SECONDS,
+                poll_interval=outline_route.OUTLINE_FILL_POLL_INTERVAL_SECONDS,
+                progress_message_builder=outline_route._outline_segment_progress_message,
+            )
 
             segmented = future.result()
 
@@ -166,29 +117,11 @@ def generate_outline_stream_events(
             segmented_run_ids=segmented.run_ids,
             meta=segmented.meta,
         )
-        data = dict(segmented.data)
-        warnings = outline_route._dedupe_warnings(segmented.warnings)
-        if warnings:
-            data["warnings"] = warnings
-        if segmented.parse_error is not None:
-            data["parse_error"] = segmented.parse_error
-        data["generation_run_id"] = aggregate_run_id
-        if segmented.run_ids:
-            data["generation_sub_run_ids"] = segmented.run_ids
-            data["generation_run_ids"] = [aggregate_run_id, *segmented.run_ids]
-        if segmented.latency_ms > 0:
-            data["latency_ms"] = segmented.latency_ms
-        if segmented.dropped_params:
-            data["dropped_params"] = segmented.dropped_params
-        if segmented.finish_reasons:
-            data["finish_reason"] = segmented.finish_reasons[-1]
-            data["finish_reasons"] = segmented.finish_reasons
-        data["segmented_generation"] = segmented.meta
-
-        result_data = dict(data)
-        result_data.pop("raw_output", None)
-        result_data.pop("raw_json", None)
-        result_data.pop("fixed_json", None)
+        result_data = finalize_segmented_outline_stream_result(
+            segmented=segmented,
+            aggregate_run_id=aggregate_run_id,
+            dedupe_warnings=outline_route._dedupe_warnings,
+        )
 
         yield sse_progress(message="完成", progress=100, status="success")
         yield sse_result(result_data)
@@ -362,50 +295,15 @@ def generate_outline_stream_events(
                     run_params_extra_json=run_params_extra_json,
                     progress_hook=_on_fill_progress,
                 )
-
-                last_ping = 0.0
-                last_message = ""
-                last_snapshot_marker: tuple[str, int] | None = None
-                while True:
-                    now = time.monotonic()
-                    if now - last_ping >= outline_route.OUTLINE_FILL_HEARTBEAT_INTERVAL_SECONDS:
-                        yield sse_heartbeat()
-                        last_ping = now
-                    with fill_progress_lock:
-                        pending_fill_snapshots = list(fill_progress_events)
-                        fill_progress_events.clear()
-                    for snapshot in pending_fill_snapshots:
-                        snapshot_event = str(snapshot.get("event") or "")
-                        snapshot_attempt_raw = snapshot.get("attempt")
-                        if isinstance(snapshot_attempt_raw, int):
-                            snapshot_attempt = snapshot_attempt_raw
-                        else:
-                            try:
-                                snapshot_attempt = (
-                                    int(snapshot_attempt_raw) if snapshot_attempt_raw is not None else 0
-                                )
-                            except Exception:
-                                snapshot_attempt = 0
-                        snapshot_chapters = snapshot.get("chapters_snapshot")
-                        snapshot_marker = (snapshot_event, snapshot_attempt)
-                        if (
-                            snapshot_event in (
-                                "attempt_applied",
-                                "gap_repair_applied",
-                                "gap_repair_final_sweep_applied",
-                            )
-                            and snapshot_marker != last_snapshot_marker
-                            and isinstance(snapshot_chapters, list)
-                        ):
-                            yield sse_result({"outline_md": preview_outline_md, "chapters": snapshot_chapters})
-                            last_snapshot_marker = snapshot_marker
-                        message = outline_route._outline_fill_progress_message(snapshot)
-                        if message != last_message:
-                            yield sse_progress(message=message, progress=94)
-                            last_message = message
-                    if fill_future.done():
-                        break
-                    time.sleep(outline_route.OUTLINE_FILL_POLL_INTERVAL_SECONDS)
+                yield from iter_fill_progress_sse_events(
+                    future=fill_future,
+                    progress_events=fill_progress_events,
+                    progress_lock=fill_progress_lock,
+                    heartbeat_interval=outline_route.OUTLINE_FILL_HEARTBEAT_INTERVAL_SECONDS,
+                    poll_interval=outline_route.OUTLINE_FILL_POLL_INTERVAL_SECONDS,
+                    progress_message_builder=outline_route._outline_fill_progress_message,
+                    preview_outline_md=preview_outline_md,
+                )
 
                 data, fill_warnings, fill_run_ids = fill_future.result()
             warnings.extend(fill_warnings)
@@ -415,24 +313,16 @@ def generate_outline_stream_events(
                     coverage["fill_run_ids"] = fill_run_ids
                     data["chapter_coverage"] = coverage
 
-        warnings = outline_route._dedupe_warnings(warnings)
-        if warnings:
-            data["warnings"] = warnings
-        if parse_error is not None:
-            data["parse_error"] = parse_error
-        if finish_reason is not None:
-            data["finish_reason"] = finish_reason
-        if latency_ms is not None:
-            data["latency_ms"] = latency_ms
-        if dropped_params:
-            data["dropped_params"] = dropped_params
-        if generation_run_id is not None:
-            data["generation_run_id"] = generation_run_id
-
-        result_data = dict(data)
-        result_data.pop("raw_output", None)
-        result_data.pop("raw_json", None)
-        result_data.pop("fixed_json", None)
+        result_data = finalize_outline_stream_result(
+            data=data,
+            warnings=warnings,
+            parse_error=parse_error,
+            finish_reason=finish_reason,
+            latency_ms=latency_ms,
+            dropped_params=dropped_params,
+            generation_run_id=generation_run_id,
+            dedupe_warnings=outline_route._dedupe_warnings,
+        )
 
         yield sse_progress(message="完成", progress=100, status="success")
         yield sse_result(result_data)
@@ -440,41 +330,35 @@ def generate_outline_stream_events(
     except GeneratorExit:
         return
     except AppError as exc:
-        if not stream_run_written:
-            write_generation_run(
-                request_id=request_id,
-                actor_user_id=user_id,
-                project_id=project_id,
-                chapter_id=None,
-                run_type="outline_stream",
-                provider=llm_call.provider,
-                model=llm_call.model,
-                prompt_system=prompt_system,
-                prompt_user=prompt_user,
-                prompt_render_log_json=prompt_render_log_json,
-                params_json=run_params_json,
-                output_text=raw_output or None,
-                error_json=json.dumps({"code": exc.code, "message": exc.message, "details": exc.details}, ensure_ascii=False),
-            )
+        write_outline_stream_error_run(
+            stream_run_written=stream_run_written,
+            request_id=request_id,
+            actor_user_id=user_id,
+            project_id=project_id,
+            llm_call=llm_call,
+            prompt_system=prompt_system,
+            prompt_user=prompt_user,
+            prompt_render_log_json=prompt_render_log_json,
+            run_params_json=run_params_json,
+            output_text=raw_output or None,
+            error_payload={"code": exc.code, "message": exc.message, "details": exc.details},
+        )
         yield sse_error(error=f"{exc.message} ({exc.code})", code=exc.status_code)
         yield sse_done()
     except Exception:
-        if not stream_run_written:
-            write_generation_run(
-                request_id=request_id,
-                actor_user_id=user_id,
-                project_id=project_id,
-                chapter_id=None,
-                run_type="outline_stream",
-                provider=llm_call.provider,
-                model=llm_call.model,
-                prompt_system=prompt_system,
-                prompt_user=prompt_user,
-                prompt_render_log_json=prompt_render_log_json,
-                params_json=run_params_json,
-                output_text=raw_output or None,
-                error_json=json.dumps({"code": "INTERNAL_ERROR", "message": "服务器内部错误"}, ensure_ascii=False),
-            )
+        write_outline_stream_error_run(
+            stream_run_written=stream_run_written,
+            request_id=request_id,
+            actor_user_id=user_id,
+            project_id=project_id,
+            llm_call=llm_call,
+            prompt_system=prompt_system,
+            prompt_user=prompt_user,
+            prompt_render_log_json=prompt_render_log_json,
+            run_params_json=run_params_json,
+            output_text=raw_output or None,
+            error_payload={"code": "INTERNAL_ERROR", "message": "服务器内部错误"},
+        )
         yield sse_error(error="服务器内部错误", code=500)
         yield sse_done()
 
