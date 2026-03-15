@@ -15,9 +15,7 @@ from app.api.routes.outline import (
     _build_outline_generation_guidance,
     _enforce_outline_chapter_coverage,
     _extract_target_chapter_count,
-    _fill_outline_missing_chapters_with_llm,
     _format_chapter_number_ranges,
-    _generate_outline_segmented_with_llm,
     _outline_fill_batch_size_for_missing,
     _outline_fill_max_attempts_for_missing,
     _outline_fill_progress_message,
@@ -29,6 +27,10 @@ from app.api.routes.outline import (
 )
 from app.core.errors import AppError
 from app.services.generation_service import PreparedLlmCall
+from app.services.outline_generation_app_service import (
+    _fill_outline_missing_chapters_with_llm,
+    _generate_outline_segmented_with_llm,
+)
 from app.services.prompting import render_template
 
 
@@ -361,7 +363,7 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
             text = json.dumps({"chapters": chapters}, ensure_ascii=False)
             return SimpleNamespace(text=text, finish_reason="stop", run_id=f"run-{call_count['value']}")
 
-        with patch("app.api.routes.outline.call_llm_and_record", side_effect=_fake_call_llm_and_record):
+        with patch("app.services.outline_generation_app_service.call_llm_and_record", side_effect=_fake_call_llm_and_record):
             out, warnings, _run_ids = _fill_outline_missing_chapters_with_llm(
                 data=data,
                 target_chapter_count=50,
@@ -404,7 +406,7 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
         }
 
         with patch(
-            "app.api.routes.outline.call_llm_and_record",
+            "app.services.outline_generation_app_service.call_llm_and_record",
             side_effect=AppError(code="LLM_TIMEOUT", message="timeout", status_code=504),
         ):
             out, warnings, run_ids = _fill_outline_missing_chapters_with_llm(
@@ -476,7 +478,7 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
                 raise AssertionError(f"unexpected run_type: {run_type}")
             return SimpleNamespace(text=text, finish_reason="stop", run_id=f"run-{call_count['value']}")
 
-        with patch("app.api.routes.outline.call_llm_and_record", side_effect=_fake_call_llm_and_record):
+        with patch("app.services.outline_generation_app_service.call_llm_and_record", side_effect=_fake_call_llm_and_record):
             out, warnings, run_ids = _fill_outline_missing_chapters_with_llm(
                 data=data,
                 target_chapter_count=20,
@@ -531,7 +533,7 @@ class TestOutlineGenerationGuidance(unittest.TestCase):
                 dropped_params=[],
             )
 
-        with patch("app.api.routes.outline.call_llm_and_record", side_effect=_fake_call_llm_and_record):
+        with patch("app.services.outline_generation_app_service.call_llm_and_record", side_effect=_fake_call_llm_and_record):
             res = _generate_outline_segmented_with_llm(
                 request_id="rid-segment-test",
                 actor_user_id="u1",
