@@ -180,3 +180,48 @@ def _list_structured_memory_table_page(
         cursor = cursor_value.isoformat() if cursor_value else None
 
     return StructuredMemoryTablePage(items=[spec.mapper(row) for row in rows], cursor=cursor)
+
+
+def _build_structured_memory_payload(
+    db: Session,
+    *,
+    project_id: str,
+    include_deleted: bool,
+    table: str | None,
+    q: str | None,
+    before: str | None,
+    limit: int,
+) -> dict[str, object]:
+    args = _normalize_structured_memory_args(table=table, q=q, before=before, limit=limit)
+    counts = {
+        table_name: _count_structured_memory_rows(
+            db,
+            project_id=project_id,
+            table_name=table_name,
+            include_deleted=include_deleted,
+            pattern=args.pattern,
+        )
+        for table_name in STRUCTURED_MEMORY_TABLES
+    }
+
+    data: dict[str, object] = {"counts": counts, "cursor": {}, "table": args.table, "q": args.keyword}
+    cursors: dict[str, str | None] = {table_name: None for table_name in STRUCTURED_MEMORY_TABLES}
+
+    for table_name in STRUCTURED_MEMORY_TABLES:
+        if args.table not in (None, table_name):
+            data[table_name] = []
+            continue
+        page = _list_structured_memory_table_page(
+            db,
+            project_id=project_id,
+            table_name=table_name,
+            include_deleted=include_deleted,
+            pattern=args.pattern,
+            before_dt=args.before_dt if args.table == table_name else None,
+            limit=limit,
+        )
+        data[table_name] = page.items
+        cursors[table_name] = page.cursor
+
+    data["cursor"] = cursors
+    return data

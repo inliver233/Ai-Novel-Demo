@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.routes.memory_route_structured_helpers import (
+    _build_structured_memory_payload,
     _count_structured_memory_rows,
     _list_structured_memory_table_page,
     _normalize_structured_memory_args,
@@ -17,7 +18,8 @@ from app.db.base import Base
 from app.models.chapter import Chapter
 from app.models.outline import Outline
 from app.models.project import Project
-from app.models.structured_memory import MemoryEntity, MemoryEvidence
+from app.models.structured_memory import MemoryEntity, MemoryEvidence, MemoryEvent, MemoryForeshadow, MemoryRelation
+from app.models.user import User
 
 UTC = timezone.utc
 
@@ -33,16 +35,21 @@ class TestMemoryRouteStructuredHelpers(unittest.TestCase):
         Base.metadata.create_all(
             engine,
             tables=[
+                User.__table__,
                 Project.__table__,
                 Outline.__table__,
                 Chapter.__table__,
                 MemoryEntity.__table__,
+                MemoryRelation.__table__,
+                MemoryEvent.__table__,
+                MemoryForeshadow.__table__,
                 MemoryEvidence.__table__,
             ],
         )
         self.SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
         with self.SessionLocal() as db:
+            db.add(User(id='u_owner', display_name='owner'))
             db.add(Project(id='p1', owner_user_id='u_owner', name='Project 1', genre=None, logline=None))
             db.add(Outline(id='o1', project_id='p1', title='Outline', content_md=None, structure_json=None))
             db.add(Chapter(id='c1', project_id='p1', outline_id='o1', number=1, title='Ch1', status='done'))
@@ -200,6 +207,24 @@ class TestMemoryRouteStructuredHelpers(unittest.TestCase):
             )
             self.assertEqual([row['id'] for row in page2.items], ['ev-old'])
             self.assertIsNone(page2.cursor)
+
+    def test_build_structured_memory_payload_keeps_counts_cursor_and_selected_table(self) -> None:
+        with self.SessionLocal() as db:
+            payload = _build_structured_memory_payload(
+                db,
+                project_id='p1',
+                include_deleted=False,
+                table='entities',
+                q='Alice',
+                before=None,
+                limit=1,
+            )
+            self.assertEqual(payload['table'], 'entities')
+            self.assertEqual(payload['q'], 'Alice')
+            self.assertEqual((payload['counts'] or {}).get('entities'), 2)
+            self.assertEqual([row['id'] for row in payload['entities']], ['e-new'])
+            self.assertEqual(payload['relations'], [])
+            self.assertEqual((payload['cursor'] or {}).get('entities'), '2026-03-15T10:05:00+00:00')
 
 
 if __name__ == '__main__':

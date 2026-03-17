@@ -13,12 +13,9 @@ from app.api.routes.memory_route_models import (
     StoryMemoryImportV1Request,
 )
 from app.api.routes.memory_route_story_helpers import (
-    _ensure_story_memory_rebuild_dirty,
-    _list_story_memory_open_loop_rows,
-    _normalize_story_memory_open_loops_args,
-    _normalize_story_memory_resolved_at_chapter_id,
-    _require_story_memory_foreshadow,
-    _validate_story_memory_import_schema_version,
+    _build_story_memory_open_loops_payload,
+    _import_story_memories_payload,
+    _resolve_story_memory_foreshadow_payload,
 )
 from app.api.routes.memory_route_story_mappers import (
     _build_story_memory_foreshadow_payload,
@@ -26,13 +23,9 @@ from app.api.routes.memory_route_story_mappers import (
     _build_story_memory_open_loop_item,
 )
 from app.api.routes.memory_route_structured_helpers import (
-    _count_structured_memory_rows,
-    _list_structured_memory_table_page,
-    _normalize_structured_memory_args,
+    _build_structured_memory_payload,
 )
-from app.api.routes.memory_route_structured_models import STRUCTURED_MEMORY_TABLES
 from app.core.errors import AppError, ok_payload
-from app.db.utils import utc_now
 from app.models.chapter import Chapter
 from app.models.generation_run import GenerationRun
 from app.models.memory_task import MemoryTask
@@ -55,8 +48,6 @@ from app.services.memory_update_service import (
     rollback_memory_change_set,
 )
 from app.services.table_executor import TableUpdateV1Request
-from app.services.search_index_service import schedule_search_rebuild_task
-from app.services.vector_rag_service import schedule_vector_rebuild_task
 
 router = APIRouter()
 
@@ -108,29 +99,16 @@ def import_all_story_memories(
     request_id = request.state.request_id
     require_project_editor(db, project_id=project_id, user_id=user_id)
 
-    _validate_story_memory_import_schema_version(body.schema_version)
-    now = utc_now()
-    rows = []
-    for item in body.memories or []:
-        row = _build_story_memory_import_row(project_id=project_id, item=item, now=now)
-        if row is None:
-            continue
-        rows.append(row)
-        db.add(row)
-
-    created_ids = [str(row.id) for row in rows]
-    if not created_ids:
-        raise AppError.validation(message="未导入任何 story_memories", details={"reason": "empty"})
-
-    _ensure_story_memory_rebuild_dirty(db, project_id=project_id)
-    db.commit()
-    schedule_vector_rebuild_task(
-        db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="story_memory_import_all"
+    data = _import_story_memories_payload(
+        db,
+        project_id=project_id,
+        schema_version=body.schema_version,
+        items=list(body.memories or []),
+        actor_user_id=user_id,
+        request_id=request_id,
+        row_builder=_build_story_memory_import_row,
     )
-    schedule_search_rebuild_task(
-        db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="story_memory_import_all"
-    )
-    return ok_payload(request_id=request_id, data={"created": len(created_ids), "ids": created_ids})
+    return ok_payload(request_id=request_id, data=data)
 @router.get("/projects/{project_id}/story_memories/foreshadows/open_loops")
 def list_story_memory_foreshadow_open_loops(
     request: Request,
@@ -144,11 +122,15 @@ def list_story_memory_foreshadow_open_loops(
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
 
-    args = _normalize_story_memory_open_loops_args(q=q, order=order)
-    rows, has_more = _list_story_memory_open_loop_rows(db, project_id=project_id, limit=limit, args=args)
-    items = [_build_story_memory_open_loop_item(row) for row in rows]
-
-    return ok_payload(request_id=request_id, data={"items": items, "has_more": bool(has_more), "returned": len(items)})
+    data = _build_story_memory_open_loops_payload(
+        db,
+        project_id=project_id,
+        limit=limit,
+        q=q,
+        order=order,
+        row_mapper=_build_story_memory_open_loop_item,
+    )
+    return ok_payload(request_id=request_id, data=data)
 
 
 @router.post("/projects/{project_id}/story_memories/foreshadows/{story_memory_id}/resolve")
@@ -163,30 +145,16 @@ def resolve_story_memory_foreshadow(
     request_id = request.state.request_id
     require_project_editor(db, project_id=project_id, user_id=user_id)
 
-    row = _require_story_memory_foreshadow(db, project_id=project_id, story_memory_id=story_memory_id)
-    resolved_at_chapter_id = _normalize_story_memory_resolved_at_chapter_id(
+    data = _resolve_story_memory_foreshadow_payload(
         db,
         project_id=project_id,
+        story_memory_id=story_memory_id,
         resolved_at_chapter_id=body.resolved_at_chapter_id,
-    )
-    row.foreshadow_resolved_at_chapter_id = resolved_at_chapter_id
-    _ensure_story_memory_rebuild_dirty(db, project_id=project_id, flush_on_create=True)
-
-    db.commit()
-    db.refresh(row)
-    schedule_vector_rebuild_task(
-        db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="story_memory_foreshadow_resolve"
-    )
-    schedule_search_rebuild_task(
-        db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="story_memory_foreshadow_resolve"
-    )
-
-    return ok_payload(
+        actor_user_id=user_id,
         request_id=request_id,
-        data={
-            "foreshadow": _build_story_memory_foreshadow_payload(row)
-        },
+        payload_builder=_build_story_memory_foreshadow_payload,
     )
+    return ok_payload(request_id=request_id, data=data)
 @router.get("/projects/{project_id}/memory/structured")
 def list_structured_memory(
     request: Request,
@@ -202,38 +170,15 @@ def list_structured_memory(
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
 
-    args = _normalize_structured_memory_args(table=table, q=q, before=before, limit=limit)
-    counts = {
-        table_name: _count_structured_memory_rows(
-            db,
-            project_id=project_id,
-            table_name=table_name,
-            include_deleted=include_deleted,
-            pattern=args.pattern,
-        )
-        for table_name in STRUCTURED_MEMORY_TABLES
-    }
-
-    data: dict[str, object] = {"counts": counts, "cursor": {}, "table": args.table, "q": args.keyword}
-    cursors: dict[str, str | None] = {table_name: None for table_name in STRUCTURED_MEMORY_TABLES}
-
-    for table_name in STRUCTURED_MEMORY_TABLES:
-        if args.table not in (None, table_name):
-            data[table_name] = []
-            continue
-        page = _list_structured_memory_table_page(
-            db,
-            project_id=project_id,
-            table_name=table_name,
-            include_deleted=include_deleted,
-            pattern=args.pattern,
-            before_dt=args.before_dt if args.table == table_name else None,
-            limit=limit,
-        )
-        data[table_name] = page.items
-        cursors[table_name] = page.cursor
-
-    data["cursor"] = cursors
+    data = _build_structured_memory_payload(
+        db,
+        project_id=project_id,
+        include_deleted=include_deleted,
+        table=table,
+        q=q,
+        before=before,
+        limit=limit,
+    )
     return ok_payload(request_id=request_id, data=data)
 
 

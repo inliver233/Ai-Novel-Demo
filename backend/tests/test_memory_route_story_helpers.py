@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -9,11 +10,14 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.routes.memory_route_models import StoryMemoryImportV1Item
 from app.api.routes.memory_route_story_helpers import (
+    _build_story_memory_open_loops_payload,
     _ensure_story_memory_rebuild_dirty,
+    _import_story_memories_payload,
     _list_story_memory_open_loop_rows,
     _normalize_story_memory_open_loops_args,
     _normalize_story_memory_resolved_at_chapter_id,
     _require_story_memory_foreshadow,
+    _resolve_story_memory_foreshadow_payload,
     _validate_story_memory_import_schema_version,
 )
 from app.api.routes.memory_route_story_mappers import (
@@ -202,6 +206,72 @@ class TestMemoryRouteStoryHelpers(unittest.TestCase):
             self.assertIsNotNone(settings)
             assert settings is not None
             self.assertTrue(settings.vector_index_dirty)
+
+    def test_import_and_resolve_payload_helpers_schedule_and_return_contract(self) -> None:
+        with self.SessionLocal() as db, patch(
+            'app.api.routes.memory_route_story_helpers.schedule_vector_rebuild_task',
+            return_value='vector-task',
+        ) as mock_vector, patch(
+            'app.api.routes.memory_route_story_helpers.schedule_search_rebuild_task',
+            return_value='search-task',
+        ) as mock_search:
+            import_payload = _import_story_memories_payload(
+                db,
+                project_id='p1',
+                schema_version='story_memory_import_v1',
+                items=[
+                    StoryMemoryImportV1Item(
+                        memory_type='fact',
+                        title=' Imported ',
+                        content=' imported payload ',
+                        importance_score=0.2,
+                        story_timeline=40,
+                        is_foreshadow=0,
+                    )
+                ],
+                actor_user_id='u_owner',
+                request_id='rid-import',
+                row_builder=_build_story_memory_import_row,
+            )
+            self.assertEqual(import_payload['created'], 1)
+            self.assertEqual(len(import_payload['ids']), 1)
+            mock_vector.assert_called_once()
+            mock_search.assert_called_once()
+
+        with self.SessionLocal() as db, patch(
+            'app.api.routes.memory_route_story_helpers.schedule_vector_rebuild_task',
+            return_value='vector-task',
+        ) as mock_vector, patch(
+            'app.api.routes.memory_route_story_helpers.schedule_search_rebuild_task',
+            return_value='search-task',
+        ) as mock_search:
+            resolve_payload = _resolve_story_memory_foreshadow_payload(
+                db,
+                project_id='p1',
+                story_memory_id='sm1',
+                resolved_at_chapter_id='c2',
+                actor_user_id='u_owner',
+                request_id='rid-resolve',
+                payload_builder=_build_story_memory_foreshadow_payload,
+            )
+            self.assertEqual(resolve_payload['foreshadow']['id'], 'sm1')
+            self.assertEqual(resolve_payload['foreshadow']['resolved_at_chapter_id'], 'c2')
+            mock_vector.assert_called_once()
+            mock_search.assert_called_once()
+
+    def test_open_loops_payload_helper_returns_items_and_has_more(self) -> None:
+        with self.SessionLocal() as db:
+            payload = _build_story_memory_open_loops_payload(
+                db,
+                project_id='p1',
+                limit=1,
+                q='open',
+                order='timeline_desc',
+                row_mapper=_build_story_memory_open_loop_item,
+            )
+            self.assertEqual(payload['returned'], 1)
+            self.assertTrue(payload['has_more'])
+            self.assertEqual(payload['items'][0]['id'], 'sm2')
 
 
 if __name__ == '__main__':

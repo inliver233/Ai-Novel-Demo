@@ -7,9 +7,12 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.db.utils import utc_now
 from app.models.chapter import Chapter
 from app.models.project_settings import ProjectSettings
 from app.models.story_memory import StoryMemory
+from app.services.search_index_service import schedule_search_rebuild_task
+from app.services.vector_rag_service import schedule_vector_rebuild_task
 
 StoryMemoryOpenLoopOrder = Literal['timeline_desc', 'importance_desc', 'updated_desc']
 ALLOWED_STORY_MEMORY_OPEN_LOOP_ORDERS: tuple[StoryMemoryOpenLoopOrder, ...] = (
@@ -106,3 +109,97 @@ def _normalize_story_memory_resolved_at_chapter_id(
             details={'resolved_at_chapter_id': chapter_id},
         )
     return chapter_id
+
+
+def _import_story_memories_payload(
+    db: Session,
+    *,
+    project_id: str,
+    schema_version: str | None,
+    items: list[object],
+    actor_user_id: str,
+    request_id: str,
+    row_builder,
+) -> dict[str, object]:
+    _validate_story_memory_import_schema_version(schema_version)
+    now = utc_now()
+    rows = []
+    for item in items:
+        row = row_builder(project_id=project_id, item=item, now=now)
+        if row is not None:
+            rows.append(row)
+            db.add(row)
+
+    created_ids = [str(row.id) for row in rows]
+    if not created_ids:
+        raise AppError.validation(message='未导入任何 story_memories', details={'reason': 'empty'})
+
+    _ensure_story_memory_rebuild_dirty(db, project_id=project_id)
+    db.commit()
+    schedule_vector_rebuild_task(
+        db=db,
+        project_id=project_id,
+        actor_user_id=actor_user_id,
+        request_id=request_id,
+        reason='story_memory_import_all',
+    )
+    schedule_search_rebuild_task(
+        db=db,
+        project_id=project_id,
+        actor_user_id=actor_user_id,
+        request_id=request_id,
+        reason='story_memory_import_all',
+    )
+    return {'created': len(created_ids), 'ids': created_ids}
+
+
+def _build_story_memory_open_loops_payload(
+    db: Session,
+    *,
+    project_id: str,
+    limit: int,
+    q: str | None,
+    order: str | None,
+    row_mapper,
+) -> dict[str, object]:
+    args = _normalize_story_memory_open_loops_args(q=q, order=order)
+    rows, has_more = _list_story_memory_open_loop_rows(db, project_id=project_id, limit=limit, args=args)
+    items = [row_mapper(row) for row in rows]
+    return {'items': items, 'has_more': bool(has_more), 'returned': len(items)}
+
+
+def _resolve_story_memory_foreshadow_payload(
+    db: Session,
+    *,
+    project_id: str,
+    story_memory_id: str,
+    resolved_at_chapter_id: str | None,
+    actor_user_id: str,
+    request_id: str,
+    payload_builder,
+) -> dict[str, object]:
+    row = _require_story_memory_foreshadow(db, project_id=project_id, story_memory_id=story_memory_id)
+    normalized_chapter_id = _normalize_story_memory_resolved_at_chapter_id(
+        db,
+        project_id=project_id,
+        resolved_at_chapter_id=resolved_at_chapter_id,
+    )
+    row.foreshadow_resolved_at_chapter_id = normalized_chapter_id
+    _ensure_story_memory_rebuild_dirty(db, project_id=project_id, flush_on_create=True)
+    db.commit()
+    db.refresh(row)
+    schedule_vector_rebuild_task(
+        db=db,
+        project_id=project_id,
+        actor_user_id=actor_user_id,
+        request_id=request_id,
+        reason='story_memory_foreshadow_resolve',
+    )
+    schedule_search_rebuild_task(
+        db=db,
+        project_id=project_id,
+        actor_user_id=actor_user_id,
+        request_id=request_id,
+        reason='story_memory_foreshadow_resolve',
+    )
+    return {'foreshadow': payload_builder(row)}
