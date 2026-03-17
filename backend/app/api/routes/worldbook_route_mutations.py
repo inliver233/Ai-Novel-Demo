@@ -3,10 +3,12 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.api.routes.worldbook_route_helpers import (
+    _build_worldbook_entry_row,
     _copy_title,
     _dedupe_entry_ids,
     _mark_vector_index_dirty,
     _require_worldbook_rows,
+    _apply_worldbook_entry_update,
 )
 from app.api.routes.worldbook_route_mappers import _worldbook_entry_to_out
 from app.db.utils import new_id
@@ -148,3 +150,69 @@ def _build_worldbook_duplicate_payload(
         reason='worldbook_duplicate',
     )
     return {'worldbook_entries': [_worldbook_entry_to_out(row) for row in created]}
+
+
+def _build_worldbook_create_payload(
+    db: Session,
+    *,
+    project_id: str,
+    actor_user_id: str,
+    request_id: str,
+    body: object,
+) -> dict[str, object]:
+    row = _build_worldbook_entry_row(project_id=project_id, body=body)
+    db.add(row)
+    _mark_vector_index_dirty(db, project_id=project_id)
+    db.commit()
+    db.refresh(row)
+    _schedule_worldbook_rebuilds(
+        db,
+        project_id=project_id,
+        actor_user_id=actor_user_id,
+        request_id=request_id,
+        reason='worldbook_create',
+    )
+    return {'worldbook_entry': _worldbook_entry_to_out(row)}
+
+
+def _build_worldbook_update_payload(
+    db: Session,
+    *,
+    row: WorldBookEntry,
+    actor_user_id: str,
+    request_id: str,
+    body: object,
+) -> dict[str, object]:
+    _apply_worldbook_entry_update(row=row, body=body)
+    _mark_vector_index_dirty(db, project_id=str(row.project_id))
+    db.commit()
+    db.refresh(row)
+    _schedule_worldbook_rebuilds(
+        db,
+        project_id=str(row.project_id),
+        actor_user_id=actor_user_id,
+        request_id=request_id,
+        reason='worldbook_update',
+    )
+    return {'worldbook_entry': _worldbook_entry_to_out(row)}
+
+
+def _build_worldbook_delete_payload(
+    db: Session,
+    *,
+    row: WorldBookEntry,
+    actor_user_id: str,
+    request_id: str,
+) -> dict[str, object]:
+    project_id = str(row.project_id)
+    db.delete(row)
+    _mark_vector_index_dirty(db, project_id=project_id)
+    db.commit()
+    _schedule_worldbook_rebuilds(
+        db,
+        project_id=project_id,
+        actor_user_id=actor_user_id,
+        request_id=request_id,
+        reason='worldbook_delete',
+    )
+    return {}

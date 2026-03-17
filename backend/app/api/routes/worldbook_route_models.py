@@ -11,3 +11,9 @@ class WorldBookImportAllState:
     deleted: int = 0
     conflicts: list[dict[str, object]] = field(default_factory=list)
     actions: list[dict[str, object]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class WorldBookAutoUpdateTarget:
+    chapter_id: str | None
+    chapter_token: str
