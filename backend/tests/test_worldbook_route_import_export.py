@@ -412,6 +412,20 @@ class TestWorldbookRouteImportExport(unittest.TestCase):
 
         self.assertEqual((ctx.exception.details or {}).get('missing_ids'), ['missing-id'])
 
+    def test_bulk_update_requires_at_least_one_field(self) -> None:
+        with self.SessionLocal() as db:
+            body = WorldBookBulkUpdateRequest.model_validate({'entry_ids': ['wb-1']})
+            with self.assertRaises(AppError) as ctx:
+                _build_worldbook_bulk_update_payload(
+                    db,
+                    project_id='project-1',
+                    actor_user_id='user-1',
+                    request_id='rid-empty-patch',
+                    body=body,
+                )
+
+        self.assertEqual(ctx.exception.message, '至少提供一个更新字段')
+
 
 if __name__ == '__main__':
     unittest.main()

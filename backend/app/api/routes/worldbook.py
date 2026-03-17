@@ -26,7 +26,7 @@ from app.api.routes.worldbook_route_preview import (
     _build_worldbook_auto_update_payload,
     _build_worldbook_preview_payload,
 )
-from app.core.errors import AppError, ok_payload
+from app.core.errors import ok_payload
 from app.schemas.worldbook import (
     WorldBookBulkDeleteRequest,
     WorldBookBulkUpdateRequest,
@@ -108,16 +108,6 @@ def bulk_update_worldbook_entries(
 ) -> dict:
     request_id = request.state.request_id
     require_project_editor(db, project_id=project_id, user_id=user_id)
-
-    if (
-        body.enabled is None
-        and body.constant is None
-        and body.exclude_recursion is None
-        and body.prevent_recursion is None
-        and body.char_limit is None
-        and body.priority is None
-    ):
-        raise AppError.validation('至少提供一个更新字段')
 
     return ok_payload(
         request_id=request_id,

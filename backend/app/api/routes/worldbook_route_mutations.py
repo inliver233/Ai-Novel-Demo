@@ -3,13 +3,14 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.api.routes.worldbook_route_helpers import (
+    _apply_worldbook_entry_update,
     _build_worldbook_entry_row,
     _copy_title,
     _dedupe_entry_ids,
     _mark_vector_index_dirty,
     _require_worldbook_rows,
-    _apply_worldbook_entry_update,
 )
+from app.core.errors import AppError
 from app.api.routes.worldbook_route_mappers import _worldbook_entry_to_out
 from app.db.utils import new_id
 from app.models.worldbook_entry import WorldBookEntry
@@ -41,6 +42,18 @@ def _schedule_worldbook_rebuilds(
     )
 
 
+def _validate_worldbook_bulk_update_body(body: object) -> None:
+    if (
+        getattr(body, 'enabled', None) is None
+        and getattr(body, 'constant', None) is None
+        and getattr(body, 'exclude_recursion', None) is None
+        and getattr(body, 'prevent_recursion', None) is None
+        and getattr(body, 'char_limit', None) is None
+        and getattr(body, 'priority', None) is None
+    ):
+        raise AppError.validation('至少提供一个更新字段')
+
+
 def _build_worldbook_bulk_update_payload(
     db: Session,
     *,
@@ -49,6 +62,7 @@ def _build_worldbook_bulk_update_payload(
     request_id: str,
     body: object,
 ) -> dict[str, object]:
+    _validate_worldbook_bulk_update_body(body)
     entry_ids = _dedupe_entry_ids(body.entry_ids)
     rows, by_id = _require_worldbook_rows(db, project_id=project_id, entry_ids=entry_ids)
 
