@@ -267,6 +267,18 @@ def _update_project_table_row_payload(
     return {"row": _row_public(row)}
 
 
+def _delete_project_table_payload(db: Session, *, table: ProjectTable) -> dict[str, object]:
+    db.delete(table)
+    db.commit()
+    return {"deleted": True}
+
+
+def _delete_project_table_row_payload(db: Session, *, row: ProjectTableRow) -> dict[str, object]:
+    db.delete(row)
+    db.commit()
+    return {"deleted": True}
+
+
 def _resolve_table_ai_update_target(
     db: Session,
     *,

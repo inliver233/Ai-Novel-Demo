@@ -5,57 +5,19 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.routes.prompt_route_helpers import _list_prompt_block_rows, _list_prompt_preset_rows
+from app.api.routes.prompt_route_helpers import (
+    _build_prompt_block_row,
+    _build_prompt_preset_row,
+    _list_prompt_block_rows,
+    _list_prompt_preset_rows,
+)
 from app.api.routes.prompt_route_mappers import _build_prompt_preset_export_model, _preset_to_out
 from app.api.routes.prompt_route_models import PromptImportAllState
 from app.core.errors import AppError
-from app.db.utils import new_id, utc_now
+from app.db.utils import utc_now
 from app.models.prompt_block import PromptBlock
 from app.models.prompt_preset import PromptPreset
 from app.schemas.prompt_presets import PromptPresetExportAllOut, PromptPresetImportAllRequest, PromptPresetImportRequest
-
-
-def _build_prompt_preset_row(*, project_id: str, preset: object) -> PromptPreset:
-    return PromptPreset(
-        id=new_id(),
-        project_id=project_id,
-        name=getattr(preset, "name"),
-        category=getattr(preset, "category"),
-        scope=getattr(preset, "scope"),
-        version=getattr(preset, "version"),
-        active_for_json=json.dumps(getattr(preset, "active_for", None) or [], ensure_ascii=False),
-    )
-
-
-def _build_prompt_block_row(
-    *,
-    preset_id: str,
-    block: object,
-    default_injection_order: int | None = None,
-) -> PromptBlock:
-    injection_order = getattr(block, "injection_order", None)
-    if injection_order is None:
-        injection_order = default_injection_order or 0
-
-    budget = getattr(block, "budget", None)
-    cache = getattr(block, "cache", None)
-    return PromptBlock(
-        id=new_id(),
-        preset_id=preset_id,
-        identifier=getattr(block, "identifier"),
-        name=getattr(block, "name"),
-        role=getattr(block, "role"),
-        enabled=getattr(block, "enabled"),
-        template=getattr(block, "template"),
-        marker_key=getattr(block, "marker_key"),
-        injection_position=getattr(block, "injection_position"),
-        injection_depth=getattr(block, "injection_depth"),
-        injection_order=int(injection_order),
-        triggers_json=json.dumps(getattr(block, "triggers", None) or [], ensure_ascii=False),
-        forbid_overrides=getattr(block, "forbid_overrides"),
-        budget_json=json.dumps(budget or {}, ensure_ascii=False) if budget else None,
-        cache_json=json.dumps(cache or {}, ensure_ascii=False) if cache else None,
-    )
 
 
 def _build_prompt_preset_export_payload(

@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
 
 from app.api.deps import DbDep, UserIdDep, require_project_editor, require_project_viewer
 from app.api.routes.table_route_helpers import (
@@ -13,6 +9,8 @@ from app.api.routes.table_route_helpers import (
     _build_project_tables_payload,
     _create_project_table_payload,
     _create_project_table_row_payload,
+    _delete_project_table_payload,
+    _delete_project_table_row_payload,
     _project_has_tables,
     _require_project_table,
     _require_project_table_row,
@@ -20,40 +18,17 @@ from app.api.routes.table_route_helpers import (
     _update_project_table_payload,
     _update_project_table_row_payload,
 )
+from app.api.routes.table_route_models import (
+    TableAiUpdateRequest,
+    TableCreateRequest,
+    TableRowCreateRequest,
+    TableRowUpdateRequest,
+    TableUpdateRequest,
+)
 from app.core.errors import AppError, ok_payload
-from app.models.project_table import ProjectTable, ProjectTableRow
 from app.services.project_seed_service import ensure_default_numeric_tables
 
 router = APIRouter()
-
-
-class TableCreateRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    table_key: str | None = Field(default=None, max_length=64)
-    name: str = Field(min_length=1, max_length=255)
-    auto_update_enabled: bool | None = Field(default=None)
-    table_schema: dict[str, Any] = Field(default_factory=dict, alias="schema")
-
-
-class TableUpdateRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    name: str | None = Field(default=None, max_length=255)
-    auto_update_enabled: bool | None = Field(default=None)
-    table_schema: dict[str, Any] | None = Field(default=None, alias="schema")
-
-
-class TableRowCreateRequest(BaseModel):
-    data: dict[str, Any] = Field(default_factory=dict)
-
-
-class TableRowUpdateRequest(BaseModel):
-    data: dict[str, Any] = Field(default_factory=dict)
-
-
-class TableAiUpdateRequest(BaseModel):
-    focus: str | None = Field(default=None, max_length=4000)
 
 
 @router.get("/projects/{project_id}/tables")
@@ -147,14 +122,8 @@ def delete_project_table(
 ) -> dict:
     request_id = request.state.request_id
     require_project_editor(db, project_id=project_id, user_id=user_id)
-
-    table = db.get(ProjectTable, table_id)
-    if table is None or str(table.project_id) != str(project_id):
-        raise AppError.not_found()
-
-    db.delete(table)
-    db.commit()
-    return ok_payload(request_id=request_id, data={"deleted": True})
+    table = _require_project_table(db, project_id=project_id, table_id=table_id)
+    return ok_payload(request_id=request_id, data=_delete_project_table_payload(db, table=table))
 
 
 @router.get("/projects/{project_id}/tables/{table_id}/rows")
@@ -216,17 +185,9 @@ def delete_project_table_row(
 ) -> dict:
     request_id = request.state.request_id
     require_project_editor(db, project_id=project_id, user_id=user_id)
-
-    table = db.get(ProjectTable, table_id)
-    if table is None or str(table.project_id) != str(project_id):
-        raise AppError.not_found()
-    row = db.get(ProjectTableRow, row_id)
-    if row is None or str(row.project_id) != str(project_id) or str(row.table_id) != str(table_id):
-        raise AppError.not_found()
-
-    db.delete(row)
-    db.commit()
-    return ok_payload(request_id=request_id, data={"deleted": True})
+    _require_project_table(db, project_id=project_id, table_id=table_id)
+    row = _require_project_table_row(db, project_id=project_id, table_id=table_id, row_id=row_id)
+    return ok_payload(request_id=request_id, data=_delete_project_table_row_payload(db, row=row))
 
 
 @router.post("/projects/{project_id}/tables/{table_id}/ai_update")
