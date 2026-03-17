@@ -1,0 +1,208 @@
+from __future__ import annotations
+
+import unittest
+from datetime import datetime, timezone
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.api.routes.memory_route_models import StoryMemoryImportV1Item
+from app.api.routes.memory_route_story_helpers import (
+    _ensure_story_memory_rebuild_dirty,
+    _list_story_memory_open_loop_rows,
+    _normalize_story_memory_open_loops_args,
+    _normalize_story_memory_resolved_at_chapter_id,
+    _require_story_memory_foreshadow,
+    _validate_story_memory_import_schema_version,
+)
+from app.api.routes.memory_route_story_mappers import (
+    _build_story_memory_foreshadow_payload,
+    _build_story_memory_import_row,
+    _build_story_memory_open_loop_item,
+)
+from app.core.errors import AppError
+from app.db.base import Base
+from app.models.chapter import Chapter
+from app.models.outline import Outline
+from app.models.project import Project
+from app.models.project_settings import ProjectSettings
+from app.models.story_memory import StoryMemory
+from app.models.user import User
+
+UTC = timezone.utc
+
+
+class TestMemoryRouteStoryHelpers(unittest.TestCase):
+    def setUp(self) -> None:
+        engine = create_engine(
+            'sqlite:///:memory:',
+            connect_args={'check_same_thread': False},
+            poolclass=StaticPool,
+        )
+        self.addCleanup(engine.dispose)
+        Base.metadata.create_all(
+            engine,
+            tables=[
+                User.__table__,
+                Project.__table__,
+                Outline.__table__,
+                Chapter.__table__,
+                StoryMemory.__table__,
+                ProjectSettings.__table__,
+            ],
+        )
+        self.SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+        with self.SessionLocal() as db:
+            db.add(User(id='u_owner', display_name='owner'))
+            db.add(Project(id='p1', owner_user_id='u_owner', name='Project 1', genre=None, logline=None))
+            db.add(Outline(id='o1', project_id='p1', title='Outline', content_md=None, structure_json=None))
+            db.add(Chapter(id='c1', project_id='p1', outline_id='o1', number=1, title='Ch1', status='done'))
+            db.add(Chapter(id='c2', project_id='p1', outline_id='o1', number=2, title='Ch2', status='done'))
+            db.add_all(
+                [
+                    StoryMemory(
+                        id='sm1',
+                        project_id='p1',
+                        chapter_id='c1',
+                        memory_type='foreshadow',
+                        title='Open clue',
+                        content='A' * 220,
+                        full_context_md=None,
+                        importance_score=0.8,
+                        tags_json=None,
+                        story_timeline=30,
+                        text_position=0,
+                        text_length=10,
+                        is_foreshadow=1,
+                        foreshadow_resolved_at_chapter_id=None,
+                        metadata_json=None,
+                        created_at=datetime(2026, 3, 15, 12, 0, tzinfo=UTC),
+                        updated_at=datetime(2026, 3, 15, 12, 0, tzinfo=UTC),
+                    ),
+                    StoryMemory(
+                        id='sm2',
+                        project_id='p1',
+                        chapter_id='c2',
+                        memory_type='foreshadow',
+                        title='Open newer',
+                        content='new clue',
+                        full_context_md=None,
+                        importance_score=0.9,
+                        tags_json=None,
+                        story_timeline=31,
+                        text_position=0,
+                        text_length=10,
+                        is_foreshadow=1,
+                        foreshadow_resolved_at_chapter_id=None,
+                        metadata_json=None,
+                        created_at=datetime(2026, 3, 15, 12, 5, tzinfo=UTC),
+                        updated_at=datetime(2026, 3, 15, 12, 5, tzinfo=UTC),
+                    ),
+                    StoryMemory(
+                        id='sm3',
+                        project_id='p1',
+                        chapter_id='c2',
+                        memory_type='fact',
+                        title='Not foreshadow',
+                        content='plain memory',
+                        full_context_md=None,
+                        importance_score=0.1,
+                        tags_json=None,
+                        story_timeline=32,
+                        text_position=0,
+                        text_length=10,
+                        is_foreshadow=0,
+                        foreshadow_resolved_at_chapter_id=None,
+                        metadata_json=None,
+                        created_at=datetime(2026, 3, 15, 12, 10, tzinfo=UTC),
+                        updated_at=datetime(2026, 3, 15, 12, 10, tzinfo=UTC),
+                    ),
+                ]
+            )
+            db.commit()
+
+    def test_build_story_memory_import_row_trims_and_skips_blank_content(self) -> None:
+        now = datetime(2026, 3, 17, 8, 0, tzinfo=UTC)
+        row = _build_story_memory_import_row(
+            project_id='p1',
+            item=StoryMemoryImportV1Item(
+                memory_type=' fact ',
+                title='  Imported  ',
+                content='  imported content  ',
+                importance_score=0.4,
+                story_timeline=7,
+                is_foreshadow=1,
+            ),
+            now=now,
+        )
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertEqual(row.memory_type, 'fact')
+        self.assertEqual(row.title, 'Imported')
+        self.assertEqual(row.content, 'imported content')
+        self.assertEqual(row.metadata_json, '{"source": "import_all"}')
+
+        blank = _build_story_memory_import_row(
+            project_id='p1',
+            item=StoryMemoryImportV1Item(memory_type='fact', title=None, content='   ', importance_score=0.0, story_timeline=0, is_foreshadow=0),
+            now=now,
+        )
+        self.assertIsNone(blank)
+
+    def test_validate_and_normalize_open_loop_args(self) -> None:
+        _validate_story_memory_import_schema_version('story_memory_import_v1')
+        args = _normalize_story_memory_open_loops_args(q=' clue ', order=' updated_desc ')
+        self.assertEqual(args.q_norm, 'clue')
+        self.assertEqual(args.order_norm, 'updated_desc')
+
+        with self.assertRaises(AppError):
+            _validate_story_memory_import_schema_version('story_memory_import_v2')
+
+        with self.assertRaises(AppError):
+            _normalize_story_memory_open_loops_args(q=None, order='bad_order')
+
+    def test_list_open_loop_rows_and_mapper_keep_preview_contract(self) -> None:
+        with self.SessionLocal() as db:
+            args = _normalize_story_memory_open_loops_args(q='open', order='timeline_desc')
+            rows, has_more = _list_story_memory_open_loop_rows(db, project_id='p1', limit=1, args=args)
+            self.assertTrue(has_more)
+            self.assertEqual([row.id for row in rows], ['sm2'])
+
+            item = _build_story_memory_open_loop_item(db.get(StoryMemory, 'sm1'))
+            self.assertEqual(item['resolved_at_chapter_id'], None)
+            self.assertTrue(str(item['content_preview']).endswith('…'))
+            self.assertLessEqual(len(str(item['content_preview'])), 201)
+
+    def test_require_resolve_helpers_and_dirty_mark(self) -> None:
+        with self.SessionLocal() as db:
+            row = _require_story_memory_foreshadow(db, project_id='p1', story_memory_id='sm1')
+            payload = _build_story_memory_foreshadow_payload(row)
+            self.assertEqual(payload['id'], 'sm1')
+            self.assertFalse(payload['resolved_at_chapter_id'])
+
+            resolved = _normalize_story_memory_resolved_at_chapter_id(
+                db,
+                project_id='p1',
+                resolved_at_chapter_id=' c2 ',
+            )
+            self.assertEqual(resolved, 'c2')
+
+            with self.assertRaises(AppError):
+                _require_story_memory_foreshadow(db, project_id='p1', story_memory_id='sm3')
+            with self.assertRaises(AppError):
+                _normalize_story_memory_resolved_at_chapter_id(db, project_id='p1', resolved_at_chapter_id='missing')
+
+            _ensure_story_memory_rebuild_dirty(db, project_id='p1', flush_on_create=True)
+            db.commit()
+
+        with self.SessionLocal() as db:
+            settings = db.get(ProjectSettings, 'p1')
+            self.assertIsNotNone(settings)
+            assert settings is not None
+            self.assertTrue(settings.vector_index_dirty)
+
+
+if __name__ == '__main__':
+    unittest.main()

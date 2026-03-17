@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 from fastapi import APIRouter, Header, Query, Request
-from sqlalchemy import or_, select
 
 from app.api.deps import DbDep, UserIdDep, require_chapter_editor, require_project_editor, require_project_viewer
 from app.api.routes.memory_route_helpers import (
@@ -14,6 +12,19 @@ from app.api.routes.memory_route_models import (
     StoryMemoryForeshadowResolveRequest,
     StoryMemoryImportV1Request,
 )
+from app.api.routes.memory_route_story_helpers import (
+    _ensure_story_memory_rebuild_dirty,
+    _list_story_memory_open_loop_rows,
+    _normalize_story_memory_open_loops_args,
+    _normalize_story_memory_resolved_at_chapter_id,
+    _require_story_memory_foreshadow,
+    _validate_story_memory_import_schema_version,
+)
+from app.api.routes.memory_route_story_mappers import (
+    _build_story_memory_foreshadow_payload,
+    _build_story_memory_import_row,
+    _build_story_memory_open_loop_item,
+)
 from app.api.routes.memory_route_structured_helpers import (
     _count_structured_memory_rows,
     _list_structured_memory_table_page,
@@ -21,12 +32,10 @@ from app.api.routes.memory_route_structured_helpers import (
 )
 from app.api.routes.memory_route_structured_models import STRUCTURED_MEMORY_TABLES
 from app.core.errors import AppError, ok_payload
-from app.db.utils import new_id, utc_now
+from app.db.utils import utc_now
 from app.models.chapter import Chapter
 from app.models.generation_run import GenerationRun
 from app.models.memory_task import MemoryTask
-from app.models.project_settings import ProjectSettings
-from app.models.story_memory import StoryMemory
 from app.models.structured_memory import MemoryChangeSet
 from app.schemas.memory_update import MemoryUpdateV1Request
 from app.schemas.memory_preview import MemoryPreviewRequest
@@ -99,47 +108,21 @@ def import_all_story_memories(
     request_id = request.state.request_id
     require_project_editor(db, project_id=project_id, user_id=user_id)
 
-    if str(body.schema_version or "").strip() != "story_memory_import_v1":
-        raise AppError.validation(details={"reason": "unsupported_schema_version", "schema_version": body.schema_version})
-
-    created_ids: list[str] = []
+    _validate_story_memory_import_schema_version(body.schema_version)
     now = utc_now()
+    rows = []
     for item in body.memories or []:
-        title = str(item.title or "").strip() or None
-        content = str(item.content or "").strip()
-        if not content:
+        row = _build_story_memory_import_row(project_id=project_id, item=item, now=now)
+        if row is None:
             continue
-        row = StoryMemory(
-            id=new_id(),
-            project_id=project_id,
-            chapter_id=None,
-            memory_type=str(item.memory_type or "").strip(),
-            title=title,
-            content=content,
-            full_context_md=None,
-            importance_score=float(item.importance_score or 0.0),
-            tags_json=None,
-            story_timeline=int(item.story_timeline or 0),
-            text_position=-1,
-            text_length=0,
-            is_foreshadow=int(item.is_foreshadow or 0),
-            foreshadow_resolved_at_chapter_id=None,
-            metadata_json=json.dumps({"source": "import_all"}, ensure_ascii=False),
-            created_at=now,
-            updated_at=now,
-        )
+        rows.append(row)
         db.add(row)
-        created_ids.append(str(row.id))
 
+    created_ids = [str(row.id) for row in rows]
     if not created_ids:
         raise AppError.validation(message="未导入任何 story_memories", details={"reason": "empty"})
 
-    settings_row = db.get(ProjectSettings, project_id)
-    if settings_row is None:
-        settings_row = ProjectSettings(project_id=project_id)
-        db.add(settings_row)
-    settings_row.vector_index_dirty = True
-
+    _ensure_story_memory_rebuild_dirty(db, project_id=project_id)
     db.commit()
     schedule_vector_rebuild_task(
         db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="story_memory_import_all"
@@ -161,59 +144,9 @@ def list_story_memory_foreshadow_open_loops(
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
 
-    q_norm = str(q or "").strip()
-    order_norm = str(order or "").strip().lower() or "timeline_desc"
-    allowed_orders = {"timeline_desc", "importance_desc", "updated_desc"}
-    if order_norm not in allowed_orders:
-        raise AppError.validation(message="不支持的排序字段", details={"order": order_norm, "allowed": sorted(allowed_orders)})
-
-    filters = [
-        StoryMemory.project_id == project_id,
-        StoryMemory.is_foreshadow == 1,  # noqa: E712
-        StoryMemory.foreshadow_resolved_at_chapter_id.is_(None),
-    ]
-    if q_norm:
-        pattern = f"%{q_norm}%"
-        filters.append(or_(StoryMemory.title.ilike(pattern), StoryMemory.content.ilike(pattern)))
-
-    if order_norm == "importance_desc":
-        order_by = (StoryMemory.importance_score.desc(), StoryMemory.story_timeline.desc(), StoryMemory.updated_at.desc())
-    elif order_norm == "updated_desc":
-        order_by = (StoryMemory.updated_at.desc(), StoryMemory.story_timeline.desc(), StoryMemory.importance_score.desc())
-    else:
-        order_by = (StoryMemory.story_timeline.desc(), StoryMemory.importance_score.desc(), StoryMemory.updated_at.desc())
-
-    rows = (
-        db.execute(
-            select(StoryMemory)
-            .where(*filters)
-            .order_by(*order_by)
-            .limit(int(limit) + 1)
-        )
-        .scalars()
-        .all()
-    )
-    has_more = len(rows) > int(limit)
-    rows = rows[: int(limit)]
-
-    items = []
-    for m in rows:
-        content = str(m.content or "").strip()
-        preview = (content[:200].rstrip() + "…") if len(content) > 200 else content
-        items.append(
-            {
-                "id": m.id,
-                "chapter_id": m.chapter_id,
-                "memory_type": m.memory_type,
-                "title": m.title,
-                "importance_score": float(m.importance_score or 0.0),
-                "story_timeline": int(m.story_timeline or 0),
-                "is_foreshadow": bool(m.is_foreshadow),
-                "resolved_at_chapter_id": m.foreshadow_resolved_at_chapter_id,
-                "content_preview": preview,
-                "updated_at": m.updated_at.isoformat() if m.updated_at else None,
-            }
-        )
+    args = _normalize_story_memory_open_loops_args(q=q, order=order)
+    rows, has_more = _list_story_memory_open_loop_rows(db, project_id=project_id, limit=limit, args=args)
+    items = [_build_story_memory_open_loop_item(row) for row in rows]
 
     return ok_payload(request_id=request_id, data={"items": items, "has_more": bool(has_more), "returned": len(items)})
 
@@ -230,32 +163,17 @@ def resolve_story_memory_foreshadow(
     request_id = request.state.request_id
     require_project_editor(db, project_id=project_id, user_id=user_id)
 
-    m = db.get(StoryMemory, story_memory_id)
-    if m is None or str(m.project_id) != str(project_id):
-        raise AppError.not_found()
-    if not bool(getattr(m, "is_foreshadow", 0)):
-        raise AppError.validation(message="该 StoryMemory 不是伏笔（foreshadow）", details={"story_memory_id": story_memory_id})
-
-    resolved_at_chapter_id = str(body.resolved_at_chapter_id or "").strip() or None
-    if resolved_at_chapter_id:
-        chapter = db.get(Chapter, resolved_at_chapter_id)
-        if chapter is None or str(getattr(chapter, "project_id", "")) != str(project_id):
-            raise AppError.validation(
-                message="回收章节（resolved_at_chapter_id）无效或不属于当前项目",
-                details={"resolved_at_chapter_id": resolved_at_chapter_id},
-            )
-
-    m.foreshadow_resolved_at_chapter_id = resolved_at_chapter_id
-
-    settings_row = db.get(ProjectSettings, project_id)
-    if settings_row is None:
-        settings_row = ProjectSettings(project_id=project_id)
-        db.add(settings_row)
-        db.flush()
-    settings_row.vector_index_dirty = True
+    row = _require_story_memory_foreshadow(db, project_id=project_id, story_memory_id=story_memory_id)
+    resolved_at_chapter_id = _normalize_story_memory_resolved_at_chapter_id(
+        db,
+        project_id=project_id,
+        resolved_at_chapter_id=body.resolved_at_chapter_id,
+    )
+    row.foreshadow_resolved_at_chapter_id = resolved_at_chapter_id
+    _ensure_story_memory_rebuild_dirty(db, project_id=project_id, flush_on_create=True)
 
     db.commit()
-    db.refresh(m)
+    db.refresh(row)
     schedule_vector_rebuild_task(
         db=db, project_id=project_id, actor_user_id=user_id, request_id=request_id, reason="story_memory_foreshadow_resolve"
     )
@@ -266,18 +184,7 @@ def resolve_story_memory_foreshadow(
     return ok_payload(
         request_id=request_id,
         data={
-            "foreshadow": {
-                "id": m.id,
-                "project_id": m.project_id,
-                "chapter_id": m.chapter_id,
-                "memory_type": m.memory_type,
-                "title": m.title,
-                "importance_score": float(m.importance_score or 0.0),
-                "story_timeline": int(m.story_timeline or 0),
-                "is_foreshadow": bool(m.is_foreshadow),
-                "resolved_at_chapter_id": m.foreshadow_resolved_at_chapter_id,
-                "updated_at": m.updated_at.isoformat() if m.updated_at else None,
-            }
+            "foreshadow": _build_story_memory_foreshadow_payload(row)
         },
     )
 @router.get("/projects/{project_id}/memory/structured")
