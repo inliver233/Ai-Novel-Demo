@@ -1,23 +1,25 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
-
 from fastapi import APIRouter, Header, Query, Request
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 
 from app.api.deps import DbDep, UserIdDep, require_chapter_editor, require_project_editor, require_project_viewer
 from app.api.routes.memory_route_helpers import (
     _build_memory_pack_payload,
     _normalize_memory_auto_propose_args,
-    _parse_iso_dt,
-    _safe_json,
 )
 from app.api.routes.memory_route_models import (
     MemoryAutoProposeRequest,
     StoryMemoryForeshadowResolveRequest,
     StoryMemoryImportV1Request,
 )
+from app.api.routes.memory_route_structured_helpers import (
+    _count_structured_memory_rows,
+    _list_structured_memory_table_page,
+    _normalize_structured_memory_args,
+)
+from app.api.routes.memory_route_structured_models import STRUCTURED_MEMORY_TABLES
 from app.core.errors import AppError, ok_payload
 from app.db.utils import new_id, utc_now
 from app.models.chapter import Chapter
@@ -25,14 +27,7 @@ from app.models.generation_run import GenerationRun
 from app.models.memory_task import MemoryTask
 from app.models.project_settings import ProjectSettings
 from app.models.story_memory import StoryMemory
-from app.models.structured_memory import (
-    MemoryChangeSet,
-    MemoryEntity,
-    MemoryEvidence,
-    MemoryEvent,
-    MemoryForeshadow,
-    MemoryRelation,
-)
+from app.models.structured_memory import MemoryChangeSet
 from app.schemas.memory_update import MemoryUpdateV1Request
 from app.schemas.memory_preview import MemoryPreviewRequest
 from app.services.memory_auto_update_app_service import (
@@ -300,226 +295,36 @@ def list_structured_memory(
     request_id = request.state.request_id
     require_project_viewer(db, project_id=project_id, user_id=user_id)
 
-    table_norm = str(table or "").strip().lower() or None
-    allowed_tables = {"entities", "relations", "events", "foreshadows", "evidence"}
-    if table_norm is not None and table_norm not in allowed_tables:
-        raise AppError.validation(details={"reason": "invalid_table", "table": table})
-
-    keyword = str(q or "").strip() or None
-    pattern = f"%{keyword}%" if keyword else None
-
-    before_dt: datetime | None = None
-    if table_norm is not None and before is not None:
-        before_dt = _parse_iso_dt(before)
-        if before_dt is None:
-            raise AppError.validation(details={"reason": "invalid_before", "before": before})
-
-    def _count(table_name: str) -> int:
-        if table_name == "entities":
-            cond = [MemoryEntity.project_id == project_id]
-            if not include_deleted:
-                cond.append(MemoryEntity.deleted_at.is_(None))
-            if pattern:
-                cond.append(or_(MemoryEntity.name.like(pattern), MemoryEntity.summary_md.like(pattern), MemoryEntity.entity_type.like(pattern)))
-            return int(db.execute(select(func.count()).select_from(MemoryEntity).where(*cond)).scalar_one())
-        if table_name == "relations":
-            cond = [MemoryRelation.project_id == project_id]
-            if not include_deleted:
-                cond.append(MemoryRelation.deleted_at.is_(None))
-            if pattern:
-                cond.append(or_(MemoryRelation.relation_type.like(pattern), MemoryRelation.description_md.like(pattern)))
-            return int(db.execute(select(func.count()).select_from(MemoryRelation).where(*cond)).scalar_one())
-        if table_name == "events":
-            cond = [MemoryEvent.project_id == project_id]
-            if not include_deleted:
-                cond.append(MemoryEvent.deleted_at.is_(None))
-            if pattern:
-                cond.append(or_(MemoryEvent.title.like(pattern), MemoryEvent.content_md.like(pattern), MemoryEvent.event_type.like(pattern)))
-            return int(db.execute(select(func.count()).select_from(MemoryEvent).where(*cond)).scalar_one())
-        if table_name == "foreshadows":
-            cond = [MemoryForeshadow.project_id == project_id]
-            if not include_deleted:
-                cond.append(MemoryForeshadow.deleted_at.is_(None))
-            if pattern:
-                cond.append(or_(MemoryForeshadow.title.like(pattern), MemoryForeshadow.content_md.like(pattern)))
-            return int(db.execute(select(func.count()).select_from(MemoryForeshadow).where(*cond)).scalar_one())
-        if table_name == "evidence":
-            cond = [MemoryEvidence.project_id == project_id]
-            if not include_deleted:
-                cond.append(MemoryEvidence.deleted_at.is_(None))
-            if pattern:
-                cond.append(or_(MemoryEvidence.quote_md.like(pattern), MemoryEvidence.source_type.like(pattern), MemoryEvidence.source_id.like(pattern)))
-            return int(db.execute(select(func.count()).select_from(MemoryEvidence).where(*cond)).scalar_one())
-        raise AppError.validation(details={"reason": "invalid_table", "table": table_name})
-
-    counts = {name: _count(name) for name in sorted(allowed_tables)}
-
-    data: dict[str, object] = {"counts": counts, "cursor": {}, "table": table_norm, "q": keyword}
-
-    cursors: dict[str, str | None] = {name: None for name in allowed_tables}
-
-    if table_norm in (None, "entities"):
-        cond = [MemoryEntity.project_id == project_id]
-        if not include_deleted:
-            cond.append(MemoryEntity.deleted_at.is_(None))
-        if pattern:
-            cond.append(or_(MemoryEntity.name.like(pattern), MemoryEntity.summary_md.like(pattern), MemoryEntity.entity_type.like(pattern)))
-        q_entities = select(MemoryEntity).where(*cond)
-        if table_norm == "entities" and before_dt is not None:
-            q_entities = q_entities.where(MemoryEntity.updated_at < before_dt)
-        rows = db.execute(q_entities.order_by(MemoryEntity.updated_at.desc(), MemoryEntity.id.desc()).limit(limit + 1)).scalars().all()
-        has_more = len(rows) > limit
-        rows = rows[:limit]
-        cursors["entities"] = rows[-1].updated_at.isoformat() if (has_more and rows) else None
-        data["entities"] = [
-            {
-                "id": e.id,
-                "project_id": e.project_id,
-                "entity_type": e.entity_type,
-                "name": e.name,
-                "summary_md": e.summary_md,
-                "attributes": _safe_json(e.attributes_json, {}),
-                "deleted_at": e.deleted_at.isoformat() if e.deleted_at else None,
-                "created_at": e.created_at.isoformat(),
-                "updated_at": e.updated_at.isoformat(),
-            }
-            for e in rows
-        ]
-    else:
-        data["entities"] = []
-
-    if table_norm in (None, "relations"):
-        cond = [MemoryRelation.project_id == project_id]
-        if not include_deleted:
-            cond.append(MemoryRelation.deleted_at.is_(None))
-        if pattern:
-            cond.append(or_(MemoryRelation.relation_type.like(pattern), MemoryRelation.description_md.like(pattern)))
-        q_relations = select(MemoryRelation).where(*cond)
-        if table_norm == "relations" and before_dt is not None:
-            q_relations = q_relations.where(MemoryRelation.updated_at < before_dt)
-        rows = (
-            db.execute(q_relations.order_by(MemoryRelation.updated_at.desc(), MemoryRelation.id.desc()).limit(limit + 1))
-            .scalars()
-            .all()
+    args = _normalize_structured_memory_args(table=table, q=q, before=before, limit=limit)
+    counts = {
+        table_name: _count_structured_memory_rows(
+            db,
+            project_id=project_id,
+            table_name=table_name,
+            include_deleted=include_deleted,
+            pattern=args.pattern,
         )
-        has_more = len(rows) > limit
-        rows = rows[:limit]
-        cursors["relations"] = rows[-1].updated_at.isoformat() if (has_more and rows) else None
-        data["relations"] = [
-            {
-                "id": r.id,
-                "project_id": r.project_id,
-                "from_entity_id": r.from_entity_id,
-                "to_entity_id": r.to_entity_id,
-                "relation_type": r.relation_type,
-                "description_md": r.description_md,
-                "attributes": _safe_json(r.attributes_json, {}),
-                "deleted_at": r.deleted_at.isoformat() if r.deleted_at else None,
-                "created_at": r.created_at.isoformat(),
-                "updated_at": r.updated_at.isoformat(),
-            }
-            for r in rows
-        ]
-    else:
-        data["relations"] = []
+        for table_name in STRUCTURED_MEMORY_TABLES
+    }
 
-    if table_norm in (None, "events"):
-        cond = [MemoryEvent.project_id == project_id]
-        if not include_deleted:
-            cond.append(MemoryEvent.deleted_at.is_(None))
-        if pattern:
-            cond.append(or_(MemoryEvent.title.like(pattern), MemoryEvent.content_md.like(pattern), MemoryEvent.event_type.like(pattern)))
-        q_events = select(MemoryEvent).where(*cond)
-        if table_norm == "events" and before_dt is not None:
-            q_events = q_events.where(MemoryEvent.updated_at < before_dt)
-        rows = db.execute(q_events.order_by(MemoryEvent.updated_at.desc(), MemoryEvent.id.desc()).limit(limit + 1)).scalars().all()
-        has_more = len(rows) > limit
-        rows = rows[:limit]
-        cursors["events"] = rows[-1].updated_at.isoformat() if (has_more and rows) else None
-        data["events"] = [
-            {
-                "id": ev.id,
-                "project_id": ev.project_id,
-                "chapter_id": ev.chapter_id,
-                "event_type": ev.event_type,
-                "title": ev.title,
-                "content_md": ev.content_md,
-                "attributes": _safe_json(ev.attributes_json, {}),
-                "deleted_at": ev.deleted_at.isoformat() if ev.deleted_at else None,
-                "created_at": ev.created_at.isoformat(),
-                "updated_at": ev.updated_at.isoformat(),
-            }
-            for ev in rows
-        ]
-    else:
-        data["events"] = []
+    data: dict[str, object] = {"counts": counts, "cursor": {}, "table": args.table, "q": args.keyword}
+    cursors: dict[str, str | None] = {table_name: None for table_name in STRUCTURED_MEMORY_TABLES}
 
-    if table_norm in (None, "foreshadows"):
-        cond = [MemoryForeshadow.project_id == project_id]
-        if not include_deleted:
-            cond.append(MemoryForeshadow.deleted_at.is_(None))
-        if pattern:
-            cond.append(or_(MemoryForeshadow.title.like(pattern), MemoryForeshadow.content_md.like(pattern)))
-        q_foreshadows = select(MemoryForeshadow).where(*cond)
-        if table_norm == "foreshadows" and before_dt is not None:
-            q_foreshadows = q_foreshadows.where(MemoryForeshadow.updated_at < before_dt)
-        rows = (
-            db.execute(q_foreshadows.order_by(MemoryForeshadow.updated_at.desc(), MemoryForeshadow.id.desc()).limit(limit + 1))
-            .scalars()
-            .all()
+    for table_name in STRUCTURED_MEMORY_TABLES:
+        if args.table not in (None, table_name):
+            data[table_name] = []
+            continue
+        page = _list_structured_memory_table_page(
+            db,
+            project_id=project_id,
+            table_name=table_name,
+            include_deleted=include_deleted,
+            pattern=args.pattern,
+            before_dt=args.before_dt if args.table == table_name else None,
+            limit=limit,
         )
-        has_more = len(rows) > limit
-        rows = rows[:limit]
-        cursors["foreshadows"] = rows[-1].updated_at.isoformat() if (has_more and rows) else None
-        data["foreshadows"] = [
-            {
-                "id": f.id,
-                "project_id": f.project_id,
-                "chapter_id": f.chapter_id,
-                "resolved_at_chapter_id": f.resolved_at_chapter_id,
-                "title": f.title,
-                "content_md": f.content_md,
-                "resolved": f.resolved,
-                "attributes": _safe_json(f.attributes_json, {}),
-                "deleted_at": f.deleted_at.isoformat() if f.deleted_at else None,
-                "created_at": f.created_at.isoformat(),
-                "updated_at": f.updated_at.isoformat(),
-            }
-            for f in rows
-        ]
-    else:
-        data["foreshadows"] = []
-
-    if table_norm in (None, "evidence"):
-        cond = [MemoryEvidence.project_id == project_id]
-        if not include_deleted:
-            cond.append(MemoryEvidence.deleted_at.is_(None))
-        if pattern:
-            cond.append(or_(MemoryEvidence.quote_md.like(pattern), MemoryEvidence.source_type.like(pattern), MemoryEvidence.source_id.like(pattern)))
-        q_evidence = select(MemoryEvidence).where(*cond)
-        if table_norm == "evidence" and before_dt is not None:
-            q_evidence = q_evidence.where(MemoryEvidence.created_at < before_dt)
-        rows = (
-            db.execute(q_evidence.order_by(MemoryEvidence.created_at.desc(), MemoryEvidence.id.desc()).limit(limit + 1)).scalars().all()
-        )
-        has_more = len(rows) > limit
-        rows = rows[:limit]
-        cursors["evidence"] = rows[-1].created_at.isoformat() if (has_more and rows) else None
-        data["evidence"] = [
-            {
-                "id": ev.id,
-                "project_id": ev.project_id,
-                "source_type": ev.source_type,
-                "source_id": ev.source_id,
-                "quote_md": ev.quote_md,
-                "attributes": _safe_json(ev.attributes_json, {}),
-                "deleted_at": ev.deleted_at.isoformat() if ev.deleted_at else None,
-                "created_at": ev.created_at.isoformat(),
-            }
-            for ev in rows
-        ]
-    else:
-        data["evidence"] = []
+        data[table_name] = page.items
+        cursors[table_name] = page.cursor
 
     data["cursor"] = cursors
     return ok_payload(request_id=request_id, data=data)
